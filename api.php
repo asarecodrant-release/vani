@@ -507,13 +507,19 @@ if ($action === "create_account") {
     );
 
     if (!$emailSent) {
-        echo json_encode([
+        $response = [
             "success" => false,
             "message" => "Account was created, but email could not be sent. Please contact support or try again.",
             "email_sent" => false,
             "customer_id" => $customer_id,
             "existing_user" => $isExistingUser
-        ]);
+        ];
+
+        if (in_array($_SERVER['SERVER_NAME'] ?? '', ['127.0.0.1', 'localhost'], true)) {
+            $response["mail_error"] = $GLOBALS['MAIL_LAST_ERROR'] ?? '';
+        }
+
+        echo json_encode($response);
         exit;
     }
 

@@ -1,14 +1,92 @@
 <?php
 
 // =====================================
-// PHPMailer Includes
+// BREVO CONFIG
 // =====================================
-require 'PHPMailer/src/Exception.php';
-require 'PHPMailer/src/PHPMailer.php';
-require 'PHPMailer/src/SMTP.php';
+if (file_exists(__DIR__ . '/.env')) {
+    foreach (parse_ini_file(__DIR__ . '/.env', false, INI_SCANNER_RAW) ?: [] as $key => $value) {
+        if (!isset($_ENV[$key])) {
+            $_ENV[$key] = $value;
+        }
+        if (getenv($key) === false) {
+            putenv($key . '=' . $value);
+        }
+    }
+}
 
-use PHPMailer\PHPMailer\PHPMailer;
-use PHPMailer\PHPMailer\Exception;
+function brevoApiKey() {
+    $apiKey = $_ENV['BREVO_API_KEY'] ?? getenv('BREVO_API_KEY');
+
+    return $apiKey ?: '';
+}
+
+function sendBrevoEmail($toEmail, $subject, $htmlContent) {
+    $apiKey = brevoApiKey();
+
+    if (!$apiKey) {
+        $GLOBALS['MAIL_LAST_ERROR'] = 'Missing BREVO_API_KEY environment variable.';
+
+        return false;
+    }
+
+    $payload = [
+        'sender' => [
+            'name' => 'Vani AI',
+            'email' => 'info@codrant.com'
+        ],
+        'replyTo' => [
+            'name' => 'Vani AI Support',
+            'email' => 'info@codrant.com'
+        ],
+        'to' => [
+            [
+                'email' => $toEmail
+            ]
+        ],
+        'subject' => $subject,
+        'htmlContent' => $htmlContent
+    ];
+
+    $context = stream_context_create([
+        'http' => [
+            'method' => 'POST',
+            'header' => implode("\r\n", [
+                'Content-Type: application/json',
+                'Accept: application/json',
+                'api-key: ' . $apiKey
+            ]),
+            'content' => json_encode($payload),
+            'ignore_errors' => true,
+            'timeout' => 20
+        ]
+    ]);
+
+    $response = file_get_contents(
+        'https://api.brevo.com/v3/smtp/email',
+        false,
+        $context
+    );
+
+    $status = 0;
+
+    if (isset($http_response_header[0])) {
+        preg_match(
+            '{HTTP/\S*\s(\d{3})}',
+            $http_response_header[0],
+            $match
+        );
+
+        $status = intval($match[1] ?? 0);
+    }
+
+    if ($status >= 200 && $status < 300) {
+        return true;
+    }
+
+    $GLOBALS['MAIL_LAST_ERROR'] = 'Brevo API error HTTP ' . $status . ': ' . ($response ?: 'No response body');
+
+    return false;
+}
 
 
 // =====================================
@@ -22,47 +100,10 @@ function sendWelcomeEmail(
     $isExistingUser = false
 ) {
 
-    $mail = new PHPMailer(true);
+    $GLOBALS['MAIL_LAST_ERROR'] = '';
 
     try {
-
-        // =====================================
-        // SMTP SETTINGS (GoDaddy)
-        // =====================================
-        $mail->isSMTP();
-
-        $mail->Host       = 'smtpout.secureserver.net';
-        $mail->SMTPAuth   = true;
-
-        $mail->Username   = 'info@codrant.com';
-
-        // =====================================
-        // REPLACE PASSWORD
-        // =====================================
-        $mail->Password   = 'Asawari@1967';
-
-        $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
-        $mail->Port       = 587;
-        $mail->Timeout    = 10;
-
-        // =====================================
-        // EMAIL SETTINGS
-        // =====================================
-        $mail->setFrom(
-            'info@codrant.com',
-            'Vani AI'
-        );
-
-        $mail->addReplyTo(
-            'info@codrant.com',
-            'Vani AI Support'
-        );
-
-        $mail->addAddress($toEmail);
-
-        $mail->isHTML(true);
-
-        $mail->Subject = $isExistingUser
+        $subject = $isExistingUser
             ? 'Your Existing Vani AI Account'
             : 'Your Vani AI Chatbot is Ready';
 
@@ -92,7 +133,7 @@ function sendWelcomeEmail(
         // =====================================
         // RESPONSIVE EMAIL DESIGN
         // =====================================
-        $mail->Body = '
+        $htmlBody = '
         <!DOCTYPE html>
         <html>
         <head>
@@ -408,11 +449,20 @@ function sendWelcomeEmail(
         // =====================================
         // SEND EMAIL
         // =====================================
-        return $mail->send();
+        $sent = sendBrevoEmail($toEmail, $subject, $htmlBody);
 
-    } catch (Exception $e) {
+        if ($sent) {
+            error_log("Welcome email accepted by Brevo for " . $toEmail);
+        } else {
+            error_log("Brevo Mailer Error for " . $toEmail . ": " . $GLOBALS['MAIL_LAST_ERROR']);
+        }
 
-        error_log("Mailer Error: " . $mail->ErrorInfo);
+        return $sent;
+
+    } catch (Throwable $e) {
+
+        $GLOBALS['MAIL_LAST_ERROR'] = $e->getMessage();
+        error_log("Brevo Mailer Error for " . $toEmail . ": " . $GLOBALS['MAIL_LAST_ERROR']);
 
         return false;
     }
