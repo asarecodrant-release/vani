@@ -43,6 +43,7 @@ function sendWelcomeEmail(
 
         $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
         $mail->Port       = 587;
+        $mail->Timeout    = 10;
 
         // =====================================
         // EMAIL SETTINGS

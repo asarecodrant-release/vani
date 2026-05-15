@@ -2,9 +2,6 @@
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
-
-
-
 ?>
 
 <!DOCTYPE html>
@@ -218,7 +215,15 @@ button.loading {
 
 <script>
 // ADD AT TOP
-const businessType = localStorage.getItem("business_type");
+const sessionBusinessType = <?php echo json_encode($_SESSION['business_type'] ?? ''); ?>;
+const sessionCustomerId = <?php echo json_encode($_SESSION['customer_id'] ?? ''); ?>;
+
+const storedBusinessType = localStorage.getItem("business_type");
+const businessType = storedBusinessType || sessionBusinessType;
+
+if (businessType && !storedBusinessType) {
+  localStorage.setItem("business_type", businessType);
+}
 
 if (!businessType) {
   alert("Session expired. Please start again.");
@@ -234,7 +239,12 @@ const msg = document.getElementById("msg");
 const palette = document.getElementById("palette");
 const saveBtn = document.getElementById("saveBtn");
 
-const cid = localStorage.getItem("cid");
+const storedCid = localStorage.getItem("cid");
+const cid = storedCid || sessionCustomerId;
+
+if (cid && !storedCid) {
+  localStorage.setItem("cid", cid);
+}
 
 if (!cid) {
   showError("Session expired. Please signup again.");

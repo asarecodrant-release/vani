@@ -301,6 +301,14 @@ document.getElementById("signupForm")
     business = document.getElementById("otherBusinessType").value.trim();
   }
 
+  if (!business) {
+    overlay.style.display = "none";
+    btn.disabled = false;
+    btn.innerText = "Continue â†’";
+    alert("Please select or enter your business type");
+    return;
+  }
+
   try {
 
     const signupRes = await fetch(`${API}?action=signup`, {
@@ -320,7 +328,8 @@ document.getElementById("signupForm")
       body: JSON.stringify({
         customer_id: cid,
         email: email,
-        website_name: website
+        website_name: website,
+        business_type: business
       })
     });
 
@@ -333,6 +342,10 @@ document.getElementById("signupForm")
       alert("Account creation failed");
       return;
     }
+
+    localStorage.setItem("business_type", business);
+    localStorage.setItem("website_name", website);
+    localStorage.setItem("email", email);
 
     overlay.innerText = "Redirecting to theme selection...";
     window.location.href = "theme-selection.php";
