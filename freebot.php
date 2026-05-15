@@ -335,11 +335,11 @@ document.getElementById("signupForm")
 
     const accData = await accRes.json();
 
-    if (!accData.success) {
+    if (!accData.success || accData.email_sent === false) {
       overlay.style.display = "none";
       btn.disabled = false;
       btn.innerText = "Continue →";
-      alert("Account creation failed");
+      alert(accData.message || "Account created, but email could not be sent. Please try again.");
       return;
     }
 

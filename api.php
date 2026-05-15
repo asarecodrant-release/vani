@@ -506,6 +506,17 @@ if ($action === "create_account") {
         $isExistingUser
     );
 
+    if (!$emailSent) {
+        echo json_encode([
+            "success" => false,
+            "message" => "Account was created, but email could not be sent. Please contact support or try again.",
+            "email_sent" => false,
+            "customer_id" => $customer_id,
+            "existing_user" => $isExistingUser
+        ]);
+        exit;
+    }
+
     echo json_encode([
 
         "success" => true,
