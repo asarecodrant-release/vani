@@ -1,15 +1,7 @@
 <?php
 
-//require 'vendor/autoload.php';
+require 'vendor/autoload.php';
 
-// ======================================
-// LOAD ENV
-// ======================================
-if (file_exists(__DIR__ . '/.env')) {
-
-    $dotenv = Dotenv\Dotenv::createImmutable(__DIR__);
-    $dotenv->load();
-}
 // ======================================
 // SUPABASE CONFIG
 // ======================================

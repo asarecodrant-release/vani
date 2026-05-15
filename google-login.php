@@ -5,12 +5,6 @@ require 'vendor/autoload.php';
 session_start();
 
 // =====================================
-// LOAD ENV
-// =====================================
-$dotenv = Dotenv\Dotenv::createImmutable(__DIR__);
-$dotenv->load();
-
-// =====================================
 // GOOGLE CLIENT
 // =====================================
 $client = new Google_Client();
