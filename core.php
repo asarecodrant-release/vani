@@ -1,9 +1,18 @@
 <?php
 
-require 'vendor/autoload.php';
+$autoloadPath = __DIR__ . '/vendor/autoload.php';
+
+if (file_exists($autoloadPath)) {
+    require $autoloadPath;
+}
 
 if (class_exists(Dotenv\Dotenv::class) && file_exists(__DIR__ . '/.env')) {
     Dotenv\Dotenv::createImmutable(__DIR__)->safeLoad();
+} elseif (file_exists(__DIR__ . '/.env')) {
+    foreach (parse_ini_file(__DIR__ . '/.env', false, INI_SCANNER_RAW) ?: [] as $key => $value) {
+        $_ENV[$key] = $value;
+        putenv($key . '=' . $value);
+    }
 }
 
 // ======================================
