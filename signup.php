@@ -1,6 +1,6 @@
 <?php
 include 'config.php';
-session_start();
+require_once __DIR__ . '/session-auth.php';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
@@ -19,7 +19,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             "chatbot_type" => "faq"
         ]);
 
-        $_SESSION['customer'] = $res[0];
+        set_authenticated_user(
+            $res[0],
+            "password"
+        );
         header("Location: dashboard.php");
     } else {
         echo "Signup failed";

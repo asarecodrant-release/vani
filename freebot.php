@@ -1,15 +1,15 @@
 <?php
-session_start();
+require_once __DIR__ . '/session-auth.php';
 
 // ======================================
-// CLEAR OLD CUSTOMER ID
+// CLEAR OLD SETUP CHATBOT ID
 // ======================================
-unset($_SESSION['customer_id']);
+clear_setup_session();
 
 // ======================================
 // SAFE SESSION VALUES
 // ======================================
-$loggedInEmail = $_SESSION['email'] ?? '';
+$loggedInEmail = authenticated_email();
 $loggedInCustomerId = '';
 ?>
 

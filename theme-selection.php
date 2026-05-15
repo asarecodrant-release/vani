@@ -1,7 +1,5 @@
 <?php
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
+require_once __DIR__ . '/session-auth.php';
 ?>
 
 <!DOCTYPE html>
@@ -168,6 +166,7 @@ button.loading {
 
 <body>
 
+<?php include 'navbar.php'; ?>
 
 <div class="container">
   <div class="card">
@@ -215,8 +214,8 @@ button.loading {
 
 <script>
 // ADD AT TOP
-const sessionBusinessType = <?php echo json_encode($_SESSION['business_type'] ?? ''); ?>;
-const sessionCustomerId = <?php echo json_encode($_SESSION['customer_id'] ?? ''); ?>;
+const sessionBusinessType = <?php echo json_encode($_SESSION['setup_business_type'] ?? ''); ?>;
+const sessionCustomerId = <?php echo json_encode($_SESSION['setup_customer_id'] ?? ''); ?>;
 
 const storedBusinessType = localStorage.getItem("business_type");
 const businessType = storedBusinessType || sessionBusinessType;

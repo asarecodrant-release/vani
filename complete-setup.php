@@ -1,43 +1,8 @@
 <?php
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
+require_once __DIR__ . '/session-auth.php';
+
 $_SESSION['setup_completed'] = true;
-// ==========================
-// KEEP EMAIL BEFORE CLEAR
-// ==========================
-$email = $_SESSION['email'] ?? null;
-
-// ==========================
-// CLEAR ALL SESSION DATA
-// ==========================
-$_SESSION = [];
-
-// ==========================
-// RESTORE ONLY EMAIL
-// ==========================
-if ($email) {
-    $_SESSION['email'] = $email;
-}
-
-// ==========================
-// OPTIONAL: REMOVE SESSION ID (SAFE RESET)
-// ==========================
-// NOTE: We do NOT fully destroy session,
-// so user stays "logged in" via email
-
-if (ini_get("session.use_cookies")) {
-    $params = session_get_cookie_params();
-    setcookie(
-        session_name(),
-        '',
-        time() - 42000,
-        $params["path"],
-        $params["domain"],
-        $params["secure"],
-        $params["httponly"]
-    );
-}
+clear_setup_session();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -115,6 +80,8 @@ code{
 </head>
 
 <body>
+
+<?php include 'navbar.php'; ?>
 
 <div class="container">
 

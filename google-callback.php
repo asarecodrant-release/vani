@@ -2,14 +2,13 @@
 
 require 'vendor/autoload.php';
 require 'core.php';
-
-session_start();
+require_once __DIR__ . "/session-auth.php";
 
 // =====================================
 // LOAD ENV
 // =====================================
 $dotenv = Dotenv\Dotenv::createImmutable(__DIR__);
-$dotenv->load();
+$dotenv->safeLoad();
 
 // =====================================
 // GOOGLE CLIENT
@@ -48,25 +47,36 @@ if (!empty($check['data'])) {
 
     $customer = $check['data'][0];
 
-    $_SESSION['customer_id'] = $customer['id'];
-    $_SESSION['email'] = $customer['email'];
+    set_authenticated_user(
+        $customer,
+        "google"
+    );
 
 } else {
 
     $customer_id = uniqid("cus_");
+    $randomPassword = bin2hex(random_bytes(16));
 
-    supabase(
+    $insert = supabase(
         "POST",
         "customers",
         [[
             "id" => $customer_id,
             "email" => $email,
-            "password" => ""
+            "password" => password_hash(
+                $randomPassword,
+                PASSWORD_DEFAULT
+            )
         ]]
     );
 
-    $_SESSION['customer_id'] = $customer_id;
-    $_SESSION['email'] = $email;
+    set_authenticated_user(
+        $insert['data'][0] ?? [
+            "id" => $customer_id,
+            "email" => $email
+        ],
+        "google"
+    );
 }
 
 header("Location: dashboard.php");

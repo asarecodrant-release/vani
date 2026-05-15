@@ -4,7 +4,7 @@ ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 
-session_start();
+require_once __DIR__ . "/session-auth.php";
 
 header("Content-Type: text/html; charset=UTF-8");
 header(
@@ -25,108 +25,13 @@ if (
 
     header("Content-Type: application/json");
 
-    try {
+    echo json_encode([
+        "success" => false,
+        "message" => "Google credential is required"
+    ]);
 
-        $email = trim(
-            $_POST['google_email']
-            ?? ''
-        );
+    exit;
 
-        if (!$email) {
-
-            echo json_encode([
-                "success" => false,
-                "message" => "Missing email"
-            ]);
-
-            exit;
-        }
-
-        // ======================================
-        // CHECK EXISTING USER
-        // ======================================
-
-        $res = supabase(
-            "GET",
-            "customers?email=eq."
-            . urlencode($email)
-            . "&limit=1"
-        );
-
-        $user =
-            $res['data'][0]
-            ?? null;
-
-        // ======================================
-        // NEW USER
-        // ======================================
-
-        if (!$user) {
-
-        $randomPassword =
-            bin2hex(random_bytes(8));
-
-        $insert = supabase(
-            "POST",
-            "customers",
-            [[
-                "email" => $email,
-
-                "password" =>
-                    password_hash(
-                        $randomPassword,
-                        PASSWORD_DEFAULT
-                    )
-            ]]
-        );
-
-            $_SESSION['email'] = $email;
-
-            echo json_encode([
-
-                "success" => true,
-
-                "first_login" => true
-
-            ]);
-
-            exit;
-        }
-
-        // ======================================
-        // EXISTING USER
-        // ======================================
-
-        $_SESSION['customer_id'] =
-            $user['id'];
-
-        $_SESSION['email'] =
-            $user['email'];
-
-        echo json_encode([
-
-            "success" => true,
-
-            "first_login" => false,
-
-            "customer_id" =>
-                $user['id']
-        ]);
-
-        exit;
-
-    } catch (Exception $e) {
-
-        echo json_encode([
-
-            "success" => false,
-
-            "message" =>
-                $e->getMessage()
-        ]);
-
-        exit;
-    }
 }
 
 // ======================================
@@ -176,11 +81,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                 )
             ) {
 
-                $_SESSION['customer_id'] =
-                    $user['id'];
-
-                $_SESSION['email'] =
-                    $user['email'];
+                set_authenticated_user(
+                    $user,
+                    "password"
+                );
 
                 header(
                     "Location: dashboard.php"
@@ -620,21 +524,19 @@ function handleCredentialResponse(
         return;
     }
 
-    fetch("login.php", {
+    fetch("google-auth.php", {
 
         method: "POST",
 
         headers: {
 
             "Content-Type":
-            "application/x-www-form-urlencoded"
+            "application/json"
         },
 
-        body:
-            "google_email=" +
-            encodeURIComponent(
-                data.email
-            )
+        body: JSON.stringify({
+            credential: response.credential
+        })
     })
 
     .then(async (res) => {

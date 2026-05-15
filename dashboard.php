@@ -1,7 +1,7 @@
 <?php
-session_start();
+require_once __DIR__ . '/session-auth.php';
 
-if (!isset($_SESSION['customer_id'])) {
+if (!is_authenticated_user()) {
     header("Location: login.php");
     exit;
 }
@@ -10,13 +10,13 @@ if (!isset($_SESSION['customer_id'])) {
 <h1>Welcome to Dashboard</h1>
 
 <p>
-Customer ID:
-<?php echo $_SESSION['customer_id']; ?>
+Account ID:
+<?php echo htmlspecialchars(authenticated_user_id()); ?>
 </p>
 
 <p>
 Email:
-<?php echo $_SESSION['email']; ?>
+<?php echo htmlspecialchars(authenticated_email()); ?>
 </p>
 
 <a href="logout.php">Logout</a>

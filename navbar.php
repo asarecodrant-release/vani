@@ -1,10 +1,9 @@
 <?php
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
+require_once __DIR__ . '/session-auth.php';
 
 $currentPage = basename($_SERVER['PHP_SELF']);
 $navbarClass = ($currentPage === "index.php") ? "navbar-home" : "navbar-inner";
+$navEmail = authenticated_email();
 ?>
 
 <style>
@@ -272,30 +271,17 @@ nav .container{
     <!-- RIGHT SIDE -->
     <div class="nav-right">
 
-      <?php if(isset($_SESSION['customer_id'])): ?>  <!-- ✅ FIX -->
+      <?php if(is_authenticated_user()): ?>
 
         <div class="user-box">
           <div class="user-avatar">
-            <?php echo strtoupper(substr($_SESSION['email'],0,1)); ?>
+            <?php echo strtoupper(substr($navEmail,0,1)); ?>
           </div>
 
           <span>
-            <?php echo htmlspecialchars($_SESSION['email']); ?>
+            <?php echo htmlspecialchars($navEmail); ?>
           </span>
 
-          <a href="logout.php" class="nav-btn">Logout</a>
-        </div>
-
-      <?php elseif(isset($_SESSION['email'])): ?> 
-
-        <div class="user-box">
-          <div class="user-avatar">
-            <?php echo strtoupper(substr($_SESSION['email'],0,1)); ?>
-          </div>
-
-          <span>
-            <?php echo htmlspecialchars($_SESSION['email']); ?>
-          </span>
           <a href="logout.php" class="nav-btn">Logout</a>
         </div>
 
@@ -317,4 +303,3 @@ nav .container{
 
   </div>
 </nav>
-

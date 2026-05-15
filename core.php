@@ -2,6 +2,10 @@
 
 require 'vendor/autoload.php';
 
+if (class_exists(Dotenv\Dotenv::class) && file_exists(__DIR__ . '/.env')) {
+    Dotenv\Dotenv::createImmutable(__DIR__)->safeLoad();
+}
+
 // ======================================
 // SUPABASE CONFIG
 // ======================================
@@ -87,87 +91,4 @@ function generateUUID() {
         mt_rand(0, 0xffff),
         mt_rand(0, 0xffff)
     );
-}
-
-// ======================================
-// GOOGLE LOGIN AJAX
-// ======================================
-if (
-    $_SERVER['REQUEST_METHOD'] === 'POST' &&
-    isset($_POST['google_email'])
-) {
-
-    header("Content-Type: application/json");
-
-    $googleEmail = trim($_POST['google_email']);
-
-    if (!$googleEmail) {
-
-        echo json_encode([
-            "success" => false
-        ]);
-
-        exit;
-    }
-
-    // ======================================
-    // CHECK USER EXISTS
-    // ======================================
-    $check = supabase(
-        "GET",
-        "customers?email=eq." .
-        urlencode($googleEmail) .
-        "&limit=1"
-    );
-
-    $user = $check['data'][0] ?? null;
-
-    // ======================================
-    // NEW GOOGLE USER
-    // ======================================
-    if (!$user) {
-
-        $customerId = generateUUID();
-
-        $randomPassword =
-            password_hash(
-                bin2hex(random_bytes(8)),
-                PASSWORD_DEFAULT
-            );
-
-        supabase(
-            "POST",
-            "customers",
-            [[
-                "id" => $customerId,
-                "email" => $googleEmail,
-                "password" => $randomPassword
-            ]]
-        );
-
-        $user = [
-            "id" => $customerId,
-            "email" => $googleEmail
-        ];
-
-        $_SESSION['first_google_login'] = true;
-
-    } else {
-
-        $_SESSION['first_google_login'] = false;
-    }
-
-    // ======================================
-    // LOGIN SESSION
-    // ======================================
-    $_SESSION['customer_id'] = $user['id'];
-    $_SESSION['email'] = $user['email'];
-
-    echo json_encode([
-        "success" => true,
-        "first_login" =>
-            $_SESSION['first_google_login']
-    ]);
-
-    exit;
 }

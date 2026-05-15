@@ -1,8 +1,8 @@
 <?php
-session_start();
+require_once __DIR__ . '/session-auth.php';
 
 function is_logged_in() {
-    return isset($_SESSION['customer']);
+    return is_authenticated_user();
 }
 
 function require_login() {

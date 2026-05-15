@@ -28,6 +28,7 @@ error_reporting(E_ALL);
 // LOAD CORE
 // ==========================
 require "core.php";
+require_once __DIR__ . "/session-auth.php";
 
 // ==========================
 // INPUT SAFE PARSER
@@ -410,19 +411,12 @@ if ($action === "get_preloaded_faqs") {
 if ($action === "create_account") {
 	
     $data = getJSON();
-     // 👇 ADD THIS RIGHT HERE (near top)
-    session_start();
-
-    $_SESSION['email'] = trim($data['email'] ?? '');
-    $_SESSION['customer_id'] = trim($data['customer_id'] ?? '');
-    $_SESSION['website_name'] = trim($data['website_name'] ?? '');
-    $_SESSION['business_type'] = trim($data['business_type'] ?? '');
-
     require "email.php";
 
     $customer_id = trim($data['customer_id'] ?? '');
     $email = trim($data['email'] ?? '');
     $website_name = trim($data['website_name'] ?? '');
+    $business_type = trim($data['business_type'] ?? '');
 
     if (!$customer_id || !$email) {
 
@@ -433,6 +427,11 @@ if ($action === "create_account") {
 
         exit;
     }
+
+    $_SESSION['setup_email'] = $email;
+    $_SESSION['setup_customer_id'] = $customer_id;
+    $_SESSION['setup_website_name'] = $website_name;
+    $_SESSION['setup_business_type'] = $business_type;
 
     // ==========================
     // CHECK EXISTING CUSTOMER

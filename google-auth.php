@@ -1,6 +1,6 @@
 <?php
 
-session_start();
+require_once __DIR__ . "/session-auth.php";
 
 header("Content-Type: application/json");
 
@@ -24,12 +24,18 @@ if (!$credential) {
 }
 
 
-// =====================================
-// DECODE JWT TOKEN
-// =====================================
-$parts = explode(".", $credential);
+$googleClientId =
+    $_ENV['GOOGLE_CLIENT_ID']
+    ?? getenv('GOOGLE_CLIENT_ID')
+    ?: '970273381861-ar6734p4c2hl3pn0g58segkgccfvoirv.apps.googleusercontent.com';
 
-if (count($parts) !== 3) {
+$client = new Google_Client([
+    'client_id' => $googleClientId
+]);
+
+$payload = $client->verifyIdToken($credential);
+
+if (!$payload) {
 
     echo json_encode([
         "success" => false,
@@ -38,15 +44,6 @@ if (count($parts) !== 3) {
 
     exit;
 }
-
-$payload = json_decode(
-    base64_decode(str_replace(
-        ['-', '_'],
-        ['+', '/'],
-        $parts[1]
-    )),
-    true
-);
 
 $email = $payload['email'] ?? '';
 
@@ -69,31 +66,46 @@ $check = supabase(
     "customers?email=eq." . urlencode($email) . "&limit=1"
 );
 
+$firstLogin = false;
+
 if (!empty($check['data'])) {
 
     $customer = $check['data'][0];
 
-    $_SESSION['customer_id'] = $customer['id'];
-    $_SESSION['email'] = $customer['email'];
+    set_authenticated_user(
+        $customer,
+        "google"
+    );
 
 } else {
 
+    $firstLogin = true;
     $customer_id = uniqid("cus_");
+    $randomPassword = bin2hex(random_bytes(16));
 
-    supabase(
+    $insert = supabase(
         "POST",
         "customers",
         [[
             "id" => $customer_id,
             "email" => $email,
-            "password" => ""
+            "password" => password_hash(
+                $randomPassword,
+                PASSWORD_DEFAULT
+            )
         ]]
     );
 
-    $_SESSION['customer_id'] = $customer_id;
-    $_SESSION['email'] = $email;
+    set_authenticated_user(
+        $insert['data'][0] ?? [
+            "id" => $customer_id,
+            "email" => $email
+        ],
+        "google"
+    );
 }
 
 echo json_encode([
-    "success" => true
+    "success" => true,
+    "first_login" => $firstLogin
 ]);

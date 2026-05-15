@@ -1,6 +1,9 @@
 <?php
 
 require 'vendor/autoload.php';
+if (class_exists(Dotenv\Dotenv::class) && file_exists(__DIR__ . '/.env')) {
+    Dotenv\Dotenv::createImmutable(__DIR__)->safeLoad();
+}
 
 session_start();
 

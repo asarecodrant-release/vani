@@ -601,16 +601,16 @@ footer{
 
    <div class="nav-right">
 
-<?php if(isset($_SESSION['email'])): ?>
+<?php if(is_authenticated_user()): ?>
 
   <div class="user-box">
 
     <div class="user-avatar">
-      <?php echo strtoupper(substr($_SESSION['email'],0,1)); ?>
+      <?php echo strtoupper(substr(authenticated_email(),0,1)); ?>
     </div>
 
     <span>
-      <?php echo htmlspecialchars($_SESSION['email']); ?>
+      <?php echo htmlspecialchars(authenticated_email()); ?>
     </span>
 	 <a href="logout.php" class="nav-btn">Logout</a>
   </div>

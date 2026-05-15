@@ -1,10 +1,5 @@
 <?php
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
-
-
-
+require_once __DIR__ . '/session-auth.php';
 ?>
 
 <!DOCTYPE html>
@@ -40,6 +35,7 @@ body{min-height:100vh;background:linear-gradient(135deg,#667eea,#764ba2);display
 
 <body>
 
+<?php include 'navbar.php'; ?>
 
 <div class="container">
 
@@ -78,8 +74,22 @@ const overlay = document.getElementById("loadingOverlay");
 const loadingText = document.getElementById("loadingText");
 const saveBtn = document.getElementById("saveBtn");
 
-const cid = localStorage.getItem("cid");
-const businessType = localStorage.getItem("business_type");
+const sessionCustomerId = <?php echo json_encode($_SESSION['setup_customer_id'] ?? ''); ?>;
+const sessionBusinessType = <?php echo json_encode($_SESSION['setup_business_type'] ?? ''); ?>;
+
+const storedCid = localStorage.getItem("cid");
+const cid = storedCid || sessionCustomerId;
+
+if (cid && !storedCid) {
+  localStorage.setItem("cid", cid);
+}
+
+const storedBusinessType = localStorage.getItem("business_type");
+const businessType = storedBusinessType || sessionBusinessType;
+
+if (businessType && !storedBusinessType) {
+  localStorage.setItem("business_type", businessType);
+}
 
 if (!cid || !businessType) {
   alert("Session expired. Please start again.");

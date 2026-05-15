@@ -1,0 +1,57 @@
+[Sat May 16 03:07:57 2026] PHP 8.2.12 Development Server (http://127.0.0.1:8000) started
+[Sat May 16 03:07:59 2026] 127.0.0.1:58787 Accepted
+[Sat May 16 03:07:59 2026] 127.0.0.1:58787 [200]: GET /freebot.php
+[Sat May 16 03:07:59 2026] 127.0.0.1:58787 Closing
+[Sat May 16 03:08:14 2026] 127.0.0.1:58789 Accepted
+[Sat May 16 03:08:14 2026] 127.0.0.1:58789 [200]: GET /freebot.php
+[Sat May 16 03:08:14 2026] 127.0.0.1:58789 Closing
+[Sat May 16 03:08:53 2026] 127.0.0.1:58805 Accepted
+[Sat May 16 03:08:53 2026] 127.0.0.1:58805 [200]: GET /freebot.php
+[Sat May 16 03:08:53 2026] 127.0.0.1:58805 Closing
+[Sat May 16 03:08:53 2026] 127.0.0.1:58806 Accepted
+[Sat May 16 03:08:53 2026] 127.0.0.1:58807 Accepted
+[Sat May 16 03:08:53 2026] 127.0.0.1:58807 [200]: GET /images/logo.png
+[Sat May 16 03:08:53 2026] 127.0.0.1:58807 Closing
+[Sat May 16 03:08:54 2026] 127.0.0.1:58806 [404]: GET /favicon.ico - No such file or directory
+[Sat May 16 03:08:54 2026] 127.0.0.1:58806 Closing
+[Sat May 16 03:09:56 2026] 127.0.0.1:58816 Accepted
+[Sat May 16 03:09:56 2026] 127.0.0.1:58816 [200]: GET /
+[Sat May 16 03:09:56 2026] 127.0.0.1:58816 Closing
+[Sat May 16 03:09:56 2026] 127.0.0.1:58817 Accepted
+[Sat May 16 03:09:56 2026] 127.0.0.1:58818 Accepted
+[Sat May 16 03:09:56 2026] 127.0.0.1:58817 [200]: GET /images/logo.png
+[Sat May 16 03:09:56 2026] 127.0.0.1:58817 Closing
+[Sat May 16 03:09:58 2026] 127.0.0.1:58818 [200]: GET /freebot.php
+[Sat May 16 03:09:58 2026] 127.0.0.1:58818 Closing
+[Sat May 16 03:09:58 2026] 127.0.0.1:58819 Accepted
+[Sat May 16 03:09:58 2026] 127.0.0.1:58820 Accepted
+[Sat May 16 03:09:58 2026] 127.0.0.1:58819 [200]: GET /images/logo.png
+[Sat May 16 03:09:58 2026] 127.0.0.1:58819 Closing
+[Sat May 16 03:10:09 2026] PHP Warning:  require(vendor/autoload.php): Failed to open stream: No such file or directory in E:\wd\vani\core.php on line 3
+[Sat May 16 03:10:09 2026] PHP Fatal error:  Uncaught Error: Failed opening required 'vendor/autoload.php' (include_path='C:\xampp\php\PEAR') in E:\wd\vani\core.php:3
+Stack trace:
+#0 E:\wd\vani\api.php(30): require()
+#1 {main}
+  thrown in E:\wd\vani\core.php on line 3
+[Sat May 16 03:10:09 2026] 127.0.0.1:58820 [500]: POST /api.php?action=signup - Uncaught Error: Failed opening required 'vendor/autoload.php' (include_path='C:\xampp\php\PEAR') in E:\wd\vani\core.php:3
+Stack trace:
+#0 E:\wd\vani\api.php(30): require()
+#1 {main}
+  thrown in E:\wd\vani\core.php on line 3
+[Sat May 16 03:10:09 2026] 127.0.0.1:58820 Closing
+[Sat May 16 03:10:09 2026] 127.0.0.1:58822 Accepted
+[Sat May 16 03:10:09 2026] PHP Warning:  require(vendor/autoload.php): Failed to open stream: No such file or directory in E:\wd\vani\core.php on line 3
+[Sat May 16 03:10:09 2026] PHP Fatal error:  Uncaught Error: Failed opening required 'vendor/autoload.php' (include_path='C:\xampp\php\PEAR') in E:\wd\vani\core.php:3
+Stack trace:
+#0 E:\wd\vani\api.php(30): require()
+#1 {main}
+  thrown in E:\wd\vani\core.php on line 3
+[Sat May 16 03:10:09 2026] 127.0.0.1:58822 [500]: POST /api.php?action=create_account - Uncaught Error: Failed opening required 'vendor/autoload.php' (include_path='C:\xampp\php\PEAR') in E:\wd\vani\core.php:3
+Stack trace:
+#0 E:\wd\vani\api.php(30): require()
+#1 {main}
+  thrown in E:\wd\vani\core.php on line 3
+[Sat May 16 03:10:09 2026] 127.0.0.1:58822 Closing
+[Sat May 16 03:10:16 2026] 127.0.0.1:58832 Accepted
+[Sat May 16 03:10:16 2026] 127.0.0.1:58832 [404]: GET /.well-known/appspecific/com.chrome.devtools.json - No such file or directory
+[Sat May 16 03:10:16 2026] 127.0.0.1:58832 Closing
