@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Setup Complete</title>
+
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+<style>
+*{
+  margin:0;
+  padding:0;
+  box-sizing:border-box;
+  font-family:'Inter',sans-serif;
+}
+
+body{
+  min-height:100vh;
+  background:linear-gradient(135deg,#667eea,#764ba2);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:20px;
+}
+
+.container{
+  width:100%;
+  max-width:650px;
+}
+
+.hero{
+  text-align:center;
+  color:white;
+  margin-bottom:20px;
+}
+
+.hero h1{
+  font-size:32px;
+  line-height:1.3;
+  margin-bottom:10px;
+}
+
+.hero p{
+  font-size:15px;
+  opacity:0.9;
+  line-height:1.5;
+}
+
+.card{
+  width:100%;
+  background:rgba(255,255,255,0.12);
+  backdrop-filter:blur(16px);
+  -webkit-backdrop-filter:blur(16px);
+  border-radius:18px;
+  padding:28px;
+  color:white;
+  box-shadow:0 10px 40px rgba(0,0,0,0.25);
+  border:1px solid rgba(255,255,255,0.15);
+}
+
+h3{
+  margin-top:14px;
+  margin-bottom:8px;
+  font-size:15px;
+  font-weight:600;
+}
+
+#cidBox{
+  background:rgba(255,255,255,0.15);
+  padding:14px;
+  border-radius:10px;
+  font-size:14px;
+  line-height:1.5;
+  word-break:break-word;
+  overflow-wrap:anywhere;
+}
+
+.preview{
+  background:rgba(0,0,0,0.25);
+  padding:16px;
+  border-radius:10px;
+  overflow-x:auto;
+  margin-top:5px;
+}
+
+code{
+  font-size:13px;
+  color:#e5e7eb;
+  display:block;
+  line-height:1.6;
+  white-space:pre-wrap;
+  word-break:break-word;
+}
+
+.button{
+  width:100%;
+  padding:14px;
+  margin-top:18px;
+  border-radius:10px;
+  border:none;
+  background:#4f6aff;
+  color:white;
+  font-weight:600;
+  font-size:15px;
+  cursor:pointer;
+  transition:0.2s ease;
+}
+
+.button:hover{
+  transform:translateY(-1px);
+  opacity:0.95;
+}
+
+.button:active{
+  transform:scale(0.98);
+}
+
+/* Tablet */
+@media (max-width:768px){
+
+  body{
+    padding:18px;
+    align-items:flex-start;
+  }
+
+  .container{
+    max-width:100%;
+  }
+
+  .hero h1{
+    font-size:28px;
+  }
+
+  .card{
+    padding:22px;
+  }
+}
+
+/* Mobile */
+@media (max-width:480px){
+
+  body{
+    padding:14px;
+  }
+
+  .hero{
+    margin-bottom:16px;
+  }
+
+  .hero h1{
+    font-size:24px;
+  }
+
+  .hero p{
+    font-size:14px;
+  }
+
+  .card{
+    padding:18px;
+    border-radius:14px;
+  }
+
+  h3{
+    font-size:14px;
+  }
+
+  #cidBox{
+    font-size:13px;
+    padding:12px;
+  }
+
+  .preview{
+    padding:12px;
+  }
+
+  code{
+    font-size:12px;
+  }
+
+  .button{
+    padding:13px;
+    font-size:14px;
+  }
+}
+
+/* Small Phones */
+@media (max-width:340px){
+
+  .hero h1{
+    font-size:21px;
+  }
+
+  .card{
+    padding:15px;
+  }
+
+  code{
+    font-size:11px;
+  }
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+  <div class="hero">
+    <h1>🎉 Your Chatbot is Ready!</h1>
+    <p>Copy the code below and paste it into your website</p>
+  </div>
+
+  <div class="card">
+
+    <h3>Your Customer ID</h3>
+    <p id="cidBox"></p>
+
+    <h3>Embed Code</h3>
+
+    <div class="preview">
+      <code id="codeBox"></code>
+    </div>
+
+    <button class="button" onclick="copyCode()">📋 Copy Code</button>
+
+  </div>
+
+</div>
+
+<script>
+const cid = localStorage.getItem("cid");
+
+const cidBox = document.getElementById("cidBox");
+const codeBox = document.getElementById("codeBox");
+
+const widgetUrl = "https://cdn.jsdelivr.net/gh/codrant-code/chbdd@main/widget36.js";
+
+if (!cid) {
+  cidBox.innerText = "Missing customer_id";
+} else {
+  cidBox.innerText = cid;
+
+  const embedCode = `<script src="${widgetUrl}" data-id="${cid}"><\/script>`;
+  codeBox.innerText = embedCode;
+
+  // LIVE PREVIEW (FIXED)
+  const script = document.createElement("script");
+  script.src = widgetUrl;
+  script.setAttribute("data-id", cid);
+  document.body.appendChild(script);
+}
+
+function copyCode() {
+  navigator.clipboard.writeText(codeBox.innerText);
+  alert("Copied!");
+}
+</script>
+
+</body>
+</html>

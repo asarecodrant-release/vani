@@ -1,0 +1,361 @@
+<?php
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+
+
+?>
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Customize Chatbot</title>
+
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+<style>
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: 'Inter', sans-serif;
+}
+
+body {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.container {
+  width: 100%;
+  max-width: 480px;
+  padding: 20px;
+}
+
+.card {
+  background: rgba(255,255,255,0.1);
+  backdrop-filter: blur(16px);
+  border-radius: 16px;
+  padding: 30px;
+  color: white;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.25);
+  animation: fadeIn 0.6s ease;
+}
+
+h1 {
+  text-align: center;
+  font-size: 22px;
+  margin-bottom: 8px;
+}
+
+p {
+  text-align: center;
+  font-size: 13px;
+  opacity: 0.8;
+  margin-bottom: 20px;
+}
+
+/* FORM */
+.form-row {
+  margin-bottom: 15px;
+}
+
+label {
+  font-size: 13px;
+  opacity: 0.8;
+}
+
+input[type="color"],
+input[type="text"] {
+  width: 100%;
+  margin-top: 6px;
+  padding: 10px;
+  border-radius: 8px;
+  border: none;
+  outline: none;
+}
+
+/* PRESET COLORS */
+.palette {
+  display: flex;
+  gap: 10px;
+  margin: 15px 0;
+  flex-wrap: wrap;
+}
+
+.color-box {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: 0.2s;
+  border: 2px solid transparent;
+}
+
+.color-box:hover {
+  transform: scale(1.1);
+}
+
+.color-box.active {
+  border: 2px solid white;
+}
+
+/* PREVIEW */
+.preview {
+  margin: 20px 0;
+  text-align: center;
+}
+
+.chat-preview {
+  background: rgba(255,255,255,0.15);
+  padding: 15px;
+  border-radius: 12px;
+  display: inline-block;
+}
+
+.bubble {
+  padding: 12px 16px;
+  border-radius: 20px;
+  color: white;
+  display: inline-block;
+  max-width: 200px;
+  transition: 0.3s;
+}
+
+/* BUTTON */
+button {
+  width: 100%;
+  padding: 14px;
+  border-radius: 8px;
+  border: none;
+  background: #4f6aff;
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+  transition: 0.3s;
+}
+
+button:hover {
+  background: #3d55e0;
+}
+
+button.loading {
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+/* MESSAGE */
+.message {
+  margin-top: 15px;
+  font-size: 13px;
+  display: none;
+}
+
+.success { color: #4ade80; }
+.error { color: #ff6b6b; }
+
+/* ANIMATION */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(20px);}
+  to { opacity: 1; transform: translateY(0);}
+}
+
+</style>
+</head>
+
+<body>
+
+
+<div class="container">
+  <div class="card">
+
+    <h1>🎨 Customize Your Chatbot</h1>
+    <p>Choose a color that matches your brand</p>
+
+    <!-- PRESET COLORS -->
+    <div class="palette" id="palette">
+      <div class="color-box" style="background:#4f46e5"></div>
+      <div class="color-box" style="background:#06b6d4"></div>
+      <div class="color-box" style="background:#10b981"></div>
+      <div class="color-box" style="background:#f59e0b"></div>
+      <div class="color-box" style="background:#ef4444"></div>
+      <div class="color-box" style="background:#ec4899"></div>
+      <div class="color-box" style="background:#6366f1"></div>
+      <div class="color-box" style="background:#0ea5e9"></div>
+    </div>
+
+    <div class="form-row">
+      <label>Pick custom color</label>
+      <input type="color" id="colorPicker">
+    </div>
+
+    <div class="form-row">
+      <label>Or enter HEX</label>
+      <input id="hexInput" placeholder="#6366f1">
+    </div>
+
+    <!-- PREVIEW -->
+    <div class="preview">
+      <div class="chat-preview">
+        <div id="previewBubble" class="bubble">
+          Hi 👋 How can I help you?
+        </div>
+      </div>
+    </div>
+
+    <button id="saveBtn">Save & Continue →</button>
+
+    <div id="msg" class="message"></div>
+
+  </div>
+</div>
+
+<script>
+// ADD AT TOP
+const businessType = localStorage.getItem("business_type");
+
+if (!businessType) {
+  alert("Session expired. Please start again.");
+  window.location.href = "freebot.php";
+}
+
+const API = "api.php";
+
+const picker = document.getElementById("colorPicker");
+const hexInput = document.getElementById("hexInput");
+const preview = document.getElementById("previewBubble");
+const msg = document.getElementById("msg");
+const palette = document.getElementById("palette");
+const saveBtn = document.getElementById("saveBtn");
+
+const cid = localStorage.getItem("cid");
+
+if (!cid) {
+  showError("Session expired. Please signup again.");
+}
+
+let selectedColor = "#4f46e5";
+updatePreview(selectedColor);
+
+// =========================
+// PRESET COLORS CLICK
+// =========================
+palette.querySelectorAll(".color-box").forEach(box => {
+  box.addEventListener("click", () => {
+    selectedColor = rgbToHex(box.style.backgroundColor);
+    picker.value = selectedColor;
+    hexInput.value = selectedColor;
+
+    document.querySelectorAll(".color-box").forEach(b => b.classList.remove("active"));
+    box.classList.add("active");
+
+    updatePreview(selectedColor);
+  });
+});
+
+// =========================
+// COLOR PICKER
+// =========================
+picker.addEventListener("input", () => {
+  selectedColor = picker.value;
+  hexInput.value = selectedColor;
+  updatePreview(selectedColor);
+});
+
+// =========================
+// HEX INPUT
+// =========================
+hexInput.addEventListener("input", () => {
+  const val = hexInput.value.trim();
+
+  if (isValidHex(val)) {
+    selectedColor = val;
+    picker.value = val;
+    updatePreview(val);
+  }
+});
+
+// =========================
+// SAVE
+// =========================
+saveBtn.onclick = async () => {
+
+  if (!isValidHex(selectedColor)) {
+    showError("Enter valid HEX (e.g. #4f6aff)");
+    return;
+  }
+
+  saveBtn.classList.add("loading");
+  saveBtn.innerText = "Saving...";
+
+  try {
+    const res = await fetch(`${API}?action=update_theme`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        customer_id: cid,
+        theme_color: selectedColor,
+        email_verified: true
+      })
+    });
+
+    const data = await res.json();
+
+    localStorage.setItem("theme", selectedColor);
+
+    showSuccess("Theme saved!");
+
+    setTimeout(() => {
+      window.location.href = "faq-setup.php";
+    }, 1000);
+
+  } catch (err) {
+    showError("Failed to save");
+  }
+
+  saveBtn.classList.remove("loading");
+  saveBtn.innerText = "Save & Continue →";
+};
+
+// =========================
+// HELPERS
+// =========================
+function updatePreview(color) {
+  preview.style.background = color;
+}
+
+function isValidHex(color) {
+  return /^#([0-9A-F]{3}){1,2}$/i.test(color);
+}
+
+function showError(text) {
+  msg.className = "message error";
+  msg.innerText = text;
+  msg.style.display = "block";
+}
+
+function showSuccess(text) {
+  msg.className = "message success";
+  msg.innerText = text;
+  msg.style.display = "block";
+}
+
+// RGB → HEX (for palette clicks)
+function rgbToHex(rgb) {
+  const result = rgb.match(/\d+/g);
+  return "#" + result.map(x => {
+    const hex = parseInt(x).toString(16);
+    return hex.length === 1 ? "0" + hex : hex;
+  }).join('');
+}
+
+</script>
+
+</body>
+</html>

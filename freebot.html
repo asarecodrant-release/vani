@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Free Chatbot Signup</title>
+
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+<style>
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: 'Inter', sans-serif;
+}
+
+body {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* CONTAINER */
+.container {
+  width: 100%;
+  max-width: 420px;
+  padding: 20px;
+}
+
+/* CARD */
+.card {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(16px);
+  border-radius: 16px;
+  padding: 30px;
+  color: white;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+}
+
+/* TITLE */
+.card h2 {
+  text-align: center;
+  margin-bottom: 20px;
+  font-weight: 600;
+}
+
+/* INPUTS */
+input, select {
+  width: 100%;
+  padding: 12px;
+  margin: 10px 0;
+  border-radius: 8px;
+  border: none;
+  outline: none;
+  font-size: 14px;
+  background: rgba(255,255,255,0.9);
+}
+
+/* FOCUS EFFECT */
+input:focus, select:focus {
+  box-shadow: 0 0 0 2px #4f6aff;
+}
+
+/* BUTTON */
+button {
+  width: 100%;
+  padding: 14px;
+  margin-top: 10px;
+  border-radius: 8px;
+  border: none;
+  background: #4f6aff;
+  color: white;
+  font-weight: 600;
+  font-size: 15px;
+  cursor: pointer;
+  transition: 0.3s;
+}
+
+button:hover {
+  background: #3d55e0;
+  transform: translateY(-1px);
+}
+
+/* SMALL TEXT */
+.small {
+  text-align: center;
+  margin-top: 15px;
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+/* ANIMATION */
+.card {
+  animation: fadeIn 0.6s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+</style>
+</head>
+
+<body>
+
+<div class="container">
+  <div class="card">
+
+    <h2>🚀 Create Your Chatbot</h2>
+
+    <form id="signupForm">
+
+      <input type="text" id="websiteName" placeholder="🌐 Website Name" required>
+
+      <input type="email" id="email" placeholder="📧 Email Address" required>
+
+      <select id="businessType" required>
+        <option value="">🏢 Select Business Type</option>
+
+        <option>E-commerce</option>
+        <option>SaaS / Software</option>
+        <option>Agency</option>
+        <option>Freelancer</option>
+
+        <option>Restaurant / Cafe</option>
+        <option>Hotel / Hospitality</option>
+        <option>Travel / Tourism</option>
+
+        <option>Healthcare / Clinic</option>
+        <option>Fitness / Gym</option>
+        <option>Education / Coaching</option>
+
+        <option>Real Estate</option>
+        <option>Finance / Insurance</option>
+        <option>Legal Services</option>
+
+        <option>Salon / Beauty</option>
+        <option>Automobile</option>
+        <option>Local Business</option>
+
+        <option>Tech Startup</option>
+        <option>Non-profit</option>
+
+        <option value="Other">Other</option>
+      </select>
+
+      <input type="text" id="otherBusinessType" placeholder="✏️ Enter your business type" style="display:none;">
+
+      <button type="submit">Continue →</button>
+
+    </form>
+
+    <div class="small">
+      Free forever • No credit card required
+    </div>
+
+  </div>
+</div>
+
+<script>
+const API = "api.php";
+
+document.addEventListener("DOMContentLoaded", () => {
+
+  const form = document.getElementById("signupForm");
+  const businessType = document.getElementById("businessType");
+  const otherInput = document.getElementById("otherBusinessType");
+
+  // SHOW OTHER FIELD
+  businessType.addEventListener("change", () => {
+    otherInput.style.display =
+      businessType.value === "Other" ? "block" : "none";
+  });
+
+  // SUBMIT
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    const website = document.getElementById("websiteName").value.trim();
+    const email = document.getElementById("email").value.trim();
+
+    let business = businessType.value;
+    if (business === "Other") {
+      business = otherInput.value.trim();
+    }
+
+    if (!website || !email || !business) {
+      alert("Please fill all fields");
+      return;
+    }
+
+    try {
+      // CREATE CUSTOMER ID
+      const cidRes = await fetch(`${API}?action=create_customer`);
+      const cidData = await cidRes.json();
+
+      const cid = cidData.customer_id;
+      localStorage.setItem("cid", cid);
+	  localStorage.setItem("business_type", business);
+		localStorage.setItem("email", email);
+      // SAVE SIGNUP
+      const res = await fetch(`${API}?action=signup`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          website_name: website,
+          email: email,
+          business_type: business,
+          customer_id: cid
+        })
+      });
+
+      const data = await res.json();
+      console.log(data);
+
+      // REDIRECT
+      window.location.href = "theme-selection.html";
+
+    } catch (err) {
+      console.error(err);
+      alert("Something went wrong");
+    }
+  });
+
+});
+</script>
+
+</body>
+</html>

@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FAQ Setup</title>
+
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+<style>
+*{
+  margin:0;
+  padding:0;
+  box-sizing:border-box;
+  font-family:'Inter',sans-serif;
+}
+
+body{
+  min-height:100vh;
+  background:linear-gradient(135deg,#667eea,#764ba2);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:20px;
+}
+
+.container{
+  width:100%;
+  max-width:700px;
+}
+
+.hero{
+  text-align:center;
+  color:white;
+  margin-bottom:22px;
+}
+
+.hero h1{
+  font-size:32px;
+  margin-bottom:10px;
+  line-height:1.3;
+}
+
+.hero p{
+  opacity:0.92;
+  font-size:15px;
+  line-height:1.5;
+}
+
+.loader{
+  text-align:center;
+  color:white;
+  margin-bottom:15px;
+  font-size:14px;
+}
+
+.card{
+  width:100%;
+  background:rgba(255,255,255,0.1);
+  backdrop-filter:blur(16px);
+  border-radius:18px;
+  padding:28px;
+  box-shadow:0 10px 40px rgba(0,0,0,0.25);
+  border:1px solid rgba(255,255,255,0.12);
+}
+
+.faq-block{
+  margin-bottom:18px;
+  padding:16px;
+  border-radius:14px;
+  background:rgba(255,255,255,0.08);
+}
+
+.faq-block input{
+  width:100%;
+  padding:13px 14px;
+  border:none;
+  outline:none;
+  border-radius:10px;
+  margin-bottom:10px;
+  background:rgba(255,255,255,0.94);
+  font-size:14px;
+}
+
+.button{
+  width:100%;
+  padding:14px;
+  border:none;
+  border-radius:10px;
+  background:#4f6aff;
+  color:white;
+  font-weight:600;
+  font-size:15px;
+  cursor:pointer;
+  transition:0.25s ease;
+  margin-top:12px;
+}
+
+.button:hover{
+  background:#3d55e0;
+}
+
+.message{
+  margin-top:16px;
+  text-align:center;
+  display:none;
+  font-size:14px;
+}
+
+.success{ color:#4ade80; }
+.error{ color:#ff6b6b; }
+
+/* LOADER OVERLAY */
+#loadingOverlay{
+  display:none;
+  position:fixed;
+  top:0;
+  left:0;
+  width:100%;
+  height:100%;
+  background:rgba(0,0,0,0.6);
+  backdrop-filter: blur(5px);
+  z-index:9999;
+  justify-content:center;
+  align-items:center;
+  flex-direction:column;
+  color:white;
+  font-size:16px;
+}
+
+.spinner{
+  width:45px;
+  height:45px;
+  border:4px solid rgba(255,255,255,0.3);
+  border-top:4px solid white;
+  border-radius:50%;
+  animation:spin 1s linear infinite;
+  margin-bottom:15px;
+}
+
+@keyframes spin{
+  0%{transform:rotate(0deg);}
+  100%{transform:rotate(360deg);}
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+  <div class="hero">
+    <h1>💬 Setup FAQs</h1>
+    <p>Edit the ready-made FAQs for your chatbot</p>
+  </div>
+
+  <div class="loader" id="loader">Loading FAQs...</div>
+
+  <div class="card">
+
+    <div id="faqList"></div>
+
+    <button class="button" onclick="addFAQ()">+ Add More Question</button>
+
+    <button class="button" id="saveBtn" onclick="saveFAQs()">Save & Continue →</button>
+
+    <div id="msg" class="message"></div>
+
+  </div>
+
+</div>
+
+<!-- LOADING OVERLAY -->
+<div id="loadingOverlay">
+  <div class="spinner"></div>
+  <div id="loadingText">Processing...</div>
+</div>
+
+<script>
+
+const API = "api.php";
+
+const faqList = document.getElementById("faqList");
+const msg = document.getElementById("msg");
+const loader = document.getElementById("loader");
+
+const overlay = document.getElementById("loadingOverlay");
+const loadingText = document.getElementById("loadingText");
+const saveBtn = document.getElementById("saveBtn");
+
+// ======================================
+// LOCAL STORAGE
+// ======================================
+const cid = localStorage.getItem("cid");
+const businessType = localStorage.getItem("business_type");
+const email = localStorage.getItem("email");
+
+if (!cid) showError("Session expired.");
+
+// ======================================
+// ADD FAQ
+// ======================================
+function addFAQ(q = "", a = "") {
+
+  const div = document.createElement("div");
+
+  div.className = "faq-block";
+
+  div.innerHTML = `
+    <input type="text" placeholder="Enter question" value="${escapeHtml(q)}">
+    <input type="text" placeholder="Enter answer" value="${escapeHtml(a)}">
+  `;
+
+  faqList.appendChild(div);
+}
+
+// ======================================
+// LOAD FAQS
+// ======================================
+async function loadPreloadedFAQs() {
+
+  try {
+
+    if (!businessType || businessType === "Other") {
+      addFAQ();
+      loader.style.display = "none";
+      return;
+    }
+
+    const res = await fetch(`${API}?action=get_preloaded_faqs&category=${encodeURIComponent(businessType)}`);
+    const data = await res.json();
+
+    if (data.success && data.faqs.length > 0) {
+      data.faqs.forEach(f => addFAQ(f.question, f.answer));
+    } else {
+      addFAQ();
+    }
+
+  } catch (e) {
+    addFAQ();
+  }
+
+  loader.style.display = "none";
+}
+
+// ======================================
+// SAVE FAQs (FIXED LOADER)
+// ======================================
+async function saveFAQs() {
+
+  if (!cid) return showError("Missing customer ID");
+  if (!email) return showError("Missing email");
+
+  const rows = [];
+
+  document.querySelectorAll(".faq-block").forEach(d => {
+
+    const q = d.children[0].value.trim();
+    const a = d.children[1].value.trim();
+
+    if (q && a) rows.push({ question: q, answer: a });
+  });
+
+  if (rows.length === 0) return showError("Add at least one FAQ");
+
+  try {
+
+    // SHOW LOADER (SAFE)
+    overlay.style.display = "flex";
+    loadingText.innerText = "Saving FAQs...";
+    saveBtn.disabled = true;
+
+    await new Promise(r => setTimeout(r, 50));
+
+    const faqRes = await fetch(`${API}?action=add_faq`, {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({
+        customer_id: cid,
+        faqs: rows
+      })
+    });
+
+    const faqData = await faqRes.json();
+
+    console.log(faqData);
+
+    if (!faqData.success) {
+      overlay.style.display = "none";
+      saveBtn.disabled = false;
+      return showError("Failed to save FAQs");
+    }
+
+    // SUCCESS STATE
+    loadingText.innerText = "Setup completed! Redirecting...";
+
+    setTimeout(() => {
+      window.location.href = "complete-setup.html";
+    }, 1200);
+
+  } catch (e) {
+
+    overlay.style.display = "none";
+    saveBtn.disabled = false;
+    showError("Failed to complete setup");
+  }
+}
+
+// ======================================
+// HELPERS
+// ======================================
+function escapeHtml(t="") {
+  return t.replace(/&/g,"&amp;")
+          .replace(/</g,"&lt;")
+          .replace(/>/g,"&gt;")
+          .replace(/"/g,"&quot;");
+}
+
+function showError(t) {
+  msg.className = "message error";
+  msg.innerText = t;
+  msg.style.display = "block";
+}
+
+// INIT
+loadPreloadedFAQs();
+
+</script>
+
+</body>
+</html>
