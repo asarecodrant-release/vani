@@ -225,7 +225,7 @@ if (!businessType) {
   window.location.href = "freebot.php";
 }
 
-const API = "api.php";
+const API = "/api.php";
 
 const picker = document.getElementById("colorPicker");
 const hexInput = document.getElementById("hexInput");

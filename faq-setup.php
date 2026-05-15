@@ -68,7 +68,7 @@ body{min-height:100vh;background:linear-gradient(135deg,#667eea,#764ba2);display
 
 <script>
 
-const API = "api.php";
+const API = "/api.php";
 
 const faqList = document.getElementById("faqList");
 const msg = document.getElementById("msg");

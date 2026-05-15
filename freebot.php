@@ -247,7 +247,7 @@ button:hover {
 
 <script>
 
-const API = "api.php";
+const API = "/api.php";
 
 document.addEventListener("DOMContentLoaded", () => {
 
