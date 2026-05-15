@@ -5,14 +5,21 @@
 // ======================================
 // LOAD ENV
 // ======================================
-$dotenv = Dotenv\Dotenv::createImmutable(__DIR__);
-$dotenv->load();
+if (file_exists(__DIR__ . '/.env')) {
 
+    $dotenv = Dotenv\Dotenv::createImmutable(__DIR__);
+    $dotenv->load();
+}
 // ======================================
 // SUPABASE CONFIG
 // ======================================
-$SUPABASE_URL = $_ENV['SUPABASE_URL'];
-$SUPABASE_KEY = $_ENV['SUPABASE_KEY'];
+$SUPABASE_URL =
+    $_ENV['SUPABASE_URL']
+    ?? getenv('SUPABASE_URL');
+
+$SUPABASE_KEY =
+    $_ENV['SUPABASE_KEY']
+    ?? getenv('SUPABASE_KEY');
 
 function supabase($method, $endpoint, $data = null) {
 
