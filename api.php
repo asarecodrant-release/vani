@@ -13,8 +13,23 @@ header("Content-Type: application/json");
 // ==========================
 // HANDLE PREFLIGHT
 // ==========================
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
     http_response_code(200);
+    exit;
+}
+
+$action = $_GET['action'] ?? '';
+
+// ==========================
+// HEALTH CHECK / KEEP-ALIVE
+// ==========================
+if ($action === "ping" || $action === "health") {
+    echo json_encode([
+        "success" => true,
+        "status" => "ok",
+        "service" => "vani",
+        "timestamp" => gmdate("c")
+    ]);
     exit;
 }
 
@@ -39,7 +54,6 @@ function getJSON() {
 }
 
 // ==========================
-$action = $_GET['action'] ?? '';
 // ==========================
 
 
