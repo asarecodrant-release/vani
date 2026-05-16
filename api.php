@@ -343,6 +343,109 @@ if ($action === "save_dashboard_settings") {
 
 
 // ==========================
+// SAVE CUSTOMER PROFILE
+// ==========================
+if ($action === "save_customer_profile") {
+
+    if (!is_authenticated_user()) {
+        echo json_encode([
+            "success" => false,
+            "message" => "Login required"
+        ]);
+        exit;
+    }
+
+    $data = getJSON();
+    $email = authenticated_email();
+    $requestedEmail = trim($data['email'] ?? $email);
+
+    if ($requestedEmail !== $email) {
+        echo json_encode([
+            "success" => false,
+            "message" => "Profile email cannot be changed here"
+        ]);
+        exit;
+    }
+
+    $allowed = [
+        "first_name",
+        "last_name",
+        "avatar_url",
+        "country_code",
+        "mobile_number",
+        "address_line1",
+        "address_line2",
+        "city",
+        "state_region",
+        "country",
+        "postal_code",
+        "location_notes"
+    ];
+
+    $payload = [
+        "email" => $email
+    ];
+
+    foreach ($allowed as $key) {
+        if (array_key_exists($key, $data)) {
+            $payload[$key] = trim((string)$data[$key]);
+        }
+    }
+
+    $existing = supabase(
+        "GET",
+        "customer_profiles?select=id&email=eq." . urlencode($email) . "&limit=1"
+    );
+
+    if (!empty($existing['data'])) {
+        $profileRes = supabase(
+            "PATCH",
+            "customer_profiles?email=eq." . urlencode($email),
+            $payload
+        );
+    } else {
+        $profileRes = supabase(
+            "POST",
+            "customer_profiles",
+            [$payload]
+        );
+    }
+
+    $passwordMessage = null;
+    $newPassword = (string)($data['new_password'] ?? '');
+
+    if ($newPassword !== '') {
+        if (strlen($newPassword) < 8) {
+            echo json_encode([
+                "success" => false,
+                "message" => "Password must be at least 8 characters"
+            ]);
+            exit;
+        }
+
+        $passwordRes = supabase(
+            "PATCH",
+            "customers?email=eq." . urlencode($email),
+            [
+                "password" => password_hash($newPassword, PASSWORD_DEFAULT)
+            ]
+        );
+
+        $passwordMessage = ($passwordRes['status'] >= 200 && $passwordRes['status'] < 300)
+            ? "password_updated"
+            : "password_update_failed";
+    }
+
+    echo json_encode([
+        "success" => ($profileRes['status'] >= 200 && $profileRes['status'] < 300),
+        "password" => $passwordMessage,
+        "debug" => $profileRes
+    ]);
+    exit;
+}
+
+
+// ==========================
 // TOP FAQS (RANKED)
 // ==========================
 if ($action === "get_top_faqs") {

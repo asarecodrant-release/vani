@@ -92,7 +92,13 @@ $settingsRows = $selectedBotId
     ))
     : [];
 
+$profileRows = safe_data(supabase(
+    "GET",
+    "customer_profiles?select=*&email=eq." . urlencode($email) . "&limit=1"
+));
+
 $settings = $settingsRows[0] ?? [];
+$profile = $profileRows[0] ?? [];
 $faqCount = count($faqs);
 $conversationCount = count($conversationRows);
 $today = gmdate('Y-m-d');
@@ -170,7 +176,11 @@ $language = first_value($settings, ['language'], 'English');
 $rawActive = $settings['is_active'] ?? true;
 $isActive = is_bool($rawActive) ? $rawActive : ((string)$rawActive !== 'false');
 $embedCode = $selectedBotId ? '<script src="' . $widgetUrl . '" data-id="' . $selectedBotId . '"></script>' : '';
-$initials = strtoupper(substr($email, 0, 1));
+$profileFirstName = first_value($profile, ['first_name'], '');
+$profileLastName = first_value($profile, ['last_name'], '');
+$displayName = trim($profileFirstName . ' ' . $profileLastName);
+$initialSource = $profileFirstName ?: $email;
+$initials = strtoupper(substr($initialSource, 0, 1));
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -286,6 +296,11 @@ select:focus,input:focus,textarea:focus{box-shadow:0 0 0 3px rgba(99,102,241,.15
 .section-head{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:20px 20px 0}
 .section-body{padding:20px}
 .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.profile-grid{display:grid;grid-template-columns:180px 1fr;gap:20px;align-items:start}
+.profile-photo{display:grid;gap:12px;justify-items:center;padding:18px;border:1px solid var(--line);border-radius:18px;background:rgba(255,255,255,.42)}
+body.dark .profile-photo{background:rgba(15,23,42,.44)}
+.profile-avatar{width:112px;height:112px;border-radius:50%;display:grid;place-items:center;color:#fff;font-size:36px;font-weight:800;background:linear-gradient(135deg,var(--brand),var(--brand-2));overflow:hidden}
+.profile-avatar img{width:100%;height:100%;object-fit:cover}
 .field{display:grid;gap:8px}
 .field.full{grid-column:1/-1}
 .swatches{display:flex;gap:10px;flex-wrap:wrap}
@@ -307,18 +322,43 @@ code{display:block;white-space:pre-wrap;word-break:break-all;padding:16px;border
 .toast.show{opacity:1;transform:translateY(0)}
 @media(max-width:1100px){
   .dashboard-shell{grid-template-columns:1fr}
-  .sidebar{position:relative;height:auto;padding:16px}
-  .nav-tabs{display:flex;overflow:auto}.tab-btn{white-space:nowrap}
+  .sidebar{position:sticky;top:0;height:auto;padding:14px 16px;z-index:20;border-right:0;border-bottom:1px solid var(--line)}
+  .brand{margin-bottom:12px}
+  .brand img{width:46px}
+  .nav-tabs{display:flex;overflow-x:auto;gap:8px;padding-bottom:4px;scrollbar-width:thin}
+  .tab-btn{white-space:nowrap;min-height:42px;flex:0 0 auto}
   .sidebar-footer{display:none}
   .metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
-  .overview-hero,.split{grid-template-columns:1fr}
+  .overview-hero,.split,.profile-grid{grid-template-columns:1fr}
+  .profile-photo{justify-items:start;grid-template-columns:auto 1fr;align-items:center}
 }
 @media(max-width:720px){
-  .topbar{height:auto;align-items:flex-start;flex-direction:column;padding:16px}
-  .content{padding:16px}
+  .topbar{height:auto;align-items:stretch;flex-direction:column;padding:14px 16px;position:relative}
+  .top-actions{display:grid;grid-template-columns:1fr 1fr;align-items:stretch}
+  .top-actions > .user-menu{grid-column:1/-1}
+  .top-actions .pill-btn,.top-actions .ghost-btn{width:100%}
+  .content{padding:14px;gap:16px}
+  .panel{border-radius:18px}
+  .section-head{align-items:flex-start;flex-direction:column}
   .overview-hero h2{font-size:28px}
   .metrics,.quick-actions,.form-grid{grid-template-columns:1fr}
   .user-text{display:none}
+  .user-menu{justify-content:space-between}
+  table{min-width:640px}
+  th,td{padding:11px 12px}
+}
+@media(max-width:480px){
+  .sidebar{padding:12px}
+  .brand strong{font-size:18px}
+  .tab-btn{padding:10px 12px;font-size:14px}
+  .page-title h1{font-size:21px}
+  .overview-hero{padding:18px}
+  .overview-hero h2{font-size:24px}
+  .metric strong{font-size:24px}
+  .top-actions{grid-template-columns:1fr}
+  .profile-photo{grid-template-columns:1fr;justify-items:center}
+  .profile-avatar{width:96px;height:96px}
+  .toast{left:14px;right:14px;bottom:14px;text-align:center}
 }
 </style>
 </head>
@@ -336,7 +376,8 @@ code{display:block;white-space:pre-wrap;word-break:break-all;padding:16px;border
       <button class="tab-btn" data-tab="logs">Conversations</button>
       <button class="tab-btn" data-tab="analytics">Analytics</button>
       <button class="tab-btn" data-tab="install">Integration</button>
-      <button class="tab-btn" data-tab="settings">Settings</button>
+      <button class="tab-btn" data-tab="bot-settings">Bot Settings</button>
+      <button class="tab-btn" data-tab="profile">Profile</button>
       <button class="tab-btn" data-tab="billing">Billing</button>
     </div>
     <div class="sidebar-footer">
@@ -354,12 +395,12 @@ code{display:block;white-space:pre-wrap;word-break:break-all;padding:16px;border
       </div>
       <div class="top-actions">
         <button class="ghost-btn" id="themeToggle" type="button">Dark</button>
-        <a class="ghost-btn" href="#settings" data-jump="settings">Profile setting</a>
+        <a class="ghost-btn" href="#profile" data-jump="profile">Profile setting</a>
         <a class="pill-btn" href="freebot.php">Create bot</a>
         <div class="user-menu">
           <div class="avatar"><?php echo h($initials); ?></div>
           <div class="user-text">
-            <strong><?php echo h($email); ?></strong>
+            <strong><?php echo h($displayName ?: $email); ?></strong>
             <span><?php echo h($accountId ?: 'Customer'); ?></span>
           </div>
           <a class="ghost-btn" href="logout.php">Logout</a>
@@ -401,7 +442,7 @@ code{display:block;white-space:pre-wrap;word-break:break-all;padding:16px;border
         </div>
 
         <div class="metrics">
-          <div class="panel metric"><span>Chatbot Status</span><strong class="status-dot <?php echo $isActive ? '' : 'inactive'; ?>"><?php echo $isActive ? 'Active' : 'Inactive'; ?></strong><small>Enable or disable in Settings.</small></div>
+          <div class="panel metric"><span>Chatbot Status</span><strong class="status-dot <?php echo $isActive ? '' : 'inactive'; ?>"><?php echo $isActive ? 'Active' : 'Inactive'; ?></strong><small>Enable or disable in Bot Settings.</small></div>
           <div class="panel metric"><span>Total FAQs</span><strong><?php echo h($faqCount); ?></strong><small>Free plan limit: 100 FAQs.</small></div>
           <div class="panel metric"><span>Total Conversations</span><strong><?php echo h($conversationCount); ?></strong><small>From logs, falling back to FAQ usage.</small></div>
           <div class="panel metric"><span>Today's Queries</span><strong><?php echo h($todayQueries); ?></strong><small><?php echo h(gmdate('M d, Y')); ?> UTC</small></div>
@@ -425,7 +466,7 @@ code{display:block;white-space:pre-wrap;word-break:break-all;padding:16px;border
           <div class="panel action-card">
             <h3>Settings</h3>
             <p>Change status, domains, notifications, and data controls.</p>
-            <button class="pill-btn" type="button" data-jump="settings">Open settings</button>
+            <button class="pill-btn" type="button" data-jump="bot-settings">Open settings</button>
           </div>
         </div>
       </section>
@@ -550,15 +591,15 @@ code{display:block;white-space:pre-wrap;word-break:break-all;padding:16px;border
             <div class="embed-box"><code id="embedCode"><?php echo h($embedCode ?: 'Create or select a bot to generate the embed script.'); ?></code></div>
             <div class="split" style="margin-top:16px">
               <div class="notice"><strong>Website verification status:</strong><br><?php echo h(first_value($settings, ['verification_status'], 'Pending')); ?></div>
-              <div class="notice"><strong>Allowed domains:</strong><br><?php echo h(first_value($settings, ['allowed_domains'], 'Add domains in Settings')); ?></div>
+              <div class="notice"><strong>Allowed domains:</strong><br><?php echo h(first_value($settings, ['allowed_domains'], 'Add domains in Bot Settings')); ?></div>
             </div>
           </div>
         </div>
       </section>
 
-      <section class="tab-panel" id="settings">
+      <section class="tab-panel" id="bot-settings">
         <div class="panel">
-          <div class="section-head"><h3>Settings</h3><button class="pill-btn" type="button" id="saveSettingsBtn">Save settings</button></div>
+          <div class="section-head"><h3>Bot Settings</h3><button class="pill-btn" type="button" id="saveSettingsBtn">Save bot settings</button></div>
           <div class="section-body form-grid">
             <div class="field"><label>API key</label><input id="apiKeyInput" value="<?php echo h(first_value($settings, ['api_key'], '')); ?>" placeholder="Not required for free plan"></div>
             <div class="field"><label>Rate limit</label><input id="rateLimitInput" type="number" min="1" value="<?php echo h(first_value($settings, ['rate_limit'], '100')); ?>"></div>
@@ -568,6 +609,101 @@ code{display:block;white-space:pre-wrap;word-break:break-all;padding:16px;border
             <div class="field full"><button class="danger-btn" type="button" data-save-note="Delete data request">Delete data</button></div>
           </div>
         </div>
+      </section>
+
+      <section class="tab-panel" id="profile">
+        <div class="panel">
+          <div class="section-head">
+            <div>
+              <h3>Customer Profile</h3>
+              <p class="muted">This is your account identity. It is separate from chatbot setup and bot settings.</p>
+            </div>
+            <button class="pill-btn" type="button" id="saveProfileBtn">Save profile</button>
+          </div>
+          <div class="section-body profile-grid">
+            <div class="profile-photo">
+              <div class="profile-avatar" id="profileAvatarPreview">
+                <?php if (!empty($profile['avatar_url'])): ?>
+                  <img src="<?php echo h($profile['avatar_url']); ?>" alt="Profile avatar">
+                <?php else: ?>
+                  <?php echo h($initials); ?>
+                <?php endif; ?>
+              </div>
+              <div class="field">
+                <label>Image URL or avatar</label>
+                <input id="profileAvatarInput" value="<?php echo h($profile['avatar_url'] ?? ''); ?>" placeholder="https://example.com/photo.jpg">
+                <button class="ghost-btn" type="button" id="generateAvatarBtn">Create avatar</button>
+              </div>
+            </div>
+
+            <div class="form-grid">
+              <div class="field"><label>First name</label><input id="firstNameInput" value="<?php echo h($profileFirstName); ?>" autocomplete="given-name"></div>
+              <div class="field"><label>Last name</label><input id="lastNameInput" value="<?php echo h($profileLastName); ?>" autocomplete="family-name"></div>
+              <div class="field full"><label>Account email</label><input id="profileEmailInput" value="<?php echo h($email); ?>" readonly></div>
+              <div class="field"><label>Country code</label><input id="countryCodeInput" list="countryCodeList" value="<?php echo h($profile['country_code'] ?? '+91'); ?>" placeholder="+91" title="Type any country calling code"></div>
+              <div class="field"><label>Mobile number</label><input id="mobileInput" value="<?php echo h($profile['mobile_number'] ?? ''); ?>" placeholder="9876543210" autocomplete="tel"></div>
+              <div class="field full"><label>Address line 1</label><input id="address1Input" value="<?php echo h($profile['address_line1'] ?? ''); ?>" autocomplete="address-line1"></div>
+              <div class="field full"><label>Address line 2</label><input id="address2Input" value="<?php echo h($profile['address_line2'] ?? ''); ?>" autocomplete="address-line2"></div>
+              <div class="field"><label>City</label><input id="cityInput" value="<?php echo h($profile['city'] ?? ''); ?>" autocomplete="address-level2"></div>
+              <div class="field"><label>State / Region</label><input id="stateInput" value="<?php echo h($profile['state_region'] ?? ''); ?>" autocomplete="address-level1"></div>
+              <div class="field"><label>Country</label><input id="countryInput" value="<?php echo h($profile['country'] ?? 'India'); ?>" autocomplete="country-name"></div>
+              <div class="field"><label>Postal code</label><input id="postalInput" value="<?php echo h($profile['postal_code'] ?? ''); ?>" autocomplete="postal-code"></div>
+              <div class="field full"><label>Location notes</label><textarea id="locationInput" placeholder="Office, branch, timezone, preferred contact hours"><?php echo h($profile['location_notes'] ?? ''); ?></textarea></div>
+              <div class="field"><label>New password</label><input id="newPasswordInput" type="password" placeholder="Minimum 8 characters" autocomplete="new-password"></div>
+              <div class="field"><label>Confirm password</label><input id="confirmPasswordInput" type="password" placeholder="Repeat new password" autocomplete="new-password"></div>
+            </div>
+          </div>
+        </div>
+        <datalist id="countryCodeList">
+          <option value="+1">United States / Canada</option>
+          <option value="+7">Russia / Kazakhstan</option>
+          <option value="+20">Egypt</option>
+          <option value="+27">South Africa</option>
+          <option value="+30">Greece</option>
+          <option value="+31">Netherlands</option>
+          <option value="+32">Belgium</option>
+          <option value="+33">France</option>
+          <option value="+34">Spain</option>
+          <option value="+36">Hungary</option>
+          <option value="+39">Italy</option>
+          <option value="+40">Romania</option>
+          <option value="+41">Switzerland</option>
+          <option value="+43">Austria</option>
+          <option value="+44">United Kingdom</option>
+          <option value="+45">Denmark</option>
+          <option value="+46">Sweden</option>
+          <option value="+47">Norway</option>
+          <option value="+48">Poland</option>
+          <option value="+49">Germany</option>
+          <option value="+52">Mexico</option>
+          <option value="+55">Brazil</option>
+          <option value="+60">Malaysia</option>
+          <option value="+61">Australia</option>
+          <option value="+62">Indonesia</option>
+          <option value="+63">Philippines</option>
+          <option value="+64">New Zealand</option>
+          <option value="+65">Singapore</option>
+          <option value="+66">Thailand</option>
+          <option value="+81">Japan</option>
+          <option value="+82">South Korea</option>
+          <option value="+84">Vietnam</option>
+          <option value="+86">China</option>
+          <option value="+90">Turkey</option>
+          <option value="+91">India</option>
+          <option value="+92">Pakistan</option>
+          <option value="+93">Afghanistan</option>
+          <option value="+94">Sri Lanka</option>
+          <option value="+95">Myanmar</option>
+          <option value="+971">United Arab Emirates</option>
+          <option value="+972">Israel</option>
+          <option value="+973">Bahrain</option>
+          <option value="+974">Qatar</option>
+          <option value="+975">Bhutan</option>
+          <option value="+977">Nepal</option>
+          <option value="+966">Saudi Arabia</option>
+          <option value="+968">Oman</option>
+          <option value="+880">Bangladesh</option>
+        </datalist>
       </section>
 
       <section class="tab-panel" id="billing">
@@ -724,6 +860,74 @@ document.getElementById("saveSettingsBtn")?.addEventListener("click", () => {
     notification_preference: document.getElementById("notificationInput").value,
     allowed_domains: document.getElementById("domainsInput").value.trim()
   });
+});
+
+function updateProfileAvatarPreview(value) {
+  const preview = document.getElementById("profileAvatarPreview");
+  const firstName = document.getElementById("firstNameInput")?.value.trim() || "";
+  const fallback = (firstName || document.getElementById("profileEmailInput")?.value || "V").charAt(0).toUpperCase();
+  preview.textContent = "";
+  if (value && value.startsWith("http")) {
+    const img = document.createElement("img");
+    img.src = value;
+    img.alt = "Profile avatar";
+    preview.appendChild(img);
+  } else {
+    preview.textContent = value || fallback;
+  }
+}
+
+document.getElementById("profileAvatarInput")?.addEventListener("input", event => {
+  updateProfileAvatarPreview(event.target.value.trim());
+});
+
+document.getElementById("generateAvatarBtn")?.addEventListener("click", () => {
+  const firstName = document.getElementById("firstNameInput").value.trim();
+  const lastName = document.getElementById("lastNameInput").value.trim();
+  const email = document.getElementById("profileEmailInput").value.trim();
+  const initials = ((firstName.charAt(0) || email.charAt(0) || "V") + (lastName.charAt(0) || "")).toUpperCase();
+  document.getElementById("profileAvatarInput").value = initials;
+  updateProfileAvatarPreview(initials);
+});
+
+document.getElementById("saveProfileBtn")?.addEventListener("click", async () => {
+  const newPassword = document.getElementById("newPasswordInput").value;
+  const confirmPassword = document.getElementById("confirmPasswordInput").value;
+
+  if (newPassword || confirmPassword) {
+    if (newPassword !== confirmPassword) return showToast("Passwords do not match");
+    if (newPassword.length < 8) return showToast("Password needs at least 8 characters");
+  }
+
+  const response = await fetch("/api.php?action=save_customer_profile", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      email: document.getElementById("profileEmailInput").value.trim(),
+      first_name: document.getElementById("firstNameInput").value.trim(),
+      last_name: document.getElementById("lastNameInput").value.trim(),
+      avatar_url: document.getElementById("profileAvatarInput").value.trim(),
+      country_code: document.getElementById("countryCodeInput").value.trim(),
+      mobile_number: document.getElementById("mobileInput").value.trim(),
+      address_line1: document.getElementById("address1Input").value.trim(),
+      address_line2: document.getElementById("address2Input").value.trim(),
+      city: document.getElementById("cityInput").value.trim(),
+      state_region: document.getElementById("stateInput").value.trim(),
+      country: document.getElementById("countryInput").value.trim(),
+      postal_code: document.getElementById("postalInput").value.trim(),
+      location_notes: document.getElementById("locationInput").value.trim(),
+      new_password: newPassword
+    })
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!data.success) {
+    showToast(data.message || "Profile could not be saved");
+    return;
+  }
+  document.getElementById("newPasswordInput").value = "";
+  document.getElementById("confirmPasswordInput").value = "";
+  showToast(data.password ? "Profile and password saved" : "Profile saved");
 });
 
 const hash = location.hash.replace("#", "");
