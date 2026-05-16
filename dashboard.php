@@ -383,6 +383,7 @@ code{display:block;white-space:pre-wrap;word-break:break-all;padding:16px;border
   .tab-btn{white-space:normal;min-height:44px;flex:auto;width:100%}
   .sidebar-footer{display:none}
   .topbar{position:sticky;top:0;height:auto;min-height:72px;z-index:25;padding:14px 18px}
+  body.account-open .topbar{z-index:55}
   .top-actions{
     position:fixed;
     top:0;
@@ -390,7 +391,7 @@ code{display:block;white-space:pre-wrap;word-break:break-all;padding:16px;border
     width:min(320px,86vw);
     height:100dvh;
     z-index:45;
-    padding:18px;
+    padding:72px 18px 18px;
     background:rgba(255,255,255,.9);
     border-left:1px solid var(--line);
     backdrop-filter:blur(18px);
@@ -400,6 +401,12 @@ code{display:block;white-space:pre-wrap;word-break:break-all;padding:16px;border
     transform:translateX(105%);
     transition:transform .25s ease;
     box-shadow:-18px 0 45px rgba(15,23,42,.12);
+  }
+  body.account-open #accountToggle{
+    position:fixed;
+    top:14px;
+    right:18px;
+    z-index:60;
   }
   body.dark .top-actions{background:rgba(15,23,42,.92)}
   body.account-open .top-actions{transform:translateX(0)}
@@ -417,6 +424,7 @@ code{display:block;white-space:pre-wrap;word-break:break-all;padding:16px;border
 @media(max-width:720px){
   .topbar{padding:12px 14px}
   .mobile-toggle{width:40px;height:40px}
+  body.account-open #accountToggle{top:12px;right:14px}
   .content{padding:14px;gap:16px}
   .panel{border-radius:18px}
   .section-head{align-items:flex-start;flex-direction:column;padding:16px 16px 0}
@@ -828,6 +836,7 @@ const themeToggle = document.getElementById("themeToggle");
 const navToggle = document.getElementById("navToggle");
 const accountToggle = document.getElementById("accountToggle");
 const drawerOverlay = document.getElementById("drawerOverlay");
+const accountToggleText = accountToggle?.textContent || "";
 
 function setDrawer(type, open) {
   const isNav = type === "nav";
@@ -836,6 +845,8 @@ function setDrawer(type, open) {
   drawerOverlay?.classList.toggle("show", open);
   navToggle?.setAttribute("aria-expanded", String(isNav && open));
   accountToggle?.setAttribute("aria-expanded", String(!isNav && open));
+  accountToggle?.setAttribute("aria-label", !isNav && open ? "Close account menu" : "Open account menu");
+  if (accountToggle) accountToggle.textContent = !isNav && open ? "x" : accountToggleText;
 }
 
 function closeDrawers() {
@@ -843,6 +854,8 @@ function closeDrawers() {
   drawerOverlay?.classList.remove("show");
   navToggle?.setAttribute("aria-expanded", "false");
   accountToggle?.setAttribute("aria-expanded", "false");
+  accountToggle?.setAttribute("aria-label", "Open account menu");
+  if (accountToggle) accountToggle.textContent = accountToggleText;
 }
 
 navToggle?.addEventListener("click", () => {
