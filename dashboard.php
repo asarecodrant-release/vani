@@ -225,6 +225,19 @@ a{text-decoration:none;color:inherit}
 button,input,select,textarea{font:inherit}
 button{touch-action:manipulation}
 .dashboard-shell{min-height:100vh;display:grid;grid-template-columns:260px 1fr}
+.drawer-overlay{
+  position:fixed;
+  inset:0;
+  background:rgba(15,23,42,.38);
+  opacity:0;
+  pointer-events:none;
+  transition:.25s ease;
+  z-index:35;
+}
+.drawer-overlay.show{
+  opacity:1;
+  pointer-events:auto;
+}
 .sidebar{
   position:sticky;top:0;height:100vh;padding:24px 18px;
   background:rgba(255,255,255,.58);backdrop-filter:blur(18px);
@@ -249,9 +262,11 @@ body.dark .sidebar{background:rgba(15,23,42,.66)}
   backdrop-filter:blur(18px);position:sticky;top:0;z-index:10;
 }
 body.dark .topbar{background:rgba(15,23,42,.66)}
+.topbar-left{display:flex;align-items:center;gap:12px;min-width:0}
+.mobile-toggle{display:none;width:42px;height:42px;border-radius:12px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font-weight:800;cursor:pointer;align-items:center;justify-content:center}
 .page-title h1{font-size:24px;letter-spacing:0}
 .page-title p{color:var(--muted);font-size:13px;margin-top:4px}
-.top-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+.top-actions{display:flex;align-items:center;gap:10px;flex-wrap:nowrap;justify-content:flex-end;min-width:0}
 .user-menu{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:7px 10px}
 .avatar{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;color:#fff;font-weight:700;background:linear-gradient(135deg,var(--brand),var(--brand-2))}
 .user-text{max-width:180px;min-width:0}
@@ -331,43 +346,83 @@ code{display:block;white-space:pre-wrap;word-break:break-all;padding:16px;border
 .notice{padding:14px 16px;border-radius:14px;background:rgba(99,102,241,.1);border:1px solid rgba(99,102,241,.18);color:var(--ink);line-height:1.6}
 .toast{position:fixed;right:24px;bottom:24px;background:#111827;color:#fff;border-radius:12px;padding:12px 14px;box-shadow:0 12px 30px rgba(0,0,0,.25);opacity:0;transform:translateY(10px);pointer-events:none;transition:.25s}
 .toast.show{opacity:1;transform:translateY(0)}
-@media(max-width:1100px){
+@media(max-width:1440px){
+  .dashboard-shell{grid-template-columns:240px 1fr}
+  .sidebar{padding:20px 14px}
+  .tab-btn{padding:11px 12px;font-size:14px}
+  .topbar{padding:0 20px;gap:12px}
+  .page-title h1{font-size:22px}
+  .top-actions{gap:8px}
+  .pill-btn,.ghost-btn,.danger-btn{padding:0 12px}
+  .content{padding:22px}
+  .metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:1180px){
   .dashboard-shell{grid-template-columns:1fr}
-  .sidebar{position:sticky;top:0;height:auto;padding:14px 16px;z-index:30;border-right:0;border-bottom:1px solid var(--line)}
-  .brand{margin-bottom:12px}
-  .brand img{width:46px}
-  .nav-tabs{
-    display:flex;
-    overflow-x:auto;
-    overflow-y:hidden;
-    gap:8px;
-    padding-bottom:6px;
-    scrollbar-width:thin;
-    scroll-snap-type:x proximity;
-    overscroll-behavior-x:contain;
+  .drawer-overlay{display:block}
+  .mobile-toggle{display:inline-flex;flex:0 0 auto}
+  body.nav-open,body.account-open{overflow:hidden}
+  .sidebar{
+    position:fixed;
+    top:0;
+    left:0;
+    width:min(320px,86vw);
+    height:100dvh;
+    padding:18px;
+    z-index:45;
+    border-right:1px solid var(--line);
+    border-bottom:0;
+    transform:translateX(-105%);
+    transition:transform .25s ease;
+    overflow-y:auto;
   }
-  .nav-tabs::-webkit-scrollbar{height:6px}
-  .nav-tabs::-webkit-scrollbar-thumb{background:rgba(99,102,241,.28);border-radius:999px}
-  .tab-btn{white-space:nowrap;min-height:42px;flex:0 0 auto}
-  .tab-btn.active{scroll-snap-align:start}
+  body.nav-open .sidebar{transform:translateX(0)}
+  .brand{margin-bottom:18px}
+  .brand img{width:50px}
+  .nav-tabs{display:grid;gap:8px;overflow:visible;padding:0}
+  .tab-btn{white-space:normal;min-height:44px;flex:auto;width:100%}
   .sidebar-footer{display:none}
-  .topbar{position:relative;top:auto}
+  .topbar{position:sticky;top:0;height:auto;min-height:72px;z-index:25;padding:14px 18px}
+  .top-actions{
+    position:fixed;
+    top:0;
+    right:0;
+    width:min(320px,86vw);
+    height:100dvh;
+    z-index:45;
+    padding:18px;
+    background:rgba(255,255,255,.9);
+    border-left:1px solid var(--line);
+    backdrop-filter:blur(18px);
+    display:grid;
+    align-content:start;
+    gap:12px;
+    transform:translateX(105%);
+    transition:transform .25s ease;
+    box-shadow:-18px 0 45px rgba(15,23,42,.12);
+  }
+  body.dark .top-actions{background:rgba(15,23,42,.92)}
+  body.account-open .top-actions{transform:translateX(0)}
+  .top-actions .pill-btn,.top-actions .ghost-btn{width:100%;justify-content:center}
+  .top-actions > .user-menu{display:grid;justify-items:center;text-align:center;padding:16px}
+  .top-actions .user-text{display:block;max-width:100%}
+  .top-actions .user-text strong,.top-actions .user-text span{white-space:normal;word-break:break-word}
+  .topbar-left{flex:1}
+  .page-title{min-width:0}
+  .page-title p{display:none}
   .metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
   .overview-hero,.split,.profile-grid{grid-template-columns:1fr}
   .profile-photo{justify-items:start;grid-template-columns:auto 1fr;align-items:center}
 }
 @media(max-width:720px){
-  .topbar{height:auto;align-items:stretch;flex-direction:column;padding:14px 16px}
-  .top-actions{display:grid;grid-template-columns:1fr 1fr;align-items:stretch}
-  .top-actions > .user-menu{grid-column:1/-1}
-  .top-actions .pill-btn,.top-actions .ghost-btn{width:100%}
+  .topbar{padding:12px 14px}
+  .mobile-toggle{width:40px;height:40px}
   .content{padding:14px;gap:16px}
   .panel{border-radius:18px}
   .section-head{align-items:flex-start;flex-direction:column;padding:16px 16px 0}
   .section-body{padding:16px}
   .overview-hero h2{font-size:28px}
   .metrics,.quick-actions,.form-grid{grid-template-columns:1fr}
-  .user-text{display:none}
   .user-menu{justify-content:space-between}
   select,input,textarea{font-size:16px}
   table{min-width:640px}
@@ -388,7 +443,6 @@ code{display:block;white-space:pre-wrap;word-break:break-all;padding:16px;border
   .metric{padding:15px}
   .metric strong{font-size:24px}
   .metric strong[style]{font-size:14px !important}
-  .top-actions{grid-template-columns:1fr}
   .pill-btn,.ghost-btn,.danger-btn{min-height:42px;padding:0 12px;font-size:14px}
   .profile-photo{grid-template-columns:1fr;justify-items:center}
   .profile-avatar{width:96px;height:96px}
@@ -402,6 +456,7 @@ code{display:block;white-space:pre-wrap;word-break:break-all;padding:16px;border
 </head>
 <body>
 <div class="dashboard-shell">
+  <div class="drawer-overlay" id="drawerOverlay" aria-hidden="true"></div>
   <aside class="sidebar">
     <a class="brand" href="dashboard.php">
       <img src="images/logo.png" alt="Vani AI">
@@ -427,10 +482,14 @@ code{display:block;white-space:pre-wrap;word-break:break-all;padding:16px;border
 
   <main class="main">
     <header class="topbar">
-      <div class="page-title">
-        <h1>Customer Dashboard</h1>
-        <p>Overview, setup, FAQs, logs, analytics, install, settings, and billing.</p>
+      <div class="topbar-left">
+        <button class="mobile-toggle" id="navToggle" type="button" aria-label="Open dashboard menu" aria-expanded="false">☰</button>
+        <div class="page-title">
+          <h1>Customer Dashboard</h1>
+          <p>Overview, setup, FAQs, logs, analytics, install, settings, and billing.</p>
+        </div>
       </div>
+      <button class="mobile-toggle" id="accountToggle" type="button" aria-label="Open account menu" aria-expanded="false">⋯</button>
       <div class="top-actions">
         <button class="ghost-btn" id="themeToggle" type="button">Dark</button>
         <a class="ghost-btn" href="#profile" data-jump="profile">Profile setting</a>
@@ -766,6 +825,39 @@ const tabs = document.querySelectorAll(".tab-btn");
 const panels = document.querySelectorAll(".tab-panel");
 const toast = document.getElementById("toast");
 const themeToggle = document.getElementById("themeToggle");
+const navToggle = document.getElementById("navToggle");
+const accountToggle = document.getElementById("accountToggle");
+const drawerOverlay = document.getElementById("drawerOverlay");
+
+function setDrawer(type, open) {
+  const isNav = type === "nav";
+  document.body.classList.toggle("nav-open", isNav && open);
+  document.body.classList.toggle("account-open", !isNav && open);
+  drawerOverlay?.classList.toggle("show", open);
+  navToggle?.setAttribute("aria-expanded", String(isNav && open));
+  accountToggle?.setAttribute("aria-expanded", String(!isNav && open));
+}
+
+function closeDrawers() {
+  document.body.classList.remove("nav-open", "account-open");
+  drawerOverlay?.classList.remove("show");
+  navToggle?.setAttribute("aria-expanded", "false");
+  accountToggle?.setAttribute("aria-expanded", "false");
+}
+
+navToggle?.addEventListener("click", () => {
+  setDrawer("nav", !document.body.classList.contains("nav-open"));
+});
+
+accountToggle?.addEventListener("click", () => {
+  setDrawer("account", !document.body.classList.contains("account-open"));
+});
+
+drawerOverlay?.addEventListener("click", closeDrawers);
+
+document.addEventListener("keydown", event => {
+  if (event.key === "Escape") closeDrawers();
+});
 
 function showToast(text) {
   toast.textContent = text;
@@ -782,6 +874,7 @@ function openTab(id) {
     behavior: "smooth"
   });
   if (location.hash !== "#" + id) history.replaceState(null, "", "#" + id);
+  closeDrawers();
 }
 
 tabs.forEach(tab => tab.addEventListener("click", () => openTab(tab.dataset.tab)));
