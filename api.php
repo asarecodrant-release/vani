@@ -166,11 +166,15 @@ if ($action === "add_faq") {
 
     foreach ($data['faqs'] as $faq) {
         if (!empty($faq['question']) && !empty($faq['answer'])) {
-            $rows[] = [
+            $row = [
                 "customer_id" => $data['customer_id'],
                 "question" => $faq['question'],
                 "answer" => $faq['answer']
             ];
+            if (!empty($faq['category'])) {
+                $row["category"] = $faq['category'];
+            }
+            $rows[] = $row;
         }
     }
 
@@ -213,6 +217,7 @@ if ($action === "chat") {
 
     $input = strtolower(trim($message));
     $reply = null;
+    $matchedQuestionId = null;
 
     foreach ($faqs as $faq) {
 
@@ -228,6 +233,7 @@ if ($action === "chat") {
             $percent > 55
         ) {
             $reply = $faq['answer'];
+            $matchedQuestionId = $faq['id'] ?? null;
             break;
         }
     }
@@ -236,7 +242,102 @@ if ($action === "chat") {
         $reply = "Sorry, I don't have an answer for that yet.";
     }
 
+    supabase(
+        "POST",
+        "chatbot_conversations",
+        [[
+            "customer_id" => trim($customer_id),
+            "user_question" => $message,
+            "bot_response" => $reply,
+            "matched_faq_id" => $matchedQuestionId,
+            "status" => $matchedQuestionId ? "answered" : "unanswered",
+            "is_answered" => (bool)$matchedQuestionId
+        ]]
+    );
+
     echo json_encode(["reply" => $reply]);
+    exit;
+}
+
+
+// ==========================
+// SAVE DASHBOARD SETTINGS
+// ==========================
+if ($action === "save_dashboard_settings") {
+
+    $data = getJSON();
+    $customer_id = trim($data['customer_id'] ?? '');
+
+    if (!$customer_id) {
+        echo json_encode([
+            "success" => false,
+            "message" => "Missing customer_id"
+        ]);
+        exit;
+    }
+
+    $allowed = [
+        "bot_name",
+        "welcome_message",
+        "theme_color",
+        "position",
+        "avatar_url",
+        "language",
+        "is_active",
+        "api_key",
+        "rate_limit",
+        "notification_preference",
+        "allowed_domains",
+        "verification_status"
+    ];
+
+    $payload = ["customer_id" => $customer_id];
+
+    foreach ($allowed as $key) {
+        if (array_key_exists($key, $data)) {
+            $payload[$key] = $data[$key];
+        }
+    }
+
+    if (count($payload) === 1) {
+        echo json_encode([
+            "success" => false,
+            "message" => "No settings provided"
+        ]);
+        exit;
+    }
+
+    $existing = supabase(
+        "GET",
+        "chatbot_settings?select=id&customer_id=eq." . urlencode($customer_id) . "&limit=1"
+    );
+
+    if (!empty($existing['data'])) {
+        $res = supabase(
+            "PATCH",
+            "chatbot_settings?customer_id=eq." . urlencode($customer_id),
+            $payload
+        );
+    } else {
+        $res = supabase(
+            "POST",
+            "chatbot_settings",
+            [$payload]
+        );
+    }
+
+    if (!empty($data['theme_color'])) {
+        supabase(
+            "PATCH",
+            "chatbot_signups?customer_id=eq." . urlencode($customer_id),
+            ["theme_color" => $data['theme_color']]
+        );
+    }
+
+    echo json_encode([
+        "success" => ($res['status'] >= 200 && $res['status'] < 300),
+        "debug" => $res
+    ]);
     exit;
 }
 
