@@ -113,9 +113,38 @@ if ($action === "update_theme") {
         ]
     );
 
+    $settingsPayload = [
+        "customer_id" => trim($data['customer_id']),
+        "theme_color" => $data['theme_color']
+    ];
+
+    if (!empty($data['avatar_url'])) {
+        $settingsPayload["avatar_url"] = $data['avatar_url'];
+    }
+
+    $existingSettings = supabase(
+        "GET",
+        "chatbot_settings?select=id&customer_id=eq." . urlencode(trim($data['customer_id'])) . "&limit=1"
+    );
+
+    if (!empty($existingSettings['data'])) {
+        supabase(
+            "PATCH",
+            "chatbot_settings?customer_id=eq." . urlencode(trim($data['customer_id'])),
+            $settingsPayload
+        );
+    } else {
+        supabase(
+            "POST",
+            "chatbot_settings",
+            [$settingsPayload]
+        );
+    }
+
     echo json_encode([
         "status" => "theme_updated",
         "theme_color" => $data['theme_color'],
+        "avatar_url" => $data['avatar_url'] ?? '',
         "debug" => $res
     ]);
     exit;

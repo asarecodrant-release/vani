@@ -2,6 +2,7 @@
 require_once __DIR__ . '/session-auth.php';
 
 $_SESSION['setup_completed'] = true;
+$dashboardUrl = is_authenticated_user() ? 'dashboard.php' : 'login.php';
 clear_setup_session();
 ?>
 <!DOCTYPE html>
@@ -66,6 +67,9 @@ code{
 }
 
 .button{
+  display:block;
+  text-align:center;
+  text-decoration:none;
   width:100%;
   padding:14px;
   margin-top:18px;
@@ -102,6 +106,7 @@ code{
     </div>
 
     <button class="button" onclick="copyCode()">📋 Copy Code</button>
+    <a class="button" href="<?php echo htmlspecialchars($dashboardUrl, ENT_QUOTES, 'UTF-8'); ?>">Go to Dashboard</a>
 
   </div>
 

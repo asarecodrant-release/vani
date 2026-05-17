@@ -1,5 +1,10 @@
 <?php
 require_once __DIR__ . '/session-auth.php';
+
+$botImages = glob(__DIR__ . '/images/botimg_*') ?: [];
+$botImages = array_values(array_filter($botImages, 'is_file'));
+natcasesort($botImages);
+$botImages = array_map(fn($path) => 'images/' . basename($path), $botImages);
 ?>
 
 <!DOCTYPE html>
@@ -29,7 +34,7 @@ body {
 
 .container {
   width: 100%;
-  max-width: 480px;
+  max-width: 620px;
   padding: 20px;
 }
 
@@ -76,6 +81,32 @@ input[type="text"] {
   outline: none;
 }
 
+.bot-image-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.bot-image-option {
+  border: 2px solid rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.12);
+  border-radius: 12px;
+  padding: 8px;
+}
+
+.bot-image-option.active {
+  border-color: white;
+  background: rgba(255,255,255,0.22);
+}
+
+.bot-image-option img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: contain;
+  display: block;
+}
+
 /* PRESET COLORS */
 .palette {
   display: flex;
@@ -111,7 +142,18 @@ input[type="text"] {
   background: rgba(255,255,255,0.15);
   padding: 15px;
   border-radius: 12px;
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.preview-avatar {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.18);
+  padding: 5px;
+  object-fit: contain;
 }
 
 .bubble {
@@ -196,9 +238,21 @@ button.loading {
       <input id="hexInput" placeholder="#6366f1">
     </div>
 
+    <div class="form-row">
+      <label>Select chatbot image</label>
+      <div class="bot-image-grid" id="botImageGrid">
+        <?php foreach ($botImages as $index => $image): ?>
+          <button class="bot-image-option <?php echo $index === 0 ? 'active' : ''; ?>" type="button" data-image="<?php echo htmlspecialchars($image, ENT_QUOTES, 'UTF-8'); ?>">
+            <img src="<?php echo htmlspecialchars($image, ENT_QUOTES, 'UTF-8'); ?>" alt="Chatbot image option <?php echo $index + 1; ?>">
+          </button>
+        <?php endforeach; ?>
+      </div>
+    </div>
+
     <!-- PREVIEW -->
     <div class="preview">
       <div class="chat-preview">
+        <img id="previewAvatar" class="preview-avatar" src="<?php echo htmlspecialchars($botImages[0] ?? 'images/logo_img.png', ENT_QUOTES, 'UTF-8'); ?>" alt="Selected chatbot image">
         <div id="previewBubble" class="bubble">
           Hi 👋 How can I help you?
         </div>
@@ -237,6 +291,8 @@ const preview = document.getElementById("previewBubble");
 const msg = document.getElementById("msg");
 const palette = document.getElementById("palette");
 const saveBtn = document.getElementById("saveBtn");
+const botImageGrid = document.getElementById("botImageGrid");
+const previewAvatar = document.getElementById("previewAvatar");
 
 const storedCid = localStorage.getItem("cid");
 const cid = storedCid || sessionCustomerId;
@@ -250,6 +306,7 @@ if (!cid) {
 }
 
 let selectedColor = "#4f46e5";
+let selectedBotImage = botImageGrid?.querySelector(".bot-image-option")?.dataset.image || "";
 updatePreview(selectedColor);
 
 // =========================
@@ -290,6 +347,15 @@ hexInput.addEventListener("input", () => {
   }
 });
 
+botImageGrid?.querySelectorAll(".bot-image-option").forEach(option => {
+  option.addEventListener("click", () => {
+    selectedBotImage = option.dataset.image || "";
+    botImageGrid.querySelectorAll(".bot-image-option").forEach(item => item.classList.remove("active"));
+    option.classList.add("active");
+    if (previewAvatar && selectedBotImage) previewAvatar.src = selectedBotImage;
+  });
+});
+
 // =========================
 // SAVE
 // =========================
@@ -310,6 +376,7 @@ saveBtn.onclick = async () => {
       body: JSON.stringify({
         customer_id: cid,
         theme_color: selectedColor,
+        avatar_url: selectedBotImage,
         email_verified: true
       })
     });
@@ -317,6 +384,7 @@ saveBtn.onclick = async () => {
     const data = await res.json();
 
     localStorage.setItem("theme", selectedColor);
+    if (selectedBotImage) localStorage.setItem("chatbot_image", selectedBotImage);
 
     showSuccess("Theme saved!");
 

@@ -11,6 +11,10 @@ $email = authenticated_email();
 $accountId = authenticated_user_id();
 $selectedBotId = trim($_GET['bot'] ?? '');
 $widgetUrl = "https://cdn.jsdelivr.net/gh/codrant-code/chbdd@main/widget36.js";
+$botImages = glob(__DIR__ . '/images/botimg_*') ?: [];
+$botImages = array_values(array_filter($botImages, 'is_file'));
+natcasesort($botImages);
+$botImages = array_map(fn($path) => 'images/' . basename($path), $botImages);
 
 function h($value): string {
     return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
@@ -206,6 +210,7 @@ uasort($topFaqQuestionCounts, fn($a, $b) => $b['count'] <=> $a['count']);
 arsort($hourCounts);
 $peakUsage = !empty($hourCounts) ? array_key_first($hourCounts) . ":00" : "Not enough data";
 $themeColor = first_value($selectedBot, ['theme_color'], '#6366f1');
+$chatbotImage = first_value($settings, ['avatar_url'], $botImages[0] ?? '');
 $botName = first_value($settings, ['bot_name'], first_value($selectedBot, ['website_name'], 'Vani Bot'));
 $welcomeMessage = first_value($settings, ['welcome_message'], 'Hi, how can I help you today?');
 $position = first_value($settings, ['position'], 'right');
@@ -277,7 +282,7 @@ button{touch-action:manipulation}
 }
 .sidebar{
   position:sticky;top:0;height:100vh;padding:24px 18px;
-  background:rgba(255,255,255,.58);backdrop-filter:blur(18px);
+  background:rgba(255,255,255, 0.9);backdrop-filter:blur(18px);
   border-right:1px solid var(--line);
 }
 body.dark .sidebar{background:rgba(15,23,42,.66)}
@@ -295,7 +300,7 @@ body.dark .sidebar{background:rgba(15,23,42,.66)}
 .main{min-width:0;max-width:100vw}
 .topbar{
   height:78px;display:flex;align-items:center;justify-content:space-between;gap:16px;
-  padding:0 28px;border-bottom:1px solid var(--line);background:rgba(255,255,255,.58);
+  padding:0 28px;border-bottom:1px solid var(--line);background:rgba(255, 255, 255, 0.9);
   backdrop-filter:blur(18px);position:sticky;top:0;z-index:10;
 }
 body.dark .topbar{background:rgba(15,23,42,.66)}
@@ -371,6 +376,12 @@ body.dark .profile-photo{background:rgba(15,23,42,.44)}
 .field.full{grid-column:1/-1}
 .swatches{display:flex;gap:10px;flex-wrap:wrap}
 .swatch{width:34px;height:34px;border-radius:10px;border:2px solid rgba(255,255,255,.8);box-shadow:0 4px 10px rgba(15,23,42,.12);cursor:pointer}
+.bot-image-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(72px,1fr));gap:10px}
+.bot-image-option{border:1px solid var(--line);background:var(--panel-strong);border-radius:14px;padding:8px;cursor:pointer;display:grid;place-items:center}
+.bot-image-option img{width:100%;aspect-ratio:1;object-fit:contain}
+.bot-image-option input{position:absolute;opacity:0;pointer-events:none}
+.bot-image-option:has(input:checked){border-color:rgba(99,102,241,.72);box-shadow:0 0 0 3px rgba(99,102,241,.14)}
+.selected-bot-image{width:64px;height:64px;object-fit:contain;border-radius:16px;border:1px solid var(--line);background:var(--panel-strong);padding:8px}
 .table-wrap{
   width:100%;
   max-width:100%;
@@ -560,7 +571,7 @@ body.dark .outside-faq-card{background:rgba(15,23,42,.44)}
           <div class="avatar"><?php echo h($initials); ?></div>
           <div class="user-text">
             <strong><?php echo h($displayName ?: $email); ?></strong>
-            <span><?php echo h($accountId ?: 'Customer'); ?></span>
+            <!--<span><?php echo h($accountId ?: 'Customer'); ?></span>-->
           </div>
           <a class="ghost-btn" href="logout.php">Logout</a>
         </div>
@@ -581,7 +592,7 @@ body.dark .outside-faq-card{background:rgba(15,23,42,.44)}
           <div>
             <span class="eyebrow">Your Website</span>
             <h2><?php echo h($botName); ?></h2>
-            <p>“You are currently configuring the bot for the above-mentioned website.”</p>
+            <p>You are currently configuring the bot for the mentioned website.</p>
           </div>
           <form class="bot-picker" method="get" action="dashboard.php">
             <label for="bot">Select Website bot</label>
@@ -596,7 +607,7 @@ body.dark .outside-faq-card{background:rgba(15,23,42,.44)}
                 </option>
               <?php endforeach; ?>
             </select>
-            <small class="muted">“Select the appropriate chatbot from those created by: <?php echo h($email); ?></small>
+            <small class="muted">Select the appropriate chatbot from those created by: <?php echo h($email); ?></small>
           </form>
         </div>
 
@@ -616,14 +627,19 @@ body.dark .outside-faq-card{background:rgba(15,23,42,.44)}
           <div class="panel metric"><span>Total Conversations</span><strong><?php echo h($conversationCount); ?></strong><small>Meaning: Total number of chat sessions started by users</small></div>
           <div class="panel metric"><span>Today's Queries</span><strong><?php echo h($todayQueries); ?></strong><small><?php echo h(gmdate('M d, Y')); ?> UTC</small></div>
           <div class="panel metric"><span>Response Accuracy</span><strong><?php echo h($accuracy); ?>%</strong><small>Basic answered vs total estimate.</small></div>
-          <div class="panel metric"><span>Last Activity</span><strong style="font-size:18px"><?php echo h($lastActivity ?: 'No activity yet'); ?></strong><small>Latest tracked conversation.</small></div>
-          <div class="panel metric"><span>Theme Color</span><strong style="color:<?php echo h($themeColor); ?>"><?php echo h($themeColor); ?></strong><small>Used by the chat widget.</small></div>
+          <div class="panel metric"><span>Last Activity</span><strong id="lastActivityText" data-last-activity="<?php echo h($lastActivity); ?>" style="font-size:18px"><?php echo h($lastActivity ?: 'No activity yet'); ?></strong><small id="lastActivityZone">Latest tracked conversation.</small></div>
+          <div class="panel metric">
+            <span>Theme Color</span>
+            <strong style="color:<?php echo h($themeColor); ?>"><?php echo h($themeColor); ?></strong>
+            <?php if ($chatbotImage): ?><img class="selected-bot-image" style="margin-top:10px" src="<?php echo h($chatbotImage); ?>" alt="Selected chatbot image"><?php endif; ?>
+            <small>Used by the chatbot box.</small>
+          </div>
           <div class="panel metric"><span>Bot ID</span><strong style="font-size:15px;word-break:break-all"><?php echo h($selectedBotId ?: 'Not set'); ?></strong><small>“Each website may have multiple Bot IDs. Please select the appropriate one.”</small></div>
         </div>
 
         <div class="split">
           <div class="panel section-body">
-            <h3>Most Asked FAQ Questions</h3>
+            <h3>Popular Questions</h3>
             <p class="muted" style="margin:10px 0 14px">Trending questions customers asked that matched your FAQs.</p>
             <?php if (empty($topFaqQuestionCounts)): ?><p class="empty">No repeated FAQ questions yet.</p><?php endif; ?>
             <?php foreach (array_slice($topFaqQuestionCounts, 0, 5) as $item): ?>
@@ -631,7 +647,7 @@ body.dark .outside-faq-card{background:rgba(15,23,42,.44)}
             <?php endforeach; ?>
           </div>
           <button class="panel metric metric-link" type="button" data-jump="outside-faqs">
-            <span>Questions Outside FAQs</span>
+            <h3>Questions Outside FAQs</h3>
             <strong><?php echo h($unansweredCount); ?></strong>
             <small>Questions the bot could not answer. Open this list to edit and add answers to FAQs.</small>
           </button>
@@ -666,7 +682,20 @@ body.dark .outside-faq-card{background:rgba(15,23,42,.44)}
             <div class="field full"><label>Welcome Message</label><textarea id="welcomeInput"><?php echo h($welcomeMessage); ?></textarea></div>
             <div class="field"><label>Theme color</label><input id="themeColorInput" type="color" value="<?php echo h($themeColor); ?>"></div>
             <div class="field"><label>Language</label><select id="languageInput"><option><?php echo h($language); ?></option><option>English</option><option>Hindi</option><option>Spanish</option><option>French</option></select></div>
-            <div class="field full"><label>Avatar/logo upload</label><input type="file" accept="image/*"></div>
+            <div class="field full">
+              <label>Chatbot image</label>
+              <?php if ($chatbotImage): ?>
+                <img class="selected-bot-image" id="selectedBotImagePreview" src="<?php echo h($chatbotImage); ?>" alt="Selected chatbot image">
+              <?php endif; ?>
+              <div class="bot-image-grid" id="dashboardBotImageGrid">
+                <?php foreach ($botImages as $index => $image): ?>
+                  <label class="bot-image-option" title="Chatbot image <?php echo h($index + 1); ?>">
+                    <input type="radio" name="dashboardBotImage" value="<?php echo h($image); ?>" <?php echo $image === $chatbotImage || (!$chatbotImage && $index === 0) ? 'checked' : ''; ?>>
+                    <img src="<?php echo h($image); ?>" alt="Chatbot image <?php echo h($index + 1); ?>">
+                  </label>
+                <?php endforeach; ?>
+              </div>
+            </div>
             <div class="field full">
               <label>Quick colors</label>
               <div class="swatches">
@@ -1056,6 +1085,30 @@ if (localStorage.getItem("vani_dashboard_theme") === "dark") {
   themeToggle.textContent = "Bright";
 }
 
+function formatLastActivityForBrowser() {
+  const lastActivityText = document.getElementById("lastActivityText");
+  const lastActivityZone = document.getElementById("lastActivityZone");
+  const raw = lastActivityText?.dataset.lastActivity || "";
+  if (!raw) return;
+
+  const normalized = /z$|[+-]\d{2}:?\d{2}$/i.test(raw) ? raw : raw + "Z";
+  const date = new Date(normalized);
+  if (Number.isNaN(date.getTime())) return;
+
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "your browser timezone";
+  lastActivityText.textContent = new Intl.DateTimeFormat(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZoneName: "short"
+  }).format(date);
+  if (lastActivityZone) lastActivityZone.textContent = `Latest tracked conversation in ${timezone}.`;
+}
+
+formatLastActivityForBrowser();
+
 document.querySelectorAll("[data-save-note]").forEach(btn => {
   btn.addEventListener("click", () => showToast(btn.dataset.saveNote + " UI is ready. Connect save API next."));
 });
@@ -1064,6 +1117,13 @@ document.querySelectorAll(".swatch").forEach(swatch => {
   swatch.addEventListener("click", () => {
     const colorInput = document.getElementById("themeColorInput");
     colorInput.value = rgbToHex(getComputedStyle(swatch).backgroundColor);
+  });
+});
+
+document.querySelectorAll("input[name='dashboardBotImage']").forEach(input => {
+  input.addEventListener("change", () => {
+    const preview = document.getElementById("selectedBotImagePreview");
+    if (preview && input.checked) preview.src = input.value;
   });
 });
 
@@ -1192,6 +1252,7 @@ document.getElementById("saveSetupBtn")?.addEventListener("click", () => {
     bot_name: document.getElementById("botNameInput").value.trim(),
     welcome_message: document.getElementById("welcomeInput").value.trim(),
     theme_color: document.getElementById("themeColorInput").value,
+    avatar_url: document.querySelector("input[name='dashboardBotImage']:checked")?.value || "",
     position: document.getElementById("positionInput").value,
     language: document.getElementById("languageInput").value
   });
