@@ -109,6 +109,14 @@ $unansweredCount = 0;
 $dailyCounts = [];
 $hourCounts = [];
 $topQuestionCounts = [];
+$faqById = [];
+$topFaqQuestionCounts = [];
+
+foreach ($faqs as $faq) {
+    if (isset($faq['id'])) {
+        $faqById[(string)$faq['id']] = (string)($faq['question'] ?? '');
+    }
+}
 
 foreach ($conversationRows as $row) {
     $created = (string)($row['created_at'] ?? '');
@@ -141,6 +149,14 @@ foreach ($conversationRows as $row) {
             'count' => ($topQuestionCounts[$key]['count'] ?? 0) + 1
         ];
     }
+    $matchedFaqId = (string)($row['matched_faq_id'] ?? $row['question_id'] ?? '');
+    if ($matchedFaqId !== '' && isset($faqById[$matchedFaqId])) {
+        $faqQuestion = $faqById[$matchedFaqId];
+        $topFaqQuestionCounts[$matchedFaqId] = [
+            'question' => $faqQuestion,
+            'count' => ($topFaqQuestionCounts[$matchedFaqId]['count'] ?? 0) + 1
+        ];
+    }
 }
 
 if (!$conversationCount && !empty($usageRows)) {
@@ -157,6 +173,18 @@ if (!$conversationCount && !empty($usageRows)) {
     }
 }
 
+if (!empty($usageRows)) {
+    foreach ($usageRows as $row) {
+        $questionId = (string)($row['question_id'] ?? '');
+        if ($questionId !== '' && isset($faqById[$questionId])) {
+            $topFaqQuestionCounts[$questionId] = [
+                'question' => $faqById[$questionId],
+                'count' => ($topFaqQuestionCounts[$questionId]['count'] ?? 0) + 1
+            ];
+        }
+    }
+}
+
 $accuracy = $conversationCount > 0
     ? round(($answeredCount / max(1, $conversationCount)) * 100)
     : ($faqCount > 0 ? 100 : 0);
@@ -166,6 +194,7 @@ $unansweredPercent = $conversationCount > 0
     : 0;
 
 uasort($topQuestionCounts, fn($a, $b) => $b['count'] <=> $a['count']);
+uasort($topFaqQuestionCounts, fn($a, $b) => $b['count'] <=> $a['count']);
 arsort($hourCounts);
 $peakUsage = !empty($hourCounts) ? array_key_first($hourCounts) . ":00" : "Not enough data";
 $themeColor = first_value($selectedBot, ['theme_color'], '#6366f1');
@@ -306,6 +335,14 @@ select:focus,input:focus,textarea:focus{box-shadow:0 0 0 3px rgba(99,102,241,.15
 .status-dot{display:inline-flex;align-items:center;gap:8px}
 .status-dot:before{content:"";width:10px;height:10px;border-radius:50%;background:#22c55e;box-shadow:0 0 0 4px rgba(34,197,94,.14)}
 .status-dot.inactive:before{background:#ef4444;box-shadow:0 0 0 4px rgba(239,68,68,.14)}
+.status-toggle-row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:14px}
+.switch{position:relative;display:inline-flex;align-items:center;width:54px;height:30px;flex:0 0 auto}
+.switch input{position:absolute;opacity:0;pointer-events:none}
+.switch-slider{position:absolute;inset:0;border-radius:999px;background:#cbd5e1;cursor:pointer;transition:.2s ease}
+.switch-slider:before{content:"";position:absolute;width:24px;height:24px;left:3px;top:3px;border-radius:50%;background:#fff;box-shadow:0 3px 8px rgba(15,23,42,.2);transition:.2s ease}
+.switch input:checked + .switch-slider{background:#22c55e}
+.switch input:checked + .switch-slider:before{transform:translateX(24px)}
+.switch input:focus-visible + .switch-slider{box-shadow:0 0 0 3px rgba(99,102,241,.25)}
 .quick-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
 .action-card{padding:18px;display:grid;gap:10px;align-content:start}
 .action-card h3,.section-head h3{font-size:17px}
@@ -467,8 +504,8 @@ code{display:block;white-space:pre-wrap;word-break:break-all;padding:16px;border
   <div class="drawer-overlay" id="drawerOverlay" aria-hidden="true"></div>
   <aside class="sidebar">
     <a class="brand" href="dashboard.php">
-      <img src="images/logo.png" alt="Vani AI">
-      <strong>Vani</strong>
+      <img src="images/logo_img.png" alt="Vani AI">
+      <strong>Vani AI</strong>
     </a>
     <div class="nav-tabs" role="tablist">
       <button class="tab-btn active" data-tab="overview">Dashboard</button>
@@ -493,15 +530,15 @@ code{display:block;white-space:pre-wrap;word-break:break-all;padding:16px;border
       <div class="topbar-left">
         <button class="mobile-toggle" id="navToggle" type="button" aria-label="Open dashboard menu" aria-expanded="false">☰</button>
         <div class="page-title">
-          <h1>Customer Dashboard</h1>
-          <p>Overview, setup, FAQs, logs, analytics, install, settings, and billing.</p>
+          <h1>Your Chatbot Dashboard</h1>
+          <!--<p>Overview, setup, FAQs, logs, analytics, install, settings, and billing.</p>-->
         </div>
       </div>
       <button class="mobile-toggle" id="accountToggle" type="button" aria-label="Open account menu" aria-expanded="false">⋯</button>
       <div class="top-actions">
         <button class="ghost-btn" id="themeToggle" type="button">Dark</button>
-        <a class="ghost-btn" href="#profile" data-jump="profile">Profile setting</a>
-        <a class="pill-btn" href="freebot.php">Create bot</a>
+        <a class="ghost-btn" href="#profile" data-jump="profile">Profile</a>
+        <a class="pill-btn" href="index.php">Create New bot</a>
         <div class="user-menu">
           <div class="avatar"><?php echo h($initials); ?></div>
           <div class="user-text">
@@ -525,12 +562,12 @@ code{display:block;white-space:pre-wrap;word-break:break-all;padding:16px;border
       <section class="tab-panel active" id="overview">
         <div class="panel overview-hero">
           <div>
-            <span class="eyebrow">Important</span>
+            <span class="eyebrow">Your Website</span>
             <h2><?php echo h($botName); ?></h2>
-            <p>Your customer ID is your bot ID. Every dashboard metric and action below is currently scoped to this selected bot.</p>
+            <p>“You are currently configuring the bot for the above-mentioned website.”</p>
           </div>
           <form class="bot-picker" method="get" action="dashboard.php">
-            <label for="bot">Select customer bot</label>
+            <label for="bot">Select Website bot</label>
             <select id="bot" name="bot" onchange="this.form.submit()">
               <?php if (empty($bots)): ?>
                 <option value="">No bots available</option>
@@ -538,23 +575,49 @@ code{display:block;white-space:pre-wrap;word-break:break-all;padding:16px;border
               <?php foreach ($bots as $bot): ?>
                 <?php $cid = (string)($bot['customer_id'] ?? ''); ?>
                 <option value="<?php echo h($cid); ?>" <?php echo $cid === $selectedBotId ? 'selected' : ''; ?>>
-                  <?php echo h(($bot['website_name'] ?? 'Bot') . ' - ' . $cid); ?>
+                  <?php echo h(($bot['website_name'] ?? 'Bot') . ' - ' . "🤖 "); ?>
                 </option>
               <?php endforeach; ?>
             </select>
-            <small class="muted">Loaded from chatbot_signups for <?php echo h($email); ?></small>
+            <small class="muted">“Select the appropriate chatbot from those created by: <?php echo h($email); ?></small>
           </form>
         </div>
 
         <div class="metrics">
-          <div class="panel metric"><span>Chatbot Status</span><strong class="status-dot <?php echo $isActive ? '' : 'inactive'; ?>"><?php echo $isActive ? 'Active' : 'Inactive'; ?></strong><small>Enable or disable in Bot Settings.</small></div>
+          <div class="panel metric">
+            <span>Chatbot Status</span>
+            <strong id="overviewStatusText" class="status-dot <?php echo $isActive ? '' : 'inactive'; ?>"><?php echo $isActive ? 'Active' : 'Inactive'; ?></strong>
+            <div class="status-toggle-row">
+              <small id="overviewStatusHelp"><?php echo $isActive ? 'Chatbot is on for customers.' : 'Chatbot is off for customers.'; ?></small>
+              <label class="switch" title="Turn chatbot on or off">
+                <input id="overviewActiveSwitch" type="checkbox" <?php echo $isActive ? 'checked' : ''; ?> aria-label="Turn chatbot on or off">
+                <span class="switch-slider"></span>
+              </label>
+            </div>
+          </div>
           <div class="panel metric"><span>Total FAQs</span><strong><?php echo h($faqCount); ?></strong><small>Free plan limit: 100 FAQs.</small></div>
-          <div class="panel metric"><span>Total Conversations</span><strong><?php echo h($conversationCount); ?></strong><small>From logs, falling back to FAQ usage.</small></div>
+          <div class="panel metric"><span>Total Conversations</span><strong><?php echo h($conversationCount); ?></strong><small>Meaning: Total number of chat sessions started by users</small></div>
           <div class="panel metric"><span>Today's Queries</span><strong><?php echo h($todayQueries); ?></strong><small><?php echo h(gmdate('M d, Y')); ?> UTC</small></div>
           <div class="panel metric"><span>Response Accuracy</span><strong><?php echo h($accuracy); ?>%</strong><small>Basic answered vs total estimate.</small></div>
           <div class="panel metric"><span>Last Activity</span><strong style="font-size:18px"><?php echo h($lastActivity ?: 'No activity yet'); ?></strong><small>Latest tracked conversation.</small></div>
           <div class="panel metric"><span>Theme Color</span><strong style="color:<?php echo h($themeColor); ?>"><?php echo h($themeColor); ?></strong><small>Used by the chat widget.</small></div>
-          <div class="panel metric"><span>Bot ID</span><strong style="font-size:15px;word-break:break-all"><?php echo h($selectedBotId ?: 'Not set'); ?></strong><small>Same as customer_id.</small></div>
+          <div class="panel metric"><span>Bot ID</span><strong style="font-size:15px;word-break:break-all"><?php echo h($selectedBotId ?: 'Not set'); ?></strong><small>“Each website may have multiple Bot IDs. Please select the appropriate one.”</small></div>
+        </div>
+
+        <div class="split">
+          <div class="panel section-body">
+            <h3>Most Asked FAQ Questions</h3>
+            <p class="muted" style="margin:10px 0 14px">Trending questions customers asked that matched your FAQs.</p>
+            <?php if (empty($topFaqQuestionCounts)): ?><p class="empty">No repeated FAQ questions yet.</p><?php endif; ?>
+            <?php foreach (array_slice($topFaqQuestionCounts, 0, 5) as $item): ?>
+              <div class="inline-row" style="justify-content:space-between;border-bottom:1px solid var(--line);padding:10px 0"><span><?php echo h($item['question']); ?></span><strong><?php echo h($item['count']); ?></strong></div>
+            <?php endforeach; ?>
+          </div>
+          <div class="panel metric">
+            <span>Questions Outside FAQs</span>
+            <strong><?php echo h($unansweredCount); ?></strong>
+            <small>Questions the bot could not answer and should be added to FAQs or handled by support.</small>
+          </div>
         </div>
 
         <div class="quick-actions">
@@ -975,7 +1038,10 @@ document.getElementById("faqForm")?.addEventListener("submit", async event => {
 
 async function saveDashboardSettings(extraPayload) {
   const customerId = document.getElementById("settingsCustomerId")?.value || "";
-  if (!customerId) return showToast("Select a bot first");
+  if (!customerId) {
+    showToast("Select a bot first");
+    return false;
+  }
 
   const response = await fetch("/api.php?action=save_dashboard_settings", {
     method: "POST",
@@ -986,10 +1052,34 @@ async function saveDashboardSettings(extraPayload) {
   const data = await response.json().catch(() => ({}));
   if (!data.success) {
     showToast("Settings could not be saved");
-    return;
+    return false;
   }
   showToast("Settings saved");
+  return true;
 }
+
+function setOverviewActiveUI(isActive) {
+  const statusText = document.getElementById("overviewStatusText");
+  const statusHelp = document.getElementById("overviewStatusHelp");
+  const activeSwitch = document.getElementById("overviewActiveSwitch");
+  const activeInput = document.getElementById("activeInput");
+  if (statusText) {
+    statusText.textContent = isActive ? "Active" : "Inactive";
+    statusText.classList.toggle("inactive", !isActive);
+  }
+  if (statusHelp) {
+    statusHelp.textContent = isActive ? "Chatbot is on for customers." : "Chatbot is off for customers.";
+  }
+  if (activeSwitch) activeSwitch.checked = isActive;
+  if (activeInput) activeInput.value = isActive ? "true" : "false";
+}
+
+document.getElementById("overviewActiveSwitch")?.addEventListener("change", async event => {
+  const isActive = event.target.checked;
+  setOverviewActiveUI(isActive);
+  const saved = await saveDashboardSettings({is_active: isActive});
+  if (!saved) setOverviewActiveUI(!isActive);
+});
 
 document.getElementById("saveSetupBtn")?.addEventListener("click", () => {
   saveDashboardSettings({
@@ -1002,12 +1092,15 @@ document.getElementById("saveSetupBtn")?.addEventListener("click", () => {
 });
 
 document.getElementById("saveSettingsBtn")?.addEventListener("click", () => {
+  const isActive = document.getElementById("activeInput").value === "true";
   saveDashboardSettings({
     api_key: document.getElementById("apiKeyInput").value.trim(),
     rate_limit: Number(document.getElementById("rateLimitInput").value || 100),
-    is_active: document.getElementById("activeInput").value === "true",
+    is_active: isActive,
     notification_preference: document.getElementById("notificationInput").value,
     allowed_domains: document.getElementById("domainsInput").value.trim()
+  }).then(saved => {
+    if (saved) setOverviewActiveUI(isActive);
   });
 });
 

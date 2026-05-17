@@ -208,6 +208,19 @@ if ($action === "chat") {
         exit;
     }
 
+    $settings = supabase(
+        "GET",
+        "chatbot_settings?select=is_active&customer_id=eq." . urlencode(trim($customer_id)) . "&limit=1"
+    );
+
+    $rawActive = $settings['data'][0]['is_active'] ?? true;
+    $isActive = is_bool($rawActive) ? $rawActive : ((string)$rawActive !== 'false');
+
+    if (!$isActive) {
+        echo json_encode(["reply" => "Chatbot is currently turned off. Please contact customer support."]);
+        exit;
+    }
+
     $faqs = supabase(
         "GET",
         "faq_questions?customer_id=eq." . trim($customer_id)
@@ -239,7 +252,7 @@ if ($action === "chat") {
     }
 
     if (!$reply) {
-        $reply = "Sorry, I don't have an answer for that yet.";
+        $reply = "Sorry, I don't have an answer for that yet. Please contact customer support for help.";
     }
 
     supabase(
