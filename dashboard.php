@@ -111,6 +111,7 @@ $hourCounts = [];
 $topQuestionCounts = [];
 $faqById = [];
 $topFaqQuestionCounts = [];
+$outsideFaqQuestions = [];
 
 foreach ($faqs as $faq) {
     if (isset($faq['id'])) {
@@ -148,6 +149,13 @@ foreach ($conversationRows as $row) {
             'question' => $question,
             'count' => ($topQuestionCounts[$key]['count'] ?? 0) + 1
         ];
+        if (!$answered) {
+            $outsideFaqQuestions[] = [
+                'question' => $question,
+                'bot_response' => (string)($row['bot_response'] ?? $row['response'] ?? ''),
+                'created_at' => (string)($row['created_at'] ?? '')
+            ];
+        }
     }
     $matchedFaqId = (string)($row['matched_faq_id'] ?? $row['question_id'] ?? '');
     if ($matchedFaqId !== '' && isset($faqById[$matchedFaqId])) {
@@ -329,6 +337,8 @@ textarea{min-height:92px;resize:vertical}
 select:focus,input:focus,textarea:focus{box-shadow:0 0 0 3px rgba(99,102,241,.15);border-color:rgba(99,102,241,.55)}
 .metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
 .metric{padding:18px}
+.metric-link{width:100%;text-align:left;color:inherit;cursor:pointer}
+.metric-link:hover{border-color:rgba(99,102,241,.4);transform:translateY(-1px)}
 .metric span{display:block;color:var(--muted);font-size:13px;font-weight:700}
 .metric strong{display:block;font-size:28px;margin-top:8px}
 .metric small{display:block;color:var(--muted);margin-top:7px;line-height:1.4}
@@ -381,6 +391,12 @@ code{display:block;white-space:pre-wrap;word-break:break-all;padding:16px;border
 .split{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 .empty{padding:28px;text-align:center;color:var(--muted)}
 .notice{padding:14px 16px;border-radius:14px;background:rgba(99,102,241,.1);border:1px solid rgba(99,102,241,.18);color:var(--ink);line-height:1.6}
+.outside-faq-list{display:grid;gap:14px}
+.outside-faq-card{padding:16px;border:1px solid var(--line);border-radius:18px;background:rgba(255,255,255,.42);display:grid;gap:14px}
+body.dark .outside-faq-card{background:rgba(15,23,42,.44)}
+.outside-faq-meta{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.outside-faq-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.outside-faq-grid .field.full{grid-column:1/-1}
 .toast{position:fixed;right:24px;bottom:24px;background:#111827;color:#fff;border-radius:12px;padding:12px 14px;box-shadow:0 12px 30px rgba(0,0,0,.25);opacity:0;transform:translateY(10px);pointer-events:none;transition:.25s}
 .toast.show{opacity:1;transform:translateY(0)}
 @media(max-width:1440px){
@@ -467,7 +483,7 @@ code{display:block;white-space:pre-wrap;word-break:break-all;padding:16px;border
   .section-head{align-items:flex-start;flex-direction:column;padding:16px 16px 0}
   .section-body{padding:16px}
   .overview-hero h2{font-size:28px}
-  .metrics,.quick-actions,.form-grid{grid-template-columns:1fr}
+  .metrics,.quick-actions,.form-grid,.outside-faq-grid{grid-template-columns:1fr}
   .user-menu{justify-content:space-between}
   select,input,textarea{font-size:16px}
   table{min-width:640px}
@@ -511,6 +527,7 @@ code{display:block;white-space:pre-wrap;word-break:break-all;padding:16px;border
       <button class="tab-btn active" data-tab="overview">Dashboard</button>
       <button class="tab-btn" data-tab="setup">Chatbot Setup</button>
       <button class="tab-btn" data-tab="faqs">FAQ Management</button>
+      <button class="tab-btn" data-tab="outside-faqs">Outside FAQs</button>
       <button class="tab-btn" data-tab="logs">Conversations</button>
       <button class="tab-btn" data-tab="analytics">Analytics</button>
       <button class="tab-btn" data-tab="install">Integration</button>
@@ -613,11 +630,11 @@ code{display:block;white-space:pre-wrap;word-break:break-all;padding:16px;border
               <div class="inline-row" style="justify-content:space-between;border-bottom:1px solid var(--line);padding:10px 0"><span><?php echo h($item['question']); ?></span><strong><?php echo h($item['count']); ?></strong></div>
             <?php endforeach; ?>
           </div>
-          <div class="panel metric">
+          <button class="panel metric metric-link" type="button" data-jump="outside-faqs">
             <span>Questions Outside FAQs</span>
             <strong><?php echo h($unansweredCount); ?></strong>
-            <small>Questions the bot could not answer and should be added to FAQs or handled by support.</small>
-          </div>
+            <small>Questions the bot could not answer. Open this list to edit and add answers to FAQs.</small>
+          </button>
         </div>
 
         <div class="quick-actions">
@@ -696,6 +713,56 @@ code{display:block;white-space:pre-wrap;word-break:break-all;padding:16px;border
                 </tbody>
               </table>
             </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="tab-panel" id="outside-faqs">
+        <div class="panel">
+          <div class="section-head">
+            <div>
+              <h3>Questions Outside FAQs</h3>
+              <p class="muted">Review questions the chatbot could not answer, edit the question if needed, write the right answer, and save it into FAQs.</p>
+            </div>
+            <span class="tag bad"><?php echo h($unansweredCount); ?> unanswered</span>
+          </div>
+          <div class="section-body">
+            <?php if (empty($outsideFaqQuestions)): ?>
+              <p class="empty">No outside-FAQ questions yet.</p>
+            <?php else: ?>
+              <div class="outside-faq-list">
+                <?php foreach ($outsideFaqQuestions as $index => $item): ?>
+                  <form class="outside-faq-card outsideFaqForm">
+                    <div class="outside-faq-meta">
+                      <span class="tag bad">Needs answer</span>
+                      <small class="muted"><?php echo h($item['created_at'] ?: 'Time not recorded'); ?></small>
+                    </div>
+                    <?php if (!empty($item['bot_response'])): ?>
+                      <div class="notice"><strong>Bot response:</strong><br><?php echo h($item['bot_response']); ?></div>
+                    <?php endif; ?>
+                    <div class="outside-faq-grid">
+                      <input type="hidden" class="outsideCustomerId" value="<?php echo h($selectedBotId); ?>">
+                      <div class="field full">
+                        <label>Edit question</label>
+                        <input class="outsideQuestion" value="<?php echo h($item['question']); ?>" aria-label="Edit unanswered customer question">
+                      </div>
+                      <div class="field full">
+                        <label>Answer for this question</label>
+                        <textarea class="outsideAnswer" placeholder="Write the answer customers should receive next time"></textarea>
+                      </div>
+                      <div class="field">
+                        <label>Category</label>
+                        <input class="outsideCategory" value="General">
+                      </div>
+                      <div class="field">
+                        <label>&nbsp;</label>
+                        <button class="pill-btn" type="submit">Add to FAQs</button>
+                      </div>
+                    </div>
+                  </form>
+                <?php endforeach; ?>
+              </div>
+            <?php endif; ?>
           </div>
         </div>
       </section>
@@ -1012,6 +1079,17 @@ document.getElementById("faqSearch")?.addEventListener("input", event => {
   });
 });
 
+async function addFaq(customerId, question, answer, category) {
+  const response = await fetch("/api.php?action=add_faq", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({customer_id: customerId, faqs: [{question, answer, category}]})
+  });
+
+  const data = await response.json().catch(() => ({}));
+  return !(data.error || data.success === false);
+}
+
 document.getElementById("faqForm")?.addEventListener("submit", async event => {
   event.preventDefault();
   const customerId = document.getElementById("faqCustomerId").value;
@@ -1021,19 +1099,47 @@ document.getElementById("faqForm")?.addEventListener("submit", async event => {
   if (!customerId) return showToast("Select a bot first");
   if (!question || !answer) return showToast("Question and answer are required");
 
-  const response = await fetch("/api.php?action=add_faq", {
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({customer_id: customerId, faqs: [{question, answer, category}]})
-  });
-
-  const data = await response.json().catch(() => ({}));
-  if (data.error || data.success === false) {
+  const saved = await addFaq(customerId, question, answer, category);
+  if (!saved) {
     showToast("FAQ could not be saved");
     return;
   }
   showToast("FAQ added");
   setTimeout(() => location.reload(), 700);
+});
+
+document.querySelectorAll(".outsideFaqForm").forEach(form => {
+  form.addEventListener("submit", async event => {
+    event.preventDefault();
+    const customerId = form.querySelector(".outsideCustomerId")?.value || "";
+    const question = form.querySelector(".outsideQuestion")?.value.trim() || "";
+    const answer = form.querySelector(".outsideAnswer")?.value.trim() || "";
+    const category = form.querySelector(".outsideCategory")?.value.trim() || "General";
+    const button = form.querySelector("button[type='submit']");
+
+    if (!customerId) return showToast("Select a bot first");
+    if (!question || !answer) return showToast("Question and answer are required");
+
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Saving...";
+    }
+
+    const saved = await addFaq(customerId, question, answer, category);
+    if (!saved) {
+      if (button) {
+        button.disabled = false;
+        button.textContent = "Add to FAQs";
+      }
+      showToast("FAQ could not be saved");
+      return;
+    }
+
+    form.style.opacity = ".65";
+    form.querySelectorAll("input, textarea, button").forEach(input => input.disabled = true);
+    if (button) button.textContent = "Added";
+    showToast("Added to FAQs");
+  });
 });
 
 async function saveDashboardSettings(extraPayload) {
