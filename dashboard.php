@@ -558,7 +558,13 @@ body.dark .outside-faq-card{background:rgba(15,23,42,.44)}
       <div class="topbar-left">
         <button class="mobile-toggle" id="navToggle" type="button" aria-label="Open dashboard menu" aria-expanded="false">☰</button>
         <div class="page-title">
-          <h1>Your Chatbot Dashboard</h1>
+          <h1>Your 
+            <?php if ($chatbotImage): ?>
+              <span>
+                <img class="selected-bot-image" src="<?php echo h($chatbotImage); ?>" alt="Selected chatbot image">
+              </span>
+            <?php endif; ?>
+          Dashboard</h1>
           <!--<p>Overview, setup, FAQs, logs, analytics, install, settings, and billing.</p>-->
         </div>
       </div>
