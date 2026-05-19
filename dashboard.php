@@ -647,7 +647,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
       <section class="tab-panel active" id="overview">
         <div class="panel overview-hero">
           <div>
-            <span class="eyebrow">Your Website</span>
+            <span class="eyebrow">Your Chatbot</span>
             <h2><?php echo h($botName); ?></h2>
             <p>You are currently configuring the bot for the mentioned website.</p>
           </div>
