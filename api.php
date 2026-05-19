@@ -185,18 +185,27 @@ if ($action === "get_theme") {
 if ($action === "add_faq") {
 
     $data = getJSON();
+    $customer_id = trim($data['customer_id'] ?? '');
 
-    if (empty($data['customer_id']) || empty($data['faqs'])) {
+    if (empty($customer_id) || empty($data['faqs'])) {
         echo json_encode(["error" => "Missing FAQ data"]);
         exit;
     }
+
+    $existingFaqs = supabase(
+        "GET",
+        "faq_questions?select=id&customer_id=eq." . urlencode($customer_id)
+    );
+
+    $existingCount = is_array($existingFaqs['data'] ?? null) ? count($existingFaqs['data']) : 0;
+    $freeFaqLimit = 25;
 
     $rows = [];
 
     foreach ($data['faqs'] as $faq) {
         if (!empty($faq['question']) && !empty($faq['answer'])) {
             $row = [
-                "customer_id" => $data['customer_id'],
+                "customer_id" => $customer_id,
                 "question" => $faq['question'],
                 "answer" => $faq['answer']
             ];
@@ -212,10 +221,88 @@ if ($action === "add_faq") {
         exit;
     }
 
+    if ($existingCount + count($rows) > $freeFaqLimit) {
+        echo json_encode([
+            "success" => false,
+            "requires_premium" => true,
+            "message" => "Free plan includes up to 25 FAQs"
+        ]);
+        exit;
+    }
+
     $res = supabase("POST", "faq_questions", $rows);
 
     echo json_encode([
+        "success" => ($res['status'] >= 200 && $res['status'] < 300),
         "status" => "faq_saved",
+        "debug" => $res
+    ]);
+    exit;
+}
+
+
+// ==========================
+// UPDATE FAQ
+// ==========================
+if ($action === "update_faq") {
+
+    $data = getJSON();
+    $customer_id = trim($data['customer_id'] ?? '');
+    $faq_id = trim((string)($data['id'] ?? ''));
+    $question = trim($data['question'] ?? '');
+    $answer = trim($data['answer'] ?? '');
+    $category = trim($data['category'] ?? 'General');
+
+    if (!$customer_id || !$faq_id || !$question || !$answer) {
+        echo json_encode([
+            "success" => false,
+            "message" => "Question and answer are required"
+        ]);
+        exit;
+    }
+
+    $res = supabase(
+        "PATCH",
+        "faq_questions?id=eq." . urlencode($faq_id) . "&customer_id=eq." . urlencode($customer_id),
+        [
+            "question" => $question,
+            "answer" => $answer,
+            "category" => $category ?: "General"
+        ]
+    );
+
+    echo json_encode([
+        "success" => ($res['status'] >= 200 && $res['status'] < 300),
+        "debug" => $res
+    ]);
+    exit;
+}
+
+
+// ==========================
+// DELETE FAQ
+// ==========================
+if ($action === "delete_faq") {
+
+    $data = getJSON();
+    $customer_id = trim($data['customer_id'] ?? '');
+    $faq_id = trim((string)($data['id'] ?? ''));
+
+    if (!$customer_id || !$faq_id) {
+        echo json_encode([
+            "success" => false,
+            "message" => "Missing FAQ"
+        ]);
+        exit;
+    }
+
+    $res = supabase(
+        "DELETE",
+        "faq_questions?id=eq." . urlencode($faq_id) . "&customer_id=eq." . urlencode($customer_id)
+    );
+
+    echo json_encode([
+        "success" => ($res['status'] >= 200 && $res['status'] < 300),
         "debug" => $res
     ]);
     exit;
