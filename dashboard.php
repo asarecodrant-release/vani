@@ -993,6 +993,24 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                 <div class="lead-option">
                   <div class="lead-option-top">
                     <div>
+                      <h4>Notify lead by email</h4>
+                      <small>Send an email notification when lead details are captured.</small>
+                    </div>
+                    <label class="switch" title="Notify lead by email">
+                      <input id="leadEmailNotifyToggle" class="lead-toggle" type="checkbox" aria-label="Notify lead by email">
+                      <span class="switch-slider"></span>
+                    </label>
+                  </div>
+                  <div class="field">
+                    <label>Notification email</label>
+                    <input id="leadNotificationEmail" type="email" placeholder="<?php echo h($email); ?>" autocomplete="email">
+                    <small class="input-help" id="leadNotificationEmailHelp">Lead notifications can be sent to this email address.</small>
+                  </div>
+                </div>
+
+                <div class="lead-option">
+                  <div class="lead-option-top">
+                    <div>
                       <h4>Redirect to WhatsApp Business</h4>
                       <small>Send users to the customer's WhatsApp Business account after lead capture.</small>
                     </div>
@@ -1158,6 +1176,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
             <div class="panel metric"><span>Plan</span><strong>Free</strong><small>No credit card required.</small></div>
             <div class="panel metric"><span>FAQ usage</span><strong><?php echo h($faqCount); ?>/<?php echo h($freeFaqLimit); ?></strong><small><?php echo h(max(0, $freeFaqLimit - $faqCount)); ?> FAQs remaining.</small></div>
             <div class="panel metric"><span>Bot type</span><strong>Free</strong><small>From customer_bot_type.</small></div>
+            <div class="panel metric"><span>Lead email notifications</span><strong>Available</strong><small>Configure email lead alerts in Lead Generation Setup.</small></div>
             <div class="panel metric"><span>Upgrade</span><strong>Future</strong><small>Ready for paid tiers.</small></div>
           </div>
         </div>
@@ -1299,6 +1318,9 @@ const leadServiceOptions = document.getElementById("leadServiceOptions");
 const whatsappLeadToggle = document.getElementById("whatsappLeadToggle");
 const whatsappLeadNumber = document.getElementById("whatsappLeadNumber");
 const whatsappLeadHelp = document.getElementById("whatsappLeadHelp");
+const leadEmailNotifyToggle = document.getElementById("leadEmailNotifyToggle");
+const leadNotificationEmail = document.getElementById("leadNotificationEmail");
+const leadNotificationEmailHelp = document.getElementById("leadNotificationEmailHelp");
 
 function validateWhatsappLeadNumber(showMessage = false) {
   if (!whatsappLeadNumber || !whatsappLeadHelp) return true;
@@ -1311,6 +1333,20 @@ function validateWhatsappLeadNumber(showMessage = false) {
     ? "Use country code and digits only, for example +919876543210."
     : "Enter a valid mobile number with country code and 8 to 15 digits.";
   if (!valid && showMessage) showToast("Enter a valid WhatsApp mobile number");
+  return valid;
+}
+
+function validateLeadNotificationEmail(showMessage = false) {
+  if (!leadNotificationEmail || !leadNotificationEmailHelp) return true;
+  const value = leadNotificationEmail.value.trim();
+  const required = !!leadEmailNotifyToggle?.checked;
+  const valid = (!required && !value) || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+  leadNotificationEmailHelp.classList.toggle("error", !valid);
+  leadNotificationEmail.setAttribute("aria-invalid", String(!valid));
+  leadNotificationEmailHelp.textContent = valid
+    ? "Lead notifications can be sent to this email address."
+    : "Enter a valid email address for lead notifications.";
+  if (!valid && showMessage) showToast("Enter a valid notification email");
   return valid;
 }
 
@@ -1336,9 +1372,19 @@ whatsappLeadNumber?.addEventListener("blur", () => validateWhatsappLeadNumber(fa
 
 whatsappLeadToggle?.addEventListener("change", () => validateWhatsappLeadNumber(false));
 
+leadNotificationEmail?.addEventListener("input", () => validateLeadNotificationEmail(false));
+
+leadNotificationEmail?.addEventListener("blur", () => validateLeadNotificationEmail(false));
+
+leadEmailNotifyToggle?.addEventListener("change", () => validateLeadNotificationEmail(false));
+
 document.getElementById("saveLeadSetupBtn")?.addEventListener("click", () => {
   if (leadGenerationEnabled?.checked && whatsappLeadToggle?.checked && !validateWhatsappLeadNumber(true)) {
     whatsappLeadNumber?.focus();
+    return;
+  }
+  if (leadGenerationEnabled?.checked && leadEmailNotifyToggle?.checked && !validateLeadNotificationEmail(true)) {
+    leadNotificationEmail?.focus();
     return;
   }
   showToast("Lead generation setup UI is ready. Connect save API next.");
