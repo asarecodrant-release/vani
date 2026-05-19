@@ -104,6 +104,7 @@ $profileRows = safe_data(supabase(
 $settings = $settingsRows[0] ?? [];
 $profile = $profileRows[0] ?? [];
 $faqCount = count($faqs);
+$freeFaqLimit = 25;
 $conversationCount = count($conversationRows);
 $today = gmdate('Y-m-d');
 $todayQueries = 0;
@@ -407,6 +408,11 @@ code{display:block;white-space:pre-wrap;word-break:break-all;padding:16px;border
 .inline-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;min-width:0;max-width:100%}
 .inline-row > *{min-width:0}
 .inline-row input{flex:1 1 220px;width:auto}
+.faq-actions{display:flex;gap:8px;flex-wrap:wrap}
+.faq-edit-field{display:none}
+tr.editing .faq-display{display:none}
+tr.editing .faq-edit-field{display:block}
+tr.editing .faq-edit-btn{display:none}
 .split{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;min-width:0}
 .empty{padding:28px;text-align:center;color:var(--muted)}
 .notice{padding:14px 16px;border-radius:14px;background:rgba(99,102,241,.1);border:1px solid rgba(99,102,241,.18);color:var(--ink);line-height:1.6}
@@ -558,6 +564,7 @@ body.dark .outside-faq-card{background:rgba(15,23,42,.44)}
       <button class="tab-btn" data-tab="analytics">Analytics</button>
       <button class="tab-btn" data-tab="install">Integration</button>
       <button class="tab-btn" data-tab="bot-settings">Bot Settings</button>
+      <button class="tab-btn" data-tab="premium">Premium</button>
       <button class="tab-btn" data-tab="profile">Profile</button>
       <button class="tab-btn" data-tab="billing">Billing</button>
     </div>
@@ -638,7 +645,7 @@ body.dark .outside-faq-card{background:rgba(15,23,42,.44)}
               </label>
             </div>
           </div>
-          <div class="panel metric"><span>Total FAQs</span><strong><?php echo h($faqCount); ?></strong><small>Free plan limit: 100 FAQs.</small></div>
+          <div class="panel metric"><span>Total FAQs</span><strong><?php echo h($faqCount); ?></strong><small>Free plan limit: <?php echo h($freeFaqLimit); ?> FAQs.</small></div>
           <div class="panel metric"><span>Total Conversations</span><strong><?php echo h($conversationCount); ?></strong><small>Meaning: Total number of chat sessions started by users</small></div>
           <div class="panel metric"><span>Today's Queries</span><strong><?php echo h($todayQueries); ?></strong><small><?php echo h(gmdate('M d, Y')); ?> UTC</small></div>
           <div class="panel metric"><span>Response Accuracy</span><strong><?php echo h($accuracy); ?>%</strong><small>Basic answered vs total estimate.</small></div>
@@ -728,7 +735,7 @@ body.dark .outside-faq-card{background:rgba(15,23,42,.44)}
 
       <section class="tab-panel" id="faqs">
         <div class="panel">
-          <div class="section-head"><h3>FAQ Management</h3><span class="tag"><?php echo h($faqCount); ?> FAQs</span></div>
+          <div class="section-head"><h3>FAQ Management</h3><span class="tag"><?php echo h($faqCount); ?>/<?php echo h($freeFaqLimit); ?> FAQs</span></div>
           <div class="section-body">
             <form id="faqForm" class="form-grid">
               <input type="hidden" id="faqCustomerId" value="<?php echo h($selectedBotId); ?>">
@@ -741,18 +748,33 @@ body.dark .outside-faq-card{background:rgba(15,23,42,.44)}
           <div class="section-body" style="padding-top:0">
             <div class="inline-row" style="margin-bottom:14px">
               <input id="faqSearch" placeholder="Search FAQs">
-              <button class="ghost-btn" type="button" data-save-note="Bulk upload">Bulk upload - future</button>
             </div>
             <div class="table-wrap">
               <table id="faqTable">
                 <thead><tr><th>Question</th><th>Answer</th><th>Category</th><th>Actions</th></tr></thead>
                 <tbody>
                   <?php foreach ($faqs as $faq): ?>
-                    <tr>
-                      <td><?php echo h($faq['question'] ?? ''); ?></td>
-                      <td><?php echo h($faq['answer'] ?? ''); ?></td>
-                      <td><span class="tag"><?php echo h($faq['category'] ?? 'General'); ?></span></td>
-                      <td><button class="ghost-btn" type="button" data-save-note="Edit/delete FAQ">Edit / Delete</button></td>
+                    <tr data-faq-id="<?php echo h($faq['id'] ?? ''); ?>">
+                      <td>
+                        <span class="faq-display"><?php echo h($faq['question'] ?? ''); ?></span>
+                        <textarea class="faq-edit-field faq-question-input" aria-label="FAQ question"><?php echo h($faq['question'] ?? ''); ?></textarea>
+                      </td>
+                      <td>
+                        <span class="faq-display"><?php echo h($faq['answer'] ?? ''); ?></span>
+                        <textarea class="faq-edit-field faq-answer-input" aria-label="FAQ answer"><?php echo h($faq['answer'] ?? ''); ?></textarea>
+                      </td>
+                      <td>
+                        <span class="tag faq-display"><?php echo h($faq['category'] ?? 'General'); ?></span>
+                        <input class="faq-edit-field faq-category-input" value="<?php echo h($faq['category'] ?? 'General'); ?>" aria-label="FAQ category">
+                      </td>
+                      <td>
+                        <div class="faq-actions">
+                          <button class="ghost-btn faq-edit-btn" type="button">Edit</button>
+                          <button class="pill-btn faq-save-btn faq-edit-field" type="button">Save</button>
+                          <button class="ghost-btn faq-cancel-btn faq-edit-field" type="button">Cancel</button>
+                          <button class="danger-btn faq-delete-btn" type="button">Delete</button>
+                        </div>
+                      </td>
                     </tr>
                   <?php endforeach; ?>
                 </tbody>
@@ -895,6 +917,14 @@ body.dark .outside-faq-card{background:rgba(15,23,42,.44)}
         </div>
       </section>
 
+      <section class="tab-panel" id="premium">
+        <div class="panel section-body">
+          <span class="eyebrow">Premium</span>
+          <h2 style="margin:8px 0 10px">Premium Plans</h2>
+          <p class="muted">Premium plans will be added here. Upgrade is required when you need more than <?php echo h($freeFaqLimit); ?> FAQs.</p>
+        </div>
+      </section>
+
       <section class="tab-panel" id="profile">
         <div class="panel">
           <div class="section-head">
@@ -994,10 +1024,10 @@ body.dark .outside-faq-card{background:rgba(15,23,42,.44)}
         <div class="panel section-body">
           <span class="eyebrow">Billing</span>
           <h2 style="margin:8px 0 10px">Free Plan</h2>
-          <p class="muted">Free Plan - 100 FAQs limit. Upgrade options can be added here when paid plans are ready.</p>
+          <p class="muted">Free Plan - <?php echo h($freeFaqLimit); ?> FAQs limit. Upgrade options can be added here when paid plans are ready.</p>
           <div class="metrics" style="margin-top:18px">
             <div class="panel metric"><span>Plan</span><strong>Free</strong><small>No credit card required.</small></div>
-            <div class="panel metric"><span>FAQ usage</span><strong><?php echo h($faqCount); ?>/100</strong><small><?php echo h(max(0, 100 - $faqCount)); ?> FAQs remaining.</small></div>
+            <div class="panel metric"><span>FAQ usage</span><strong><?php echo h($faqCount); ?>/<?php echo h($freeFaqLimit); ?></strong><small><?php echo h(max(0, $freeFaqLimit - $faqCount)); ?> FAQs remaining.</small></div>
             <div class="panel metric"><span>Bot type</span><strong>Free</strong><small>From customer_bot_type.</small></div>
             <div class="panel metric"><span>Upgrade</span><strong>Future</strong><small>Ready for paid tiers.</small></div>
           </div>
@@ -1016,6 +1046,8 @@ const navToggle = document.getElementById("navToggle");
 const accountToggle = document.getElementById("accountToggle");
 const drawerOverlay = document.getElementById("drawerOverlay");
 const accountToggleText = accountToggle?.textContent || "";
+let currentFaqCount = <?php echo json_encode($faqCount); ?>;
+const freeFaqLimit = <?php echo json_encode($freeFaqLimit); ?>;
 
 function setDrawer(type, open) {
   const isNav = type === "nav";
@@ -1167,7 +1199,7 @@ async function addFaq(customerId, question, answer, category) {
   });
 
   const data = await response.json().catch(() => ({}));
-  return !(data.error || data.success === false);
+  return data;
 }
 
 document.getElementById("faqForm")?.addEventListener("submit", async event => {
@@ -1178,9 +1210,19 @@ document.getElementById("faqForm")?.addEventListener("submit", async event => {
   const category = document.getElementById("faqCategory").value.trim() || "General";
   if (!customerId) return showToast("Select a bot first");
   if (!question || !answer) return showToast("Question and answer are required");
+  if (currentFaqCount >= freeFaqLimit) {
+    showToast("Upgrade to add more FAQs");
+    openTab("premium");
+    return;
+  }
 
   const saved = await addFaq(customerId, question, answer, category);
-  if (!saved) {
+  if (saved.requires_premium) {
+    showToast(saved.message || "Upgrade to add more FAQs");
+    openTab("premium");
+    return;
+  }
+  if (saved.error || saved.success === false) {
     showToast("FAQ could not be saved");
     return;
   }
@@ -1199,6 +1241,11 @@ document.querySelectorAll(".outsideFaqForm").forEach(form => {
 
     if (!customerId) return showToast("Select a bot first");
     if (!question || !answer) return showToast("Question and answer are required");
+    if (currentFaqCount >= freeFaqLimit) {
+      showToast("Upgrade to add more FAQs");
+      openTab("premium");
+      return;
+    }
 
     if (button) {
       button.disabled = true;
@@ -1206,7 +1253,16 @@ document.querySelectorAll(".outsideFaqForm").forEach(form => {
     }
 
     const saved = await addFaq(customerId, question, answer, category);
-    if (!saved) {
+    if (saved.requires_premium) {
+      if (button) {
+        button.disabled = false;
+        button.textContent = "Add to FAQs";
+      }
+      showToast(saved.message || "Upgrade to add more FAQs");
+      openTab("premium");
+      return;
+    }
+    if (saved.error || saved.success === false) {
       if (button) {
         button.disabled = false;
         button.textContent = "Add to FAQs";
@@ -1218,8 +1274,84 @@ document.querySelectorAll(".outsideFaqForm").forEach(form => {
     form.style.opacity = ".65";
     form.querySelectorAll("input, textarea, button").forEach(input => input.disabled = true);
     if (button) button.textContent = "Added";
+    currentFaqCount++;
     showToast("Added to FAQs");
   });
+});
+
+function setFaqRowEditing(row, editing) {
+  row.classList.toggle("editing", editing);
+}
+
+document.getElementById("faqTable")?.addEventListener("click", async event => {
+  const button = event.target.closest("button");
+  const row = event.target.closest("tr[data-faq-id]");
+  if (!button || !row) return;
+
+  const customerId = document.getElementById("faqCustomerId").value;
+  const faqId = row.dataset.faqId || "";
+  const questionInput = row.querySelector(".faq-question-input");
+  const answerInput = row.querySelector(".faq-answer-input");
+  const categoryInput = row.querySelector(".faq-category-input");
+
+  if (button.classList.contains("faq-edit-btn")) {
+    setFaqRowEditing(row, true);
+    questionInput?.focus();
+    return;
+  }
+
+  if (button.classList.contains("faq-cancel-btn")) {
+    questionInput.value = row.children[0].querySelector(".faq-display").textContent.trim();
+    answerInput.value = row.children[1].querySelector(".faq-display").textContent.trim();
+    categoryInput.value = row.children[2].querySelector(".faq-display").textContent.trim();
+    setFaqRowEditing(row, false);
+    return;
+  }
+
+  if (button.classList.contains("faq-save-btn")) {
+    const question = questionInput.value.trim();
+    const answer = answerInput.value.trim();
+    const category = categoryInput.value.trim() || "General";
+    if (!question || !answer) return showToast("Question and answer are required");
+
+    button.disabled = true;
+    button.textContent = "Saving...";
+    const response = await fetch("/api.php?action=update_faq", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({customer_id: customerId, id: faqId, question, answer, category})
+    });
+    const data = await response.json().catch(() => ({}));
+    button.disabled = false;
+    button.textContent = "Save";
+
+    if (!data.success) return showToast(data.message || "FAQ could not be updated");
+
+    row.children[0].querySelector(".faq-display").textContent = question;
+    row.children[1].querySelector(".faq-display").textContent = answer;
+    row.children[2].querySelector(".faq-display").textContent = category;
+    setFaqRowEditing(row, false);
+    showToast("FAQ updated");
+    return;
+  }
+
+  if (button.classList.contains("faq-delete-btn")) {
+    if (!confirm("Delete this FAQ?")) return;
+    button.disabled = true;
+    const response = await fetch("/api.php?action=delete_faq", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({customer_id: customerId, id: faqId})
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!data.success) {
+      button.disabled = false;
+      return showToast(data.message || "FAQ could not be deleted");
+    }
+    row.remove();
+    currentFaqCount = Math.max(0, currentFaqCount - 1);
+    showToast("FAQ deleted");
+  }
 });
 
 async function saveDashboardSettings(extraPayload) {
