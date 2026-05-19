@@ -177,7 +177,7 @@ foreach ($conversationRows as $row) {
         $faqQuestion = $faqById[$matchedFaqId];
         $topFaqQuestionCounts[$matchedFaqId] = [
             'question' => $faqQuestion,
-            'count' => ($topFaqQuestionCounts[$matchedFaqId]['count'] ?? 0) + 1
+            'count' => ($topFaqQuestionCounts[$matchedFaqId]['count'] ?? 0)
         ];
     }
 }
