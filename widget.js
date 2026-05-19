@@ -165,7 +165,7 @@
       overflow: "hidden",
       padding: avatarUrl ? "0" : "0",
       zIndex: "999999",
-      boxShadow: "0 12px 28px rgba(15,23,42,.24)"
+      boxShadow: "0 12px 28px rgba(255, 255, 255, 0)"
     });
     css(icon, sideStyles);
 
