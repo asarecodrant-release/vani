@@ -9,7 +9,7 @@
     return;
   }
 
-  const apiBase = "https://vani.codrant.com/widget_api";
+  const apiBase = "https://vani.codrant.com/widget_api.php";
   let config = {};
 
   let userId = localStorage.getItem("vani_widget_user_id");
