@@ -583,6 +583,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
       <button class="tab-btn" data-tab="premium">Premium</button>
       <button class="tab-btn" data-tab="profile">Profile</button>
       <button class="tab-btn" data-tab="billing">Billing</button>
+      <a class="tab-btn" href="test-chatbot.php?bot=<?php echo h(urlencode($selectedBotId)); ?>">Test Chatbot</a>
     </div>
     <div class="sidebar-footer">
       <small>Current bot</small>
