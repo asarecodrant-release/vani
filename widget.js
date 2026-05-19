@@ -128,17 +128,31 @@
     const avatarUrl = resolveAssetUrl(config.avatar_url);
     const greetingText = (config.welcome_message || defaultGreeting).trim() || defaultGreeting;
 
+    // Add breathing animation
+    const style = document.createElement("style");
+    style.textContent = `
+      @keyframes breathing {
+        0%, 100% { transform: translateY(0px); }
+        50% { transform: translateY(-8px); }
+      }
+      .vani-breathing-icon {
+        animation: breathing 3s ease-in-out infinite;
+      }
+    `;
+    document.head.appendChild(style);
+
     const icon = document.createElement("button");
     icon.type = "button";
     icon.setAttribute("aria-label", "Open chat");
+    icon.classList.add("vani-breathing-icon");
     css(icon, {
       position: "fixed",
       bottom: "20px",
-      width: "58px",
-      height: "58px",
+      width: "66px",
+      height: "66px",
       border: "0",
       borderRadius: "50%",
-      background: avatarUrl ? "#fff" : color,
+      background: avatarUrl ? "transparent" : color,
       color: avatarUrl ? color : "#fff",
       cursor: "pointer",
       display: "flex",
@@ -146,7 +160,7 @@
       justifyContent: "center",
       fontWeight: "700",
       overflow: "hidden",
-      padding: avatarUrl ? "4px" : "0",
+      padding: avatarUrl ? "0" : "0",
       zIndex: "999999",
       boxShadow: "0 12px 28px rgba(15,23,42,.24)"
     });
@@ -160,9 +174,9 @@
         width: "100%",
         height: "100%",
         borderRadius: "50%",
-        objectFit: "cover",
+        objectFit: "contain",
         display: "block",
-        background: "#fff"
+        background: "transparent"
       });
       iconImage.onerror = () => {
         iconImage.remove();
