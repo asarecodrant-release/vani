@@ -422,6 +422,19 @@ body.dark .outside-faq-card{background:rgba(15,23,42,.44)}
 .outside-faq-meta{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
 .outside-faq-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 .outside-faq-grid .field.full{grid-column:1/-1}
+.lead-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.lead-master{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px;border:1px solid var(--line);border-radius:18px;background:rgba(255,255,255,.42);margin-top:16px}
+body.dark .lead-master{background:rgba(15,23,42,.44)}
+.lead-section{display:grid;gap:14px;align-content:start}
+.lead-section-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line);padding-bottom:12px}
+.lead-option{display:grid;gap:12px;padding:14px;border:1px solid var(--line);border-radius:16px;background:rgba(255,255,255,.36)}
+body.dark .lead-option{background:rgba(15,23,42,.38)}
+.lead-option-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.lead-option h4{font-size:15px}
+.lead-option small{display:block;color:var(--muted);line-height:1.5;margin-top:5px}
+.lead-disabled{opacity:.56}
+.input-help{font-size:12px;color:var(--muted);line-height:1.5}
+.input-help.error{color:#b91c1c}
 .toast{position:fixed;right:24px;bottom:24px;background:#111827;color:#fff;border-radius:12px;padding:12px 14px;box-shadow:0 12px 30px rgba(0,0,0,.25);opacity:0;transform:translateY(10px);pointer-events:none;transition:.25s}
 .toast.show{opacity:1;transform:translateY(0)}
 @media(max-width:1440px){
@@ -511,7 +524,7 @@ body.dark .outside-faq-card{background:rgba(15,23,42,.44)}
   .section-head{align-items:flex-start;flex-direction:column;padding:16px 16px 0}
   .section-body{padding:16px}
   .overview-hero h2{font-size:28px}
-  .metrics,.quick-actions,.form-grid,.outside-faq-grid{grid-template-columns:1fr}
+  .metrics,.quick-actions,.form-grid,.outside-faq-grid,.lead-grid{grid-template-columns:1fr}
   .panel-actions{justify-content:stretch}
   .panel-actions .pill-btn,.panel-actions .ghost-btn,.panel-actions .danger-btn{width:100%}
   .user-menu{justify-content:space-between}
@@ -543,6 +556,8 @@ body.dark .outside-faq-card{background:rgba(15,23,42,.44)}
   th{font-size:11px}
   td{font-size:13px}
   .inline-row{display:grid;grid-template-columns:1fr}
+  .lead-master,.lead-section-head,.lead-option-top{align-items:flex-start}
+  .lead-master{display:grid}
   .toast{left:14px;right:14px;bottom:14px;text-align:center}
 }
 </style>
@@ -564,6 +579,7 @@ body.dark .outside-faq-card{background:rgba(15,23,42,.44)}
       <button class="tab-btn" data-tab="analytics">Analytics</button>
       <button class="tab-btn" data-tab="install">Integration</button>
       <button class="tab-btn" data-tab="bot-settings">Bot Settings</button>
+      <button class="tab-btn" data-tab="lead-generation">Lead Generation Setup</button>
       <button class="tab-btn" data-tab="premium">Premium</button>
       <button class="tab-btn" data-tab="profile">Profile</button>
       <button class="tab-btn" data-tab="billing">Billing</button>
@@ -917,6 +933,119 @@ body.dark .outside-faq-card{background:rgba(15,23,42,.44)}
         </div>
       </section>
 
+      <section class="tab-panel" id="lead-generation">
+        <div class="panel">
+          <div class="section-head">
+            <div>
+              <h3>Lead Generation Setup</h3>
+              <p class="muted">Control what customer information the chatbot asks for before handing over a lead.</p>
+            </div>
+          </div>
+          <div class="section-body">
+            <div class="lead-master">
+              <div>
+                <span class="eyebrow">Lead capture</span>
+                <h3 style="margin-top:8px">Enable lead generation</h3>
+                <p class="muted">Turn this on when you want the chatbot to collect contact details from users.</p>
+              </div>
+              <label class="switch" title="Enable lead generation">
+                <input id="leadGenerationEnabled" class="lead-toggle" type="checkbox" aria-label="Enable lead generation">
+                <span class="switch-slider"></span>
+              </label>
+            </div>
+
+            <div class="lead-grid" id="leadServiceOptions" style="margin-top:16px">
+              <div class="lead-section">
+                <div class="lead-section-head">
+                  <div>
+                    <span class="eyebrow">Free Service</span>
+                    <h3 style="margin-top:8px">Customer verification will be poor</h3>
+                  </div>
+                  <span class="tag">Free</span>
+                </div>
+
+                <div class="lead-option">
+                  <div class="lead-option-top">
+                    <div>
+                      <h4>Get user location</h4>
+                      <small>Ask users for their location during the chat flow.</small>
+                    </div>
+                    <label class="switch" title="Get user location">
+                      <input class="lead-toggle" type="checkbox" aria-label="Get user location">
+                      <span class="switch-slider"></span>
+                    </label>
+                  </div>
+                </div>
+
+                <div class="lead-option">
+                  <div class="lead-option-top">
+                    <div>
+                      <h4>Email OTP verification</h4>
+                      <small>Verify the lead with an OTP sent to the user's email address.</small>
+                    </div>
+                    <label class="switch" title="Email OTP verification">
+                      <input class="lead-toggle" type="checkbox" aria-label="Email OTP verification">
+                      <span class="switch-slider"></span>
+                    </label>
+                  </div>
+                </div>
+
+                <div class="lead-option">
+                  <div class="lead-option-top">
+                    <div>
+                      <h4>Redirect to WhatsApp Business</h4>
+                      <small>Send users to the customer's WhatsApp Business account after lead capture.</small>
+                    </div>
+                    <label class="switch" title="Redirect to WhatsApp Business">
+                      <input id="whatsappLeadToggle" class="lead-toggle" type="checkbox" aria-label="Redirect to WhatsApp Business">
+                      <span class="switch-slider"></span>
+                    </label>
+                  </div>
+                  <div class="field">
+                    <label>WhatsApp Business mobile number</label>
+                    <input id="whatsappLeadNumber" type="tel" inputmode="tel" placeholder="+919876543210" autocomplete="tel" maxlength="16">
+                    <small class="input-help" id="whatsappLeadHelp">Use country code and digits only, for example +919876543210.</small>
+                  </div>
+                  <button class="ghost-btn" type="button" data-save-note="WhatsApp Business integration">No WhatsApp Business account?</button>
+                </div>
+              </div>
+
+              <div class="lead-section">
+                <div class="lead-section-head">
+                  <div>
+                    <span class="eyebrow">Paid Service</span>
+                    <h3 style="margin-top:8px">Real leads</h3>
+                  </div>
+                  <span class="tag good">Paid</span>
+                </div>
+
+                <div class="lead-option">
+                  <div class="lead-option-top">
+                    <div>
+                      <h4>Mobile OTP verification</h4>
+                      <small>Verify the lead with an OTP sent to the user's mobile number. Firebase setup will be connected later.</small>
+                    </div>
+                    <label class="switch" title="Mobile OTP verification">
+                      <input class="lead-toggle" type="checkbox" aria-label="Mobile OTP verification">
+                      <span class="switch-slider"></span>
+                    </label>
+                  </div>
+                </div>
+
+                <div class="notice">
+                  <strong>Backend pending:</strong><br>
+                  Lead capture settings, WhatsApp integration, email OTP, and Firebase mobile OTP will be connected later.
+                </div>
+              </div>
+            </div>
+
+            <div class="panel-actions">
+              <button class="pill-btn" type="button" id="saveLeadSetupBtn">Save lead setup</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section class="tab-panel" id="premium">
         <div class="panel section-body">
           <span class="eyebrow">Premium</span>
@@ -1164,6 +1293,58 @@ formatLastActivityForBrowser();
 document.querySelectorAll("[data-save-note]").forEach(btn => {
   btn.addEventListener("click", () => showToast(btn.dataset.saveNote + " UI is ready. Connect save API next."));
 });
+
+const leadGenerationEnabled = document.getElementById("leadGenerationEnabled");
+const leadServiceOptions = document.getElementById("leadServiceOptions");
+const whatsappLeadToggle = document.getElementById("whatsappLeadToggle");
+const whatsappLeadNumber = document.getElementById("whatsappLeadNumber");
+const whatsappLeadHelp = document.getElementById("whatsappLeadHelp");
+
+function validateWhatsappLeadNumber(showMessage = false) {
+  if (!whatsappLeadNumber || !whatsappLeadHelp) return true;
+  const value = whatsappLeadNumber.value.trim();
+  const required = !!whatsappLeadToggle?.checked;
+  const valid = (!required && !value) || /^\+?[1-9]\d{7,14}$/.test(value);
+  whatsappLeadHelp.classList.toggle("error", !valid);
+  whatsappLeadNumber.setAttribute("aria-invalid", String(!valid));
+  whatsappLeadHelp.textContent = valid
+    ? "Use country code and digits only, for example +919876543210."
+    : "Enter a valid mobile number with country code and 8 to 15 digits.";
+  if (!valid && showMessage) showToast("Enter a valid WhatsApp mobile number");
+  return valid;
+}
+
+function updateLeadGenerationUI() {
+  const enabled = !!leadGenerationEnabled?.checked;
+  leadServiceOptions?.classList.toggle("lead-disabled", !enabled);
+  leadServiceOptions?.querySelectorAll("input, button").forEach(control => {
+    control.disabled = !enabled;
+  });
+}
+
+leadGenerationEnabled?.addEventListener("change", () => {
+  updateLeadGenerationUI();
+  showToast(leadGenerationEnabled.checked ? "Lead generation enabled" : "Lead generation disabled");
+});
+
+whatsappLeadNumber?.addEventListener("input", () => {
+  whatsappLeadNumber.value = whatsappLeadNumber.value.replace(/[^\d+]/g, "").replace(/(?!^)\+/g, "");
+  validateWhatsappLeadNumber(false);
+});
+
+whatsappLeadNumber?.addEventListener("blur", () => validateWhatsappLeadNumber(false));
+
+whatsappLeadToggle?.addEventListener("change", () => validateWhatsappLeadNumber(false));
+
+document.getElementById("saveLeadSetupBtn")?.addEventListener("click", () => {
+  if (leadGenerationEnabled?.checked && whatsappLeadToggle?.checked && !validateWhatsappLeadNumber(true)) {
+    whatsappLeadNumber?.focus();
+    return;
+  }
+  showToast("Lead generation setup UI is ready. Connect save API next.");
+});
+
+updateLeadGenerationUI();
 
 document.querySelectorAll(".swatch").forEach(swatch => {
   swatch.addEventListener("click", () => {
