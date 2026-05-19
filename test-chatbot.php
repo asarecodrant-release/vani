@@ -24,9 +24,7 @@ function safe_data(array $response): array {
 
 $email = authenticated_email();
 $selectedBotId = trim($_GET['bot'] ?? '');
-$scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-$host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-$widgetUrl = $scheme . '://' . $host . rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? ''), '/\\') . '/widget.js';
+$widgetUrl = "https://cdn.jsdelivr.net/gh/asarecodrant-release/vani@latest/widget.js?v=" . time();
 
 $bots = safe_data(supabase(
     "GET",
@@ -96,7 +94,7 @@ p{color:#64748b;line-height:1.7}
     <section class="panel">
       <span class="eyebrow">Test chatbot</span>
       <h1><?php echo h($botName); ?></h1>
-      <p>This page loads your chatbot widget with the selected Bot ID. Use the chat bubble on this page to test the customer experience.</p>
+      <p>This page loads the latest hosted chatbot widget with the selected Bot ID. Use the chat bubble on this page to test the customer experience.</p>
       <code class="snippet">&lt;script src="<?php echo h($widgetUrl); ?>" data-id="<?php echo h($selectedBotId); ?>"&gt;&lt;/script&gt;</code>
     </section>
   <?php endif; ?>
