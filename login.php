@@ -477,7 +477,7 @@ Login →
 
 Don't have an account?
 
-<a href="signup.php">
+<a href="index.php">
 Get Started
 </a>
 
