@@ -261,6 +261,19 @@ if ($action === "update_faq") {
         exit;
     }
 
+    $existing = supabase(
+        "GET",
+        "faq_questions?select=id&id=eq." . urlencode($faq_id) . "&customer_id=eq." . urlencode($customer_id) . "&limit=1"
+    );
+
+    if (empty($existing['data'])) {
+        echo json_encode([
+            "success" => false,
+            "message" => "FAQ not found"
+        ]);
+        exit;
+    }
+
     $res = supabase(
         "PATCH",
         "faq_questions?id=eq." . urlencode($faq_id) . "&customer_id=eq." . urlencode($customer_id),
@@ -272,7 +285,8 @@ if ($action === "update_faq") {
     );
 
     echo json_encode([
-        "success" => ($res['status'] >= 200 && $res['status'] < 300),
+        "success" => ($res['status'] >= 200 && $res['status'] < 300 && !empty($res['data'])),
+        "message" => empty($res['data']) ? "FAQ was not updated in the database" : "FAQ updated",
         "debug" => $res
     ]);
     exit;
@@ -296,13 +310,34 @@ if ($action === "delete_faq") {
         exit;
     }
 
+    $existing = supabase(
+        "GET",
+        "faq_questions?select=id&id=eq." . urlencode($faq_id) . "&customer_id=eq." . urlencode($customer_id) . "&limit=1"
+    );
+
+    if (empty($existing['data'])) {
+        echo json_encode([
+            "success" => false,
+            "message" => "FAQ not found"
+        ]);
+        exit;
+    }
+
     $res = supabase(
         "DELETE",
         "faq_questions?id=eq." . urlencode($faq_id) . "&customer_id=eq." . urlencode($customer_id)
     );
 
+    $check = supabase(
+        "GET",
+        "faq_questions?select=id&id=eq." . urlencode($faq_id) . "&customer_id=eq." . urlencode($customer_id) . "&limit=1"
+    );
+
+    $deleted = ($res['status'] >= 200 && $res['status'] < 300 && empty($check['data']));
+
     echo json_encode([
-        "success" => ($res['status'] >= 200 && $res['status'] < 300),
+        "success" => $deleted,
+        "message" => $deleted ? "FAQ deleted" : "FAQ was not deleted from the database",
         "debug" => $res
     ]);
     exit;

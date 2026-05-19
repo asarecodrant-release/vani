@@ -1338,6 +1338,7 @@ document.getElementById("faqTable")?.addEventListener("click", async event => {
   if (button.classList.contains("faq-delete-btn")) {
     if (!confirm("Delete this FAQ?")) return;
     button.disabled = true;
+    button.textContent = "Deleting...";
     const response = await fetch("/api.php?action=delete_faq", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
@@ -1346,6 +1347,7 @@ document.getElementById("faqTable")?.addEventListener("click", async event => {
     const data = await response.json().catch(() => ({}));
     if (!data.success) {
       button.disabled = false;
+      button.textContent = "Delete";
       return showToast(data.message || "FAQ could not be deleted");
     }
     row.remove();
