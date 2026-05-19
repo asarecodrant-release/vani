@@ -10,7 +10,9 @@ if (!is_authenticated_user()) {
 $email = authenticated_email();
 $accountId = authenticated_user_id();
 $selectedBotId = trim($_GET['bot'] ?? '');
-$widgetUrl = "https://cdn.jsdelivr.net/gh/codrant-code/chbdd@main/widget36.js";
+$scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+$host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+$widgetUrl = $scheme . '://' . $host . rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? ''), '/\\') . '/widget.js';
 $botImages = glob(__DIR__ . '/images/botimg_*') ?: [];
 $botImages = array_values(array_filter($botImages, 'is_file'));
 natcasesort($botImages);

@@ -24,7 +24,9 @@ function safe_data(array $response): array {
 
 $email = authenticated_email();
 $selectedBotId = trim($_GET['bot'] ?? '');
-$widgetUrl = "https://cdn.jsdelivr.net/gh/codrant-code/chbdd@main/widget36.js";
+$scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+$host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+$widgetUrl = $scheme . '://' . $host . rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? ''), '/\\') . '/widget.js';
 
 $bots = safe_data(supabase(
     "GET",

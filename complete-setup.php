@@ -118,7 +118,7 @@ const cid = localStorage.getItem("cid");
 const cidBox = document.getElementById("cidBox");
 const codeBox = document.getElementById("codeBox");
 
-const widgetUrl = "https://cdn.jsdelivr.net/gh/codrant-code/chbdd@main/widget36.js";
+const widgetUrl = "https://cdn.jsdelivr.net/gh/asarecodrant-release/vani@latest/widget.js?v=" + Date.now();
 
 if (!cid) {
   cidBox.innerText = "Missing customer_id";
