@@ -10,6 +10,7 @@
   }
 
   const apiBase = "https://vani.codrant.com/widget_api.php";
+  const imageBase = "https://cdn.jsdelivr.net/gh/asarecodrant-release/vani@main/";
   const defaultGreeting = "Hi, how can I help you today?";
   let config = {};
 
@@ -42,10 +43,10 @@
   function resolveAssetUrl(value) {
     const path = (value || "").trim();
     if (!path) return "";
+    if (/^https?:\/\//i.test(path)) return path;
 
     try {
-      const base = script?.src || apiBase;
-      return new URL(path, base).href;
+      return new URL(path.replace(/^\/+/, ""), imageBase).href;
     } catch (error) {
       console.warn("Vani widget: could not resolve asset URL", value);
       return path;
@@ -220,7 +221,7 @@
 
     box.innerHTML = `
       <div data-vani-header style="padding:13px 14px;color:#fff;background:${color};font-weight:700;display:flex;align-items:center;gap:10px;">
-        <span>${config.bot_name || "Chat Support"}</span>
+        <span data-vani-title></span>
       </div>
       <div data-vani-suggestions style="max-height:132px;overflow:auto;background:#fff;border-bottom:1px solid #e5e7eb;"></div>
       <div data-vani-messages style="flex:1;overflow:auto;padding:12px;background:#f8fafc;"></div>
@@ -238,6 +239,7 @@
     const input = box.querySelector("[data-vani-input]");
     const sendBtn = box.querySelector("[data-vani-send]");
     const suggestionsBox = box.querySelector("[data-vani-suggestions]");
+    box.querySelector("[data-vani-title]").textContent = config.bot_name || "Chat Support";
     let debounce;
 
     addMessage(messages, greetingText, "bot");
