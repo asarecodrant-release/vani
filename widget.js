@@ -10,6 +10,7 @@
   }
 
   const apiBase = "https://vani.codrant.com/widget_api.php";
+  const defaultGreeting = "Hi, how can I help you today?";
   let config = {};
 
   let userId = localStorage.getItem("vani_widget_user_id");
@@ -36,6 +37,19 @@
 
   function css(node, styles) {
     Object.assign(node.style, styles);
+  }
+
+  function resolveAssetUrl(value) {
+    const path = (value || "").trim();
+    if (!path) return "";
+
+    try {
+      const base = script?.src || apiBase;
+      return new URL(path, base).href;
+    } catch (error) {
+      console.warn("Vani widget: could not resolve asset URL", value);
+      return path;
+    }
   }
 
   function addMessage(messages, text, type) {
@@ -109,11 +123,13 @@
     const color = config.theme_color || "#6366f1";
     const position = config.position === "left" ? "left" : "right";
     const sideStyles = position === "left" ? {left: "20px"} : {right: "20px"};
+    const greetingSideStyles = position === "left" ? {left: "90px"} : {right: "90px"};
+    const avatarUrl = resolveAssetUrl(config.avatar_url);
+    const greetingText = (config.welcome_message || defaultGreeting).trim() || defaultGreeting;
 
     const icon = document.createElement("button");
     icon.type = "button";
     icon.setAttribute("aria-label", "Open chat");
-    icon.textContent = "Chat";
     css(icon, {
       position: "fixed",
       bottom: "20px",
@@ -121,14 +137,68 @@
       height: "58px",
       border: "0",
       borderRadius: "50%",
-      background: color,
-      color: "#fff",
+      background: avatarUrl ? "#fff" : color,
+      color: avatarUrl ? color : "#fff",
       cursor: "pointer",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
       fontWeight: "700",
+      overflow: "hidden",
+      padding: avatarUrl ? "4px" : "0",
       zIndex: "999999",
       boxShadow: "0 12px 28px rgba(15,23,42,.24)"
     });
     css(icon, sideStyles);
+
+    if (avatarUrl) {
+      const iconImage = document.createElement("img");
+      iconImage.src = avatarUrl;
+      iconImage.alt = "";
+      css(iconImage, {
+        width: "100%",
+        height: "100%",
+        borderRadius: "50%",
+        objectFit: "cover",
+        display: "block",
+        background: "#fff"
+      });
+      iconImage.onerror = () => {
+        iconImage.remove();
+        icon.textContent = "Chat";
+        css(icon, {
+          background: color,
+          color: "#fff",
+          padding: "0"
+        });
+      };
+      icon.appendChild(iconImage);
+    } else {
+      icon.textContent = "Chat";
+    }
+
+    const greeting = document.createElement("button");
+    greeting.type = "button";
+    greeting.textContent = greetingText;
+    greeting.setAttribute("aria-label", "Open chat");
+    css(greeting, {
+      position: "fixed",
+      bottom: "30px",
+      maxWidth: "min(240px, calc(100vw - 118px))",
+      border: "1px solid #e5e7eb",
+      borderRadius: "14px",
+      background: "#fff",
+      color: "#0f172a",
+      padding: "10px 12px",
+      cursor: "pointer",
+      fontSize: "14px",
+      lineHeight: "1.35",
+      textAlign: "left",
+      zIndex: "999998",
+      boxShadow: "0 12px 28px rgba(15,23,42,.16)",
+      fontFamily: "Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    });
+    css(greeting, greetingSideStyles);
 
     const box = document.createElement("div");
     css(box, {
@@ -150,7 +220,6 @@
 
     box.innerHTML = `
       <div data-vani-header style="padding:13px 14px;color:#fff;background:${color};font-weight:700;display:flex;align-items:center;gap:10px;">
-        ${config.avatar_url ? `<img src="${config.avatar_url}" alt="" style="width:28px;height:28px;border-radius:50%;object-fit:cover;background:#fff;">` : ""}
         <span>${config.bot_name || "Chat Support"}</span>
       </div>
       <div data-vani-suggestions style="max-height:132px;overflow:auto;background:#fff;border-bottom:1px solid #e5e7eb;"></div>
@@ -162,6 +231,7 @@
     `;
 
     document.body.appendChild(icon);
+    document.body.appendChild(greeting);
     document.body.appendChild(box);
 
     const messages = box.querySelector("[data-vani-messages]");
@@ -170,9 +240,7 @@
     const suggestionsBox = box.querySelector("[data-vani-suggestions]");
     let debounce;
 
-    if (config.welcome_message) {
-      addMessage(messages, config.welcome_message, "bot");
-    }
+    addMessage(messages, greetingText, "bot");
 
     async function loadTop() {
       const response = await api("get_top_faqs", "GET", null, `&customer_id=${encodeURIComponent(customerId)}`);
@@ -214,11 +282,13 @@
     icon.onclick = () => {
       const open = box.style.display === "flex";
       box.style.display = open ? "none" : "flex";
+      greeting.style.display = open ? "block" : "none";
       if (!open) {
         input.focus();
         loadTop();
       }
     };
+    greeting.onclick = icon.onclick;
 
     input.addEventListener("focus", loadTop);
     input.addEventListener("input", () => {
