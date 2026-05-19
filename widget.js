@@ -138,6 +138,9 @@
       .vani-breathing-icon {
         animation: breathing 3s ease-in-out infinite;
       }
+      .vani-breathing-greeting {
+        animation: breathing 3s ease-in-out infinite;
+      }
     `;
     document.head.appendChild(style);
 
@@ -176,7 +179,8 @@
         borderRadius: "50%",
         objectFit: "contain",
         display: "block",
-        background: "transparent"
+        background: "transparent",
+        boxShadow: "none"
       });
       iconImage.onerror = () => {
         iconImage.remove();
@@ -196,6 +200,7 @@
     greeting.type = "button";
     greeting.textContent = greetingText;
     greeting.setAttribute("aria-label", "Open chat");
+    greeting.classList.add("vani-breathing-greeting");
     css(greeting, {
       position: "fixed",
       bottom: "30px",
@@ -210,7 +215,7 @@
       lineHeight: "1.35",
       textAlign: "left",
       zIndex: "999998",
-      boxShadow: "0 12px 28px rgba(15,23,42,.16)",
+      boxShadow: "0 12px 28px rgb(255, 255, 255)",
       fontFamily: "Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
     });
     css(greeting, greetingSideStyles);
@@ -237,8 +242,8 @@
       <div data-vani-header style="padding:13px 14px;color:#fff;background:${color};font-weight:700;display:flex;align-items:center;gap:10px;">
         <span data-vani-title></span>
       </div>
-      <div data-vani-suggestions style="max-height:132px;overflow:auto;background:#fff;border-bottom:1px solid #e5e7eb;"></div>
       <div data-vani-messages style="flex:1;overflow:auto;padding:12px;background:#f8fafc;"></div>
+      <div data-vani-suggestions style="max-height:132px;overflow:auto;background:#fff;border-top:1px solid #e5e7eb;"></div>
       <div style="display:flex;border-top:1px solid #e5e7eb;background:#fff;">
         <input data-vani-input placeholder="Type message..." style="flex:1;min-width:0;padding:12px;border:0;outline:0;font:inherit;">
         <button data-vani-send type="button" style="padding:0 15px;background:${color};color:#fff;border:0;font-weight:700;cursor:pointer;">Send</button>
