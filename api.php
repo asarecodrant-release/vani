@@ -345,6 +345,85 @@ if ($action === "delete_faq") {
 
 
 // ==========================
+// SAVE LEAD GENERATION SETTINGS
+// ==========================
+if ($action === "save_lead_generation_settings") {
+
+    $data = getJSON();
+    $customer_id = trim($data['customer_id'] ?? '');
+
+    if (!$customer_id) {
+        echo json_encode([
+            "success" => false,
+            "message" => "Missing customer_id"
+        ]);
+        exit;
+    }
+
+    $notification_email = trim($data['notification_email'] ?? '');
+    $whatsapp_mobile_number = trim($data['whatsapp_mobile_number'] ?? '');
+    $notify_lead_by_email = filter_var($data['notify_lead_by_email'] ?? false, FILTER_VALIDATE_BOOLEAN);
+    $redirect_whatsapp = filter_var($data['redirect_whatsapp'] ?? false, FILTER_VALIDATE_BOOLEAN);
+    $verify_mobile_otp = filter_var($data['verify_mobile_otp'] ?? false, FILTER_VALIDATE_BOOLEAN);
+
+    if ($notify_lead_by_email && !filter_var($notification_email, FILTER_VALIDATE_EMAIL)) {
+        echo json_encode([
+            "success" => false,
+            "message" => "Enter a valid notification email"
+        ]);
+        exit;
+    }
+
+    if ($redirect_whatsapp && !preg_match('/^\+?[1-9]\d{7,14}$/', $whatsapp_mobile_number)) {
+        echo json_encode([
+            "success" => false,
+            "message" => "Enter a valid WhatsApp mobile number"
+        ]);
+        exit;
+    }
+
+    $payload = [
+        "customer_id" => $customer_id,
+        "is_enabled" => filter_var($data['is_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN),
+        "collect_location" => filter_var($data['collect_location'] ?? false, FILTER_VALIDATE_BOOLEAN),
+        "verify_email_otp" => filter_var($data['verify_email_otp'] ?? false, FILTER_VALIDATE_BOOLEAN),
+        "notify_lead_by_email" => $notify_lead_by_email,
+        "notification_email" => $notification_email !== '' ? $notification_email : null,
+        "redirect_whatsapp" => $redirect_whatsapp,
+        "whatsapp_mobile_number" => $whatsapp_mobile_number !== '' ? $whatsapp_mobile_number : null,
+        "verify_mobile_otp" => $verify_mobile_otp,
+        "service_tier" => $verify_mobile_otp ? "paid" : "free"
+    ];
+
+    $existing = supabase(
+        "GET",
+        "lead_generation_settings?select=id&customer_id=eq." . urlencode($customer_id) . "&limit=1"
+    );
+
+    if (!empty($existing['data'])) {
+        $res = supabase(
+            "PATCH",
+            "lead_generation_settings?customer_id=eq." . urlencode($customer_id),
+            $payload
+        );
+    } else {
+        $res = supabase(
+            "POST",
+            "lead_generation_settings",
+            [$payload]
+        );
+    }
+
+    echo json_encode([
+        "success" => ($res['status'] >= 200 && $res['status'] < 300),
+        "message" => ($res['status'] >= 200 && $res['status'] < 300) ? "Lead generation settings saved" : "Lead generation settings could not be saved",
+        "debug" => $res
+    ]);
+    exit;
+}
+
+
+// ==========================
 // CHAT
 // ==========================
 if ($action === "chat") {

@@ -96,12 +96,20 @@ $settingsRows = $selectedBotId
     ))
     : [];
 
+$leadSettingsRows = $selectedBotId
+    ? safe_data(supabase(
+        "GET",
+        "lead_generation_settings?select=*&customer_id=eq." . urlencode($selectedBotId) . "&limit=1"
+    ))
+    : [];
+
 $profileRows = safe_data(supabase(
     "GET",
     "customer_profiles?select=*&email=eq." . urlencode($email) . "&limit=1"
 ));
 
 $settings = $settingsRows[0] ?? [];
+$leadSettings = $leadSettingsRows[0] ?? [];
 $profile = $profileRows[0] ?? [];
 $faqCount = count($faqs);
 $freeFaqLimit = 25;
@@ -218,6 +226,14 @@ $position = first_value($settings, ['position'], 'right');
 $language = first_value($settings, ['language'], 'English');
 $rawActive = $settings['is_active'] ?? true;
 $isActive = is_bool($rawActive) ? $rawActive : ((string)$rawActive !== 'false');
+$leadEnabled = filter_var($leadSettings['is_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
+$leadCollectLocation = filter_var($leadSettings['collect_location'] ?? false, FILTER_VALIDATE_BOOLEAN);
+$leadVerifyEmailOtp = filter_var($leadSettings['verify_email_otp'] ?? false, FILTER_VALIDATE_BOOLEAN);
+$leadNotifyByEmail = filter_var($leadSettings['notify_lead_by_email'] ?? false, FILTER_VALIDATE_BOOLEAN);
+$leadRedirectWhatsapp = filter_var($leadSettings['redirect_whatsapp'] ?? false, FILTER_VALIDATE_BOOLEAN);
+$leadVerifyMobileOtp = filter_var($leadSettings['verify_mobile_otp'] ?? false, FILTER_VALIDATE_BOOLEAN);
+$leadNotificationEmail = first_value($leadSettings, ['notification_email'], $email);
+$leadWhatsappNumber = first_value($leadSettings, ['whatsapp_mobile_number'], '');
 $embedCode = $selectedBotId ? '<script src="' . $widgetUrl . '" data-id="' . $selectedBotId . '"></script>' : '';
 $profileFirstName = first_value($profile, ['first_name'], '');
 $profileLastName = first_value($profile, ['last_name'], '');
@@ -950,7 +966,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                 <p class="muted">Turn this on when you want the chatbot to collect contact details from users.</p>
               </div>
               <label class="switch" title="Enable lead generation">
-                <input id="leadGenerationEnabled" class="lead-toggle" type="checkbox" aria-label="Enable lead generation">
+                <input id="leadGenerationEnabled" class="lead-toggle" type="checkbox" <?php echo $leadEnabled ? 'checked' : ''; ?> aria-label="Enable lead generation">
                 <span class="switch-slider"></span>
               </label>
             </div>
@@ -972,7 +988,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                       <small>Ask users for their location during the chat flow.</small>
                     </div>
                     <label class="switch" title="Get user location">
-                      <input class="lead-toggle" type="checkbox" aria-label="Get user location">
+                      <input id="leadCollectLocationToggle" class="lead-toggle" type="checkbox" <?php echo $leadCollectLocation ? 'checked' : ''; ?> aria-label="Get user location">
                       <span class="switch-slider"></span>
                     </label>
                   </div>
@@ -985,7 +1001,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                       <small>Verify the lead with an OTP sent to the user's email address.</small>
                     </div>
                     <label class="switch" title="Email OTP verification">
-                      <input class="lead-toggle" type="checkbox" aria-label="Email OTP verification">
+                      <input id="leadEmailOtpToggle" class="lead-toggle" type="checkbox" <?php echo $leadVerifyEmailOtp ? 'checked' : ''; ?> aria-label="Email OTP verification">
                       <span class="switch-slider"></span>
                     </label>
                   </div>
@@ -998,13 +1014,13 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                       <small>Send an email notification when lead details are captured.</small>
                     </div>
                     <label class="switch" title="Notify lead by email">
-                      <input id="leadEmailNotifyToggle" class="lead-toggle" type="checkbox" aria-label="Notify lead by email">
+                      <input id="leadEmailNotifyToggle" class="lead-toggle" type="checkbox" <?php echo $leadNotifyByEmail ? 'checked' : ''; ?> aria-label="Notify lead by email">
                       <span class="switch-slider"></span>
                     </label>
                   </div>
                   <div class="field">
                     <label>Notification email</label>
-                    <input id="leadNotificationEmail" type="email" placeholder="<?php echo h($email); ?>" autocomplete="email">
+                    <input id="leadNotificationEmail" type="email" value="<?php echo h($leadNotificationEmail); ?>" placeholder="<?php echo h($email); ?>" autocomplete="email">
                     <small class="input-help" id="leadNotificationEmailHelp">Lead notifications can be sent to this email address.</small>
                   </div>
                 </div>
@@ -1016,13 +1032,13 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                       <small>Send users to the customer's WhatsApp Business account after lead capture.</small>
                     </div>
                     <label class="switch" title="Redirect to WhatsApp Business">
-                      <input id="whatsappLeadToggle" class="lead-toggle" type="checkbox" aria-label="Redirect to WhatsApp Business">
+                      <input id="whatsappLeadToggle" class="lead-toggle" type="checkbox" <?php echo $leadRedirectWhatsapp ? 'checked' : ''; ?> aria-label="Redirect to WhatsApp Business">
                       <span class="switch-slider"></span>
                     </label>
                   </div>
                   <div class="field">
                     <label>WhatsApp Business mobile number</label>
-                    <input id="whatsappLeadNumber" type="tel" inputmode="tel" placeholder="+919876543210" autocomplete="tel" maxlength="16">
+                    <input id="whatsappLeadNumber" type="tel" inputmode="tel" value="<?php echo h($leadWhatsappNumber); ?>" placeholder="+919876543210" autocomplete="tel" maxlength="16">
                     <small class="input-help" id="whatsappLeadHelp">Use country code and digits only, for example +919876543210.</small>
                   </div>
                   <button class="ghost-btn" type="button" data-save-note="WhatsApp Business integration">No WhatsApp Business account?</button>
@@ -1045,7 +1061,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                       <small>Verify the lead with an OTP sent to the user's mobile number. Firebase setup will be connected later.</small>
                     </div>
                     <label class="switch" title="Mobile OTP verification">
-                      <input class="lead-toggle" type="checkbox" aria-label="Mobile OTP verification">
+                      <input id="leadMobileOtpToggle" class="lead-toggle" type="checkbox" <?php echo $leadVerifyMobileOtp ? 'checked' : ''; ?> aria-label="Mobile OTP verification">
                       <span class="switch-slider"></span>
                     </label>
                   </div>
@@ -1316,12 +1332,15 @@ document.querySelectorAll("[data-save-note]").forEach(btn => {
 
 const leadGenerationEnabled = document.getElementById("leadGenerationEnabled");
 const leadServiceOptions = document.getElementById("leadServiceOptions");
+const leadCollectLocationToggle = document.getElementById("leadCollectLocationToggle");
+const leadEmailOtpToggle = document.getElementById("leadEmailOtpToggle");
 const whatsappLeadToggle = document.getElementById("whatsappLeadToggle");
 const whatsappLeadNumber = document.getElementById("whatsappLeadNumber");
 const whatsappLeadHelp = document.getElementById("whatsappLeadHelp");
 const leadEmailNotifyToggle = document.getElementById("leadEmailNotifyToggle");
 const leadNotificationEmail = document.getElementById("leadNotificationEmail");
 const leadNotificationEmailHelp = document.getElementById("leadNotificationEmailHelp");
+const leadMobileOtpToggle = document.getElementById("leadMobileOtpToggle");
 
 function validateWhatsappLeadNumber(showMessage = false) {
   if (!whatsappLeadNumber || !whatsappLeadHelp) return true;
@@ -1379,7 +1398,7 @@ leadNotificationEmail?.addEventListener("blur", () => validateLeadNotificationEm
 
 leadEmailNotifyToggle?.addEventListener("change", () => validateLeadNotificationEmail(false));
 
-document.getElementById("saveLeadSetupBtn")?.addEventListener("click", () => {
+document.getElementById("saveLeadSetupBtn")?.addEventListener("click", async event => {
   if (leadGenerationEnabled?.checked && whatsappLeadToggle?.checked && !validateWhatsappLeadNumber(true)) {
     whatsappLeadNumber?.focus();
     return;
@@ -1388,7 +1407,37 @@ document.getElementById("saveLeadSetupBtn")?.addEventListener("click", () => {
     leadNotificationEmail?.focus();
     return;
   }
-  showToast("Lead generation setup UI is ready. Connect save API next.");
+
+  const button = event.currentTarget;
+  button.disabled = true;
+  button.textContent = "Saving...";
+
+  const response = await fetch("/api.php?action=save_lead_generation_settings", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      customer_id: document.getElementById("settingsCustomerId")?.value || "",
+      is_enabled: !!leadGenerationEnabled?.checked,
+      collect_location: !!leadCollectLocationToggle?.checked,
+      verify_email_otp: !!leadEmailOtpToggle?.checked,
+      notify_lead_by_email: !!leadEmailNotifyToggle?.checked,
+      notification_email: leadNotificationEmail?.value.trim() || "",
+      redirect_whatsapp: !!whatsappLeadToggle?.checked,
+      whatsapp_mobile_number: whatsappLeadNumber?.value.trim() || "",
+      verify_mobile_otp: !!leadMobileOtpToggle?.checked
+    })
+  });
+
+  const data = await response.json().catch(() => ({}));
+  button.disabled = false;
+  button.textContent = "Save lead setup";
+
+  if (!data.success) {
+    showToast(data.message || "Lead generation settings could not be saved");
+    return;
+  }
+
+  showToast("Lead generation settings saved");
 });
 
 updateLeadGenerationUI();
