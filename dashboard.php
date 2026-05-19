@@ -326,6 +326,7 @@ body.dark .topbar{background:rgba(15,23,42,.66)}
 .panel{
   background:var(--panel);border:1px solid rgba(255,255,255,.48);border-radius:22px;
   box-shadow:var(--shadow);backdrop-filter:blur(16px);
+  min-width:0;max-width:100%;
 }
 body.dark .panel{border-color:var(--line)}
 .overview-hero{padding:24px;display:grid;grid-template-columns:1.3fr .7fr;gap:20px;align-items:center}
@@ -363,17 +364,17 @@ select:focus,input:focus,textarea:focus{box-shadow:0 0 0 3px rgba(99,102,241,.15
 .action-card{padding:18px;display:grid;gap:10px;align-content:start}
 .action-card h3,.section-head h3{font-size:17px}
 .action-card p,.muted{color:var(--muted);line-height:1.6;font-size:14px}
-.tab-panel{display:none;gap:18px;min-width:0}
+.tab-panel{display:none;gap:18px;min-width:0;max-width:100%}
 .tab-panel.active{display:grid}
 .section-head{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:20px 20px 0}
-.section-body{padding:20px}
+.section-body{padding:20px;min-width:0;max-width:100%}
 .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;min-width:0}
 .profile-grid{display:grid;grid-template-columns:180px minmax(0,1fr);gap:20px;align-items:start;min-width:0}
 .profile-photo{display:grid;gap:12px;justify-items:center;padding:18px;border:1px solid var(--line);border-radius:18px;background:rgba(255,255,255,.42)}
 body.dark .profile-photo{background:rgba(15,23,42,.44)}
 .profile-avatar{width:112px;height:112px;border-radius:50%;display:grid;place-items:center;color:#fff;font-size:36px;font-weight:800;background:linear-gradient(135deg,var(--brand),var(--brand-2));overflow:hidden}
 .profile-avatar img{width:100%;height:100%;object-fit:cover}
-.field{display:grid;gap:8px}
+.field{display:grid;gap:8px;min-width:0}
 .field.full{grid-column:1/-1}
 .panel-actions{grid-column:1/-1;display:flex;justify-content:flex-end;gap:10px;min-width:0;padding-top:4px}
 .section-body > .panel-actions{padding-top:16px}
@@ -388,6 +389,7 @@ body.dark .profile-photo{background:rgba(15,23,42,.44)}
 .table-wrap{
   width:100%;
   max-width:100%;
+  min-width:0;
   overflow-x:auto;
   overflow-y:hidden;
   -webkit-overflow-scrolling:touch;
@@ -396,13 +398,15 @@ body.dark .profile-photo{background:rgba(15,23,42,.44)}
 table{width:100%;border-collapse:collapse;min-width:720px}
 th,td{text-align:left;padding:13px 14px;border-bottom:1px solid var(--line);vertical-align:top}
 th{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
-td{font-size:14px;color:var(--ink)}
+td{font-size:14px;color:var(--ink);overflow-wrap:anywhere}
+td .ghost-btn{white-space:normal}
 .tag{display:inline-flex;align-items:center;border-radius:999px;padding:5px 9px;font-size:12px;font-weight:800;background:rgba(99,102,241,.12);color:var(--brand)}
 .tag.good{background:rgba(34,197,94,.13);color:#15803d}.tag.bad{background:rgba(239,68,68,.12);color:#b91c1c}
 .embed-box{position:relative}
 code{display:block;white-space:pre-wrap;word-break:break-all;padding:16px;border-radius:14px;background:#111827;color:#e5e7eb;font-size:13px;line-height:1.6}
-.inline-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.inline-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;min-width:0;max-width:100%}
 .inline-row > *{min-width:0}
+.inline-row input{flex:1 1 220px;width:auto}
 .split{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;min-width:0}
 .empty{padding:28px;text-align:center;color:var(--muted)}
 .notice{padding:14px 16px;border-radius:14px;background:rgba(99,102,241,.1);border:1px solid rgba(99,102,241,.18);color:var(--ink);line-height:1.6}
@@ -509,6 +513,7 @@ body.dark .outside-faq-card{background:rgba(15,23,42,.44)}
   table{min-width:640px}
   th,td{padding:11px 12px}
   .table-wrap{width:100%;max-width:100%;border-radius:0}
+  .inline-row input,.inline-row .ghost-btn{flex:1 1 100%;width:100%}
 }
 @media(max-width:480px){
   .sidebar{padding:12px}
@@ -528,7 +533,7 @@ body.dark .outside-faq-card{background:rgba(15,23,42,.44)}
   .profile-photo{grid-template-columns:1fr;justify-items:center}
   .profile-avatar{width:96px;height:96px}
   code{font-size:12px;padding:13px}
-  table{min-width:580px}
+  table{min-width:560px}
   th{font-size:11px}
   td{font-size:13px}
   .inline-row{display:grid;grid-template-columns:1fr}
@@ -810,25 +815,27 @@ body.dark .outside-faq-card{background:rgba(15,23,42,.44)}
       <section class="tab-panel" id="logs">
         <div class="panel">
           <div class="section-head"><h3>Conversations / Logs</h3><span class="tag"><?php echo h($conversationCount); ?> total</span></div>
-          <div class="section-body table-wrap">
-            <table>
-              <thead><tr><th>User Question</th><th>Bot Response</th><th>Timestamp</th><th>Status</th><th>Action</th></tr></thead>
-              <tbody>
-                <?php if (empty($conversationRows)): ?>
-                  <tr><td colspan="5" class="empty">No conversation logs yet. Run the SQL script and update chat logging to begin storing unanswered queries.</td></tr>
-                <?php endif; ?>
-                <?php foreach ($conversationRows as $row): ?>
-                  <?php $answered = strtolower((string)($row['status'] ?? '')) === 'answered' || !empty($row['is_answered']); ?>
-                  <tr>
-                    <td><?php echo h($row['user_question'] ?? $row['question'] ?? ''); ?></td>
-                    <td><?php echo h($row['bot_response'] ?? $row['response'] ?? ''); ?></td>
-                    <td><?php echo h($row['created_at'] ?? ''); ?></td>
-                    <td><span class="tag <?php echo $answered ? 'good' : 'bad'; ?>"><?php echo $answered ? 'Answered' : 'Unanswered'; ?></span></td>
-                    <td><button class="ghost-btn" type="button" data-question="<?php echo h($row['user_question'] ?? $row['question'] ?? ''); ?>" data-jump="faqs">Add this as FAQ</button></td>
-                  </tr>
-                <?php endforeach; ?>
-              </tbody>
-            </table>
+          <div class="section-body">
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>User Question</th><th>Bot Response</th><th>Timestamp</th><th>Status</th><th>Action</th></tr></thead>
+                <tbody>
+                  <?php if (empty($conversationRows)): ?>
+                    <tr><td colspan="5" class="empty">No conversation logs yet. Run the SQL script and update chat logging to begin storing unanswered queries.</td></tr>
+                  <?php endif; ?>
+                  <?php foreach ($conversationRows as $row): ?>
+                    <?php $answered = strtolower((string)($row['status'] ?? '')) === 'answered' || !empty($row['is_answered']); ?>
+                    <tr>
+                      <td><?php echo h($row['user_question'] ?? $row['question'] ?? ''); ?></td>
+                      <td><?php echo h($row['bot_response'] ?? $row['response'] ?? ''); ?></td>
+                      <td><?php echo h($row['created_at'] ?? ''); ?></td>
+                      <td><span class="tag <?php echo $answered ? 'good' : 'bad'; ?>"><?php echo $answered ? 'Answered' : 'Unanswered'; ?></span></td>
+                      <td><button class="ghost-btn" type="button" data-question="<?php echo h($row['user_question'] ?? $row['question'] ?? ''); ?>" data-jump="faqs">Add this as FAQ</button></td>
+                    </tr>
+                  <?php endforeach; ?>
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </section>
