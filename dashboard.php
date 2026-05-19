@@ -246,6 +246,7 @@ $initials = strtoupper(substr($initialSource, 0, 1));
 }
 html{
   -webkit-text-size-adjust:100%;
+  overflow-x:hidden;
 }
 body{
   min-height:100vh;
@@ -266,7 +267,7 @@ body.dark{
 a{text-decoration:none;color:inherit}
 button,input,select,textarea{font:inherit}
 button{touch-action:manipulation}
-.dashboard-shell{min-height:100vh;display:grid;grid-template-columns:260px 1fr}
+.dashboard-shell{min-height:100vh;display:grid;grid-template-columns:260px minmax(0,1fr);width:100%;overflow-x:hidden}
 .drawer-overlay{
   position:fixed;
   inset:0;
@@ -297,7 +298,7 @@ body.dark .sidebar{background:rgba(15,23,42,.66)}
 .tab-btn:hover,.tab-btn.active{background:rgba(99,102,241,.11);color:var(--brand)}
 .sidebar-footer{position:absolute;left:18px;right:18px;bottom:20px;padding:14px;border:1px solid var(--line);border-radius:16px;background:var(--panel)}
 .sidebar-footer small{display:block;color:var(--muted);line-height:1.6}
-.main{min-width:0;max-width:100vw}
+.main{min-width:0;width:100%;max-width:100vw;overflow-x:hidden}
 .topbar{
   height:78px;display:flex;align-items:center;justify-content:space-between;gap:16px;
   padding:0 28px;border-bottom:1px solid var(--line);background:rgba(255, 255, 255, 0.9);
@@ -321,7 +322,7 @@ body.dark .topbar{background:rgba(15,23,42,.66)}
 .pill-btn{color:#fff;background:linear-gradient(135deg,var(--brand),var(--brand-2));box-shadow:0 10px 22px rgba(99,102,241,.22)}
 .ghost-btn{color:var(--ink);background:var(--panel);border:1px solid var(--line)}
 .danger-btn{color:#b91c1c;background:#fee2e2;border:1px solid #fecaca}
-.content{padding:28px;display:grid;gap:22px;min-width:0}
+.content{padding:28px;display:grid;gap:22px;min-width:0;max-width:100%}
 .panel{
   background:var(--panel);border:1px solid rgba(255,255,255,.48);border-radius:22px;
   box-shadow:var(--shadow);backdrop-filter:blur(16px);
@@ -366,14 +367,16 @@ select:focus,input:focus,textarea:focus{box-shadow:0 0 0 3px rgba(99,102,241,.15
 .tab-panel.active{display:grid}
 .section-head{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:20px 20px 0}
 .section-body{padding:20px}
-.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
-.profile-grid{display:grid;grid-template-columns:180px 1fr;gap:20px;align-items:start}
+.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;min-width:0}
+.profile-grid{display:grid;grid-template-columns:180px minmax(0,1fr);gap:20px;align-items:start;min-width:0}
 .profile-photo{display:grid;gap:12px;justify-items:center;padding:18px;border:1px solid var(--line);border-radius:18px;background:rgba(255,255,255,.42)}
 body.dark .profile-photo{background:rgba(15,23,42,.44)}
 .profile-avatar{width:112px;height:112px;border-radius:50%;display:grid;place-items:center;color:#fff;font-size:36px;font-weight:800;background:linear-gradient(135deg,var(--brand),var(--brand-2));overflow:hidden}
 .profile-avatar img{width:100%;height:100%;object-fit:cover}
 .field{display:grid;gap:8px}
 .field.full{grid-column:1/-1}
+.panel-actions{grid-column:1/-1;display:flex;justify-content:flex-end;gap:10px;min-width:0;padding-top:4px}
+.section-body > .panel-actions{padding-top:16px}
 .swatches{display:flex;gap:10px;flex-wrap:wrap}
 .swatch{width:34px;height:34px;border-radius:10px;border:2px solid rgba(255,255,255,.8);box-shadow:0 4px 10px rgba(15,23,42,.12);cursor:pointer}
 .bot-image-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(72px,1fr));gap:10px}
@@ -399,7 +402,8 @@ td{font-size:14px;color:var(--ink)}
 .embed-box{position:relative}
 code{display:block;white-space:pre-wrap;word-break:break-all;padding:16px;border-radius:14px;background:#111827;color:#e5e7eb;font-size:13px;line-height:1.6}
 .inline-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-.split{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.inline-row > *{min-width:0}
+.split{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;min-width:0}
 .empty{padding:28px;text-align:center;color:var(--muted)}
 .notice{padding:14px 16px;border-radius:14px;background:rgba(99,102,241,.1);border:1px solid rgba(99,102,241,.18);color:var(--ink);line-height:1.6}
 .outside-faq-list{display:grid;gap:14px}
@@ -453,6 +457,7 @@ body.dark .outside-faq-card{background:rgba(15,23,42,.44)}
     top:0;
     right:0;
     width:min(320px,86vw);
+    max-width:100vw;
     height:100dvh;
     z-index:45;
     padding:72px 18px 18px;
@@ -462,9 +467,11 @@ body.dark .outside-faq-card{background:rgba(15,23,42,.44)}
     display:grid;
     align-content:start;
     gap:12px;
-    transform:translateX(105%);
+    transform:translateX(100%);
     transition:transform .25s ease;
     box-shadow:-18px 0 45px rgba(15,23,42,.12);
+    visibility:hidden;
+    pointer-events:none;
   }
   body.account-open #accountToggle{
     position:fixed;
@@ -473,7 +480,7 @@ body.dark .outside-faq-card{background:rgba(15,23,42,.44)}
     z-index:60;
   }
   body.dark .top-actions{background:rgba(15,23,42,.92)}
-  body.account-open .top-actions{transform:translateX(0)}
+  body.account-open .top-actions{transform:translateX(0);visibility:visible;pointer-events:auto}
   .top-actions .pill-btn,.top-actions .ghost-btn{width:100%;justify-content:center}
   .top-actions > .user-menu{display:grid;justify-items:center;text-align:center;padding:16px}
   .top-actions .user-text{display:block;max-width:100%}
@@ -495,11 +502,13 @@ body.dark .outside-faq-card{background:rgba(15,23,42,.44)}
   .section-body{padding:16px}
   .overview-hero h2{font-size:28px}
   .metrics,.quick-actions,.form-grid,.outside-faq-grid{grid-template-columns:1fr}
+  .panel-actions{justify-content:stretch}
+  .panel-actions .pill-btn,.panel-actions .ghost-btn,.panel-actions .danger-btn{width:100%}
   .user-menu{justify-content:space-between}
   select,input,textarea{font-size:16px}
   table{min-width:640px}
   th,td{padding:11px 12px}
-  .table-wrap{margin-left:-16px;margin-right:-16px;width:calc(100% + 32px);max-width:calc(100% + 32px);border-radius:0}
+  .table-wrap{width:100%;max-width:100%;border-radius:0}
 }
 @media(max-width:480px){
   .sidebar{padding:12px}
@@ -522,6 +531,7 @@ body.dark .outside-faq-card{background:rgba(15,23,42,.44)}
   table{min-width:580px}
   th{font-size:11px}
   td{font-size:13px}
+  .inline-row{display:grid;grid-template-columns:1fr}
   .toast{left:14px;right:14px;bottom:14px;text-align:center}
 }
 </style>
@@ -674,7 +684,7 @@ body.dark .outside-faq-card{background:rgba(15,23,42,.44)}
 
       <section class="tab-panel" id="setup">
         <div class="panel">
-          <div class="section-head"><h3>Chatbot Setup</h3><button class="pill-btn" type="button" id="saveSetupBtn">Save setup</button></div>
+          <div class="section-head"><h3>Chatbot Setup</h3></div>
           <div class="section-body form-grid">
             <input type="hidden" id="settingsCustomerId" value="<?php echo h($selectedBotId); ?>">
             <div class="field"><label>Bot Name</label><input id="botNameInput" value="<?php echo h($botName); ?>"></div>
@@ -706,6 +716,7 @@ body.dark .outside-faq-card{background:rgba(15,23,42,.44)}
                 <button class="swatch" style="background:#f59e0b" type="button" title="Amber"></button>
               </div>
             </div>
+            <div class="panel-actions"><button class="pill-btn" type="button" id="saveSetupBtn">Save setup</button></div>
           </div>
         </div>
       </section>
@@ -850,20 +861,21 @@ body.dark .outside-faq-card{background:rgba(15,23,42,.44)}
 
       <section class="tab-panel" id="install">
         <div class="panel">
-          <div class="section-head"><h3>Integration / Install</h3><button class="pill-btn copy-btn" type="button" data-copy="<?php echo h($embedCode); ?>">Copy JS snippet</button></div>
+          <div class="section-head"><h3>Integration / Install</h3></div>
           <div class="section-body">
             <div class="embed-box"><code id="embedCode"><?php echo h($embedCode ?: 'Create or select a bot to generate the embed script.'); ?></code></div>
             <div class="split" style="margin-top:16px">
               <div class="notice"><strong>Website verification status:</strong><br><?php echo h(first_value($settings, ['verification_status'], 'Pending')); ?></div>
               <div class="notice"><strong>Allowed domains:</strong><br><?php echo h(first_value($settings, ['allowed_domains'], 'Add domains in Bot Settings')); ?></div>
             </div>
+            <div class="panel-actions"><button class="pill-btn copy-btn" type="button" data-copy="<?php echo h($embedCode); ?>">Copy JS snippet</button></div>
           </div>
         </div>
       </section>
 
       <section class="tab-panel" id="bot-settings">
         <div class="panel">
-          <div class="section-head"><h3>Bot Settings</h3><button class="pill-btn" type="button" id="saveSettingsBtn">Save bot settings</button></div>
+          <div class="section-head"><h3>Bot Settings</h3></div>
           <div class="section-body form-grid">
             <div class="field"><label>API key</label><input id="apiKeyInput" value="<?php echo h(first_value($settings, ['api_key'], '')); ?>" placeholder="Not required for free plan"></div>
             <div class="field"><label>Rate limit</label><input id="rateLimitInput" type="number" min="1" value="<?php echo h(first_value($settings, ['rate_limit'], '100')); ?>"></div>
@@ -871,6 +883,7 @@ body.dark .outside-faq-card{background:rgba(15,23,42,.44)}
             <div class="field"><label>Notification preferences</label><select id="notificationInput"><option value="weekly_summary">Email weekly summary</option><option value="unanswered_only">Important unanswered queries only</option><option value="off">Off</option></select></div>
             <div class="field full"><label>Allowed domains</label><textarea id="domainsInput" placeholder="example.com"><?php echo h(first_value($settings, ['allowed_domains'], '')); ?></textarea></div>
             <div class="field full"><button class="danger-btn" type="button" data-save-note="Delete data request">Delete data</button></div>
+            <div class="panel-actions"><button class="pill-btn" type="button" id="saveSettingsBtn">Save bot settings</button></div>
           </div>
         </div>
       </section>
@@ -882,7 +895,6 @@ body.dark .outside-faq-card{background:rgba(15,23,42,.44)}
               <h3>Customer Profile</h3>
               <p class="muted">This is your account identity. It is separate from chatbot setup and bot settings.</p>
             </div>
-            <button class="pill-btn" type="button" id="saveProfileBtn">Save profile</button>
           </div>
           <div class="section-body profile-grid">
             <div class="profile-photo">
@@ -916,6 +928,7 @@ body.dark .outside-faq-card{background:rgba(15,23,42,.44)}
               <div class="field"><label>New password</label><input id="newPasswordInput" type="password" placeholder="Minimum 8 characters" autocomplete="new-password"></div>
               <div class="field"><label>Confirm password</label><input id="confirmPasswordInput" type="password" placeholder="Repeat new password" autocomplete="new-password"></div>
             </div>
+            <div class="panel-actions"><button class="pill-btn" type="button" id="saveProfileBtn">Save profile</button></div>
           </div>
         </div>
         <datalist id="countryCodeList">
