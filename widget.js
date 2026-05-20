@@ -591,6 +591,17 @@
       return button;
     }
 
+    function populateCountrySelect(select) {
+      countryDialCodes.forEach(([iso, dialCode, country]) => {
+        const option = document.createElement("option");
+        option.value = dialCode;
+        option.textContent = `${iso} ${dialCode}`;
+        option.title = country;
+        select.appendChild(option);
+      });
+      select.value = "+91";
+    }
+
     function loadMsg91OtpProvider() {
       if (typeof window.initSendOTP === "function") {
         return Promise.resolve();
@@ -722,14 +733,7 @@
         otpInput.maxLength = 8;
         captchaMount.id = captchaId;
         verifyOtpBtn.style.display = "none";
-        countryDialCodes.forEach(([iso, dialCode, country]) => {
-          const option = document.createElement("option");
-          option.value = dialCode;
-          option.textContent = `${iso} ${dialCode}`;
-          option.title = country;
-          countrySelect.appendChild(option);
-        });
-        countrySelect.value = "+91";
+        populateCountrySelect(countrySelect);
         closeBtn.onclick = () => {
           cleanup();
           reject(new Error("Mobile OTP cancelled"));
@@ -853,6 +857,286 @@
       });
     }
 
+    function openIdentityOtpWidget() {
+      return new Promise((resolve, reject) => {
+        const msg91Cfg = config.msg91_widget || {};
+        if (!msg91Cfg.configured || !msg91Cfg.widget_id || !msg91Cfg.token_auth) {
+          reject(new Error("MSG91 widget is not configured"));
+          return;
+        }
+
+        const previousSendOtp = window.sendOtp;
+        const previousVerifyOtp = window.verifyOtp;
+        const overlay = document.createElement("div");
+        const dialog = document.createElement("div");
+        const title = document.createElement("div");
+        const emailInput = promptInput("email", "Email address");
+        const phoneRow = document.createElement("div");
+        const countrySelect = document.createElement("select");
+        const phoneInput = promptInput("tel", "98765 43210");
+        const emailOtpInput = promptInput("text", "Email OTP");
+        const mobileOtpInput = promptInput("text", "Mobile OTP");
+        const captchaMount = document.createElement("div");
+        const status = document.createElement("div");
+        const actions = document.createElement("div");
+        const sendOtpBtn = promptButton("Send OTPs");
+        const verifyOtpBtn = promptButton("Verify Identity");
+        const closeBtn = promptButton("Cancel");
+        const captchaId = "vani-msg91-identity-captcha-" + Date.now() + "-" + Math.random().toString(16).slice(2);
+        let activeEmail = "";
+        let activePhone = "";
+        let requestId = "";
+        let leadId = null;
+
+        const timeout = window.setTimeout(() => {
+          cleanup();
+          reject(new Error("Identity verification timed out"));
+        }, 10 * 60 * 1000);
+
+        function cleanup() {
+          window.clearTimeout(timeout);
+          overlay.remove();
+          if (previousSendOtp === undefined) {
+            try { delete window.sendOtp; } catch (e) {}
+          } else {
+            window.sendOtp = previousSendOtp;
+          }
+          if (previousVerifyOtp === undefined) {
+            try { delete window.verifyOtp; } catch (e) {}
+          } else {
+            window.verifyOtp = previousVerifyOtp;
+          }
+        }
+
+        function setStatus(message, isError = false) {
+          status.textContent = message;
+          status.style.color = isError ? "#dc2626" : "#475569";
+        }
+
+        css(overlay, {
+          position: "fixed",
+          inset: "0",
+          background: "rgba(15,23,42,.48)",
+          zIndex: "1000000",
+          display: "grid",
+          placeItems: "center",
+          padding: "18px"
+        });
+        css(dialog, {
+          width: "min(410px, 100%)",
+          background: "#fff",
+          borderRadius: "16px",
+          padding: "16px",
+          boxShadow: "0 20px 60px rgba(15,23,42,.32)",
+          fontFamily: "Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+        });
+        css(title, { fontWeight: "700", color: "#0f172a", marginBottom: "12px" });
+        css(emailInput, { width: "100%", marginRight: "0", boxSizing: "border-box", marginBottom: "10px" });
+        css(phoneRow, { display: "flex", gap: "8px", alignItems: "center" });
+        css(countrySelect, {
+          width: "112px",
+          flex: "0 0 112px",
+          padding: "8px",
+          border: "1px solid #e5e7eb",
+          borderRadius: "10px",
+          background: "#fff",
+          color: "#0f172a",
+          font: "inherit",
+          boxSizing: "border-box"
+        });
+        css(phoneInput, { width: "100%", marginRight: "0", boxSizing: "border-box" });
+        css(emailOtpInput, { width: "100%", marginRight: "0", boxSizing: "border-box", display: "none", marginTop: "10px" });
+        css(mobileOtpInput, { width: "100%", marginRight: "0", boxSizing: "border-box", display: "none", marginTop: "10px" });
+        css(captchaMount, { marginTop: "10px" });
+        css(status, { minHeight: "18px", marginTop: "10px", fontSize: "13px", lineHeight: "1.35" });
+        css(actions, { display: "flex", gap: "8px", justifyContent: "flex-end", marginTop: "12px" });
+
+        title.textContent = "Verify your identity";
+        emailInput.autocomplete = "email";
+        phoneInput.inputMode = "tel";
+        phoneInput.autocomplete = "tel-national";
+        emailOtpInput.inputMode = "numeric";
+        emailOtpInput.maxLength = 6;
+        mobileOtpInput.inputMode = "numeric";
+        mobileOtpInput.maxLength = 8;
+        captchaMount.id = captchaId;
+        verifyOtpBtn.style.display = "none";
+        populateCountrySelect(countrySelect);
+
+        closeBtn.onclick = () => {
+          cleanup();
+          reject(new Error("Identity verification cancelled"));
+        };
+
+        sendOtpBtn.onclick = async () => {
+          const email = (emailInput.value || "").trim();
+          const nationalNumber = (phoneInput.value || "").replace(/\D+/g, "");
+          const phone = normalizePhone(countrySelect.value + nationalNumber);
+          if (!validEmail(email)) {
+            setStatus("Enter a valid email address.", true);
+            return;
+          }
+          if (!validPhone(phone)) {
+            setStatus("Enter a valid mobile number.", true);
+            return;
+          }
+          if (typeof window.sendOtp !== "function") {
+            setStatus("MSG91 OTP is still loading. Try again.", true);
+            return;
+          }
+
+          activeEmail = email;
+          activePhone = phone;
+          sendOtpBtn.disabled = true;
+          setStatus("Sending OTPs...");
+
+          const emailRes = await api("create_lead_send_email_otp", "POST", {
+            customer_id: customerId,
+            user_id: userId,
+            email,
+            source_url: window.location.href
+          });
+          if (!emailRes.success || !emailRes.lead) {
+            sendOtpBtn.disabled = false;
+            setStatus(emailRes.email_error || emailRes.message || "Could not send email OTP. Try again.", true);
+            return;
+          }
+
+          leadId = emailRes.lead.id || null;
+          window.sendOtp(
+            activePhone.replace(/^\+/, ""),
+            data => {
+              requestId = msg91RequestId(data);
+              emailInput.disabled = true;
+              countrySelect.disabled = true;
+              phoneInput.disabled = true;
+              emailOtpInput.style.display = "block";
+              mobileOtpInput.style.display = "block";
+              sendOtpBtn.style.display = "none";
+              verifyOtpBtn.style.display = "inline-block";
+              verifyOtpBtn.disabled = false;
+              emailOtpInput.focus();
+              setStatus("OTPs sent. Enter both codes to verify.");
+            },
+            error => {
+              sendOtpBtn.disabled = false;
+              console.error("MSG91 send OTP failed:", error);
+              setStatus("Could not send mobile OTP. Try again.", true);
+            }
+          );
+        };
+
+        verifyOtpBtn.onclick = () => {
+          const emailOtp = (emailOtpInput.value || "").trim();
+          const mobileOtp = (mobileOtpInput.value || "").trim();
+          if (!/^[0-9]{6}$/.test(emailOtp)) {
+            setStatus("Enter the 6-digit email OTP.", true);
+            return;
+          }
+          if (!/^[0-9]{4,8}$/.test(mobileOtp)) {
+            setStatus("Enter the mobile OTP.", true);
+            return;
+          }
+          if (!leadId) {
+            setStatus("Email verification session was not created. Send OTPs again.", true);
+            return;
+          }
+          if (typeof window.verifyOtp !== "function") {
+            setStatus("MSG91 OTP is still loading. Try again.", true);
+            return;
+          }
+
+          verifyOtpBtn.disabled = true;
+          setStatus("Verifying identity...");
+          window.verifyOtp(
+            mobileOtp,
+            async data => {
+              const accessToken = msg91AccessToken(data);
+              if (!accessToken) {
+                verifyOtpBtn.disabled = false;
+                setStatus("Mobile verification did not return an access token.", true);
+                return;
+              }
+
+              const mobileRes = await api("verify_lead_mobile_msg91", "POST", {
+                customer_id: customerId,
+                user_id: userId,
+                phone_number: activePhone,
+                msg91_access_token: accessToken,
+                source_url: window.location.href,
+                msg91_response: data || null
+              });
+              if (!mobileRes.success || !mobileRes.lead) {
+                verifyOtpBtn.disabled = false;
+                setStatus(mobileRes.message || "Mobile verification could not be saved. Try again.", true);
+                return;
+              }
+
+              const emailRes = await api("verify_lead_email_otp", "POST", {
+                customer_id: customerId,
+                lead_id: leadId,
+                otp: emailOtp
+              });
+              if (!emailRes.success) {
+                verifyOtpBtn.disabled = false;
+                setStatus(emailRes.message || "Email OTP verification failed. Try again.", true);
+                return;
+              }
+
+              cleanup();
+              resolve({
+                lead: mobileRes.lead,
+                email: activeEmail,
+                phone: mobileRes.lead.phone_number || activePhone
+              });
+            },
+            error => {
+              verifyOtpBtn.disabled = false;
+              console.error("MSG91 verify OTP failed:", error);
+              setStatus("Mobile OTP verification failed. Check the code and try again.", true);
+            },
+            requestId || undefined
+          );
+        };
+
+        actions.appendChild(closeBtn);
+        actions.appendChild(sendOtpBtn);
+        actions.appendChild(verifyOtpBtn);
+        phoneRow.appendChild(countrySelect);
+        phoneRow.appendChild(phoneInput);
+        dialog.appendChild(title);
+        dialog.appendChild(emailInput);
+        dialog.appendChild(phoneRow);
+        dialog.appendChild(emailOtpInput);
+        dialog.appendChild(mobileOtpInput);
+        dialog.appendChild(captchaMount);
+        dialog.appendChild(status);
+        dialog.appendChild(actions);
+        overlay.appendChild(dialog);
+        document.body.appendChild(overlay);
+
+        loadMsg91OtpProvider()
+          .then(() => {
+            window.initSendOTP({
+              widgetId: msg91Cfg.widget_id,
+              tokenAuth: msg91Cfg.token_auth,
+              exposeMethods: true,
+              captchaRenderId: captchaId,
+              success: () => {},
+              failure: error => {
+                console.error("MSG91 identity OTP failed:", error);
+              }
+            });
+            setStatus("Enter your email and mobile number to receive OTPs.");
+            emailInput.focus();
+          })
+          .catch(error => {
+            cleanup();
+            reject(error);
+          });
+      });
+    }
+
     // Lead prompt UI: creates one lead early and updates it as contact details are verified or collected.
     async function renderLeadPrompt() {
       const leadCfg = (config.lead_generation || {});
@@ -908,6 +1192,36 @@
         }, err => {
           addMessage(messages, "Location access denied or unavailable.", "bot");
         }, { enableHighAccuracy: true, timeout: 10000 });
+        return;
+      }
+
+      if (verifyEmailOtp && verifyMobileOtp && (!leadState.emailVerified || !leadState.mobileVerified)) {
+        const verifyBtn = requiredPromptButton("Please Verify Identity");
+        css(verifyBtn, { width: "100%" });
+        verifyBtn.onclick = async () => {
+          verifyBtn.disabled = true;
+          try {
+            const verified = await openIdentityOtpWidget();
+            leadState.leadId = verified.lead?.id || leadState.leadId;
+            leadState.email = verified.email || leadState.email;
+            leadState.phone = verified.phone || leadState.phone;
+            leadState.emailSaved = true;
+            leadState.emailVerified = true;
+            leadState.mobileSaved = true;
+            leadState.mobileVerified = true;
+            leadState.verified = true;
+            leadState.expecting = null;
+            saveLeadState(customerId, leadState);
+            addMessage(messages, "Identity verified.", "bot");
+            renderLeadPrompt();
+          } catch (error) {
+            console.error("Identity verification failed:", error);
+            addMessage(messages, "Identity verification was not completed. Try again.", "bot");
+          } finally {
+            verifyBtn.disabled = false;
+          }
+        };
+        prompt.appendChild(verifyBtn);
         return;
       }
 
