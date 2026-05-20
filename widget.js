@@ -69,6 +69,10 @@
     try { localStorage.setItem(leadStorageKey(customerId), JSON.stringify(state)); } catch (e) {}
   }
 
+  function isEnabled(value) {
+    return value === true || value === 1 || value === "1" || value === "true";
+  }
+
   function css(node, styles) {
     Object.assign(node.style, styles);
   }
@@ -317,12 +321,13 @@
     }
 
     function leadFlowComplete(leadCfg, leadState) {
-      if (!leadCfg.is_enabled) return true;
-      const needsLocation = !!leadCfg.collect_location;
-      const needsEmail = !!(leadCfg.collect_email || leadCfg.verify_email_otp);
-      const needsMobile = !!(leadCfg.collect_mobile || leadCfg.verify_mobile_otp);
+      if (!isEnabled(leadCfg.is_enabled)) return true;
+      const needsLocation = isEnabled(leadCfg.collect_location);
+      const verifyEmailOtp = isEnabled(leadCfg.verify_email_otp);
+      const needsEmail = isEnabled(leadCfg.collect_email) || verifyEmailOtp;
+      const needsMobile = isEnabled(leadCfg.collect_mobile) || isEnabled(leadCfg.verify_mobile_otp);
       return (!needsLocation || leadState.locationSaved) &&
-        (!needsEmail || (leadCfg.verify_email_otp ? leadState.emailVerified : leadState.emailSaved)) &&
+        (!needsEmail || (verifyEmailOtp ? leadState.emailVerified : leadState.emailSaved)) &&
         (!needsMobile || leadState.mobileSaved);
     }
 
@@ -363,13 +368,18 @@
       const prompt = box.querySelector("[data-vani-lead-prompt]");
       if (!prompt) return;
       prompt.innerHTML = "";
-      if (!leadCfg.is_enabled) {
+      if (!isEnabled(leadCfg.is_enabled)) {
         prompt.style.display = "none";
         return;
       }
       prompt.style.display = "block";
+      const collectLocation = isEnabled(leadCfg.collect_location);
+      const collectEmail = isEnabled(leadCfg.collect_email);
+      const collectMobile = isEnabled(leadCfg.collect_mobile);
+      const verifyEmailOtp = isEnabled(leadCfg.verify_email_otp);
+      const verifyMobileOtp = isEnabled(leadCfg.verify_mobile_otp);
 
-      if (leadCfg.collect_location && !leadState.locationSaved) {
+      if (collectLocation && !leadState.locationSaved) {
         addMessage(messages, "Requesting your location...", "bot");
         if (!navigator.geolocation) {
           addMessage(messages, "Geolocation not supported in this browser.", "bot");
@@ -386,7 +396,7 @@
             latitude: lat,
             longitude: lon,
             source_url: window.location.href,
-            verification_quality: leadCfg.verify_email_otp || leadCfg.verify_mobile_otp ? 'poor' : 'poor'
+            verification_quality: verifyEmailOtp || verifyMobileOtp ? 'poor' : 'poor'
           });
           console.log('create_lead response:', saveRes);
           if (saveRes && saveRes.success) {
@@ -409,7 +419,7 @@
         return;
       }
 
-      if ((leadCfg.collect_email || leadCfg.verify_email_otp) && !(leadCfg.verify_email_otp ? leadState.emailVerified : leadState.emailSaved)) {
+      if ((collectEmail || verifyEmailOtp) && !(verifyEmailOtp ? leadState.emailVerified : leadState.emailSaved)) {
         // If awaiting OTP entry
         if (leadState.expecting === 'otp') {
           const otpInput = promptInput("text", "Enter 6-digit OTP");
@@ -440,12 +450,12 @@
         }
 
         const emailInput = promptInput("email", "Your email address");
-        const sendBtn = promptButton(leadCfg.verify_email_otp ? "Send OTP" : "Save email");
+        const sendBtn = promptButton(verifyEmailOtp ? "Send OTP" : "Save email");
         sendBtn.onclick = async () => {
           const email = (emailInput.value || "").trim();
           if (!validEmail(email)) return addMessage(messages, "Enter a valid email address.", "bot");
           sendBtn.disabled = true;
-          const res = leadCfg.verify_email_otp
+          const res = verifyEmailOtp
             ? await api("create_lead_send_email_otp", "POST", { customer_id: customerId, user_id: userId, email, source_url: window.location.href })
             : await api("create_lead", "POST", { customer_id: customerId, user_id: userId, email, source_url: window.location.href, verification_quality: "poor" });
           sendBtn.disabled = false;
@@ -453,11 +463,11 @@
             leadState.leadId = res.lead.id || leadState.leadId;
             leadState.email = email;
             leadState.emailSaved = true;
-            leadState.emailVerified = !leadCfg.verify_email_otp;
-            leadState.verified = !leadCfg.verify_email_otp;
-            leadState.expecting = leadCfg.verify_email_otp ? 'otp' : null;
+            leadState.emailVerified = !verifyEmailOtp;
+            leadState.verified = !verifyEmailOtp;
+            leadState.expecting = verifyEmailOtp ? 'otp' : null;
             saveLeadState(customerId, leadState);
-            addMessage(messages, leadCfg.verify_email_otp ? "OTP sent to your email. Enter it below to verify." : "Email saved.", "bot");
+            addMessage(messages, verifyEmailOtp ? "OTP sent to your email. Enter it below to verify." : "Email saved.", "bot");
             renderLeadPrompt();
           } else {
             const errorMessage = res.email_error || res.message || "Could not send OTP to that email. Try again later.";
@@ -471,7 +481,7 @@
         return;
       }
 
-      if ((leadCfg.collect_mobile || leadCfg.verify_mobile_otp) && !leadState.mobileSaved) {
+      if ((collectMobile || verifyMobileOtp) && !leadState.mobileSaved) {
         const phoneInput = promptInput("tel", "Your mobile number");
         phoneInput.inputMode = "tel";
         const saveBtn = promptButton("Save mobile");
@@ -485,8 +495,8 @@
             phone_number: phone,
             source_url: window.location.href,
             mobile_otp_verified: false,
-            verification_quality: leadCfg.verify_mobile_otp ? "poor" : "poor",
-            metadata: leadCfg.verify_mobile_otp ? { mobile_otp_status: "firebase_pending" } : {}
+            verification_quality: verifyMobileOtp ? "poor" : "poor",
+            metadata: verifyMobileOtp ? { mobile_otp_status: "firebase_pending" } : {}
           });
           saveBtn.disabled = false;
           if (res.success && res.lead) {
@@ -495,7 +505,7 @@
             leadState.mobileSaved = true;
             leadState.mobileVerified = false;
             saveLeadState(customerId, leadState);
-            addMessage(messages, leadCfg.verify_mobile_otp ? "Mobile number saved. OTP verification will be connected soon." : "Mobile number saved.", "bot");
+            addMessage(messages, verifyMobileOtp ? "Mobile number saved. OTP verification will be connected soon." : "Mobile number saved.", "bot");
             renderLeadPrompt();
           } else {
             addMessage(messages, res.message || "Could not save mobile number. Try again.", "bot");
