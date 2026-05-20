@@ -205,7 +205,7 @@ if ($action === "create_lead") {
         "mobile_otp_verified" => !!($data['mobile_otp_verified'] ?? false),
         "notification_email_sent" => false,
         "verification_quality" => ($data['verification_quality'] ?? 'poor'),
-        "metadata" => $data['metadata'] ?? new stdClass()
+        "metadata" => (object)($data['metadata'] ?? [])
     ];
 
     $res = supabase("POST", "lead_generation_leads", [[$payload]]);
@@ -236,7 +236,7 @@ if ($action === "create_lead_send_email_otp") {
         "email_otp_verified" => false,
         "notification_email_sent" => false,
         "verification_quality" => 'poor',
-        "metadata" => $metadata,
+        "metadata" => (object)$metadata,
         "source_url" => $data['source_url'] ?? null
     ];
 
@@ -283,7 +283,7 @@ if ($action === "verify_lead_email_otp") {
     $update = [
         "email_otp_verified" => true,
         "verification_quality" => 'real',
-        "metadata" => array_filter($meta, function($k){ return $k !== 'email_otp' && $k !== 'email_otp_expires_at'; }, ARRAY_FILTER_USE_KEY)
+        "metadata" => (object)array_filter($meta, function($k){ return $k !== 'email_otp' && $k !== 'email_otp_expires_at'; }, ARRAY_FILTER_USE_KEY)
     ];
 
     $up = supabase("PATCH", "lead_generation_leads?id=eq." . $leadId, $update);
