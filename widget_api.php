@@ -89,6 +89,41 @@ function widget_save_lead(string $customerId, string $userId, array $fields): ar
     return $res;
 }
 
+function widget_notify_lead_by_email(string $customerId, array $lead): bool {
+    $leadId = (int)($lead['id'] ?? 0);
+    $leadEmail = trim((string)($lead['email'] ?? ''));
+    if (!$leadId || $leadEmail === '' || widget_bool($lead['notification_email_sent'] ?? false)) {
+        return false;
+    }
+
+    $leadSettings = widget_get_lead_settings($customerId);
+    if (!widget_bool($leadSettings['notify_lead_by_email'] ?? false)) {
+        return false;
+    }
+
+    $notificationEmail = trim((string)($leadSettings['notification_email'] ?? ''));
+    if ($notificationEmail === '') {
+        return false;
+    }
+
+    require_once __DIR__ . '/email.php';
+    $subject = "New lead captured";
+    $html = "<p>A new lead shared their email: <strong>" . htmlspecialchars($leadEmail) . "</strong></p>";
+    if (!empty($lead['phone_number'])) {
+        $html .= "<p>Phone: " . htmlspecialchars((string)$lead['phone_number']) . "</p>";
+    }
+    if (!empty($lead['source_url'])) {
+        $html .= "<p>Source: " . htmlspecialchars((string)$lead['source_url']) . "</p>";
+    }
+
+    $sent = sendBrevoEmail($notificationEmail, $subject, $html);
+    if ($sent) {
+        supabase("PATCH", "lead_generation_leads?id=eq." . $leadId, ["notification_email_sent" => true]);
+    }
+
+    return $sent;
+}
+
 if ($action === "get_widget_config" || $action === "get_theme") {
     $customerId = widget_customer_id();
     if (!$customerId) {
@@ -256,7 +291,12 @@ if ($action === "create_lead") {
 
     $res = widget_save_lead($customerId, $userId, $payload);
     $ok = ($res['status'] >= 200 && $res['status'] < 300);
-    widget_json_response(["success" => $ok, "debug" => $res, "lead" => $res['data'][0] ?? null]);
+    $lead = $res['data'][0] ?? null;
+    $notified = false;
+    if ($ok && $lead && !empty($payload['email'])) {
+        $notified = widget_notify_lead_by_email($customerId, $lead);
+    }
+    widget_json_response(["success" => $ok, "debug" => $res, "lead" => $lead, "notified" => $notified]);
 }
 
 // Create a lead for email OTP verification and send OTP email
@@ -346,20 +386,7 @@ if ($action === "verify_lead_email_otp") {
     $up = supabase("PATCH", "lead_generation_leads?id=eq." . $leadId, $update);
     $ok = ($up['status'] >= 200 && $up['status'] < 300);
 
-    // Optionally notify customer if configured
-    $leadSettings = widget_get_lead_settings($customerId);
-    $notify = widget_bool($leadSettings['notify_lead_by_email'] ?? false);
-    $notificationEmail = $leadSettings['notification_email'] ?? '';
-    $notified = false;
-    if ($ok && $notify && $notificationEmail) {
-        require_once __DIR__ . '/email.php';
-        $subject = "New lead captured";
-        $html = "<p>A lead has verified their email: " . htmlspecialchars($row['email'] ?? '') . "</p>";
-        $notified = sendBrevoEmail($notificationEmail, $subject, $html);
-        if ($notified) {
-            supabase("PATCH", "lead_generation_leads?id=eq." . $leadId, ["notification_email_sent" => true]);
-        }
-    }
+    $notified = $ok ? widget_notify_lead_by_email($customerId, array_merge($row, $update)) : false;
 
     widget_json_response(["success" => $ok, "notified" => $notified]);
 }
