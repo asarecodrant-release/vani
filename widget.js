@@ -260,6 +260,7 @@
       </div>
       <div data-vani-messages style="flex:1;overflow:auto;padding:12px;background:#f8fafc;"></div>
       <div data-vani-suggestions style="max-height:132px;overflow:auto;background:#fff;border-top:1px solid #e5e7eb;"></div>
+      <div data-vani-lead-prompt style="display:none;padding:10px;border-top:1px solid #e5e7eb;background:#fff;"></div>
       <div style="display:flex;border-top:1px solid #e5e7eb;background:#fff;">
         <input data-vani-input placeholder="Type message..." style="flex:1;min-width:0;padding:12px;border:0;outline:0;font:inherit;">
         <button data-vani-send type="button" style="padding:0 15px;background:${color};color:#fff;border:0;font-weight:700;cursor:pointer;">Send</button>
@@ -298,106 +299,153 @@
       renderSuggestions(suggestionsBox, input, response.data || []);
     }
 
-    window.sendMessage = async function sendMessage() {
-      const message = input.value.trim();
-      if (!message) return;
-
-      // Load lead settings and state
+    // Lead prompt UI: renders controls for location sharing and email OTP flows
+    async function renderLeadPrompt() {
       const leadCfg = (config.lead_generation || {});
       const leadState = loadLeadState(customerId);
+      const prompt = box.querySelector("[data-vani-lead-prompt]");
+      if (!prompt) return;
+      prompt.innerHTML = "";
+      if (!leadCfg.is_enabled) {
+        prompt.style.display = "none";
+        return;
+      }
+      prompt.style.display = "block";
 
-      // Helper: validate email
-      function isValidEmail(email) {
-        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+      if (leadCfg.collect_location && !leadState.locationSaved) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.textContent = "Share my location";
+        css(btn, { padding: "8px 12px", borderRadius: "10px", border: "1px solid #e5e7eb", background: "#fff", cursor: "pointer" });
+        btn.onclick = () => {
+          addMessage(messages, "Requesting location...", "bot");
+          if (!navigator.geolocation) {
+            addMessage(messages, "Geolocation not supported in this browser.", "bot");
+            return;
+          }
+          btn.disabled = true;
+          navigator.geolocation.getCurrentPosition(async pos => {
+            const lat = pos.coords.latitude;
+            const lon = pos.coords.longitude;
+            const locText = `Lat:${lat.toFixed(5)} Lon:${lon.toFixed(5)}`;
+            const saveRes = await api("create_lead", "POST", {
+              customer_id: customerId,
+              user_id: userId,
+              location_text: locText,
+              latitude: lat,
+              longitude: lon,
+              source_url: window.location.href,
+              verification_quality: leadCfg.verify_email_otp || leadCfg.verify_mobile_otp ? 'poor' : 'poor'
+            });
+            console.log('create_lead response:', saveRes);
+            if (saveRes && saveRes.success) {
+              leadState.locationSaved = true;
+              leadState.leadId = saveRes.lead?.id || leadState.leadId;
+              saveLeadState(customerId, leadState);
+              addMessage(messages, "Location saved. You can continue.", "bot");
+              prompt.style.display = "none";
+            } else {
+              const serverMsg = (saveRes && (saveRes.message || (saveRes.debug && saveRes.debug.raw)))
+                ? (saveRes.message || (typeof saveRes.debug.raw === 'string' ? saveRes.debug.raw.slice(0,200) : JSON.stringify(saveRes.debug)))
+                : 'Server error';
+              console.error('create_lead failed', saveRes);
+              addMessage(messages, "Could not save location: " + serverMsg, "bot");
+              btn.disabled = false;
+            }
+          }, err => {
+            addMessage(messages, "Location access denied or unavailable.", "bot");
+            btn.disabled = false;
+          }, { enableHighAccuracy: true, timeout: 10000 });
+        };
+        prompt.appendChild(btn);
+        return;
       }
 
-      // If lead generation enabled, enforce flows
-      if (leadCfg.is_enabled) {
-        // 1) collect location
-        if (leadCfg.collect_location && !leadState.locationSaved) {
-          // Ask user to allow location sharing
-          addMessage(messages, "Please share your location so we can capture lead details. Click the Send button to share.", "bot");
-          // Try to get geolocation
-          if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(async pos => {
-              const lat = pos.coords.latitude;
-              const lon = pos.coords.longitude;
-              const locText = `Lat:${lat.toFixed(5)} Lon:${lon.toFixed(5)}`;
-              const saveRes = await api("create_lead", "POST", {
-                customer_id: customerId,
-                user_id: userId,
-                location_text: locText,
-                latitude: lat,
-                longitude: lon,
-                source_url: window.location.href,
-                verification_quality: leadCfg.verify_email_otp || leadCfg.verify_mobile_otp ? 'poor' : 'poor'
-              });
-              if (saveRes.success) {
-                leadState.locationSaved = true;
-                leadState.leadId = saveRes.lead?.id || leadState.leadId;
-                saveLeadState(customerId, leadState);
-                addMessage(messages, "Location saved. You can continue.", "bot");
-              } else {
-                addMessage(messages, "Could not save location.", "bot");
-              }
-            }, err => {
-              addMessage(messages, "Location access denied or unavailable.", "bot");
-            }, { enableHighAccuracy: true, timeout: 10000 });
-          } else {
-            addMessage(messages, "Geolocation is not supported in your browser.", "bot");
-          }
-          // Ask user to re-send message after sharing location
-          return;
-        }
-
-        // 2) Email OTP verification
-        if (leadCfg.verify_email_otp && !leadState.verified) {
-          // If we are expecting an OTP verification step
-          if (leadState.expecting === 'otp') {
-            // user input is treated as OTP
-            const enteredOtp = message;
-            addMessage(messages, message, "user");
-            input.value = "";
-            const res = await api("verify_lead_email_otp", "POST", { customer_id: customerId, lead_id: leadState.leadId, otp: enteredOtp });
+      if (leadCfg.verify_email_otp && !leadState.verified) {
+        // If awaiting OTP entry
+        if (leadState.expecting === 'otp') {
+          const otpInput = document.createElement("input");
+          otpInput.type = "text";
+          otpInput.placeholder = "Enter 6-digit OTP";
+          css(otpInput, { padding: "8px", border: "1px solid #e5e7eb", borderRadius: "10px", marginRight: "8px" });
+          const verifyBtn = document.createElement("button");
+          verifyBtn.type = "button";
+          verifyBtn.textContent = "Verify OTP";
+          css(verifyBtn, { padding: "8px 12px", borderRadius: "10px", border: "1px solid #e5e7eb", background: "#fff", cursor: "pointer" });
+          verifyBtn.onclick = async () => {
+            const otp = otpInput.value.trim();
+            if (!/^[0-9]{6}$/.test(otp)) return addMessage(messages, "Enter a 6-digit code.", "bot");
+            verifyBtn.disabled = true;
+            const res = await api("verify_lead_email_otp", "POST", { customer_id: customerId, lead_id: leadState.leadId, otp });
+            verifyBtn.disabled = false;
             if (res.success) {
               leadState.verified = true;
               leadState.expecting = null;
               saveLeadState(customerId, leadState);
               addMessage(messages, "Email verified. You can continue the chat.", "bot");
+              prompt.style.display = "none";
             } else {
               addMessage(messages, res.message || "Invalid or expired OTP. Try again.", "bot");
             }
-            return;
-          }
-
-          // If we need to ask for email
-          if (!leadState.leadId || !leadState.email) {
-            // validate input as email
-            if (!isValidEmail(message)) {
-              addMessage(messages, "Please provide a valid email address to continue.", "bot");
-              return;
-            }
-
-            addMessage(messages, message, "user");
-            input.value = "";
-
-            // create lead and send OTP
-            const res = await api("create_lead_send_email_otp", "POST", { customer_id: customerId, email: message, source_url: window.location.href });
-            if (res.success && res.lead) {
-              leadState.leadId = res.lead.id || leadState.leadId;
-              leadState.email = message;
-              leadState.expecting = 'otp';
-              saveLeadState(customerId, leadState);
-              addMessage(messages, "An OTP has been sent to your email. Please enter the 6-digit code to verify.", "bot");
-            } else {
-              addMessage(messages, "Could not send OTP to that email. Try again later.", "bot");
-            }
-            return;
-          }
+          };
+          prompt.appendChild(otpInput);
+          prompt.appendChild(verifyBtn);
+          return;
         }
+
+        // Ask for email and send OTP
+        const emailInput = document.createElement("input");
+        emailInput.type = "email";
+        emailInput.placeholder = "Your email address";
+        css(emailInput, { padding: "8px", border: "1px solid #e5e7eb", borderRadius: "10px", marginRight: "8px", flex: "1" });
+        const sendBtn = document.createElement("button");
+        sendBtn.type = "button";
+        sendBtn.textContent = "Send OTP";
+        css(sendBtn, { padding: "8px 12px", borderRadius: "10px", border: "1px solid #e5e7eb", background: "#fff", cursor: "pointer" });
+        sendBtn.onclick = async () => {
+          const email = (emailInput.value || "").trim();
+          if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return addMessage(messages, "Enter a valid email address.", "bot");
+          sendBtn.disabled = true;
+          const res = await api("create_lead_send_email_otp", "POST", { customer_id: customerId, email, source_url: window.location.href });
+          sendBtn.disabled = false;
+          if (res.success && res.lead) {
+            leadState.leadId = res.lead.id || leadState.leadId;
+            leadState.email = email;
+            leadState.expecting = 'otp';
+            saveLeadState(customerId, leadState);
+            addMessage(messages, "OTP sent to your email. Enter it below to verify.", "bot");
+            renderLeadPrompt();
+          } else {
+            addMessage(messages, "Could not send OTP to that email. Try again later.", "bot");
+          }
+        };
+        const wrap = document.createElement("div");
+        css(wrap, { display: "flex", gap: "8px", alignItems: "center" });
+        wrap.appendChild(emailInput);
+        wrap.appendChild(sendBtn);
+        prompt.appendChild(wrap);
+        return;
       }
 
-      // If all lead checks passed, proceed with normal chat
+      // Nothing required
+      prompt.style.display = "none";
+    }
+
+    window.sendMessage = async function sendMessage() {
+      const message = input.value.trim();
+      if (!message) return;
+
+      const leadCfg = (config.lead_generation || {});
+      const leadState = loadLeadState(customerId);
+
+      // If lead generation requires action, show visual prompt and block chat
+      if (leadCfg.is_enabled && ((leadCfg.collect_location && !leadState.locationSaved) || (leadCfg.verify_email_otp && !leadState.verified))) {
+        renderLeadPrompt();
+        addMessage(messages, "Please complete the verification using the controls above the input.", "bot");
+        return;
+      }
+
+      // proceed with normal chat
       addMessage(messages, message, "user");
       input.value = "";
       suggestionsBox.innerHTML = "";
@@ -419,6 +467,7 @@
       if (!open) {
         input.focus();
         loadTop();
+        renderLeadPrompt();
       }
     };
     greeting.onclick = icon.onclick;
