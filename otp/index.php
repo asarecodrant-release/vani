@@ -115,6 +115,11 @@ let confirmationResult = null;
 
 phoneInput.value = initialPhone;
 
+if (!firebaseConfig.apiKey) {
+  sendOtpBtn.disabled = true;
+  setStatus("Mobile verification is not configured. Please contact support.", "error");
+}
+
 function validPhone(value) {
   return /^\+?[1-9][0-9]{7,14}$/.test(value);
 }
@@ -142,7 +147,16 @@ async function getVerifier() {
   recaptchaVerifier = new RecaptchaVerifier(auth, "recaptcha-container", {
     size: "invisible"
   });
+  await recaptchaVerifier.render();
   return recaptchaVerifier;
+}
+
+function withTimeout(promise, milliseconds, message) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), milliseconds);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
 async function sendOtp() {
@@ -158,7 +172,11 @@ async function sendOtp() {
   setStatus("Sending OTP...");
   try {
     const verifier = await getVerifier();
-    confirmationResult = await signInWithPhoneNumber(auth, phone, verifier);
+    confirmationResult = await withTimeout(
+      signInWithPhoneNumber(auth, phone, verifier),
+      45000,
+      "Firebase OTP send timed out"
+    );
     otpField.style.display = "grid";
     verifyActions.style.display = "flex";
     otpInput.focus();

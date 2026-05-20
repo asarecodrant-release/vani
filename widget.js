@@ -363,7 +363,7 @@
       return button;
     }
 
-    function openMobileOtpFrame(phone) {
+    function openMobileOtpFrame(phone = "") {
       return new Promise((resolve, reject) => {
         const overlay = document.createElement("div");
         const frame = document.createElement("iframe");
@@ -437,11 +437,12 @@
         };
 
         const params = new URLSearchParams({
-          phone,
           request_id: requestId,
           parent_origin: parentOrigin
         });
+        if (phone) params.set("phone", phone);
         frame.src = otpBase + "?" + params.toString();
+        frame.setAttribute("allow", "otp-credentials");
         frame.title = "Mobile OTP verification";
         overlay.appendChild(frame);
         overlay.appendChild(closeBtn);
@@ -571,27 +572,24 @@
       }
 
       if ((collectMobile || verifyMobileOtp) && !(verifyMobileOtp ? leadState.mobileVerified : leadState.mobileSaved)) {
-        const phoneInput = promptInput("tel", "Your mobile number");
-        phoneInput.inputMode = "tel";
-        const saveBtn = promptButton(verifyMobileOtp ? "Verify mobile" : "Save mobile");
-        saveBtn.onclick = async () => {
-          const phone = (phoneInput.value || "").trim().replace(/[^\d+]/g, "").replace(/(?!^)\+/g, "");
-          if (!validPhone(phone)) return addMessage(messages, "Enter a valid mobile number with country code.", "bot");
-          saveBtn.disabled = true;
-          if (verifyMobileOtp) {
+        if (verifyMobileOtp) {
+          const verifyBtn = promptButton("Verify mobile number");
+          css(verifyBtn, { width: "100%" });
+          verifyBtn.onclick = async () => {
+            verifyBtn.disabled = true;
             try {
-              const verified = await openMobileOtpFrame(phone);
+              const verified = await openMobileOtpFrame();
               const res = await api("verify_lead_mobile_firebase", "POST", {
                 customer_id: customerId,
                 user_id: userId,
-                phone_number: verified.phone || phone,
+                phone_number: verified.phone || "",
                 firebase_id_token: verified.firebase_id_token || "",
                 source_url: window.location.href,
                 firebase_uid: verified.firebase_uid || null
               });
               if (res.success && res.lead) {
                 leadState.leadId = res.lead.id || leadState.leadId;
-                leadState.phone = verified.phone || phone;
+                leadState.phone = verified.phone || "";
                 leadState.mobileSaved = true;
                 leadState.mobileVerified = true;
                 leadState.expecting = null;
@@ -605,11 +603,20 @@
               console.error("Hosted mobile OTP failed:", error);
               addMessage(messages, "Mobile verification was not completed. Try again.", "bot");
             } finally {
-              saveBtn.disabled = false;
+              verifyBtn.disabled = false;
             }
-            return;
-          }
+          };
+          prompt.appendChild(verifyBtn);
+          return;
+        }
 
+        const phoneInput = promptInput("tel", "Your mobile number");
+        phoneInput.inputMode = "tel";
+        const saveBtn = promptButton("Save mobile");
+        saveBtn.onclick = async () => {
+          const phone = (phoneInput.value || "").trim().replace(/[^\d+]/g, "").replace(/(?!^)\+/g, "");
+          if (!validPhone(phone)) return addMessage(messages, "Enter a valid mobile number with country code.", "bot");
+          saveBtn.disabled = true;
           const res = await api("create_lead", "POST", {
             customer_id: customerId,
             user_id: userId,
