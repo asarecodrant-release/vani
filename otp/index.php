@@ -180,7 +180,7 @@ window.configuration = {
   }
 };
 
-async function sendOtp() {
+async function handleSendOtp() {
   const phone = cleanPhone(phoneInput.value);
   phoneInput.value = phone;
   if (!validPhone(phone)) {
@@ -246,8 +246,8 @@ async function verifyOtp() {
   }
 }
 
-sendOtpBtn.addEventListener("click", sendOtp);
-resendBtn.addEventListener("click", sendOtp);
+sendOtpBtn.addEventListener("click", handleSendOtp);
+resendBtn.addEventListener("click", handleSendOtp);
 verifyOtpBtn.addEventListener("click", verifyOtp);
 cancelBtn.addEventListener("click", () => post("cancelled"));
 phoneInput.addEventListener("input", (event) => {
@@ -260,7 +260,7 @@ otpInput.addEventListener("keydown", event => {
   if (event.key === "Enter") verifyOtp();
 });
 phoneInput.addEventListener("keydown", event => {
-  if (event.key === "Enter") sendOtp();
+  if (event.key === "Enter") handleSendOtp();
 });
 </script>
 <script type="text/javascript" onload="initMsg91Provider()" src="https://verify.msg91.com/otp-provider.js"></script>
