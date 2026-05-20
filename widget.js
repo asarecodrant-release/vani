@@ -180,7 +180,8 @@
         objectFit: "contain",
         display: "block",
         background: "transparent",
-        boxShadow: "none"
+        boxShadow: "none",
+        border: "0"
       });
       iconImage.onerror = () => {
         iconImage.remove();
