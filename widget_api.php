@@ -185,6 +185,128 @@ if ($action === "get_top_faqs") {
     widget_json_response(["success" => true, "data" => $questions]);
 }
 
+// Create a lead record (generic) - used for location or simple lead saves
+if ($action === "create_lead") {
+    $data = widget_get_json();
+    $customerId = widget_customer_id($data);
+    if (!$customerId) widget_json_response(["success" => false, "message" => "Missing customer_id"], 400);
+
+    $payload = [
+        "customer_id" => $customerId,
+        "name" => $data['name'] ?? null,
+        "email" => $data['email'] ?? null,
+        "phone_number" => $data['phone_number'] ?? null,
+        "location_text" => $data['location_text'] ?? null,
+        "latitude" => isset($data['latitude']) ? (float)$data['latitude'] : null,
+        "longitude" => isset($data['longitude']) ? (float)$data['longitude'] : null,
+        "source_url" => $data['source_url'] ?? null,
+        "whatsapp_redirected" => !!($data['whatsapp_redirected'] ?? false),
+        "email_otp_verified" => !!($data['email_otp_verified'] ?? false),
+        "mobile_otp_verified" => !!($data['mobile_otp_verified'] ?? false),
+        "notification_email_sent" => false,
+        "verification_quality" => ($data['verification_quality'] ?? 'poor'),
+        "metadata" => $data['metadata'] ?? new stdClass()
+    ];
+
+    $res = supabase("POST", "lead_generation_leads", [[$payload]]);
+    $ok = ($res['status'] >= 200 && $res['status'] < 300);
+    widget_json_response(["success" => $ok, "debug" => $res, "lead" => $res['data'][0] ?? null]);
+}
+
+// Create a lead for email OTP verification and send OTP email
+if ($action === "create_lead_send_email_otp") {
+    $data = widget_get_json();
+    $customerId = widget_customer_id($data);
+    $toEmail = trim((string)($data['email'] ?? ''));
+    if (!$customerId || !$toEmail) widget_json_response(["success" => false, "message" => "Missing customer_id or email"], 400);
+
+    require_once __DIR__ . '/email.php';
+
+    $otp = str_pad((string)rand(0, 999999), 6, '0', STR_PAD_LEFT);
+    $expiresAt = gmdate('Y-m-d\TH:i:s\Z', time() + 600); // 10 minutes
+
+    $metadata = [
+        'email_otp' => $otp,
+        'email_otp_expires_at' => $expiresAt
+    ];
+
+    $payload = [
+        "customer_id" => $customerId,
+        "email" => $toEmail,
+        "email_otp_verified" => false,
+        "notification_email_sent" => false,
+        "verification_quality" => 'poor',
+        "metadata" => $metadata,
+        "source_url" => $data['source_url'] ?? null
+    ];
+
+    $res = supabase("POST", "lead_generation_leads", [[$payload]]);
+    $ok = ($res['status'] >= 200 && $res['status'] < 300);
+    $lead = $res['data'][0] ?? null;
+
+    // Send OTP email
+    $sent = false;
+    if ($ok && $lead) {
+        $subject = "Your verification code";
+        $html = "<p>Your verification code is <strong>" . htmlspecialchars($otp) . "</strong>. It expires in 10 minutes.</p>";
+        $sent = sendBrevoEmail($toEmail, $subject, $html);
+    }
+
+    widget_json_response(["success" => ($ok && $sent), "lead" => $lead, "otp_sent" => $sent]);
+}
+
+// Verify OTP for a lead email
+if ($action === "verify_lead_email_otp") {
+    $data = widget_get_json();
+    $customerId = widget_customer_id($data);
+    $leadId = isset($data['lead_id']) ? (int)$data['lead_id'] : 0;
+    $entered = trim((string)($data['otp'] ?? ''));
+    if (!$customerId || !$leadId || $entered === '') widget_json_response(["success" => false, "message" => "Missing data"], 400);
+
+    $res = supabase("GET", "lead_generation_leads?select=*&id=eq." . $leadId . "&customer_id=eq." . urlencode($customerId) . "&limit=1");
+    $row = $res['data'][0] ?? null;
+    if (!$row) widget_json_response(["success" => false, "message" => "Lead not found"], 404);
+
+    $meta = $row['metadata'] ?? [];
+    $expected = isset($meta['email_otp']) ? (string)$meta['email_otp'] : '';
+    $expires = isset($meta['email_otp_expires_at']) ? (string)$meta['email_otp_expires_at'] : '';
+    $now = gmdate('Y-m-d\TH:i:s\Z');
+
+    if ($expected === '' || $entered !== $expected) {
+        widget_json_response(["success" => false, "message" => "Invalid OTP"], 400);
+    }
+    if ($expires && $now > $expires) {
+        widget_json_response(["success" => false, "message" => "OTP expired"], 400);
+    }
+
+    // Mark verified
+    $update = [
+        "email_otp_verified" => true,
+        "verification_quality" => 'real',
+        "metadata" => array_filter($meta, function($k){ return $k !== 'email_otp' && $k !== 'email_otp_expires_at'; }, ARRAY_FILTER_USE_KEY)
+    ];
+
+    $up = supabase("PATCH", "lead_generation_leads?id=eq." . $leadId, $update);
+    $ok = ($up['status'] >= 200 && $up['status'] < 300);
+
+    // Optionally notify customer if configured
+    $leadSettings = widget_get_lead_settings($customerId);
+    $notify = widget_bool($leadSettings['notify_lead_by_email'] ?? false);
+    $notificationEmail = $leadSettings['notification_email'] ?? '';
+    $notified = false;
+    if ($ok && $notify && $notificationEmail) {
+        require_once __DIR__ . '/email.php';
+        $subject = "New lead captured";
+        $html = "<p>A lead has verified their email: " . htmlspecialchars($row['email'] ?? '') . "</p>";
+        $notified = sendBrevoEmail($notificationEmail, $subject, $html);
+        if ($notified) {
+            supabase("PATCH", "lead_generation_leads?id=eq." . $leadId, ["notification_email_sent" => true]);
+        }
+    }
+
+    widget_json_response(["success" => $ok, "notified" => $notified]);
+}
+
 if ($action === "search_faqs") {
     $customerId = widget_customer_id();
     $q = trim((string)($_GET['q'] ?? ''));

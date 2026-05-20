@@ -104,8 +104,8 @@ function sendWelcomeEmail(
 
     try {
         $subject = $isExistingUser
-            ? 'Your Existing Vani AI Account'
-            : 'Your Vani AI Chatbot is Ready';
+            ? 'Your New Chatbot is Ready'
+            : 'Your New Chatbot is Ready';
 
         $loginUrl = "https://vani.codrant.com/login.php";
 
