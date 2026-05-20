@@ -350,6 +350,9 @@
     }
 
     function nestedValue(data, keys) {
+      if (typeof data === "string") {
+        return data.trim();
+      }
       for (const key of keys) {
         const parts = key.split(".");
         let value = data;
@@ -367,21 +370,50 @@
       return "";
     }
 
+    function findNestedToken(data) {
+      const wantedKeys = new Set(["accesstoken", "jwttoken", "token"]);
+      const jwtPattern = /^eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
+      const seen = new Set();
+
+      function visit(value, key = "") {
+        if (value === null || value === undefined || seen.has(value)) return "";
+        if (typeof value === "string") {
+          const text = value.trim();
+          if (wantedKeys.has(key.toLowerCase().replace(/[^a-z0-9]/g, "")) || jwtPattern.test(text)) {
+            return text;
+          }
+          return "";
+        }
+        if (typeof value !== "object") return "";
+        seen.add(value);
+        for (const [childKey, childValue] of Object.entries(value)) {
+          const found = visit(childValue, childKey);
+          if (found) return found;
+        }
+        return "";
+      }
+
+      return visit(data);
+    }
+
     function msg91AccessToken(data) {
       return nestedValue(data || {}, [
         "access-token",
-        "access_token",
         "accessToken",
+        "access_token",
+        "accessToken.access-token",
         "jwt_token",
         "jwtToken",
+        "jwt",
         "token",
         "data.access-token",
-        "data.access_token",
         "data.accessToken",
+        "data.access_token",
         "data.jwt_token",
         "data.jwtToken",
+        "data.jwt",
         "data.token"
-      ]);
+      ]) || findNestedToken(data);
     }
 
     function msg91Identifier(data) {
@@ -420,6 +452,18 @@
       button.type = "button";
       button.textContent = text;
       css(button, { padding: "8px 12px", borderRadius: "10px", border: "1px solid #e5e7eb", background: "#fff", cursor: "pointer", whiteSpace: "nowrap" });
+      return button;
+    }
+
+    function requiredPromptButton(text) {
+      const button = promptButton("");
+      const label = document.createElement("span");
+      const required = document.createElement("span");
+      label.textContent = text;
+      required.textContent = " *";
+      css(required, { color: "#dc2626", fontWeight: "800" });
+      button.appendChild(label);
+      button.appendChild(required);
       return button;
     }
 
@@ -482,7 +526,7 @@
             window.initSendOTP({
               widgetId: msg91Cfg.widget_id,
               tokenAuth: msg91Cfg.token_auth,
-              identifier: phone.replace(/^\+/, ""),
+              identifier: phone ? phone.replace(/^\+/, "") : "",
               exposeMethods: false,
               success: data => {
                 const accessToken = msg91AccessToken(data);
@@ -633,26 +677,23 @@
 
       if ((collectMobile || verifyMobileOtp) && !(verifyMobileOtp ? leadState.mobileVerified : leadState.mobileSaved)) {
         if (verifyMobileOtp) {
-          const phoneInput = promptInput("tel", "Mobile number with country code");
-          phoneInput.inputMode = "tel";
-          const verifyBtn = promptButton("Send OTP");
+          const verifyBtn = requiredPromptButton("Verify mobile number");
+          css(verifyBtn, { width: "100%" });
           verifyBtn.onclick = async () => {
-            const phone = normalizePhone(phoneInput.value);
-            if (!validPhone(phone)) return addMessage(messages, "Enter a valid mobile number with country code.", "bot");
             verifyBtn.disabled = true;
             try {
-              const verified = await openMobileOtpWidget(phone);
+              const verified = await openMobileOtpWidget();
               const res = await api("verify_lead_mobile_msg91", "POST", {
                 customer_id: customerId,
                 user_id: userId,
-                phone_number: verified.phone || phone,
+                phone_number: verified.phone || "",
                 msg91_access_token: verified.msg91_access_token || "",
                 source_url: window.location.href,
                 msg91_response: verified.msg91_response || null
               });
               if (res.success && res.lead) {
                 leadState.leadId = res.lead.id || leadState.leadId;
-                leadState.phone = verified.phone || phone;
+                leadState.phone = res.lead.phone_number || verified.phone || "";
                 leadState.mobileSaved = true;
                 leadState.mobileVerified = true;
                 leadState.expecting = null;
@@ -669,10 +710,7 @@
               verifyBtn.disabled = false;
             }
           };
-          const wrap = promptWrap();
-          wrap.appendChild(phoneInput);
-          wrap.appendChild(verifyBtn);
-          prompt.appendChild(wrap);
+          prompt.appendChild(verifyBtn);
           return;
         }
 

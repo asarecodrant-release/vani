@@ -416,7 +416,7 @@ if ($action === "verify_lead_mobile_msg91") {
     $sourceUrl = trim((string)($data['source_url'] ?? ''));
     $widgetResponse = is_array($data['msg91_response'] ?? null) ? $data['msg91_response'] : [];
 
-    if (!$customerId || !$userId || !$phone || !$accessToken) {
+    if (!$customerId || !$userId || !$accessToken) {
         widget_json_response(["success" => false, "message" => "Missing mobile verification data"], 400);
     }
 
@@ -440,13 +440,16 @@ if ($action === "verify_lead_mobile_msg91") {
         'user.phone_number',
         'user.identifier'
     ]);
-    if ($verifiedPhone === '') {
+    if ($verifiedPhone === '' && $phone !== '') {
         $verifiedPhone = $phone;
     }
 
     $normalizedInput = preg_replace('/\D+/', '', $phone);
     $normalizedVerified = preg_replace('/\D+/', '', $verifiedPhone);
-    if ($normalizedInput === '' || $normalizedInput !== $normalizedVerified) {
+    if ($normalizedVerified === '') {
+        widget_json_response(["success" => false, "message" => "MSG91 did not return a verified mobile number"], 400);
+    }
+    if ($normalizedInput !== '' && $normalizedInput !== $normalizedVerified) {
         widget_json_response(["success" => false, "message" => "Verified phone number does not match"], 400);
     }
 
