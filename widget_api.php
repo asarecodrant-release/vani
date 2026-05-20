@@ -189,10 +189,12 @@ if ($action === "get_top_faqs") {
 if ($action === "create_lead") {
     $data = widget_get_json();
     $customerId = widget_customer_id($data);
-    if (!$customerId) widget_json_response(["success" => false, "message" => "Missing customer_id"], 400);
+    $userId = trim((string)($data['user_id'] ?? ''));
+    if (!$customerId || !$userId) widget_json_response(["success" => false, "message" => "Missing customer_id or user_id"], 400);
 
     $payload = [
         "customer_id" => $customerId,
+        "user_id" => $userId,
         "name" => $data['name'] ?? null,
         "email" => $data['email'] ?? null,
         "phone_number" => $data['phone_number'] ?? null,
@@ -233,7 +235,7 @@ if ($action === "create_lead_send_email_otp") {
 
     $payload = [
         "customer_id" => $customerId,
-        "user_id" => $data['user_id'] ?? null,
+        "user_id" => $userId,
         "email" => $toEmail,
         "email_otp_verified" => false,
         "notification_email_sent" => false,
