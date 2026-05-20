@@ -407,7 +407,7 @@
         });
         css(frame, {
           width: "min(420px, 100%)",
-          height: "430px",
+          height: "min(620px, calc(100vh - 36px))",
           border: "0",
           borderRadius: "16px",
           background: "#fff",

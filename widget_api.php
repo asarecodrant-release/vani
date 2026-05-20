@@ -130,14 +130,14 @@ function widget_msg91_verify_access_token(string $accessToken): array {
     if ($MSG91_AUTH_KEY === '') {
         return ["status" => 0, "data" => [], "raw" => "Missing MSG91_AUTH_KEY"];
     }
-    $payload = http_build_query([
+    $payload = json_encode([
         "authkey" => $MSG91_AUTH_KEY,
         "access-token" => $accessToken
     ]);
     $context = stream_context_create([
         "http" => [
             "method" => "POST",
-            "header" => "Content-Type: application/x-www-form-urlencoded\r\n",
+            "header" => "Content-Type: application/json\r\nAccept: application/json\r\n",
             "content" => $payload,
             "ignore_errors" => true
         ]
