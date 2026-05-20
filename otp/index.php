@@ -150,23 +150,60 @@ function initMsg91Provider() {
   }
   
   try {
+    console.log("Starting MSG91 initialization with config:", window.configuration);
     window.initSendOTP(window.configuration);
-    console.log("MSG91 initialized");
+    console.log("MSG91 initSendOTP called");
     
+    // Log what's available on window object
+    setTimeout(() => {
+      console.log("After 500ms - Checking window object:");
+      console.log("window.sendOtp:", typeof window.sendOtp);
+      console.log("window.verifyOtp:", typeof window.verifyOtp);
+      console.log("window.sendOTP:", typeof window.sendOTP); // different case
+      console.log("window.verifyOTP:", typeof window.verifyOTP);
+      console.log("window.MSG91:", typeof window.MSG91);
+      console.log("window.OTP:", typeof window.OTP);
+      
+      // List all window properties that might be MSG91-related
+      const msg91Props = Object.keys(window).filter(k => 
+        k.includes('msg') || k.includes('otp') || k.includes('MSG') || k.includes('OTP')
+      );
+      console.log("MSG91-related window properties:", msg91Props);
+    }, 500);
+    
+    // Try longer wait period with more aggressive checking
     let attempts = 0;
     const checkReady = setInterval(() => {
       attempts++;
-      const sendOtpReady = typeof window.sendOtp === "function";
-      const verifyOtpReady = typeof window.verifyOtp === "function";
+      
+      // Check multiple possible names
+      const sendOtpReady = typeof window.sendOtp === "function" || 
+                          typeof window.sendOTP === "function" ||
+                          (window.MSG91 && typeof window.MSG91.sendOtp === "function");
+      const verifyOtpReady = typeof window.verifyOtp === "function" || 
+                           typeof window.verifyOTP === "function" ||
+                           (window.MSG91 && typeof window.MSG91.verifyOtp === "function");
+      
+      if (attempts % 10 === 0) {
+        console.log(`Attempt ${attempts}: sendOtp=${typeof window.sendOtp}, verifyOtp=${typeof window.verifyOtp}`);
+      }
       
       if (sendOtpReady && verifyOtpReady) {
         msg91Ready = true;
         clearInterval(checkReady);
-        console.log("MSG91 fully ready");
-      } else if (attempts > 100) {
+        console.log("✅ MSG91 functions ready!");
+      } else if (attempts > 200) { // 20 seconds instead of 10
         clearInterval(checkReady);
-        console.error("MSG91 functions not ready after 10 seconds");
-        setStatus("MSG91 OTP provider took too long to load.", "error");
+        console.error("❌ MSG91 functions not ready after 20 seconds");
+        
+        // Log what's actually available
+        console.log("Final state:");
+        console.log("- window.sendOtp:", typeof window.sendOtp);
+        console.log("- window.verifyOtp:", typeof window.verifyOtp);
+        console.log("- window.initSendOTP:", typeof window.initSendOTP);
+        console.log("- window.configuration:", window.configuration);
+        
+        setStatus("MSG91 OTP provider failed to initialize. Please contact support.", "error");
       }
     }, 100);
   } catch (error) {
@@ -215,9 +252,19 @@ async function handleSendOtp() {
     return;
   }
   
-  if (!msg91Ready || typeof window.sendOtp !== "function") {
-    setStatus("MSG91 OTP provider is still loading. Try again in a moment.", "error");
-    console.log("Not ready - msg91Ready:", msg91Ready, "sendOtp available:", typeof window.sendOtp === "function");
+  // Check multiple possible function names
+  const hasSendOtp = typeof window.sendOtp === "function" || 
+                     typeof window.sendOTP === "function" ||
+                     (window.MSG91 && typeof window.MSG91.sendOtp === "function");
+  
+  if (!hasSendOtp) {
+    setStatus("MSG91 OTP provider is not ready. Please reload the page.", "error");
+    console.log("sendOtp not available. Available functions:", {
+      sendOtp: typeof window.sendOtp,
+      sendOTP: typeof window.sendOTP,
+      MSG91: typeof window.MSG91,
+      initSendOTP: typeof window.initSendOTP
+    });
     return;
   }
 
@@ -226,12 +273,17 @@ async function handleSendOtp() {
   setStatus("Sending OTP...");
   
   try {
-    console.log("Calling window.sendOtp with phone:", phone);
+    console.log("Calling sendOtp with phone:", phone);
+    
+    // Try different function names
+    let sendOtpFn = window.sendOtp || window.sendOTP || (window.MSG91 && window.MSG91.sendOtp);
+    
     const data = await withTimeout(
       new Promise((resolve, reject) => {
         try {
-          window.sendOtp(phone, resolve, reject);
+          sendOtpFn(phone, resolve, reject);
         } catch (err) {
+          console.error("Direct call failed, trying alternative method:", err);
           reject(err);
         }
       }),
@@ -263,8 +315,13 @@ async function verifyOtp() {
     return;
   }
   
-  if (typeof window.verifyOtp !== "function") {
-    setStatus("MSG91 OTP provider is still loading. Try again in a moment.", "error");
+  // Check multiple possible function names
+  const hasVerifyOtp = typeof window.verifyOtp === "function" || 
+                       typeof window.verifyOTP === "function" ||
+                       (window.MSG91 && typeof window.MSG91.verifyOtp === "function");
+  
+  if (!hasVerifyOtp) {
+    setStatus("MSG91 OTP provider is not ready.", "error");
     console.log("verifyOtp not available");
     return;
   }
@@ -274,17 +331,21 @@ async function verifyOtp() {
   
   try {
     console.log("Verifying OTP with code:", code, "and reqId:", currentReqId);
+    
+    // Try different function names
+    let verifyOtpFn = window.verifyOtp || window.verifyOTP || (window.MSG91 && window.MSG91.verifyOtp);
+    
     const verifyCall = currentReqId
       ? new Promise((resolve, reject) => {
           try {
-            window.verifyOtp(code, resolve, reject, currentReqId);
+            verifyOtpFn(code, resolve, reject, currentReqId);
           } catch (err) {
             reject(err);
           }
         })
       : new Promise((resolve, reject) => {
           try {
-            window.verifyOtp(code, resolve, reject);
+            verifyOtpFn(code, resolve, reject);
           } catch (err) {
             reject(err);
           }
