@@ -174,14 +174,13 @@
       iconImage.src = avatarUrl;
       iconImage.alt = "";
       css(iconImage, {
-        width: "100%",
+        width: "80%",
         height: "100%",
         borderRadius: "50%",
         objectFit: "contain",
         display: "block",
         background: "transparent",
-        boxShadow: "none",
-        border: "0"
+        boxShadow: "none"
       });
       iconImage.onerror = () => {
         iconImage.remove();
