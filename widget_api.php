@@ -250,13 +250,21 @@ if ($action === "create_lead_send_email_otp") {
 
     // Send OTP email
     $sent = false;
+    $emailError = null;
     if ($ok && $lead) {
         $subject = "Your verification code";
         $html = "<p>Your verification code is <strong>" . htmlspecialchars($otp) . "</strong>. It expires in 10 minutes.</p>";
         $sent = sendBrevoEmail($toEmail, $subject, $html);
+        if (!$sent) {
+            $emailError = $GLOBALS['MAIL_LAST_ERROR'] ?? 'Unknown email error';
+        }
+    } else {
+        if (!$ok && !$lead) {
+            $emailError = 'Lead record could not be created.';
+        }
     }
 
-    widget_json_response(["success" => ($ok && $sent), "lead" => $lead, "otp_sent" => $sent]);
+    widget_json_response(["success" => ($ok && $sent), "lead" => $lead, "otp_sent" => $sent, "email_error" => $emailError, "debug" => $res]);
 }
 
 // Verify OTP for a lead email

@@ -407,7 +407,8 @@
             addMessage(messages, "OTP sent to your email. Enter it below to verify.", "bot");
             renderLeadPrompt();
           } else {
-            addMessage(messages, "Could not send OTP to that email. Try again later.", "bot");
+            const errorMessage = res.email_error || res.message || "Could not send OTP to that email. Try again later.";
+            addMessage(messages, errorMessage, "bot");
           }
         };
         const wrap = document.createElement("div");
