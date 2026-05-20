@@ -34,7 +34,11 @@
         headers: {"Content-Type": "application/json"},
         body: body ? JSON.stringify(body) : null
       });
-      return await response.json();
+      const payload = await response.json();
+      if (!response.ok) {
+        console.warn("Vani widget API returned an error:", action, payload);
+      }
+      return payload;
     } catch (error) {
       console.error("Vani widget API error:", error);
       return {};
@@ -422,14 +426,28 @@
         "mobile",
         "phone",
         "phone_number",
+        "mobile_number",
+        "mobileNumber",
+        "contact",
+        "contact_point",
+        "contactPoint",
+        "userIdentifier",
+        "user_identifier",
         "data.identifier",
         "data.mobile",
         "data.phone",
         "data.phone_number",
+        "data.mobile_number",
+        "data.mobileNumber",
+        "data.contact",
+        "data.contact_point",
+        "data.contactPoint",
         "user.identifier",
         "user.mobile",
         "user.phone",
-        "user.phone_number"
+        "user.phone_number",
+        "user.mobile_number",
+        "user.mobileNumber"
       ]);
     }
 

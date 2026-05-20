@@ -173,6 +173,56 @@ function widget_nested_value(array $data, array $keys): string {
     return '';
 }
 
+function widget_find_value_by_keys($value, array $keys): string {
+    if (!is_array($value)) {
+        return '';
+    }
+
+    $wanted = array_flip(array_map(
+        fn($key) => strtolower(preg_replace('/[^a-z0-9]/i', '', $key)),
+        $keys
+    ));
+
+    foreach ($value as $key => $child) {
+        $normalizedKey = strtolower(preg_replace('/[^a-z0-9]/i', '', (string)$key));
+        if (isset($wanted[$normalizedKey]) && $child !== null && $child !== '' && !is_array($child)) {
+            return trim((string)$child);
+        }
+    }
+
+    foreach ($value as $child) {
+        if (is_array($child)) {
+            $found = widget_find_value_by_keys($child, $keys);
+            if ($found !== '') {
+                return $found;
+            }
+        }
+    }
+
+    return '';
+}
+
+function widget_jwt_payload(string $jwt): array {
+    $parts = explode('.', $jwt);
+    if (count($parts) < 2) {
+        return [];
+    }
+
+    $payload = strtr($parts[1], '-_', '+/');
+    $padding = strlen($payload) % 4;
+    if ($padding) {
+        $payload .= str_repeat('=', 4 - $padding);
+    }
+
+    $decoded = base64_decode($payload, true);
+    if ($decoded === false) {
+        return [];
+    }
+
+    $data = json_decode($decoded, true);
+    return is_array($data) ? $data : [];
+}
+
 if ($action === "get_widget_config" || $action === "get_theme") {
     $customerId = widget_customer_id();
     if (!$customerId) {
@@ -426,20 +476,54 @@ if ($action === "verify_lead_mobile_msg91") {
     }
 
     $verifyData = $lookup['data'];
+    $identifierKeys = [
+        'mobile',
+        'phone',
+        'phone_number',
+        'mobile_number',
+        'mobileNumber',
+        'identifier',
+        'contact',
+        'contact_point',
+        'contactPoint',
+        'userIdentifier',
+        'user_identifier'
+    ];
     $verifiedPhone = widget_nested_value($verifyData, [
         'mobile',
         'phone',
         'phone_number',
+        'mobile_number',
+        'mobileNumber',
         'identifier',
+        'contact',
+        'contact_point',
+        'contactPoint',
         'data.mobile',
         'data.phone',
         'data.phone_number',
+        'data.mobile_number',
+        'data.mobileNumber',
         'data.identifier',
+        'data.contact',
+        'data.contact_point',
+        'data.contactPoint',
         'user.mobile',
         'user.phone',
         'user.phone_number',
+        'user.mobile_number',
+        'user.mobileNumber',
         'user.identifier'
     ]);
+    if ($verifiedPhone === '') {
+        $verifiedPhone = widget_find_value_by_keys($verifyData, $identifierKeys);
+    }
+    if ($verifiedPhone === '') {
+        $verifiedPhone = widget_find_value_by_keys($widgetResponse, $identifierKeys);
+    }
+    if ($verifiedPhone === '') {
+        $verifiedPhone = widget_find_value_by_keys(widget_jwt_payload($accessToken), $identifierKeys);
+    }
     if ($verifiedPhone === '' && $phone !== '') {
         $verifiedPhone = $phone;
     }
