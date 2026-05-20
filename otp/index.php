@@ -144,14 +144,39 @@ function extractAccessToken(data) {
 
 function initMsg91Provider() {
   if (typeof window.initSendOTP !== "function") {
+    console.error("initSendOTP not available");
     setStatus("MSG91 OTP provider could not load.", "error");
     return;
   }
-  window.initSendOTP(window.configuration);
-  msg91Ready = true;
+  
+  try {
+    window.initSendOTP(window.configuration);
+    console.log("MSG91 initialized");
+    
+    let attempts = 0;
+    const checkReady = setInterval(() => {
+      attempts++;
+      const sendOtpReady = typeof window.sendOtp === "function";
+      const verifyOtpReady = typeof window.verifyOtp === "function";
+      
+      if (sendOtpReady && verifyOtpReady) {
+        msg91Ready = true;
+        clearInterval(checkReady);
+        console.log("MSG91 fully ready");
+      } else if (attempts > 100) {
+        clearInterval(checkReady);
+        console.error("MSG91 functions not ready after 10 seconds");
+        setStatus("MSG91 OTP provider took too long to load.", "error");
+      }
+    }, 100);
+  } catch (error) {
+    console.error("Error initializing MSG91:", error);
+    setStatus("Failed to initialize MSG91 OTP provider.", "error");
+  }
 }
 
 function handleVerifiedData(data) {
+  console.log("Verified data received:", data);
   const accessToken = extractAccessToken(data);
   if (!accessToken) {
     console.error("MSG91 verified without access token:", data);
@@ -183,25 +208,41 @@ window.configuration = {
 async function handleSendOtp() {
   const phone = cleanPhone(phoneInput.value);
   phoneInput.value = phone;
+  
   if (!validPhone(phone)) {
     setStatus("Enter a valid mobile number with country code.", "error");
+    console.log("Invalid phone format:", phone);
     return;
   }
+  
   if (!msg91Ready || typeof window.sendOtp !== "function") {
     setStatus("MSG91 OTP provider is still loading. Try again in a moment.", "error");
+    console.log("Not ready - msg91Ready:", msg91Ready, "sendOtp available:", typeof window.sendOtp === "function");
     return;
   }
 
   sendOtpBtn.disabled = true;
   resendBtn.disabled = true;
   setStatus("Sending OTP...");
+  
   try {
+    console.log("Calling window.sendOtp with phone:", phone);
     const data = await withTimeout(
-      new Promise((resolve, reject) => window.sendOtp(phone, resolve, reject)),
+      new Promise((resolve, reject) => {
+        try {
+          window.sendOtp(phone, resolve, reject);
+        } catch (err) {
+          reject(err);
+        }
+      }),
       45000,
       "MSG91 OTP send timed out"
     );
+    
+    console.log("OTP send response:", data);
     currentReqId = extractReqId(data);
+    console.log("Extracted request ID:", currentReqId);
+    
     otpField.style.display = "grid";
     verifyActions.style.display = "flex";
     otpInput.focus();
@@ -221,22 +262,41 @@ async function verifyOtp() {
     setStatus("Enter the 6-digit OTP code.", "error");
     return;
   }
+  
   if (typeof window.verifyOtp !== "function") {
     setStatus("MSG91 OTP provider is still loading. Try again in a moment.", "error");
+    console.log("verifyOtp not available");
     return;
   }
 
   verifyOtpBtn.disabled = true;
   setStatus("Verifying OTP...");
+  
   try {
+    console.log("Verifying OTP with code:", code, "and reqId:", currentReqId);
     const verifyCall = currentReqId
-      ? new Promise((resolve, reject) => window.verifyOtp(code, resolve, reject, currentReqId))
-      : new Promise((resolve, reject) => window.verifyOtp(code, resolve, reject));
+      ? new Promise((resolve, reject) => {
+          try {
+            window.verifyOtp(code, resolve, reject, currentReqId);
+          } catch (err) {
+            reject(err);
+          }
+        })
+      : new Promise((resolve, reject) => {
+          try {
+            window.verifyOtp(code, resolve, reject);
+          } catch (err) {
+            reject(err);
+          }
+        });
+    
     const data = await withTimeout(
       verifyCall,
       45000,
       "MSG91 OTP verify timed out"
     );
+    
+    console.log("OTP verify response:", data);
     handleVerifiedData(data);
   } catch (error) {
     console.error("MSG91 phone OTP verify failed:", error);
@@ -250,18 +310,23 @@ sendOtpBtn.addEventListener("click", handleSendOtp);
 resendBtn.addEventListener("click", handleSendOtp);
 verifyOtpBtn.addEventListener("click", verifyOtp);
 cancelBtn.addEventListener("click", () => post("cancelled"));
+
 phoneInput.addEventListener("input", (event) => {
   const cleaned = cleanPhone(phoneInput.value);
   if (phoneInput.value !== cleaned) {
     phoneInput.value = cleaned;
   }
 });
+
 otpInput.addEventListener("keydown", event => {
   if (event.key === "Enter") verifyOtp();
 });
+
 phoneInput.addEventListener("keydown", event => {
   if (event.key === "Enter") handleSendOtp();
 });
+
+console.log("OTP page loaded - MSG91 Widget ID configured:", msg91WidgetId ? "yes" : "NO");
 </script>
 <script type="text/javascript" onload="initMsg91Provider()" src="https://verify.msg91.com/otp-provider.js"></script>
 </body>
