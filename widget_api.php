@@ -15,7 +15,7 @@ error_reporting(E_ALL);
 require_once __DIR__ . '/widget_core.php';
 
 $action = $_GET['action'] ?? '';
-const VANI_FIREBASE_API_KEY = "AIzaSyCZB6L9BT6kY04kDDdKnNrqNg3E6EYIVL4";
+$VANI_FIREBASE_API_KEY = $_ENV['FIREBASE_API_KEY'] ?? getenv('FIREBASE_API_KEY') ?: '';
 
 function widget_customer_id(array $data = []): string {
     return trim((string)($data['customer_id'] ?? $_GET['customer_id'] ?? ''));
@@ -126,6 +126,10 @@ function widget_notify_lead_by_email(string $customerId, array $lead): bool {
 }
 
 function widget_firebase_lookup(string $idToken): array {
+    global $VANI_FIREBASE_API_KEY;
+    if ($VANI_FIREBASE_API_KEY === '') {
+        return ["status" => 0, "data" => [], "raw" => "Missing FIREBASE_API_KEY"];
+    }
     $payload = json_encode(["idToken" => $idToken]);
     $context = stream_context_create([
         "http" => [
@@ -135,7 +139,7 @@ function widget_firebase_lookup(string $idToken): array {
             "ignore_errors" => true
         ]
     ]);
-    $url = "https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=" . urlencode(VANI_FIREBASE_API_KEY);
+    $url = "https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=" . urlencode($VANI_FIREBASE_API_KEY);
     $raw = file_get_contents($url, false, $context);
     $status = 0;
     if (isset($http_response_header[0])) {

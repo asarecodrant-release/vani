@@ -1,3 +1,13 @@
+<?php
+require_once __DIR__ . '/../core.php';
+
+$firebaseApiKey = $_ENV['FIREBASE_API_KEY'] ?? getenv('FIREBASE_API_KEY') ?: '';
+$firebaseAuthDomain = $_ENV['FIREBASE_AUTH_DOMAIN'] ?? getenv('FIREBASE_AUTH_DOMAIN') ?: 'vani.codrant.com';
+$firebaseProjectId = $_ENV['FIREBASE_PROJECT_ID'] ?? getenv('FIREBASE_PROJECT_ID') ?: 'vani-ab6ae';
+$firebaseStorageBucket = $_ENV['FIREBASE_STORAGE_BUCKET'] ?? getenv('FIREBASE_STORAGE_BUCKET') ?: 'vani-ab6ae.firebasestorage.app';
+$firebaseMessagingSenderId = $_ENV['FIREBASE_MESSAGING_SENDER_ID'] ?? getenv('FIREBASE_MESSAGING_SENDER_ID') ?: '166956136198';
+$firebaseAppId = $_ENV['FIREBASE_APP_ID'] ?? getenv('FIREBASE_APP_ID') ?: '1:166956136198:web:3078dc68517358b230d087';
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -74,12 +84,12 @@ import { initializeApp, getApp, getApps } from "https://www.gstatic.com/firebase
 import { getAuth, RecaptchaVerifier, signInWithPhoneNumber } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-auth.js";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyCZB6L9BT6kY04kDDdKnNrqNg3E6EYIVL4",
-  authDomain: "vani.codrant.com",
-  projectId: "vani-ab6ae",
-  storageBucket: "vani-ab6ae.firebasestorage.app",
-  messagingSenderId: "166956136198",
-  appId: "1:166956136198:web:3078dc68517358b230d087"
+  apiKey: <?php echo json_encode($firebaseApiKey); ?>,
+  authDomain: <?php echo json_encode($firebaseAuthDomain); ?>,
+  projectId: <?php echo json_encode($firebaseProjectId); ?>,
+  storageBucket: <?php echo json_encode($firebaseStorageBucket); ?>,
+  messagingSenderId: <?php echo json_encode($firebaseMessagingSenderId); ?>,
+  appId: <?php echo json_encode($firebaseAppId); ?>
 };
 
 const params = new URLSearchParams(window.location.search);
