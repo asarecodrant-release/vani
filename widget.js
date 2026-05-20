@@ -313,51 +313,42 @@
       prompt.style.display = "block";
 
       if (leadCfg.collect_location && !leadState.locationSaved) {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.textContent = "Share my location";
-        css(btn, { padding: "8px 12px", borderRadius: "10px", border: "1px solid #e5e7eb", background: "#fff", cursor: "pointer" });
-        btn.onclick = () => {
-          addMessage(messages, "Requesting location...", "bot");
-          if (!navigator.geolocation) {
-            addMessage(messages, "Geolocation not supported in this browser.", "bot");
-            return;
+        addMessage(messages, "Requesting your location...", "bot");
+        if (!navigator.geolocation) {
+          addMessage(messages, "Geolocation not supported in this browser.", "bot");
+          return;
+        }
+        navigator.geolocation.getCurrentPosition(async pos => {
+          const lat = pos.coords.latitude;
+          const lon = pos.coords.longitude;
+          const locText = `Lat:${lat.toFixed(5)} Lon:${lon.toFixed(5)}`;
+          const saveRes = await api("create_lead", "POST", {
+            customer_id: customerId,
+            user_id: userId,
+            location_text: locText,
+            latitude: lat,
+            longitude: lon,
+            source_url: window.location.href,
+            verification_quality: leadCfg.verify_email_otp || leadCfg.verify_mobile_otp ? 'poor' : 'poor'
+          });
+          console.log('create_lead response:', saveRes);
+          if (saveRes && saveRes.success) {
+            leadState.locationSaved = true;
+            leadState.leadId = saveRes.lead?.id || leadState.leadId;
+            saveLeadState(customerId, leadState);
+            addMessage(messages, "Location saved. You can continue.", "bot");
+            prompt.style.display = "none";
+            renderLeadPrompt();
+          } else {
+            const serverMsg = (saveRes && (saveRes.message || (saveRes.debug && saveRes.debug.raw)))
+              ? (saveRes.message || (typeof saveRes.debug.raw === 'string' ? saveRes.debug.raw.slice(0,200) : JSON.stringify(saveRes.debug)))
+              : 'Server error';
+            console.error('create_lead failed', saveRes);
+            addMessage(messages, "Could not save location: " + serverMsg, "bot");
           }
-          btn.disabled = true;
-          navigator.geolocation.getCurrentPosition(async pos => {
-            const lat = pos.coords.latitude;
-            const lon = pos.coords.longitude;
-            const locText = `Lat:${lat.toFixed(5)} Lon:${lon.toFixed(5)}`;
-            const saveRes = await api("create_lead", "POST", {
-              customer_id: customerId,
-              user_id: userId,
-              location_text: locText,
-              latitude: lat,
-              longitude: lon,
-              source_url: window.location.href,
-              verification_quality: leadCfg.verify_email_otp || leadCfg.verify_mobile_otp ? 'poor' : 'poor'
-            });
-            console.log('create_lead response:', saveRes);
-            if (saveRes && saveRes.success) {
-              leadState.locationSaved = true;
-              leadState.leadId = saveRes.lead?.id || leadState.leadId;
-              saveLeadState(customerId, leadState);
-              addMessage(messages, "Location saved. You can continue.", "bot");
-              prompt.style.display = "none";
-            } else {
-              const serverMsg = (saveRes && (saveRes.message || (saveRes.debug && saveRes.debug.raw)))
-                ? (saveRes.message || (typeof saveRes.debug.raw === 'string' ? saveRes.debug.raw.slice(0,200) : JSON.stringify(saveRes.debug)))
-                : 'Server error';
-              console.error('create_lead failed', saveRes);
-              addMessage(messages, "Could not save location: " + serverMsg, "bot");
-              btn.disabled = false;
-            }
-          }, err => {
-            addMessage(messages, "Location access denied or unavailable.", "bot");
-            btn.disabled = false;
-          }, { enableHighAccuracy: true, timeout: 10000 });
-        };
-        prompt.appendChild(btn);
+        }, err => {
+          addMessage(messages, "Location access denied or unavailable.", "bot");
+        }, { enableHighAccuracy: true, timeout: 10000 });
         return;
       }
 
