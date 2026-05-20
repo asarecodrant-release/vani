@@ -579,13 +579,13 @@
             verifyBtn.disabled = true;
             try {
               const verified = await openMobileOtpFrame();
-              const res = await api("verify_lead_mobile_firebase", "POST", {
+              const res = await api("verify_lead_mobile_msg91", "POST", {
                 customer_id: customerId,
                 user_id: userId,
                 phone_number: verified.phone || "",
-                firebase_id_token: verified.firebase_id_token || "",
+                msg91_access_token: verified.msg91_access_token || "",
                 source_url: window.location.href,
-                firebase_uid: verified.firebase_uid || null
+                msg91_response: verified.msg91_response || null
               });
               if (res.success && res.lead) {
                 leadState.leadId = res.lead.id || leadState.leadId;

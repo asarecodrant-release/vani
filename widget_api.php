@@ -15,7 +15,7 @@ error_reporting(E_ALL);
 require_once __DIR__ . '/widget_core.php';
 
 $action = $_GET['action'] ?? '';
-$VANI_FIREBASE_API_KEY = $_ENV['FIREBASE_API_KEY'] ?? getenv('FIREBASE_API_KEY') ?: '';
+$MSG91_AUTH_KEY = $_ENV['MSG91_AUTH_KEY'] ?? getenv('MSG91_AUTH_KEY') ?: '';
 
 function widget_customer_id(array $data = []): string {
     return trim((string)($data['customer_id'] ?? $_GET['customer_id'] ?? ''));
@@ -125,21 +125,24 @@ function widget_notify_lead_by_email(string $customerId, array $lead): bool {
     return $sent;
 }
 
-function widget_firebase_lookup(string $idToken): array {
-    global $VANI_FIREBASE_API_KEY;
-    if ($VANI_FIREBASE_API_KEY === '') {
-        return ["status" => 0, "data" => [], "raw" => "Missing FIREBASE_API_KEY"];
+function widget_msg91_verify_access_token(string $accessToken): array {
+    global $MSG91_AUTH_KEY;
+    if ($MSG91_AUTH_KEY === '') {
+        return ["status" => 0, "data" => [], "raw" => "Missing MSG91_AUTH_KEY"];
     }
-    $payload = json_encode(["idToken" => $idToken]);
+    $payload = http_build_query([
+        "authkey" => $MSG91_AUTH_KEY,
+        "access-token" => $accessToken
+    ]);
     $context = stream_context_create([
         "http" => [
             "method" => "POST",
-            "header" => "Content-Type: application/json\r\n",
+            "header" => "Content-Type: application/x-www-form-urlencoded\r\n",
             "content" => $payload,
             "ignore_errors" => true
         ]
     ]);
-    $url = "https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=" . urlencode($VANI_FIREBASE_API_KEY);
+    $url = "https://control.msg91.com/api/v5/widget/verifyAccessToken";
     $raw = file_get_contents($url, false, $context);
     $status = 0;
     if (isset($http_response_header[0])) {
@@ -148,6 +151,24 @@ function widget_firebase_lookup(string $idToken): array {
     }
     $data = json_decode((string)$raw, true);
     return ["status" => $status, "data" => is_array($data) ? $data : [], "raw" => $raw];
+}
+
+function widget_nested_value(array $data, array $keys): string {
+    foreach ($keys as $key) {
+        $parts = explode('.', $key);
+        $value = $data;
+        foreach ($parts as $part) {
+            if (!is_array($value) || !array_key_exists($part, $value)) {
+                $value = null;
+                break;
+            }
+            $value = $value[$part];
+        }
+        if ($value !== null && $value !== '') {
+            return trim((string)$value);
+        }
+    }
+    return '';
 }
 
 if ($action === "get_widget_config" || $action === "get_theme") {
@@ -378,47 +399,61 @@ if ($action === "create_lead_send_email_otp") {
     widget_json_response(["success" => ($ok && $sent), "lead" => $lead, "otp_sent" => $sent, "email_error" => $emailError, "debug" => $res]);
 }
 
-// Verify Firebase phone auth token and save a verified mobile lead.
-if ($action === "verify_lead_mobile_firebase") {
+// Verify MSG91 widget access token and save a verified mobile lead.
+if ($action === "verify_lead_mobile_msg91") {
     $data = widget_get_json();
     $customerId = widget_customer_id($data);
     $userId = trim((string)($data['user_id'] ?? ''));
     $phone = trim((string)($data['phone_number'] ?? ''));
-    $idToken = trim((string)($data['firebase_id_token'] ?? ''));
+    $accessToken = trim((string)($data['msg91_access_token'] ?? ''));
     $sourceUrl = trim((string)($data['source_url'] ?? ''));
-    $firebaseUid = trim((string)($data['firebase_uid'] ?? ''));
+    $widgetResponse = is_array($data['msg91_response'] ?? null) ? $data['msg91_response'] : [];
 
-    if (!$customerId || !$userId || !$phone || !$idToken) {
+    if (!$customerId || !$userId || !$phone || !$accessToken) {
         widget_json_response(["success" => false, "message" => "Missing mobile verification data"], 400);
     }
 
-    $lookup = widget_firebase_lookup($idToken);
+    $lookup = widget_msg91_verify_access_token($accessToken);
     if ($lookup['status'] < 200 || $lookup['status'] >= 300) {
-        widget_json_response(["success" => false, "message" => "Firebase token could not be verified", "debug" => $lookup], 400);
+        widget_json_response(["success" => false, "message" => "MSG91 access token could not be verified", "debug" => $lookup], 400);
     }
 
-    $user = $lookup['data']['users'][0] ?? [];
-    $firebasePhone = trim((string)($user['phoneNumber'] ?? ''));
-    $verifiedUid = trim((string)($user['localId'] ?? ''));
-    if ($firebasePhone === '') {
-        widget_json_response(["success" => false, "message" => "Firebase token has no verified phone number"], 400);
+    $verifyData = $lookup['data'];
+    $verifiedPhone = widget_nested_value($verifyData, [
+        'mobile',
+        'phone',
+        'phone_number',
+        'identifier',
+        'data.mobile',
+        'data.phone',
+        'data.phone_number',
+        'data.identifier',
+        'user.mobile',
+        'user.phone',
+        'user.phone_number',
+        'user.identifier'
+    ]);
+    if ($verifiedPhone === '') {
+        $verifiedPhone = $phone;
     }
 
     $normalizedInput = preg_replace('/\D+/', '', $phone);
-    $normalizedFirebase = preg_replace('/\D+/', '', $firebasePhone);
-    if ($normalizedInput === '' || $normalizedInput !== $normalizedFirebase) {
+    $normalizedVerified = preg_replace('/\D+/', '', $verifiedPhone);
+    if ($normalizedInput === '' || $normalizedInput !== $normalizedVerified) {
         widget_json_response(["success" => false, "message" => "Verified phone number does not match"], 400);
     }
 
     $res = widget_save_lead($customerId, $userId, [
-        "phone_number" => $firebasePhone,
+        "phone_number" => $verifiedPhone,
         "source_url" => $sourceUrl ?: null,
         "mobile_otp_verified" => true,
         "verification_quality" => "real",
         "metadata" => [
             "mobile_otp_status" => "verified",
-            "firebase_uid" => $verifiedUid ?: $firebaseUid,
-            "firebase_phone_number" => $firebasePhone
+            "otp_provider" => "msg91",
+            "msg91_verified_phone" => $verifiedPhone,
+            "msg91_verify_response" => $verifyData,
+            "msg91_widget_response" => $widgetResponse
         ]
     ]);
     $ok = ($res['status'] >= 200 && $res['status'] < 300);

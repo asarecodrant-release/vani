@@ -1,15 +1,8 @@
 <?php
 require_once __DIR__ . '/../core.php';
 
-$firebaseApiKey = $_ENV['FIREBASE_API_KEY'] ?? getenv('FIREBASE_API_KEY') ?: '';
-$firebaseAuthDomain = $_ENV['FIREBASE_AUTH_DOMAIN'] ?? getenv('FIREBASE_AUTH_DOMAIN') ?: 'vani.codrant.com';
-$firebaseProjectId = $_ENV['FIREBASE_PROJECT_ID'] ?? getenv('FIREBASE_PROJECT_ID') ?: 'vani-ab6ae';
-$firebaseStorageBucket = $_ENV['FIREBASE_STORAGE_BUCKET'] ?? getenv('FIREBASE_STORAGE_BUCKET') ?: 'vani-ab6ae.firebasestorage.app';
-$firebaseMessagingSenderId = $_ENV['FIREBASE_MESSAGING_SENDER_ID'] ?? getenv('FIREBASE_MESSAGING_SENDER_ID') ?: '166956136198';
-$firebaseAppId = $_ENV['FIREBASE_APP_ID'] ?? getenv('FIREBASE_APP_ID') ?: '1:166956136198:web:3078dc68517358b230d087';
-$firebaseTestMode = filter_var($_ENV['FIREBASE_TEST_MODE'] ?? getenv('FIREBASE_TEST_MODE') ?: false, FILTER_VALIDATE_BOOLEAN);
-$firebaseTestPhoneNumber = $_ENV['FIREBASE_TEST_PHONE_NUMBER'] ?? getenv('FIREBASE_TEST_PHONE_NUMBER') ?: '';
-$firebaseTestOtpCode = $_ENV['FIREBASE_TEST_OTP_CODE'] ?? getenv('FIREBASE_TEST_OTP_CODE') ?: '';
+$msg91WidgetId = $_ENV['MSG91_WIDGET_ID'] ?? getenv('MSG91_WIDGET_ID') ?: '';
+$msg91TokenAuth = $_ENV['MSG91_TOKEN_AUTH'] ?? getenv('MSG91_TOKEN_AUTH') ?: '';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -79,32 +72,17 @@ button:disabled{opacity:.6;cursor:not-allowed}
     </div>
 
     <div id="statusBox" class="notice">Enter your mobile number with country code.</div>
-    <div id="recaptcha-container"></div>
+    <div id="captcha-container"></div>
   </main>
 
-<script type="module">
-import { initializeApp, getApp, getApps } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-app.js";
-import { getAuth, RecaptchaVerifier, signInWithPhoneNumber } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-auth.js";
-
-const firebaseConfig = {
-  apiKey: <?php echo json_encode($firebaseApiKey); ?>,
-  authDomain: <?php echo json_encode($firebaseAuthDomain); ?>,
-  projectId: <?php echo json_encode($firebaseProjectId); ?>,
-  storageBucket: <?php echo json_encode($firebaseStorageBucket); ?>,
-  messagingSenderId: <?php echo json_encode($firebaseMessagingSenderId); ?>,
-  appId: <?php echo json_encode($firebaseAppId); ?>
-};
-const firebaseTestMode = <?php echo json_encode($firebaseTestMode); ?>;
-const firebaseTestPhoneNumber = <?php echo json_encode($firebaseTestPhoneNumber); ?>;
-const firebaseTestOtpCode = <?php echo json_encode($firebaseTestOtpCode); ?>;
-
+<script>
+const msg91WidgetId = <?php echo json_encode($msg91WidgetId); ?>;
+const msg91TokenAuth = <?php echo json_encode($msg91TokenAuth); ?>;
 const params = new URLSearchParams(window.location.search);
 const requestId = params.get("request_id") || "";
 const requestedParentOrigin = params.get("parent_origin") || "";
 const parentOrigin = /^https?:\/\/[^/]+$/i.test(requestedParentOrigin) ? requestedParentOrigin : "*";
-const initialPhone = (params.get("phone") || firebaseTestPhoneNumber || "").trim();
-const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
-const auth = getAuth(app);
+const initialPhone = (params.get("phone") || "").trim();
 
 const phoneInput = document.getElementById("phoneInput");
 const otpInput = document.getElementById("otpInput");
@@ -116,21 +94,14 @@ const otpField = document.getElementById("otpField");
 const verifyActions = document.getElementById("verifyActions");
 const statusBox = document.getElementById("statusBox");
 
-let recaptchaVerifier = null;
-let confirmationResult = null;
+let msg91Ready = false;
+let currentReqId = null;
 
 phoneInput.value = initialPhone;
 
-if (!firebaseConfig.apiKey) {
+if (!msg91WidgetId || !msg91TokenAuth) {
   sendOtpBtn.disabled = true;
-  setStatus("Mobile verification is not configured. Please contact support.", "error");
-} else if (firebaseTestMode && (!firebaseTestPhoneNumber || !firebaseTestOtpCode)) {
-  sendOtpBtn.disabled = true;
-  setStatus("Firebase test mode needs FIREBASE_TEST_PHONE_NUMBER and FIREBASE_TEST_OTP_CODE.", "error");
-} else if (firebaseTestMode) {
-  phoneInput.value = firebaseTestPhoneNumber;
-  phoneInput.readOnly = true;
-  setStatus(`Test mode only. Use OTP code ${firebaseTestOtpCode}.`, "notice");
+  setStatus("MSG91 verification is not configured. Please contact support.", "error");
 }
 
 function validPhone(value) {
@@ -155,15 +126,6 @@ function post(status, extra = {}) {
   }, parentOrigin);
 }
 
-async function getVerifier() {
-  if (recaptchaVerifier) return recaptchaVerifier;
-  recaptchaVerifier = new RecaptchaVerifier(auth, "recaptcha-container", {
-    size: "invisible"
-  });
-  await recaptchaVerifier.render();
-  return recaptchaVerifier;
-}
-
 function withTimeout(promise, milliseconds, message) {
   let timer;
   const timeout = new Promise((_, reject) => {
@@ -172,6 +134,52 @@ function withTimeout(promise, milliseconds, message) {
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
+function extractReqId(data) {
+  return data?.reqId || data?.req_id || data?.request_id || data?.message || data?.data?.reqId || null;
+}
+
+function extractAccessToken(data) {
+  return data?.access_token || data?.accessToken || data?.token || data?.jwt || data?.message?.access_token || data?.data?.access_token || null;
+}
+
+function initMsg91Provider() {
+  if (typeof window.initSendOTP !== "function") {
+    setStatus("MSG91 OTP provider could not load.", "error");
+    return;
+  }
+  window.initSendOTP(window.configuration);
+  msg91Ready = true;
+}
+
+function handleVerifiedData(data) {
+  const accessToken = extractAccessToken(data);
+  if (!accessToken) {
+    console.error("MSG91 verified without access token:", data);
+    setStatus("OTP verified, but MSG91 did not return an access token.", "error");
+    return;
+  }
+  const phone = cleanPhone(phoneInput.value);
+  setStatus("Mobile number verified.", "success");
+  post("verified", {
+    phone,
+    msg91_access_token: accessToken,
+    msg91_response: data
+  });
+}
+
+window.configuration = {
+  widgetId: msg91WidgetId,
+  tokenAuth: msg91TokenAuth,
+  identifier: "",
+  exposeMethods: true,
+  captchaRenderId: "captcha-container",
+  success: handleVerifiedData,
+  failure: (error) => {
+    console.error("MSG91 OTP failure:", error);
+    setStatus("Mobile verification failed. Try again.", "error");
+  }
+};
+
 async function sendOtp() {
   const phone = cleanPhone(phoneInput.value);
   phoneInput.value = phone;
@@ -179,8 +187,8 @@ async function sendOtp() {
     setStatus("Enter a valid mobile number with country code.", "error");
     return;
   }
-  if (firebaseTestMode && phone !== cleanPhone(firebaseTestPhoneNumber)) {
-    setStatus("Only the configured Firebase test phone number is allowed in test mode.", "error");
+  if (!msg91Ready || typeof window.sendOtp !== "function") {
+    setStatus("MSG91 OTP provider is still loading. Try again in a moment.", "error");
     return;
   }
 
@@ -188,22 +196,18 @@ async function sendOtp() {
   resendBtn.disabled = true;
   setStatus("Sending OTP...");
   try {
-    const verifier = await getVerifier();
-    confirmationResult = await withTimeout(
-      signInWithPhoneNumber(auth, phone, verifier),
+    const data = await withTimeout(
+      new Promise((resolve, reject) => window.sendOtp(phone, resolve, reject)),
       45000,
-      "Firebase OTP send timed out"
+      "MSG91 OTP send timed out"
     );
+    currentReqId = extractReqId(data);
     otpField.style.display = "grid";
     verifyActions.style.display = "flex";
     otpInput.focus();
-    setStatus(firebaseTestMode ? `Test OTP ready. Enter code ${firebaseTestOtpCode}.` : "OTP sent. Enter the 6-digit code.", "success");
+    setStatus("OTP sent. Enter the code.", "success");
   } catch (error) {
-    console.error("Firebase phone OTP send failed:", error);
-    if (recaptchaVerifier?.clear) {
-      recaptchaVerifier.clear();
-      recaptchaVerifier = null;
-    }
+    console.error("MSG91 phone OTP send failed:", error);
     setStatus("Could not send OTP. Check the number and try again.", "error");
   } finally {
     sendOtpBtn.disabled = false;
@@ -217,24 +221,25 @@ async function verifyOtp() {
     setStatus("Enter the 6-digit OTP code.", "error");
     return;
   }
-  if (!confirmationResult) {
-    setStatus("Send the OTP first.", "error");
+  if (typeof window.verifyOtp !== "function") {
+    setStatus("MSG91 OTP provider is still loading. Try again in a moment.", "error");
     return;
   }
 
   verifyOtpBtn.disabled = true;
   setStatus("Verifying OTP...");
   try {
-    const credential = await confirmationResult.confirm(code);
-    const phone = credential?.user?.phoneNumber || cleanPhone(phoneInput.value);
-    setStatus("Mobile number verified.", "success");
-    post("verified", {
-      phone,
-      firebase_uid: credential?.user?.uid || null,
-      firebase_id_token: await credential.user.getIdToken()
-    });
+    const verifyCall = currentReqId
+      ? new Promise((resolve, reject) => window.verifyOtp(code, resolve, reject, currentReqId))
+      : new Promise((resolve, reject) => window.verifyOtp(code, resolve, reject));
+    const data = await withTimeout(
+      verifyCall,
+      45000,
+      "MSG91 OTP verify timed out"
+    );
+    handleVerifiedData(data);
   } catch (error) {
-    console.error("Firebase phone OTP verify failed:", error);
+    console.error("MSG91 phone OTP verify failed:", error);
     setStatus("Invalid or expired OTP. Try again.", "error");
   } finally {
     verifyOtpBtn.disabled = false;
@@ -255,5 +260,6 @@ phoneInput.addEventListener("keydown", event => {
   if (event.key === "Enter") sendOtp();
 });
 </script>
+<script type="text/javascript" onload="initMsg91Provider()" src="https://verify.msg91.com/otp-provider.js"></script>
 </body>
 </html>
