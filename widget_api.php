@@ -208,7 +208,7 @@ if ($action === "create_lead") {
         "metadata" => (object)($data['metadata'] ?? [])
     ];
 
-    $res = supabase("POST", "lead_generation_leads", [[$payload]]);
+    $res = supabase("POST", "lead_generation_leads", [$payload]);
     $ok = ($res['status'] >= 200 && $res['status'] < 300);
     widget_json_response(["success" => $ok, "debug" => $res, "lead" => $res['data'][0] ?? null]);
 }
@@ -240,7 +240,7 @@ if ($action === "create_lead_send_email_otp") {
         "source_url" => $data['source_url'] ?? null
     ];
 
-    $res = supabase("POST", "lead_generation_leads", [[$payload]]);
+    $res = supabase("POST", "lead_generation_leads", [$payload]);
     $ok = ($res['status'] >= 200 && $res['status'] < 300);
     $lead = $res['data'][0] ?? null;
 
