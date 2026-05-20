@@ -6,8 +6,9 @@ error_reporting(E_ALL);
 require "email.php";
 
 $result = sendWelcomeEmail(
-    "sushrut.asare.itmoe@gmail.com",
+    "sushrut.asare@gmail.com",
     "TEST123",
+    "Local Mail Test",
     "Password@123"
 );
 
