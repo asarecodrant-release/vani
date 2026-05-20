@@ -7,6 +7,9 @@ $firebaseProjectId = $_ENV['FIREBASE_PROJECT_ID'] ?? getenv('FIREBASE_PROJECT_ID
 $firebaseStorageBucket = $_ENV['FIREBASE_STORAGE_BUCKET'] ?? getenv('FIREBASE_STORAGE_BUCKET') ?: 'vani-ab6ae.firebasestorage.app';
 $firebaseMessagingSenderId = $_ENV['FIREBASE_MESSAGING_SENDER_ID'] ?? getenv('FIREBASE_MESSAGING_SENDER_ID') ?: '166956136198';
 $firebaseAppId = $_ENV['FIREBASE_APP_ID'] ?? getenv('FIREBASE_APP_ID') ?: '1:166956136198:web:3078dc68517358b230d087';
+$firebaseTestMode = filter_var($_ENV['FIREBASE_TEST_MODE'] ?? getenv('FIREBASE_TEST_MODE') ?: false, FILTER_VALIDATE_BOOLEAN);
+$firebaseTestPhoneNumber = $_ENV['FIREBASE_TEST_PHONE_NUMBER'] ?? getenv('FIREBASE_TEST_PHONE_NUMBER') ?: '';
+$firebaseTestOtpCode = $_ENV['FIREBASE_TEST_OTP_CODE'] ?? getenv('FIREBASE_TEST_OTP_CODE') ?: '';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -91,12 +94,15 @@ const firebaseConfig = {
   messagingSenderId: <?php echo json_encode($firebaseMessagingSenderId); ?>,
   appId: <?php echo json_encode($firebaseAppId); ?>
 };
+const firebaseTestMode = <?php echo json_encode($firebaseTestMode); ?>;
+const firebaseTestPhoneNumber = <?php echo json_encode($firebaseTestPhoneNumber); ?>;
+const firebaseTestOtpCode = <?php echo json_encode($firebaseTestOtpCode); ?>;
 
 const params = new URLSearchParams(window.location.search);
 const requestId = params.get("request_id") || "";
 const requestedParentOrigin = params.get("parent_origin") || "";
 const parentOrigin = /^https?:\/\/[^/]+$/i.test(requestedParentOrigin) ? requestedParentOrigin : "*";
-const initialPhone = (params.get("phone") || "").trim();
+const initialPhone = (params.get("phone") || firebaseTestPhoneNumber || "").trim();
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 const auth = getAuth(app);
 
@@ -118,6 +124,13 @@ phoneInput.value = initialPhone;
 if (!firebaseConfig.apiKey) {
   sendOtpBtn.disabled = true;
   setStatus("Mobile verification is not configured. Please contact support.", "error");
+} else if (firebaseTestMode && (!firebaseTestPhoneNumber || !firebaseTestOtpCode)) {
+  sendOtpBtn.disabled = true;
+  setStatus("Firebase test mode needs FIREBASE_TEST_PHONE_NUMBER and FIREBASE_TEST_OTP_CODE.", "error");
+} else if (firebaseTestMode) {
+  phoneInput.value = firebaseTestPhoneNumber;
+  phoneInput.readOnly = true;
+  setStatus(`Test mode only. Use OTP code ${firebaseTestOtpCode}.`, "notice");
 }
 
 function validPhone(value) {
@@ -166,6 +179,10 @@ async function sendOtp() {
     setStatus("Enter a valid mobile number with country code.", "error");
     return;
   }
+  if (firebaseTestMode && phone !== cleanPhone(firebaseTestPhoneNumber)) {
+    setStatus("Only the configured Firebase test phone number is allowed in test mode.", "error");
+    return;
+  }
 
   sendOtpBtn.disabled = true;
   resendBtn.disabled = true;
@@ -180,7 +197,7 @@ async function sendOtp() {
     otpField.style.display = "grid";
     verifyActions.style.display = "flex";
     otpInput.focus();
-    setStatus("OTP sent. Enter the 6-digit code.", "success");
+    setStatus(firebaseTestMode ? `Test OTP ready. Enter code ${firebaseTestOtpCode}.` : "OTP sent. Enter the 6-digit code.", "success");
   } catch (error) {
     console.error("Firebase phone OTP send failed:", error);
     if (recaptchaVerifier?.clear) {
