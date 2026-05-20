@@ -11,9 +11,13 @@
 
   const apiBase = "https://vani.codrant.com/widget_api.php";
   const imageBase = "https://cdn.jsdelivr.net/gh/asarecodrant-release/vani@main/";
-  const otpBase = "https://vani.codrant.com/otp/";
   const defaultGreeting = "Hi, how can I help you today?";
+  const msg91OtpScriptUrls = [
+    "https://verify.msg91.com/otp-provider.js",
+    "https://verify.phone91.com/otp-provider.js"
+  ];
   let config = {};
+  let msg91OtpScriptPromise = null;
 
   let userId = localStorage.getItem("vani_widget_user_id");
   if (!userId) {
@@ -341,6 +345,62 @@
       return /^\+?[1-9][0-9]{7,14}$/.test(value);
     }
 
+    function normalizePhone(value) {
+      return (value || "").trim().replace(/[^\d+]/g, "").replace(/(?!^)\+/g, "");
+    }
+
+    function nestedValue(data, keys) {
+      for (const key of keys) {
+        const parts = key.split(".");
+        let value = data;
+        for (const part of parts) {
+          if (!value || typeof value !== "object" || !(part in value)) {
+            value = null;
+            break;
+          }
+          value = value[part];
+        }
+        if (value !== null && value !== undefined && value !== "") {
+          return String(value).trim();
+        }
+      }
+      return "";
+    }
+
+    function msg91AccessToken(data) {
+      return nestedValue(data || {}, [
+        "access-token",
+        "access_token",
+        "accessToken",
+        "jwt_token",
+        "jwtToken",
+        "token",
+        "data.access-token",
+        "data.access_token",
+        "data.accessToken",
+        "data.jwt_token",
+        "data.jwtToken",
+        "data.token"
+      ]);
+    }
+
+    function msg91Identifier(data) {
+      return nestedValue(data || {}, [
+        "identifier",
+        "mobile",
+        "phone",
+        "phone_number",
+        "data.identifier",
+        "data.mobile",
+        "data.phone",
+        "data.phone_number",
+        "user.identifier",
+        "user.mobile",
+        "user.phone",
+        "user.phone_number"
+      ]);
+    }
+
     function promptWrap() {
       const wrap = document.createElement("div");
       css(wrap, { display: "flex", gap: "8px", alignItems: "center" });
@@ -363,13 +423,51 @@
       return button;
     }
 
-    function openMobileOtpFrame(phone = "") {
+    function loadMsg91OtpProvider() {
+      if (typeof window.initSendOTP === "function") {
+        return Promise.resolve();
+      }
+      if (msg91OtpScriptPromise) {
+        return msg91OtpScriptPromise;
+      }
+
+      msg91OtpScriptPromise = new Promise((resolve, reject) => {
+        let i = 0;
+        function attempt() {
+          const scriptNode = document.createElement("script");
+          scriptNode.src = msg91OtpScriptUrls[i];
+          scriptNode.async = true;
+          scriptNode.onload = () => {
+            if (typeof window.initSendOTP === "function") {
+              resolve();
+              return;
+            }
+            reject(new Error("MSG91 OTP provider did not initialize"));
+          };
+          scriptNode.onerror = () => {
+            i++;
+            if (i < msg91OtpScriptUrls.length) {
+              attempt();
+              return;
+            }
+            reject(new Error("MSG91 OTP provider could not be loaded"));
+          };
+          document.head.appendChild(scriptNode);
+        }
+        attempt();
+      });
+
+      return msg91OtpScriptPromise;
+    }
+
+    function openMobileOtpWidget(phone = "") {
       return new Promise((resolve, reject) => {
-        const overlay = document.createElement("div");
-        const frame = document.createElement("iframe");
-        const closeBtn = document.createElement("button");
-        const requestId = "otp-" + Date.now() + "-" + Math.random().toString(16).slice(2);
-        const parentOrigin = window.location.origin || "*";
+        const msg91Cfg = config.msg91_widget || {};
+        if (!msg91Cfg.configured || !msg91Cfg.widget_id || !msg91Cfg.token_auth) {
+          reject(new Error("MSG91 widget is not configured"));
+          return;
+        }
+
         const timeout = window.setTimeout(() => {
           cleanup();
           reject(new Error("Mobile OTP timed out"));
@@ -377,77 +475,39 @@
 
         function cleanup() {
           window.clearTimeout(timeout);
-          window.removeEventListener("message", onMessage);
-          overlay.remove();
         }
 
-        function onMessage(event) {
-          if (event.origin !== "https://vani.codrant.com") return;
-          const data = event.data || {};
-          if (data.source !== "vani-mobile-otp" || data.request_id !== requestId) return;
-          if (data.status === "verified") {
+        loadMsg91OtpProvider()
+          .then(() => {
+            window.initSendOTP({
+              widgetId: msg91Cfg.widget_id,
+              tokenAuth: msg91Cfg.token_auth,
+              identifier: phone.replace(/^\+/, ""),
+              exposeMethods: false,
+              success: data => {
+                const accessToken = msg91AccessToken(data);
+                const verifiedPhone = normalizePhone(msg91Identifier(data) || phone);
+                cleanup();
+                if (!accessToken) {
+                  reject(new Error("MSG91 did not return an access token"));
+                  return;
+                }
+                resolve({
+                  phone: verifiedPhone,
+                  msg91_access_token: accessToken,
+                  msg91_response: data || {}
+                });
+              },
+              failure: error => {
+                cleanup();
+                reject(error instanceof Error ? error : new Error("MSG91 mobile OTP failed"));
+              }
+            });
+          })
+          .catch(error => {
             cleanup();
-            resolve(data);
-            return;
-          }
-          if (data.status === "cancelled") {
-            cleanup();
-            reject(new Error("Mobile OTP cancelled"));
-          }
-        }
-
-        css(overlay, {
-          position: "fixed",
-          inset: "0",
-          background: "rgba(15,23,42,.48)",
-          zIndex: "1000000",
-          display: "grid",
-          placeItems: "center",
-          padding: "18px"
-        });
-        css(frame, {
-          width: "min(420px, 100%)",
-          height: "min(620px, calc(100vh - 36px))",
-          border: "0",
-          borderRadius: "16px",
-          background: "#fff",
-          boxShadow: "0 20px 60px rgba(15,23,42,.32)"
-        });
-        css(closeBtn, {
-          position: "absolute",
-          top: "14px",
-          right: "14px",
-          width: "38px",
-          height: "38px",
-          borderRadius: "999px",
-          border: "1px solid rgba(255,255,255,.55)",
-          background: "rgba(15,23,42,.62)",
-          color: "#fff",
-          cursor: "pointer",
-          fontSize: "20px",
-          lineHeight: "1"
-        });
-
-        closeBtn.type = "button";
-        closeBtn.textContent = "x";
-        closeBtn.setAttribute("aria-label", "Close mobile verification");
-        closeBtn.onclick = () => {
-          cleanup();
-          reject(new Error("Mobile OTP cancelled"));
-        };
-
-        const params = new URLSearchParams({
-          request_id: requestId,
-          parent_origin: parentOrigin
-        });
-        if (phone) params.set("phone", phone);
-        frame.src = otpBase + "?" + params.toString();
-        frame.setAttribute("allow", "otp-credentials");
-        frame.title = "Mobile OTP verification";
-        overlay.appendChild(frame);
-        overlay.appendChild(closeBtn);
-        document.body.appendChild(overlay);
-        window.addEventListener("message", onMessage);
+            reject(error);
+          });
       });
     }
 
@@ -573,23 +633,26 @@
 
       if ((collectMobile || verifyMobileOtp) && !(verifyMobileOtp ? leadState.mobileVerified : leadState.mobileSaved)) {
         if (verifyMobileOtp) {
-          const verifyBtn = promptButton("Verify mobile number");
-          css(verifyBtn, { width: "100%" });
+          const phoneInput = promptInput("tel", "Mobile number with country code");
+          phoneInput.inputMode = "tel";
+          const verifyBtn = promptButton("Send OTP");
           verifyBtn.onclick = async () => {
+            const phone = normalizePhone(phoneInput.value);
+            if (!validPhone(phone)) return addMessage(messages, "Enter a valid mobile number with country code.", "bot");
             verifyBtn.disabled = true;
             try {
-              const verified = await openMobileOtpFrame();
+              const verified = await openMobileOtpWidget(phone);
               const res = await api("verify_lead_mobile_msg91", "POST", {
                 customer_id: customerId,
                 user_id: userId,
-                phone_number: verified.phone || "",
+                phone_number: verified.phone || phone,
                 msg91_access_token: verified.msg91_access_token || "",
                 source_url: window.location.href,
                 msg91_response: verified.msg91_response || null
               });
               if (res.success && res.lead) {
                 leadState.leadId = res.lead.id || leadState.leadId;
-                leadState.phone = verified.phone || "";
+                leadState.phone = verified.phone || phone;
                 leadState.mobileSaved = true;
                 leadState.mobileVerified = true;
                 leadState.expecting = null;
@@ -600,13 +663,16 @@
                 addMessage(messages, res.message || "Mobile verified, but could not save it. Try again.", "bot");
               }
             } catch (error) {
-              console.error("Hosted mobile OTP failed:", error);
+              console.error("MSG91 mobile OTP failed:", error);
               addMessage(messages, "Mobile verification was not completed. Try again.", "bot");
             } finally {
               verifyBtn.disabled = false;
             }
           };
-          prompt.appendChild(verifyBtn);
+          const wrap = promptWrap();
+          wrap.appendChild(phoneInput);
+          wrap.appendChild(verifyBtn);
+          prompt.appendChild(wrap);
           return;
         }
 
@@ -614,7 +680,7 @@
         phoneInput.inputMode = "tel";
         const saveBtn = promptButton("Save mobile");
         saveBtn.onclick = async () => {
-          const phone = (phoneInput.value || "").trim().replace(/[^\d+]/g, "").replace(/(?!^)\+/g, "");
+          const phone = normalizePhone(phoneInput.value);
           if (!validPhone(phone)) return addMessage(messages, "Enter a valid mobile number with country code.", "bot");
           saveBtn.disabled = true;
           const res = await api("create_lead", "POST", {

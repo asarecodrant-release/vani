@@ -15,6 +15,8 @@ error_reporting(E_ALL);
 require_once __DIR__ . '/widget_core.php';
 
 $action = $_GET['action'] ?? '';
+$MSG91_WIDGET_ID = $_ENV['MSG91_WIDGET_ID'] ?? getenv('MSG91_WIDGET_ID') ?: '';
+$MSG91_TOKEN_AUTH = $_ENV['MSG91_TOKEN_AUTH'] ?? getenv('MSG91_TOKEN_AUTH') ?: '';
 $MSG91_AUTH_KEY = $_ENV['MSG91_AUTH_KEY'] ?? getenv('MSG91_AUTH_KEY') ?: '';
 
 function widget_customer_id(array $data = []): string {
@@ -203,6 +205,11 @@ if ($action === "get_widget_config" || $action === "get_theme") {
             "whatsapp_mobile_number" => $leadSettings['whatsapp_mobile_number'] ?? '',
             "verify_mobile_otp" => widget_bool($leadSettings['verify_mobile_otp'] ?? false),
             "service_tier" => $leadSettings['service_tier'] ?? 'free'
+        ],
+        "msg91_widget" => [
+            "widget_id" => $MSG91_WIDGET_ID,
+            "token_auth" => $MSG91_TOKEN_AUTH,
+            "configured" => ($MSG91_WIDGET_ID !== '' && $MSG91_TOKEN_AUTH !== '')
         ]
     ]);
 }
