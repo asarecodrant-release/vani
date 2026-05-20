@@ -994,7 +994,8 @@
             customer_id: customerId,
             user_id: userId,
             email,
-            source_url: window.location.href
+            source_url: window.location.href,
+            suppress_notification: true
           });
           if (!emailRes.success || !emailRes.lead) {
             sendOtpBtn.disabled = false;
@@ -1064,7 +1065,8 @@
                 phone_number: activePhone,
                 msg91_access_token: accessToken,
                 source_url: window.location.href,
-                msg91_response: data || null
+                msg91_response: data || null,
+                suppress_notification: true
               });
               if (!mobileRes.success || !mobileRes.lead) {
                 verifyOtpBtn.disabled = false;
@@ -1075,7 +1077,8 @@
               const emailRes = await api("verify_lead_email_otp", "POST", {
                 customer_id: customerId,
                 lead_id: leadId,
-                otp: emailOtp
+                otp: emailOtp,
+                notification_event: "identity"
               });
               if (!emailRes.success) {
                 verifyOtpBtn.disabled = false;

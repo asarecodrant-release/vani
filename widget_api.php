@@ -92,10 +92,34 @@ function widget_save_lead(string $customerId, string $userId, array $fields): ar
     return $res;
 }
 
-function widget_notify_lead_by_email(string $customerId, array $lead): bool {
+function widget_notify_lead_by_email(string $customerId, array $lead, string $eventType = 'lead'): bool {
     $leadId = (int)($lead['id'] ?? 0);
+    if ($leadId) {
+        $latest = widget_safe_rows(supabase(
+            "GET",
+            "lead_generation_leads?select=email,phone_number,source_url,metadata&id=eq." . $leadId . "&customer_id=eq." . urlencode($customerId) . "&limit=1"
+        ));
+        if (!empty($latest[0])) {
+            $lead = array_merge($lead, $latest[0]);
+        }
+    }
+
     $leadEmail = trim((string)($lead['email'] ?? ''));
-    if (!$leadId || $leadEmail === '' || widget_bool($lead['notification_email_sent'] ?? false)) {
+    $leadPhone = trim((string)($lead['phone_number'] ?? ''));
+    if (!$leadId) {
+        return false;
+    }
+
+    $eventType = in_array($eventType, ['email', 'mobile', 'identity'], true) ? $eventType : ($leadPhone !== '' ? 'mobile' : 'email');
+    if (($eventType === 'email' && $leadEmail === '') ||
+        ($eventType === 'mobile' && $leadPhone === '') ||
+        ($eventType === 'identity' && $leadEmail === '' && $leadPhone === '')) {
+        return false;
+    }
+
+    $meta = widget_lead_metadata($lead);
+    $flag = $eventType . '_notification_email_sent';
+    if (widget_bool($meta[$flag] ?? false)) {
         return false;
     }
 
@@ -110,10 +134,21 @@ function widget_notify_lead_by_email(string $customerId, array $lead): bool {
     }
 
     require_once __DIR__ . '/email.php';
-    $subject = "New lead captured";
-    $html = "<p>A new lead shared their email: <strong>" . htmlspecialchars($leadEmail) . "</strong></p>";
-    if (!empty($lead['phone_number'])) {
-        $html .= "<p>Phone: " . htmlspecialchars((string)$lead['phone_number']) . "</p>";
+    if ($eventType === 'identity') {
+        $subject = "New verified lead captured";
+        $html = "<p>A lead completed identity verification.</p>";
+    } elseif ($eventType === 'mobile') {
+        $subject = "New lead mobile captured";
+        $html = "<p>A lead shared their mobile number: <strong>" . htmlspecialchars($leadPhone) . "</strong></p>";
+    } else {
+        $subject = "New lead email captured";
+        $html = "<p>A lead shared their email: <strong>" . htmlspecialchars($leadEmail) . "</strong></p>";
+    }
+    if ($leadEmail !== '') {
+        $html .= "<p>Email: " . htmlspecialchars($leadEmail) . "</p>";
+    }
+    if ($leadPhone !== '') {
+        $html .= "<p>Phone: " . htmlspecialchars($leadPhone) . "</p>";
     }
     if (!empty($lead['source_url'])) {
         $html .= "<p>Source: " . htmlspecialchars((string)$lead['source_url']) . "</p>";
@@ -121,7 +156,12 @@ function widget_notify_lead_by_email(string $customerId, array $lead): bool {
 
     $sent = sendBrevoEmail($notificationEmail, $subject, $html);
     if ($sent) {
-        supabase("PATCH", "lead_generation_leads?id=eq." . $leadId, ["notification_email_sent" => true]);
+        $meta[$flag] = true;
+        $meta[$flag . '_at'] = gmdate('Y-m-d\TH:i:s\Z');
+        supabase("PATCH", "lead_generation_leads?id=eq." . $leadId, [
+            "notification_email_sent" => true,
+            "metadata" => (object)$meta
+        ]);
     }
 
     return $sent;
@@ -396,9 +436,12 @@ if ($action === "create_lead") {
     $res = widget_save_lead($customerId, $userId, $payload);
     $ok = ($res['status'] >= 200 && $res['status'] < 300);
     $lead = $res['data'][0] ?? null;
-    $notified = false;
+    $notified = [];
     if ($ok && $lead && !empty($payload['email'])) {
-        $notified = widget_notify_lead_by_email($customerId, $lead);
+        $notified['email'] = widget_notify_lead_by_email($customerId, $lead, 'email');
+    }
+    if ($ok && $lead && !empty($payload['phone_number'])) {
+        $notified['mobile'] = widget_notify_lead_by_email($customerId, $lead, 'mobile');
     }
     widget_json_response(["success" => $ok, "debug" => $res, "lead" => $lead, "notified" => $notified]);
 }
@@ -409,6 +452,7 @@ if ($action === "create_lead_send_email_otp") {
     $customerId = widget_customer_id($data);
     $toEmail = trim((string)($data['email'] ?? ''));
     $userId = trim((string)($data['user_id'] ?? ''));
+    $suppressNotification = widget_bool($data['suppress_notification'] ?? false);
     if (!$customerId || !$userId || !$toEmail) widget_json_response(["success" => false, "message" => "Missing customer_id, user_id or email"], 400);
 
     require_once __DIR__ . '/email.php';
@@ -452,8 +496,9 @@ if ($action === "create_lead_send_email_otp") {
             $emailError = 'Lead record could not be created.';
         }
     }
+    $notified = (!$suppressNotification && $ok && $lead && $sent) ? widget_notify_lead_by_email($customerId, $lead, 'email') : false;
 
-    widget_json_response(["success" => ($ok && $sent), "lead" => $lead, "otp_sent" => $sent, "email_error" => $emailError, "debug" => $res]);
+    widget_json_response(["success" => ($ok && $sent), "lead" => $lead, "otp_sent" => $sent, "email_error" => $emailError, "notified" => $notified, "debug" => $res]);
 }
 
 // Verify MSG91 widget access token and save a verified mobile lead.
@@ -465,6 +510,7 @@ if ($action === "verify_lead_mobile_msg91") {
     $accessToken = trim((string)($data['msg91_access_token'] ?? ''));
     $sourceUrl = trim((string)($data['source_url'] ?? ''));
     $widgetResponse = is_array($data['msg91_response'] ?? null) ? $data['msg91_response'] : [];
+    $suppressNotification = widget_bool($data['suppress_notification'] ?? false);
 
     if (!$customerId || !$userId || !$accessToken) {
         widget_json_response(["success" => false, "message" => "Missing mobile verification data"], 400);
@@ -551,7 +597,9 @@ if ($action === "verify_lead_mobile_msg91") {
         ]
     ]);
     $ok = ($res['status'] >= 200 && $res['status'] < 300);
-    widget_json_response(["success" => $ok, "lead" => $res['data'][0] ?? null, "debug" => $res]);
+    $lead = $res['data'][0] ?? null;
+    $notified = (!$suppressNotification && $ok && $lead) ? widget_notify_lead_by_email($customerId, $lead, 'mobile') : false;
+    widget_json_response(["success" => $ok, "lead" => $lead, "notified" => $notified, "debug" => $res]);
 }
 
 // Verify OTP for a lead email
@@ -560,6 +608,8 @@ if ($action === "verify_lead_email_otp") {
     $customerId = widget_customer_id($data);
     $leadId = isset($data['lead_id']) ? (int)$data['lead_id'] : 0;
     $entered = trim((string)($data['otp'] ?? ''));
+    $suppressNotification = widget_bool($data['suppress_notification'] ?? false);
+    $notificationEvent = trim((string)($data['notification_event'] ?? 'email'));
     if (!$customerId || !$leadId || $entered === '') widget_json_response(["success" => false, "message" => "Missing data"], 400);
 
     $res = supabase("GET", "lead_generation_leads?select=*&id=eq." . $leadId . "&customer_id=eq." . urlencode($customerId) . "&limit=1");
@@ -588,7 +638,7 @@ if ($action === "verify_lead_email_otp") {
     $up = supabase("PATCH", "lead_generation_leads?id=eq." . $leadId, $update);
     $ok = ($up['status'] >= 200 && $up['status'] < 300);
 
-    $notified = $ok ? widget_notify_lead_by_email($customerId, array_merge($row, $update)) : false;
+    $notified = (!$suppressNotification && $ok) ? widget_notify_lead_by_email($customerId, array_merge($row, $update), $notificationEvent) : false;
 
     widget_json_response(["success" => $ok, "notified" => $notified]);
 }
