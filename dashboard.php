@@ -230,6 +230,8 @@ $rawActive = $settings['is_active'] ?? true;
 $isActive = is_bool($rawActive) ? $rawActive : ((string)$rawActive !== 'false');
 $leadEnabled = filter_var($leadSettings['is_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
 $leadCollectLocation = filter_var($leadSettings['collect_location'] ?? false, FILTER_VALIDATE_BOOLEAN);
+$leadCollectEmail = filter_var($leadSettings['collect_email'] ?? false, FILTER_VALIDATE_BOOLEAN);
+$leadCollectMobile = filter_var($leadSettings['collect_mobile'] ?? false, FILTER_VALIDATE_BOOLEAN);
 $leadVerifyEmailOtp = filter_var($leadSettings['verify_email_otp'] ?? false, FILTER_VALIDATE_BOOLEAN);
 $leadNotifyByEmail = filter_var($leadSettings['notify_lead_by_email'] ?? false, FILTER_VALIDATE_BOOLEAN);
 $leadRedirectWhatsapp = filter_var($leadSettings['redirect_whatsapp'] ?? false, FILTER_VALIDATE_BOOLEAN);
@@ -1012,6 +1014,19 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                 <div class="lead-option">
                   <div class="lead-option-top">
                     <div>
+                      <h4>Collect email without OTP</h4>
+                      <small>Ask users for an email address and save it without sending a verification code.</small>
+                    </div>
+                    <label class="switch" title="Collect email without OTP">
+                      <input id="leadCollectEmailToggle" class="lead-toggle" type="checkbox" <?php echo $leadCollectEmail ? 'checked' : ''; ?> aria-label="Collect email without OTP">
+                      <span class="switch-slider"></span>
+                    </label>
+                  </div>
+                </div>
+
+                <div class="lead-option">
+                  <div class="lead-option-top">
+                    <div>
                       <h4>Notify lead by email</h4>
                       <small>Send an email notification when lead details are captured.</small>
                     </div>
@@ -1055,6 +1070,19 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                 <div class="lead-option">
                   <div class="lead-option-top">
                     <div>
+                      <h4>Collect mobile without OTP</h4>
+                      <small>Ask users for a phone number and save it without OTP verification.</small>
+                    </div>
+                    <label class="switch" title="Collect mobile without OTP">
+                      <input id="leadCollectMobileToggle" class="lead-toggle" type="checkbox" <?php echo $leadCollectMobile ? 'checked' : ''; ?> aria-label="Collect mobile without OTP">
+                      <span class="switch-slider"></span>
+                    </label>
+                  </div>
+                </div>
+
+                <div class="lead-option">
+                  <div class="lead-option-top">
+                    <div>
                       <h4>Redirect to WhatsApp Business</h4>
                       <small>Send users to the customer's WhatsApp Business account after lead capture.</small>
                     </div>
@@ -1073,7 +1101,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
 
                 <div class="notice">
                   <strong>Backend pending:</strong><br>
-                  Lead capture settings, WhatsApp integration, email OTP, and Firebase mobile OTP will be connected later.
+                  Firebase mobile OTP and WhatsApp redirect can be connected when those integrations are ready.
                 </div>
               </div>
             </div>
@@ -1337,6 +1365,8 @@ document.querySelectorAll("[data-save-note]").forEach(btn => {
 const leadGenerationEnabled = document.getElementById("leadGenerationEnabled");
 const leadServiceOptions = document.getElementById("leadServiceOptions");
 const leadCollectLocationToggle = document.getElementById("leadCollectLocationToggle");
+const leadCollectEmailToggle = document.getElementById("leadCollectEmailToggle");
+const leadCollectMobileToggle = document.getElementById("leadCollectMobileToggle");
 const leadEmailOtpToggle = document.getElementById("leadEmailOtpToggle");
 const whatsappLeadToggle = document.getElementById("whatsappLeadToggle");
 const whatsappLeadNumber = document.getElementById("whatsappLeadNumber");
@@ -1387,6 +1417,14 @@ leadGenerationEnabled?.addEventListener("change", () => {
   showToast(leadGenerationEnabled.checked ? "Lead generation enabled" : "Lead generation disabled");
 });
 
+leadEmailOtpToggle?.addEventListener("change", () => {
+  if (leadEmailOtpToggle.checked && leadCollectEmailToggle) leadCollectEmailToggle.checked = true;
+});
+
+leadMobileOtpToggle?.addEventListener("change", () => {
+  if (leadMobileOtpToggle.checked && leadCollectMobileToggle) leadCollectMobileToggle.checked = true;
+});
+
 whatsappLeadNumber?.addEventListener("input", () => {
   whatsappLeadNumber.value = whatsappLeadNumber.value.replace(/[^\d+]/g, "").replace(/(?!^)\+/g, "");
   validateWhatsappLeadNumber(false);
@@ -1423,6 +1461,8 @@ document.getElementById("saveLeadSetupBtn")?.addEventListener("click", async eve
       customer_id: document.getElementById("settingsCustomerId")?.value || "",
       is_enabled: !!leadGenerationEnabled?.checked,
       collect_location: !!leadCollectLocationToggle?.checked,
+      collect_email: !!leadCollectEmailToggle?.checked || !!leadEmailOtpToggle?.checked,
+      collect_mobile: !!leadCollectMobileToggle?.checked || !!leadMobileOtpToggle?.checked,
       verify_email_otp: !!leadEmailOtpToggle?.checked,
       notify_lead_by_email: !!leadEmailNotifyToggle?.checked,
       notification_email: leadNotificationEmail?.value.trim() || "",

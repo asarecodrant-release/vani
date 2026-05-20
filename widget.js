@@ -42,10 +42,27 @@
   }
 
   function loadLeadState(customerId) {
+    const defaults = {
+      verified: false,
+      leadId: null,
+      email: null,
+      phone: null,
+      locationSaved: false,
+      emailSaved: false,
+      emailVerified: false,
+      mobileSaved: false,
+      mobileVerified: false,
+      expecting: null
+    };
     try {
       const raw = localStorage.getItem(leadStorageKey(customerId));
-      return raw ? JSON.parse(raw) : { verified: false, leadId: null, email: null, locationSaved: false };
-    } catch (e) { return { verified: false, leadId: null, email: null, locationSaved: false }; }
+      const state = raw ? Object.assign(defaults, JSON.parse(raw)) : defaults;
+      if (state.verified && !state.emailVerified) {
+        state.emailVerified = true;
+        state.emailSaved = true;
+      }
+      return state;
+    } catch (e) { return defaults; }
   }
 
   function saveLeadState(customerId, state) {
@@ -299,7 +316,47 @@
       renderSuggestions(suggestionsBox, input, response.data || []);
     }
 
-    // Lead prompt UI: renders controls for location sharing and email OTP flows
+    function leadFlowComplete(leadCfg, leadState) {
+      if (!leadCfg.is_enabled) return true;
+      const needsLocation = !!leadCfg.collect_location;
+      const needsEmail = !!(leadCfg.collect_email || leadCfg.verify_email_otp);
+      const needsMobile = !!(leadCfg.collect_mobile || leadCfg.verify_mobile_otp);
+      return (!needsLocation || leadState.locationSaved) &&
+        (!needsEmail || (leadCfg.verify_email_otp ? leadState.emailVerified : leadState.emailSaved)) &&
+        (!needsMobile || leadState.mobileSaved);
+    }
+
+    function validEmail(value) {
+      return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+    }
+
+    function validPhone(value) {
+      return /^\+?[1-9][0-9]{7,14}$/.test(value);
+    }
+
+    function promptWrap() {
+      const wrap = document.createElement("div");
+      css(wrap, { display: "flex", gap: "8px", alignItems: "center" });
+      return wrap;
+    }
+
+    function promptInput(type, placeholder) {
+      const inputNode = document.createElement("input");
+      inputNode.type = type;
+      inputNode.placeholder = placeholder;
+      css(inputNode, { padding: "8px", border: "1px solid #e5e7eb", borderRadius: "10px", marginRight: "8px", flex: "1", minWidth: "0" });
+      return inputNode;
+    }
+
+    function promptButton(text) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = text;
+      css(button, { padding: "8px 12px", borderRadius: "10px", border: "1px solid #e5e7eb", background: "#fff", cursor: "pointer", whiteSpace: "nowrap" });
+      return button;
+    }
+
+    // Lead prompt UI: creates one lead early and updates it as contact details are verified or collected.
     async function renderLeadPrompt() {
       const leadCfg = (config.lead_generation || {});
       const leadState = loadLeadState(customerId);
@@ -336,7 +393,7 @@
             leadState.locationSaved = true;
             leadState.leadId = saveRes.lead?.id || leadState.leadId;
             saveLeadState(customerId, leadState);
-            addMessage(messages, "Location saved. You can continue.", "bot");
+            addMessage(messages, "Location saved.", "bot");
             prompt.style.display = "none";
             renderLeadPrompt();
           } else {
@@ -352,17 +409,11 @@
         return;
       }
 
-      if (leadCfg.verify_email_otp && !leadState.verified) {
+      if ((leadCfg.collect_email || leadCfg.verify_email_otp) && !(leadCfg.verify_email_otp ? leadState.emailVerified : leadState.emailSaved)) {
         // If awaiting OTP entry
         if (leadState.expecting === 'otp') {
-          const otpInput = document.createElement("input");
-          otpInput.type = "text";
-          otpInput.placeholder = "Enter 6-digit OTP";
-          css(otpInput, { padding: "8px", border: "1px solid #e5e7eb", borderRadius: "10px", marginRight: "8px" });
-          const verifyBtn = document.createElement("button");
-          verifyBtn.type = "button";
-          verifyBtn.textContent = "Verify OTP";
-          css(verifyBtn, { padding: "8px 12px", borderRadius: "10px", border: "1px solid #e5e7eb", background: "#fff", cursor: "pointer" });
+          const otpInput = promptInput("text", "Enter 6-digit OTP");
+          const verifyBtn = promptButton("Verify OTP");
           verifyBtn.onclick = async () => {
             const otp = otpInput.value.trim();
             if (!/^[0-9]{6}$/.test(otp)) return addMessage(messages, "Enter a 6-digit code.", "bot");
@@ -371,50 +422,88 @@
             verifyBtn.disabled = false;
             if (res.success) {
               leadState.verified = true;
+              leadState.emailSaved = true;
+              leadState.emailVerified = true;
               leadState.expecting = null;
               saveLeadState(customerId, leadState);
-              addMessage(messages, "Email verified. You can continue the chat.", "bot");
-              prompt.style.display = "none";
+              addMessage(messages, "Email verified.", "bot");
+              renderLeadPrompt();
             } else {
               addMessage(messages, res.message || "Invalid or expired OTP. Try again.", "bot");
             }
           };
-          prompt.appendChild(otpInput);
-          prompt.appendChild(verifyBtn);
+          const wrap = promptWrap();
+          wrap.appendChild(otpInput);
+          wrap.appendChild(verifyBtn);
+          prompt.appendChild(wrap);
           return;
         }
 
-        // Ask for email and send OTP
-        const emailInput = document.createElement("input");
-        emailInput.type = "email";
-        emailInput.placeholder = "Your email address";
-        css(emailInput, { padding: "8px", border: "1px solid #e5e7eb", borderRadius: "10px", marginRight: "8px", flex: "1" });
-        const sendBtn = document.createElement("button");
-        sendBtn.type = "button";
-        sendBtn.textContent = "Send OTP";
-        css(sendBtn, { padding: "8px 12px", borderRadius: "10px", border: "1px solid #e5e7eb", background: "#fff", cursor: "pointer" });
+        const emailInput = promptInput("email", "Your email address");
+        const sendBtn = promptButton(leadCfg.verify_email_otp ? "Send OTP" : "Save email");
         sendBtn.onclick = async () => {
           const email = (emailInput.value || "").trim();
-          if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return addMessage(messages, "Enter a valid email address.", "bot");
+          if (!validEmail(email)) return addMessage(messages, "Enter a valid email address.", "bot");
           sendBtn.disabled = true;
-          const res = await api("create_lead_send_email_otp", "POST", { customer_id: customerId, user_id: userId, email, source_url: window.location.href });
+          const res = leadCfg.verify_email_otp
+            ? await api("create_lead_send_email_otp", "POST", { customer_id: customerId, user_id: userId, email, source_url: window.location.href })
+            : await api("create_lead", "POST", { customer_id: customerId, user_id: userId, email, source_url: window.location.href, verification_quality: "poor" });
           sendBtn.disabled = false;
           if (res.success && res.lead) {
             leadState.leadId = res.lead.id || leadState.leadId;
             leadState.email = email;
-            leadState.expecting = 'otp';
+            leadState.emailSaved = true;
+            leadState.emailVerified = !leadCfg.verify_email_otp;
+            leadState.verified = !leadCfg.verify_email_otp;
+            leadState.expecting = leadCfg.verify_email_otp ? 'otp' : null;
             saveLeadState(customerId, leadState);
-            addMessage(messages, "OTP sent to your email. Enter it below to verify.", "bot");
+            addMessage(messages, leadCfg.verify_email_otp ? "OTP sent to your email. Enter it below to verify." : "Email saved.", "bot");
             renderLeadPrompt();
           } else {
             const errorMessage = res.email_error || res.message || "Could not send OTP to that email. Try again later.";
             addMessage(messages, errorMessage, "bot");
           }
         };
-        const wrap = document.createElement("div");
-        css(wrap, { display: "flex", gap: "8px", alignItems: "center" });
+        const wrap = promptWrap();
         wrap.appendChild(emailInput);
         wrap.appendChild(sendBtn);
+        prompt.appendChild(wrap);
+        return;
+      }
+
+      if ((leadCfg.collect_mobile || leadCfg.verify_mobile_otp) && !leadState.mobileSaved) {
+        const phoneInput = promptInput("tel", "Your mobile number");
+        phoneInput.inputMode = "tel";
+        const saveBtn = promptButton("Save mobile");
+        saveBtn.onclick = async () => {
+          const phone = (phoneInput.value || "").trim().replace(/[^\d+]/g, "").replace(/(?!^)\+/g, "");
+          if (!validPhone(phone)) return addMessage(messages, "Enter a valid mobile number with country code.", "bot");
+          saveBtn.disabled = true;
+          const res = await api("create_lead", "POST", {
+            customer_id: customerId,
+            user_id: userId,
+            phone_number: phone,
+            source_url: window.location.href,
+            mobile_otp_verified: false,
+            verification_quality: leadCfg.verify_mobile_otp ? "poor" : "poor",
+            metadata: leadCfg.verify_mobile_otp ? { mobile_otp_status: "firebase_pending" } : {}
+          });
+          saveBtn.disabled = false;
+          if (res.success && res.lead) {
+            leadState.leadId = res.lead.id || leadState.leadId;
+            leadState.phone = phone;
+            leadState.mobileSaved = true;
+            leadState.mobileVerified = false;
+            saveLeadState(customerId, leadState);
+            addMessage(messages, leadCfg.verify_mobile_otp ? "Mobile number saved. OTP verification will be connected soon." : "Mobile number saved.", "bot");
+            renderLeadPrompt();
+          } else {
+            addMessage(messages, res.message || "Could not save mobile number. Try again.", "bot");
+          }
+        };
+        const wrap = promptWrap();
+        wrap.appendChild(phoneInput);
+        wrap.appendChild(saveBtn);
         prompt.appendChild(wrap);
         return;
       }
@@ -431,7 +520,7 @@
       const leadState = loadLeadState(customerId);
 
       // If lead generation requires action, show visual prompt and block chat
-      if (leadCfg.is_enabled && ((leadCfg.collect_location && !leadState.locationSaved) || (leadCfg.verify_email_otp && !leadState.verified))) {
+      if (!leadFlowComplete(leadCfg, leadState)) {
         renderLeadPrompt();
         addMessage(messages, "Please complete the verification using the controls above the input.", "bot");
         return;

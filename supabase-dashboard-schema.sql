@@ -59,6 +59,8 @@ create table if not exists public.lead_generation_settings (
   customer_id uuid not null unique references public.chatbot_signups(customer_id) on delete cascade,
   is_enabled boolean not null default false,
   collect_location boolean not null default false,
+  collect_email boolean not null default false,
+  collect_mobile boolean not null default false,
   verify_email_otp boolean not null default false,
   notify_lead_by_email boolean not null default false,
   notification_email text,

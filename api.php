@@ -364,7 +364,26 @@ if ($action === "save_lead_generation_settings") {
     $whatsapp_mobile_number = trim($data['whatsapp_mobile_number'] ?? '');
     $notify_lead_by_email = filter_var($data['notify_lead_by_email'] ?? false, FILTER_VALIDATE_BOOLEAN);
     $redirect_whatsapp = filter_var($data['redirect_whatsapp'] ?? false, FILTER_VALIDATE_BOOLEAN);
+    $collect_email = filter_var($data['collect_email'] ?? false, FILTER_VALIDATE_BOOLEAN);
+    $collect_mobile = filter_var($data['collect_mobile'] ?? false, FILTER_VALIDATE_BOOLEAN);
+    $verify_email_otp = filter_var($data['verify_email_otp'] ?? false, FILTER_VALIDATE_BOOLEAN);
     $verify_mobile_otp = filter_var($data['verify_mobile_otp'] ?? false, FILTER_VALIDATE_BOOLEAN);
+
+    if ($verify_email_otp && !$collect_email) {
+        echo json_encode([
+            "success" => false,
+            "message" => "Enable email collection before turning on email OTP verification"
+        ]);
+        exit;
+    }
+
+    if ($verify_mobile_otp && !$collect_mobile) {
+        echo json_encode([
+            "success" => false,
+            "message" => "Enable mobile collection before turning on mobile OTP verification"
+        ]);
+        exit;
+    }
 
     if ($notify_lead_by_email && !filter_var($notification_email, FILTER_VALIDATE_EMAIL)) {
         echo json_encode([
@@ -386,7 +405,9 @@ if ($action === "save_lead_generation_settings") {
         "customer_id" => $customer_id,
         "is_enabled" => filter_var($data['is_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN),
         "collect_location" => filter_var($data['collect_location'] ?? false, FILTER_VALIDATE_BOOLEAN),
-        "verify_email_otp" => filter_var($data['verify_email_otp'] ?? false, FILTER_VALIDATE_BOOLEAN),
+        "collect_email" => $collect_email,
+        "collect_mobile" => $collect_mobile,
+        "verify_email_otp" => $verify_email_otp,
         "notify_lead_by_email" => $notify_lead_by_email,
         "notification_email" => $notification_email !== '' ? $notification_email : null,
         "redirect_whatsapp" => $redirect_whatsapp,

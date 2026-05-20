@@ -44,6 +44,51 @@ function widget_get_lead_settings(string $customerId): array {
     return $rows[0] ?? [];
 }
 
+function widget_existing_lead(string $customerId, string $userId): array {
+    $rows = widget_safe_rows(supabase(
+        "GET",
+        "lead_generation_leads?select=*&customer_id=eq." . urlencode($customerId) . "&user_id=eq." . urlencode($userId) . "&limit=1"
+    ));
+    return $rows[0] ?? [];
+}
+
+function widget_lead_metadata(array $lead): array {
+    $meta = $lead['metadata'] ?? [];
+    return is_array($meta) ? $meta : [];
+}
+
+function widget_save_lead(string $customerId, string $userId, array $fields): array {
+    $existing = widget_existing_lead($customerId, $userId);
+    $metadata = $fields['metadata'] ?? null;
+    unset($fields['metadata']);
+
+    if (is_array($metadata)) {
+        $fields['metadata'] = (object)array_merge(widget_lead_metadata($existing), $metadata);
+    }
+
+    if (!empty($existing['id'])) {
+        $res = supabase(
+            "PATCH",
+            "lead_generation_leads?id=eq." . urlencode((string)$existing['id']) . "&customer_id=eq." . urlencode($customerId),
+            $fields
+        );
+    } else {
+        $fields = array_merge([
+            "customer_id" => $customerId,
+            "user_id" => $userId,
+            "whatsapp_redirected" => false,
+            "email_otp_verified" => false,
+            "mobile_otp_verified" => false,
+            "notification_email_sent" => false,
+            "verification_quality" => "poor",
+            "metadata" => (object)[]
+        ], $fields);
+        $res = supabase("POST", "lead_generation_leads", [$fields]);
+    }
+
+    return $res;
+}
+
 if ($action === "get_widget_config" || $action === "get_theme") {
     $customerId = widget_customer_id();
     if (!$customerId) {
@@ -68,6 +113,8 @@ if ($action === "get_widget_config" || $action === "get_theme") {
         "lead_generation" => [
             "is_enabled" => widget_bool($leadSettings['is_enabled'] ?? false),
             "collect_location" => widget_bool($leadSettings['collect_location'] ?? false),
+            "collect_email" => widget_bool($leadSettings['collect_email'] ?? false),
+            "collect_mobile" => widget_bool($leadSettings['collect_mobile'] ?? false),
             "verify_email_otp" => widget_bool($leadSettings['verify_email_otp'] ?? false),
             "notify_lead_by_email" => widget_bool($leadSettings['notify_lead_by_email'] ?? false),
             "redirect_whatsapp" => widget_bool($leadSettings['redirect_whatsapp'] ?? false),
@@ -192,25 +239,22 @@ if ($action === "create_lead") {
     $userId = trim((string)($data['user_id'] ?? ''));
     if (!$customerId || !$userId) widget_json_response(["success" => false, "message" => "Missing customer_id or user_id"], 400);
 
-    $payload = [
-        "customer_id" => $customerId,
-        "user_id" => $userId,
-        "name" => $data['name'] ?? null,
-        "email" => $data['email'] ?? null,
-        "phone_number" => $data['phone_number'] ?? null,
-        "location_text" => $data['location_text'] ?? null,
-        "latitude" => isset($data['latitude']) ? (float)$data['latitude'] : null,
-        "longitude" => isset($data['longitude']) ? (float)$data['longitude'] : null,
-        "source_url" => $data['source_url'] ?? null,
-        "whatsapp_redirected" => !!($data['whatsapp_redirected'] ?? false),
-        "email_otp_verified" => !!($data['email_otp_verified'] ?? false),
-        "mobile_otp_verified" => !!($data['mobile_otp_verified'] ?? false),
-        "notification_email_sent" => false,
-        "verification_quality" => ($data['verification_quality'] ?? 'poor'),
-        "metadata" => (object)($data['metadata'] ?? [])
-    ];
+    $payload = [];
+    foreach (["name", "email", "phone_number", "location_text", "source_url", "verification_quality"] as $key) {
+        if (array_key_exists($key, $data)) {
+            $payload[$key] = $data[$key];
+        }
+    }
+    foreach (["whatsapp_redirected", "email_otp_verified", "mobile_otp_verified"] as $key) {
+        if (array_key_exists($key, $data)) {
+            $payload[$key] = !!$data[$key];
+        }
+    }
+    if (isset($data['latitude'])) $payload["latitude"] = (float)$data['latitude'];
+    if (isset($data['longitude'])) $payload["longitude"] = (float)$data['longitude'];
+    if (isset($data['metadata']) && is_array($data['metadata'])) $payload["metadata"] = $data['metadata'];
 
-    $res = supabase("POST", "lead_generation_leads?on_conflict=customer_id,user_id", [$payload]);
+    $res = widget_save_lead($customerId, $userId, $payload);
     $ok = ($res['status'] >= 200 && $res['status'] < 300);
     widget_json_response(["success" => $ok, "debug" => $res, "lead" => $res['data'][0] ?? null]);
 }
@@ -240,11 +284,12 @@ if ($action === "create_lead_send_email_otp") {
         "email_otp_verified" => false,
         "notification_email_sent" => false,
         "verification_quality" => 'poor',
-        "metadata" => (object)$metadata,
+        "metadata" => $metadata,
         "source_url" => $data['source_url'] ?? null
     ];
 
-    $res = supabase("POST", "lead_generation_leads?on_conflict=customer_id,user_id", [$payload]);
+    unset($payload["customer_id"], $payload["user_id"], $payload["notification_email_sent"]);
+    $res = widget_save_lead($customerId, $userId, $payload);
     $ok = ($res['status'] >= 200 && $res['status'] < 300);
     $lead = $res['data'][0] ?? null;
 
