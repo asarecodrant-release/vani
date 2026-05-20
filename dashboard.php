@@ -1418,11 +1418,13 @@ leadGenerationEnabled?.addEventListener("change", () => {
 });
 
 leadEmailOtpToggle?.addEventListener("change", () => {
-  if (leadEmailOtpToggle.checked && leadCollectEmailToggle) leadCollectEmailToggle.checked = true;
+  if (leadCollectEmailToggle) leadCollectEmailToggle.checked = true;
+  if (!leadEmailOtpToggle.checked) showToast("Email will be saved without OTP");
 });
 
 leadMobileOtpToggle?.addEventListener("change", () => {
-  if (leadMobileOtpToggle.checked && leadCollectMobileToggle) leadCollectMobileToggle.checked = true;
+  if (leadCollectMobileToggle) leadCollectMobileToggle.checked = true;
+  if (!leadMobileOtpToggle.checked) showToast("Mobile number will be saved without OTP");
 });
 
 whatsappLeadNumber?.addEventListener("input", () => {
