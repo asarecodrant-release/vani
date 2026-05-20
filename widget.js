@@ -397,7 +397,7 @@
           const email = (emailInput.value || "").trim();
           if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return addMessage(messages, "Enter a valid email address.", "bot");
           sendBtn.disabled = true;
-          const res = await api("create_lead_send_email_otp", "POST", { customer_id: customerId, email, source_url: window.location.href });
+          const res = await api("create_lead_send_email_otp", "POST", { customer_id: customerId, user_id: userId, email, source_url: window.location.href });
           sendBtn.disabled = false;
           if (res.success && res.lead) {
             leadState.leadId = res.lead.id || leadState.leadId;

@@ -208,7 +208,7 @@ if ($action === "create_lead") {
         "metadata" => (object)($data['metadata'] ?? [])
     ];
 
-    $res = supabase("POST", "lead_generation_leads", [$payload]);
+    $res = supabase("POST", "lead_generation_leads?on_conflict=customer_id,user_id", [$payload]);
     $ok = ($res['status'] >= 200 && $res['status'] < 300);
     widget_json_response(["success" => $ok, "debug" => $res, "lead" => $res['data'][0] ?? null]);
 }
@@ -218,7 +218,8 @@ if ($action === "create_lead_send_email_otp") {
     $data = widget_get_json();
     $customerId = widget_customer_id($data);
     $toEmail = trim((string)($data['email'] ?? ''));
-    if (!$customerId || !$toEmail) widget_json_response(["success" => false, "message" => "Missing customer_id or email"], 400);
+    $userId = trim((string)($data['user_id'] ?? ''));
+    if (!$customerId || !$userId || !$toEmail) widget_json_response(["success" => false, "message" => "Missing customer_id, user_id or email"], 400);
 
     require_once __DIR__ . '/email.php';
 
@@ -232,6 +233,7 @@ if ($action === "create_lead_send_email_otp") {
 
     $payload = [
         "customer_id" => $customerId,
+        "user_id" => $data['user_id'] ?? null,
         "email" => $toEmail,
         "email_otp_verified" => false,
         "notification_email_sent" => false,
@@ -240,7 +242,7 @@ if ($action === "create_lead_send_email_otp") {
         "source_url" => $data['source_url'] ?? null
     ];
 
-    $res = supabase("POST", "lead_generation_leads", [$payload]);
+    $res = supabase("POST", "lead_generation_leads?on_conflict=customer_id,user_id", [$payload]);
     $ok = ($res['status'] >= 200 && $res['status'] < 300);
     $lead = $res['data'][0] ?? null;
 

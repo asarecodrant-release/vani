@@ -77,6 +77,7 @@ create table if not exists public.lead_generation_settings (
 create table if not exists public.lead_generation_leads (
   id bigserial primary key,
   customer_id uuid not null references public.chatbot_signups(customer_id) on delete cascade,
+  user_id text not null,
   conversation_id bigint references public.chatbot_conversations(id) on delete set null,
   name text,
   email text,
@@ -91,7 +92,8 @@ create table if not exists public.lead_generation_leads (
   notification_email_sent boolean not null default false,
   verification_quality text not null default 'poor' check (verification_quality in ('poor', 'real')),
   metadata jsonb not null default '{}'::jsonb,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  constraint lead_generation_leads_customer_user_unique unique (customer_id, user_id)
 );
 
 alter table public.faq_questions
