@@ -327,7 +327,34 @@ phoneInput.addEventListener("keydown", event => {
 });
 
 console.log("OTP page loaded - MSG91 Widget ID configured:", msg91WidgetId ? "yes" : "NO");
+console.log("=== MSG91 OTP Verification Debug Info ===");
+console.log("Widget ID:", msg91WidgetId || "MISSING!");
+console.log("Token Auth:", msg91TokenAuth ? "configured" : "MISSING!");
+console.log("Request ID:", requestId || "none");
+console.log("Parent Origin:", parentOrigin);
+console.log("Initial Phone:", initialPhone || "none");
+console.log("===== Waiting for MSG91 Script =====");
 </script>
-<script type="text/javascript" onload="initMsg91Provider()" src="https://verify.msg91.com/otp-provider.js"></script>
+<script type="text/javascript">
+// Additional debugging for MSG91 script loading
+window.addEventListener("error", (event) => {
+  console.error("Global error:", event.message, event.filename, event.lineno);
+});
+
+window.addEventListener("load", () => {
+  console.log("=== Page Fully Loaded ===");
+  console.log("window.sendOtp available:", typeof window.sendOtp);
+  console.log("window.verifyOtp available:", typeof window.verifyOtp);
+  console.log("window.initSendOTP available:", typeof window.initSendOTP);
+});
+
+// Log when script loads
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => {
+    console.log("DOM Content Loaded");
+  });
+}
+</script>
+<script type="text/javascript" onload="initMsg91Provider()" onerror="console.error('FAILED TO LOAD MSG91 OTP PROVIDER SCRIPT')" src="https://verify.msg91.com/otp-provider.js"></script>
 </body>
 </html>
