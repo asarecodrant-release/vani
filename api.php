@@ -369,22 +369,6 @@ if ($action === "save_lead_generation_settings") {
     $verify_email_otp = filter_var($data['verify_email_otp'] ?? false, FILTER_VALIDATE_BOOLEAN);
     $verify_mobile_otp = filter_var($data['verify_mobile_otp'] ?? false, FILTER_VALIDATE_BOOLEAN);
 
-    if ($verify_email_otp && !$collect_email) {
-        echo json_encode([
-            "success" => false,
-            "message" => "Enable email collection before turning on email OTP verification"
-        ]);
-        exit;
-    }
-
-    if ($verify_mobile_otp && !$collect_mobile) {
-        echo json_encode([
-            "success" => false,
-            "message" => "Enable mobile collection before turning on mobile OTP verification"
-        ]);
-        exit;
-    }
-
     if ($notify_lead_by_email && !filter_var($notification_email, FILTER_VALIDATE_EMAIL)) {
         echo json_encode([
             "success" => false,

@@ -76,6 +76,12 @@ create table if not exists public.lead_generation_settings (
     check (whatsapp_mobile_number is null or whatsapp_mobile_number ~ '^\+?[1-9][0-9]{7,14}$')
 );
 
+alter table public.lead_generation_settings
+  add column if not exists collect_email boolean not null default false;
+
+alter table public.lead_generation_settings
+  add column if not exists collect_mobile boolean not null default false;
+
 create table if not exists public.lead_generation_leads (
   id bigserial primary key,
   customer_id uuid not null references public.chatbot_signups(customer_id) on delete cascade,
