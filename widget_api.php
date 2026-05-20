@@ -15,6 +15,7 @@ error_reporting(E_ALL);
 require_once __DIR__ . '/widget_core.php';
 
 $action = $_GET['action'] ?? '';
+const VANI_FIREBASE_API_KEY = "AIzaSyCZB6L9BT6kY04kDDdKnNrqNg3E6EYIVL4";
 
 function widget_customer_id(array $data = []): string {
     return trim((string)($data['customer_id'] ?? $_GET['customer_id'] ?? ''));
@@ -122,6 +123,27 @@ function widget_notify_lead_by_email(string $customerId, array $lead): bool {
     }
 
     return $sent;
+}
+
+function widget_firebase_lookup(string $idToken): array {
+    $payload = json_encode(["idToken" => $idToken]);
+    $context = stream_context_create([
+        "http" => [
+            "method" => "POST",
+            "header" => "Content-Type: application/json\r\n",
+            "content" => $payload,
+            "ignore_errors" => true
+        ]
+    ]);
+    $url = "https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=" . urlencode(VANI_FIREBASE_API_KEY);
+    $raw = file_get_contents($url, false, $context);
+    $status = 0;
+    if (isset($http_response_header[0])) {
+        preg_match('{HTTP/\S*\s(\d{3})}', $http_response_header[0], $match);
+        $status = intval($match[1] ?? 0);
+    }
+    $data = json_decode((string)$raw, true);
+    return ["status" => $status, "data" => is_array($data) ? $data : [], "raw" => $raw];
 }
 
 if ($action === "get_widget_config" || $action === "get_theme") {
@@ -350,6 +372,53 @@ if ($action === "create_lead_send_email_otp") {
     }
 
     widget_json_response(["success" => ($ok && $sent), "lead" => $lead, "otp_sent" => $sent, "email_error" => $emailError, "debug" => $res]);
+}
+
+// Verify Firebase phone auth token and save a verified mobile lead.
+if ($action === "verify_lead_mobile_firebase") {
+    $data = widget_get_json();
+    $customerId = widget_customer_id($data);
+    $userId = trim((string)($data['user_id'] ?? ''));
+    $phone = trim((string)($data['phone_number'] ?? ''));
+    $idToken = trim((string)($data['firebase_id_token'] ?? ''));
+    $sourceUrl = trim((string)($data['source_url'] ?? ''));
+    $firebaseUid = trim((string)($data['firebase_uid'] ?? ''));
+
+    if (!$customerId || !$userId || !$phone || !$idToken) {
+        widget_json_response(["success" => false, "message" => "Missing mobile verification data"], 400);
+    }
+
+    $lookup = widget_firebase_lookup($idToken);
+    if ($lookup['status'] < 200 || $lookup['status'] >= 300) {
+        widget_json_response(["success" => false, "message" => "Firebase token could not be verified", "debug" => $lookup], 400);
+    }
+
+    $user = $lookup['data']['users'][0] ?? [];
+    $firebasePhone = trim((string)($user['phoneNumber'] ?? ''));
+    $verifiedUid = trim((string)($user['localId'] ?? ''));
+    if ($firebasePhone === '') {
+        widget_json_response(["success" => false, "message" => "Firebase token has no verified phone number"], 400);
+    }
+
+    $normalizedInput = preg_replace('/\D+/', '', $phone);
+    $normalizedFirebase = preg_replace('/\D+/', '', $firebasePhone);
+    if ($normalizedInput === '' || $normalizedInput !== $normalizedFirebase) {
+        widget_json_response(["success" => false, "message" => "Verified phone number does not match"], 400);
+    }
+
+    $res = widget_save_lead($customerId, $userId, [
+        "phone_number" => $firebasePhone,
+        "source_url" => $sourceUrl ?: null,
+        "mobile_otp_verified" => true,
+        "verification_quality" => "real",
+        "metadata" => [
+            "mobile_otp_status" => "verified",
+            "firebase_uid" => $verifiedUid ?: $firebaseUid,
+            "firebase_phone_number" => $firebasePhone
+        ]
+    ]);
+    $ok = ($res['status'] >= 200 && $res['status'] < 300);
+    widget_json_response(["success" => $ok, "lead" => $res['data'][0] ?? null, "debug" => $res]);
 }
 
 // Verify OTP for a lead email

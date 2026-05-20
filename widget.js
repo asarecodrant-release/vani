@@ -11,6 +11,7 @@
 
   const apiBase = "https://vani.codrant.com/widget_api.php";
   const imageBase = "https://cdn.jsdelivr.net/gh/asarecodrant-release/vani@main/";
+  const otpBase = "https://vani.codrant.com/otp/";
   const defaultGreeting = "Hi, how can I help you today?";
   let config = {};
 
@@ -324,11 +325,12 @@
       if (!isEnabled(leadCfg.is_enabled)) return true;
       const needsLocation = isEnabled(leadCfg.collect_location);
       const verifyEmailOtp = isEnabled(leadCfg.verify_email_otp);
+      const verifyMobileOtp = isEnabled(leadCfg.verify_mobile_otp);
       const needsEmail = isEnabled(leadCfg.collect_email) || verifyEmailOtp;
-      const needsMobile = isEnabled(leadCfg.collect_mobile) || isEnabled(leadCfg.verify_mobile_otp);
+      const needsMobile = isEnabled(leadCfg.collect_mobile) || verifyMobileOtp;
       return (!needsLocation || leadState.locationSaved) &&
         (!needsEmail || (verifyEmailOtp ? leadState.emailVerified : leadState.emailSaved)) &&
-        (!needsMobile || leadState.mobileSaved);
+        (!needsMobile || (verifyMobileOtp ? leadState.mobileVerified : leadState.mobileSaved));
     }
 
     function validEmail(value) {
@@ -359,6 +361,93 @@
       button.textContent = text;
       css(button, { padding: "8px 12px", borderRadius: "10px", border: "1px solid #e5e7eb", background: "#fff", cursor: "pointer", whiteSpace: "nowrap" });
       return button;
+    }
+
+    function openMobileOtpFrame(phone) {
+      return new Promise((resolve, reject) => {
+        const overlay = document.createElement("div");
+        const frame = document.createElement("iframe");
+        const closeBtn = document.createElement("button");
+        const requestId = "otp-" + Date.now() + "-" + Math.random().toString(16).slice(2);
+        const parentOrigin = window.location.origin || "*";
+        const timeout = window.setTimeout(() => {
+          cleanup();
+          reject(new Error("Mobile OTP timed out"));
+        }, 10 * 60 * 1000);
+
+        function cleanup() {
+          window.clearTimeout(timeout);
+          window.removeEventListener("message", onMessage);
+          overlay.remove();
+        }
+
+        function onMessage(event) {
+          if (event.origin !== "https://vani.codrant.com") return;
+          const data = event.data || {};
+          if (data.source !== "vani-mobile-otp" || data.request_id !== requestId) return;
+          if (data.status === "verified") {
+            cleanup();
+            resolve(data);
+            return;
+          }
+          if (data.status === "cancelled") {
+            cleanup();
+            reject(new Error("Mobile OTP cancelled"));
+          }
+        }
+
+        css(overlay, {
+          position: "fixed",
+          inset: "0",
+          background: "rgba(15,23,42,.48)",
+          zIndex: "1000000",
+          display: "grid",
+          placeItems: "center",
+          padding: "18px"
+        });
+        css(frame, {
+          width: "min(420px, 100%)",
+          height: "430px",
+          border: "0",
+          borderRadius: "16px",
+          background: "#fff",
+          boxShadow: "0 20px 60px rgba(15,23,42,.32)"
+        });
+        css(closeBtn, {
+          position: "absolute",
+          top: "14px",
+          right: "14px",
+          width: "38px",
+          height: "38px",
+          borderRadius: "999px",
+          border: "1px solid rgba(255,255,255,.55)",
+          background: "rgba(15,23,42,.62)",
+          color: "#fff",
+          cursor: "pointer",
+          fontSize: "20px",
+          lineHeight: "1"
+        });
+
+        closeBtn.type = "button";
+        closeBtn.textContent = "x";
+        closeBtn.setAttribute("aria-label", "Close mobile verification");
+        closeBtn.onclick = () => {
+          cleanup();
+          reject(new Error("Mobile OTP cancelled"));
+        };
+
+        const params = new URLSearchParams({
+          phone,
+          request_id: requestId,
+          parent_origin: parentOrigin
+        });
+        frame.src = otpBase + "?" + params.toString();
+        frame.title = "Mobile OTP verification";
+        overlay.appendChild(frame);
+        overlay.appendChild(closeBtn);
+        document.body.appendChild(overlay);
+        window.addEventListener("message", onMessage);
+      });
     }
 
     // Lead prompt UI: creates one lead early and updates it as contact details are verified or collected.
@@ -481,22 +570,53 @@
         return;
       }
 
-      if ((collectMobile || verifyMobileOtp) && !leadState.mobileSaved) {
+      if ((collectMobile || verifyMobileOtp) && !(verifyMobileOtp ? leadState.mobileVerified : leadState.mobileSaved)) {
         const phoneInput = promptInput("tel", "Your mobile number");
         phoneInput.inputMode = "tel";
-        const saveBtn = promptButton("Save mobile");
+        const saveBtn = promptButton(verifyMobileOtp ? "Verify mobile" : "Save mobile");
         saveBtn.onclick = async () => {
           const phone = (phoneInput.value || "").trim().replace(/[^\d+]/g, "").replace(/(?!^)\+/g, "");
           if (!validPhone(phone)) return addMessage(messages, "Enter a valid mobile number with country code.", "bot");
           saveBtn.disabled = true;
+          if (verifyMobileOtp) {
+            try {
+              const verified = await openMobileOtpFrame(phone);
+              const res = await api("verify_lead_mobile_firebase", "POST", {
+                customer_id: customerId,
+                user_id: userId,
+                phone_number: verified.phone || phone,
+                firebase_id_token: verified.firebase_id_token || "",
+                source_url: window.location.href,
+                firebase_uid: verified.firebase_uid || null
+              });
+              if (res.success && res.lead) {
+                leadState.leadId = res.lead.id || leadState.leadId;
+                leadState.phone = verified.phone || phone;
+                leadState.mobileSaved = true;
+                leadState.mobileVerified = true;
+                leadState.expecting = null;
+                saveLeadState(customerId, leadState);
+                addMessage(messages, "Mobile number verified.", "bot");
+                renderLeadPrompt();
+              } else {
+                addMessage(messages, res.message || "Mobile verified, but could not save it. Try again.", "bot");
+              }
+            } catch (error) {
+              console.error("Hosted mobile OTP failed:", error);
+              addMessage(messages, "Mobile verification was not completed. Try again.", "bot");
+            } finally {
+              saveBtn.disabled = false;
+            }
+            return;
+          }
+
           const res = await api("create_lead", "POST", {
             customer_id: customerId,
             user_id: userId,
             phone_number: phone,
             source_url: window.location.href,
             mobile_otp_verified: false,
-            verification_quality: verifyMobileOtp ? "poor" : "poor",
-            metadata: verifyMobileOtp ? { mobile_otp_status: "firebase_pending" } : {}
+            verification_quality: "poor"
           });
           saveBtn.disabled = false;
           if (res.success && res.lead) {
@@ -505,7 +625,7 @@
             leadState.mobileSaved = true;
             leadState.mobileVerified = false;
             saveLeadState(customerId, leadState);
-            addMessage(messages, verifyMobileOtp ? "Mobile number saved. OTP verification will be connected soon." : "Mobile number saved.", "bot");
+            addMessage(messages, "Mobile number saved.", "bot");
             renderLeadPrompt();
           } else {
             addMessage(messages, res.message || "Could not save mobile number. Try again.", "bot");

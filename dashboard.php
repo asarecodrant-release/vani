@@ -1058,7 +1058,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                   <div class="lead-option-top">
                     <div>
                       <h4>Mobile OTP verification</h4>
-                      <small>Verify the lead with an OTP sent to the user's mobile number. Firebase setup will be connected later.</small>
+                      <small>Verify the lead with an OTP sent to the user's mobile number through Firebase.</small>
                     </div>
                     <label class="switch" title="Mobile OTP verification">
                       <input id="leadMobileOtpToggle" class="lead-toggle" type="checkbox" <?php echo $leadVerifyMobileOtp ? 'checked' : ''; ?> aria-label="Mobile OTP verification">
@@ -1101,7 +1101,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
 
                 <div class="notice">
                   <strong>Backend pending:</strong><br>
-                  Firebase mobile OTP and WhatsApp redirect can be connected when those integrations are ready.
+                  WhatsApp redirect can be connected when that integration is ready.
                 </div>
               </div>
             </div>
