@@ -451,6 +451,19 @@
       ]);
     }
 
+    function msg91RequestId(data) {
+      return nestedValue(data || {}, [
+        "reqId",
+        "req_id",
+        "requestId",
+        "request_id",
+        "data.reqId",
+        "data.req_id",
+        "data.requestId",
+        "data.request_id"
+      ]);
+    }
+
     function promptWrap() {
       const wrap = document.createElement("div");
       css(wrap, { display: "flex", gap: "8px", alignItems: "center" });
@@ -537,7 +550,153 @@
 
         function cleanup() {
           window.clearTimeout(timeout);
+          overlay.remove();
+          if (previousSendOtp === undefined) {
+            try { delete window.sendOtp; } catch (e) {}
+          } else {
+            window.sendOtp = previousSendOtp;
+          }
+          if (previousVerifyOtp === undefined) {
+            try { delete window.verifyOtp; } catch (e) {}
+          } else {
+            window.verifyOtp = previousVerifyOtp;
+          }
         }
+
+        const previousSendOtp = window.sendOtp;
+        const previousVerifyOtp = window.verifyOtp;
+        const overlay = document.createElement("div");
+        const dialog = document.createElement("div");
+        const title = document.createElement("div");
+        const phoneInput = promptInput("tel", "Mobile number with country code");
+        const otpInput = promptInput("text", "Enter OTP");
+        const captchaMount = document.createElement("div");
+        const status = document.createElement("div");
+        const actions = document.createElement("div");
+        const sendOtpBtn = promptButton("Send OTP");
+        const verifyOtpBtn = promptButton("Verify OTP");
+        const closeBtn = promptButton("Cancel");
+        const captchaId = "vani-msg91-captcha-" + Date.now() + "-" + Math.random().toString(16).slice(2);
+        let activePhone = "";
+        let requestId = "";
+
+        function setStatus(message, isError = false) {
+          status.textContent = message;
+          status.style.color = isError ? "#dc2626" : "#475569";
+        }
+
+        css(overlay, {
+          position: "fixed",
+          inset: "0",
+          background: "rgba(15,23,42,.48)",
+          zIndex: "1000000",
+          display: "grid",
+          placeItems: "center",
+          padding: "18px"
+        });
+        css(dialog, {
+          width: "min(380px, 100%)",
+          background: "#fff",
+          borderRadius: "16px",
+          padding: "16px",
+          boxShadow: "0 20px 60px rgba(15,23,42,.32)",
+          fontFamily: "Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+        });
+        css(title, { fontWeight: "700", color: "#0f172a", marginBottom: "12px" });
+        css(phoneInput, { width: "100%", marginRight: "0", boxSizing: "border-box" });
+        css(otpInput, { width: "100%", marginRight: "0", boxSizing: "border-box", display: "none", marginTop: "10px" });
+        css(captchaMount, { marginTop: "10px" });
+        css(status, { minHeight: "18px", marginTop: "10px", fontSize: "13px", lineHeight: "1.35" });
+        css(actions, { display: "flex", gap: "8px", justifyContent: "flex-end", marginTop: "12px" });
+        title.textContent = "Mobile verification";
+        phoneInput.inputMode = "tel";
+        otpInput.inputMode = "numeric";
+        otpInput.maxLength = 8;
+        captchaMount.id = captchaId;
+        verifyOtpBtn.style.display = "none";
+        closeBtn.onclick = () => {
+          cleanup();
+          reject(new Error("Mobile OTP cancelled"));
+        };
+        sendOtpBtn.onclick = () => {
+          const normalized = normalizePhone(phoneInput.value);
+          if (!validPhone(normalized)) {
+            setStatus("Enter a valid mobile number with country code.", true);
+            return;
+          }
+          if (typeof window.sendOtp !== "function") {
+            setStatus("MSG91 OTP is still loading. Try again.", true);
+            return;
+          }
+          activePhone = normalized;
+          sendOtpBtn.disabled = true;
+          setStatus("Sending OTP...");
+          window.sendOtp(
+            activePhone.replace(/^\+/, ""),
+            data => {
+              requestId = msg91RequestId(data);
+              phoneInput.disabled = true;
+              otpInput.style.display = "block";
+              sendOtpBtn.style.display = "none";
+              verifyOtpBtn.style.display = "inline-block";
+              verifyOtpBtn.disabled = false;
+              otpInput.focus();
+              setStatus("OTP sent. Enter it to verify.");
+            },
+            error => {
+              sendOtpBtn.disabled = false;
+              console.error("MSG91 send OTP failed:", error);
+              setStatus("Could not send OTP. Try again.", true);
+            }
+          );
+        };
+        verifyOtpBtn.onclick = () => {
+          const otp = (otpInput.value || "").trim();
+          if (!/^[0-9]{4,8}$/.test(otp)) {
+            setStatus("Enter the OTP sent to your mobile.", true);
+            return;
+          }
+          if (typeof window.verifyOtp !== "function") {
+            setStatus("MSG91 OTP is still loading. Try again.", true);
+            return;
+          }
+          verifyOtpBtn.disabled = true;
+          setStatus("Verifying OTP...");
+          window.verifyOtp(
+            otp,
+            data => {
+              const accessToken = msg91AccessToken(data);
+              cleanup();
+              if (!accessToken) {
+                reject(new Error("MSG91 did not return an access token"));
+                return;
+              }
+              resolve({
+                phone: activePhone,
+                msg91_access_token: accessToken,
+                msg91_response: data || {}
+              });
+            },
+            error => {
+              verifyOtpBtn.disabled = false;
+              console.error("MSG91 verify OTP failed:", error);
+              setStatus("OTP verification failed. Check the code and try again.", true);
+            },
+            requestId || undefined
+          );
+        };
+
+        actions.appendChild(closeBtn);
+        actions.appendChild(sendOtpBtn);
+        actions.appendChild(verifyOtpBtn);
+        dialog.appendChild(title);
+        dialog.appendChild(phoneInput);
+        dialog.appendChild(otpInput);
+        dialog.appendChild(captchaMount);
+        dialog.appendChild(status);
+        dialog.appendChild(actions);
+        overlay.appendChild(dialog);
+        document.body.appendChild(overlay);
 
         loadMsg91OtpProvider()
           .then(() => {
@@ -545,26 +704,27 @@
               widgetId: msg91Cfg.widget_id,
               tokenAuth: msg91Cfg.token_auth,
               identifier: phone ? phone.replace(/^\+/, "") : "",
-              exposeMethods: false,
+              exposeMethods: true,
+              captchaRenderId: captchaId,
               success: data => {
                 const accessToken = msg91AccessToken(data);
                 const verifiedPhone = normalizePhone(msg91Identifier(data) || phone);
-                cleanup();
                 if (!accessToken) {
-                  reject(new Error("MSG91 did not return an access token"));
                   return;
                 }
+                cleanup();
                 resolve({
-                  phone: verifiedPhone,
+                  phone: verifiedPhone || activePhone,
                   msg91_access_token: accessToken,
                   msg91_response: data || {}
                 });
               },
               failure: error => {
-                cleanup();
-                reject(error instanceof Error ? error : new Error("MSG91 mobile OTP failed"));
+                console.error("MSG91 mobile OTP failed:", error);
               }
             });
+            setStatus("Enter your mobile number to receive OTP.");
+            phoneInput.focus();
           })
           .catch(error => {
             cleanup();
