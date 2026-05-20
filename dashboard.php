@@ -1027,24 +1027,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                   </div>
                 </div>
 
-                <div class="lead-option">
-                  <div class="lead-option-top">
-                    <div>
-                      <h4>Redirect to WhatsApp Business</h4>
-                      <small>Send users to the customer's WhatsApp Business account after lead capture.</small>
-                    </div>
-                    <label class="switch" title="Redirect to WhatsApp Business">
-                      <input id="whatsappLeadToggle" class="lead-toggle" type="checkbox" <?php echo $leadRedirectWhatsapp ? 'checked' : ''; ?> aria-label="Redirect to WhatsApp Business">
-                      <span class="switch-slider"></span>
-                    </label>
-                  </div>
-                  <div class="field">
-                    <label>WhatsApp Business mobile number</label>
-                    <input id="whatsappLeadNumber" type="tel" inputmode="tel" value="<?php echo h($leadWhatsappNumber); ?>" placeholder="+919876543210" autocomplete="tel" maxlength="16">
-                    <small class="input-help" id="whatsappLeadHelp">Use country code and digits only, for example +919876543210.</small>
-                  </div>
-                  <button class="ghost-btn" type="button" data-save-note="WhatsApp Business integration">No WhatsApp Business account?</button>
-                </div>
+                <!-- WhatsApp redirect moved to Paid Service -->
               </div>
 
               <div class="lead-section">
@@ -1067,6 +1050,25 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                       <span class="switch-slider"></span>
                     </label>
                   </div>
+                </div>
+
+                <div class="lead-option">
+                  <div class="lead-option-top">
+                    <div>
+                      <h4>Redirect to WhatsApp Business</h4>
+                      <small>Send users to the customer's WhatsApp Business account after lead capture.</small>
+                    </div>
+                    <label class="switch" title="Redirect to WhatsApp Business">
+                      <input id="whatsappLeadToggle" class="lead-toggle" type="checkbox" <?php echo $leadRedirectWhatsapp ? 'checked' : ''; ?> aria-label="Redirect to WhatsApp Business">
+                      <span class="switch-slider"></span>
+                    </label>
+                  </div>
+                  <div class="field">
+                    <label>WhatsApp Business mobile number</label>
+                    <input id="whatsappLeadNumber" type="tel" inputmode="tel" value="<?php echo h($leadWhatsappNumber); ?>" placeholder="+919876543210" autocomplete="tel" maxlength="16">
+                    <small class="input-help" id="whatsappLeadHelp">Use country code and digits only, for example +919876543210.</small>
+                  </div>
+                  <button class="ghost-btn" type="button" data-save-note="WhatsApp Business integration">No WhatsApp Business account?</button>
                 </div>
 
                 <div class="notice">
