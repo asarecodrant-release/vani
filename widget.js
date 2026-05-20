@@ -176,7 +176,7 @@
       css(iconImage, {
         width: "80%",
         height: "100%",
-        borderRadius: "50%",
+        borderRadius: "0%",
         objectFit: "contain",
         display: "block",
         background: "transparent",
