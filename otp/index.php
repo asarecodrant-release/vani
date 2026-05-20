@@ -61,18 +61,10 @@ button:disabled{opacity:.6;cursor:not-allowed}
       <button class="ghost" id="cancelBtn" type="button">Cancel</button>
     </div>
 
-    <div class="field" id="otpField" style="display:none">
-      <label for="otpInput">OTP code</label>
-      <input id="otpInput" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="6-digit code">
-    </div>
-
-    <div class="actions" id="verifyActions" style="display:none">
-      <button class="primary" id="verifyOtpBtn" type="button">Verify OTP</button>
-      <button class="ghost" id="resendBtn" type="button">Resend</button>
-    </div>
-
     <div id="statusBox" class="notice">Enter your mobile number with country code.</div>
-    <div id="captcha-container"></div>
+
+    <!-- MSG91 Widget renders its own OTP input here -->
+    <div id="captcha-container" style="margin-top: 20px;"></div>
   </main>
 
 <script>
@@ -85,13 +77,8 @@ const parentOrigin = /^https?:\/\/[^/]+$/i.test(requestedParentOrigin) ? request
 const initialPhone = (params.get("phone") || "").trim();
 
 const phoneInput = document.getElementById("phoneInput");
-const otpInput = document.getElementById("otpInput");
 const sendOtpBtn = document.getElementById("sendOtpBtn");
-const verifyOtpBtn = document.getElementById("verifyOtpBtn");
-const resendBtn = document.getElementById("resendBtn");
 const cancelBtn = document.getElementById("cancelBtn");
-const otpField = document.getElementById("otpField");
-const verifyActions = document.getElementById("verifyActions");
 const statusBox = document.getElementById("statusBox");
 
 let msg91Ready = false;
@@ -150,60 +137,33 @@ function initMsg91Provider() {
   }
   
   try {
-    console.log("Starting MSG91 initialization with config:", window.configuration);
+    console.log("Initializing MSG91 with config...");
     window.initSendOTP(window.configuration);
-    console.log("MSG91 initSendOTP called");
+    console.log("MSG91 initSendOTP called successfully");
     
-    // Log what's available on window object
-    setTimeout(() => {
-      console.log("After 500ms - Checking window object:");
-      console.log("window.sendOtp:", typeof window.sendOtp);
-      console.log("window.verifyOtp:", typeof window.verifyOtp);
-      console.log("window.sendOTP:", typeof window.sendOTP); // different case
-      console.log("window.verifyOTP:", typeof window.verifyOTP);
-      console.log("window.MSG91:", typeof window.MSG91);
-      console.log("window.OTP:", typeof window.OTP);
-      
-      // List all window properties that might be MSG91-related
-      const msg91Props = Object.keys(window).filter(k => 
-        k.includes('msg') || k.includes('otp') || k.includes('MSG') || k.includes('OTP')
-      );
-      console.log("MSG91-related window properties:", msg91Props);
-    }, 500);
-    
-    // Try longer wait period with more aggressive checking
+    // Widget renders its own UI and only exposes verifyOtp
+    // We need to call the widget's render method or trigger via configuration
     let attempts = 0;
     const checkReady = setInterval(() => {
       attempts++;
       
-      // Check multiple possible names
-      const sendOtpReady = typeof window.sendOtp === "function" || 
-                          typeof window.sendOTP === "function" ||
-                          (window.MSG91 && typeof window.MSG91.sendOtp === "function");
-      const verifyOtpReady = typeof window.verifyOtp === "function" || 
-                           typeof window.verifyOTP === "function" ||
-                           (window.MSG91 && typeof window.MSG91.verifyOtp === "function");
+      // The widget only needs verifyOtp - that's what gets exposed
+      const verifyOtpReady = typeof window.verifyOtp === "function";
       
-      if (attempts % 10 === 0) {
-        console.log(`Attempt ${attempts}: sendOtp=${typeof window.sendOtp}, verifyOtp=${typeof window.verifyOtp}`);
+      if (attempts % 20 === 0) {
+        console.log(`Attempt ${attempts}: verifyOtp=${typeof window.verifyOtp}`);
       }
       
-      if (sendOtpReady && verifyOtpReady) {
+      if (verifyOtpReady) {
         msg91Ready = true;
         clearInterval(checkReady);
-        console.log("✅ MSG91 functions ready!");
-      } else if (attempts > 200) { // 20 seconds instead of 10
+        console.log("✅ MSG91 widget ready!");
+        console.log("Widget renders its own UI - look for input form on page");
+        setStatus("Widget is ready. Waiting for OTP input...", "notice");
+      } else if (attempts > 200) {
         clearInterval(checkReady);
-        console.error("❌ MSG91 functions not ready after 20 seconds");
-        
-        // Log what's actually available
-        console.log("Final state:");
-        console.log("- window.sendOtp:", typeof window.sendOtp);
-        console.log("- window.verifyOtp:", typeof window.verifyOtp);
-        console.log("- window.initSendOTP:", typeof window.initSendOTP);
-        console.log("- window.configuration:", window.configuration);
-        
-        setStatus("MSG91 OTP provider failed to initialize. Please contact support.", "error");
+        console.error("❌ MSG91 widget not ready after 20 seconds");
+        setStatus("MSG91 widget failed to initialize.", "error");
       }
     }, 100);
   } catch (error) {
@@ -252,124 +212,36 @@ async function handleSendOtp() {
     return;
   }
   
-  // Check multiple possible function names
-  const hasSendOtp = typeof window.sendOtp === "function" || 
-                     typeof window.sendOTP === "function" ||
-                     (window.MSG91 && typeof window.MSG91.sendOtp === "function");
-  
-  if (!hasSendOtp) {
-    setStatus("MSG91 OTP provider is not ready. Please reload the page.", "error");
-    console.log("sendOtp not available. Available functions:", {
-      sendOtp: typeof window.sendOtp,
-      sendOTP: typeof window.sendOTP,
-      MSG91: typeof window.MSG91,
-      initSendOTP: typeof window.initSendOTP
-    });
+  if (!msg91Ready) {
+    setStatus("MSG91 widget is still loading. Please wait...", "error");
+    console.log("Widget not ready");
     return;
   }
 
-  sendOtpBtn.disabled = true;
-  resendBtn.disabled = true;
-  setStatus("Sending OTP...");
+  console.log("MSG91 widget will handle OTP sending. Phone set to:", phone);
   
-  try {
-    console.log("Calling sendOtp with phone:", phone);
-    
-    // Try different function names
-    let sendOtpFn = window.sendOtp || window.sendOTP || (window.MSG91 && window.MSG91.sendOtp);
-    
-    const data = await withTimeout(
-      new Promise((resolve, reject) => {
-        try {
-          sendOtpFn(phone, resolve, reject);
-        } catch (err) {
-          console.error("Direct call failed, trying alternative method:", err);
-          reject(err);
-        }
-      }),
-      45000,
-      "MSG91 OTP send timed out"
-    );
-    
-    console.log("OTP send response:", data);
-    currentReqId = extractReqId(data);
-    console.log("Extracted request ID:", currentReqId);
-    
-    otpField.style.display = "grid";
-    verifyActions.style.display = "flex";
-    otpInput.focus();
-    setStatus("OTP sent. Enter the code.", "success");
-  } catch (error) {
-    console.error("MSG91 phone OTP send failed:", error);
-    setStatus("Could not send OTP. Check the number and try again.", "error");
-  } finally {
-    sendOtpBtn.disabled = false;
-    resendBtn.disabled = false;
-  }
+  // MSG91 widget renders its own embedded form for OTP
+  // Update configuration with the phone number and trigger widget
+  window.configuration.identifier = phone;
+  
+  console.log("Configuration updated with phone:", phone);
+  console.log("Look for OTP input form from MSG91 widget");
+  
+  setStatus("MSG91 widget loaded. Enter OTP below.", "success");
+  sendOtpBtn.style.display = "none";
+  phoneInput.disabled = true;
+  
+  // The widget will render and handle OTP sending internally
 }
 
-async function verifyOtp() {
-  const code = otpInput.value.trim();
-  if (!/^[0-9]{6}$/.test(code)) {
-    setStatus("Enter the 6-digit OTP code.", "error");
-    return;
-  }
-  
-  // Check multiple possible function names
-  const hasVerifyOtp = typeof window.verifyOtp === "function" || 
-                       typeof window.verifyOTP === "function" ||
-                       (window.MSG91 && typeof window.MSG91.verifyOtp === "function");
-  
-  if (!hasVerifyOtp) {
-    setStatus("MSG91 OTP provider is not ready.", "error");
-    console.log("verifyOtp not available");
-    return;
-  }
-
-  verifyOtpBtn.disabled = true;
-  setStatus("Verifying OTP...");
-  
-  try {
-    console.log("Verifying OTP with code:", code, "and reqId:", currentReqId);
-    
-    // Try different function names
-    let verifyOtpFn = window.verifyOtp || window.verifyOTP || (window.MSG91 && window.MSG91.verifyOtp);
-    
-    const verifyCall = currentReqId
-      ? new Promise((resolve, reject) => {
-          try {
-            verifyOtpFn(code, resolve, reject, currentReqId);
-          } catch (err) {
-            reject(err);
-          }
-        })
-      : new Promise((resolve, reject) => {
-          try {
-            verifyOtpFn(code, resolve, reject);
-          } catch (err) {
-            reject(err);
-          }
-        });
-    
-    const data = await withTimeout(
-      verifyCall,
-      45000,
-      "MSG91 OTP verify timed out"
-    );
-    
-    console.log("OTP verify response:", data);
-    handleVerifiedData(data);
-  } catch (error) {
-    console.error("MSG91 phone OTP verify failed:", error);
-    setStatus("Invalid or expired OTP. Try again.", "error");
-  } finally {
-    verifyOtpBtn.disabled = false;
-  }
+async function handleVerifyOtp() {
+  // MSG91 widget handles OTP submission internally
+  // The widget will call the success/failure callbacks
+  console.log("OTP verification is handled by MSG91 widget internally");
+  setStatus("MSG91 widget is processing your OTP...", "notice");
 }
 
 sendOtpBtn.addEventListener("click", handleSendOtp);
-resendBtn.addEventListener("click", handleSendOtp);
-verifyOtpBtn.addEventListener("click", verifyOtp);
 cancelBtn.addEventListener("click", () => post("cancelled"));
 
 phoneInput.addEventListener("input", (event) => {
@@ -379,22 +251,9 @@ phoneInput.addEventListener("input", (event) => {
   }
 });
 
-otpInput.addEventListener("keydown", event => {
-  if (event.key === "Enter") verifyOtp();
-});
-
 phoneInput.addEventListener("keydown", event => {
   if (event.key === "Enter") handleSendOtp();
 });
-
-console.log("OTP page loaded - MSG91 Widget ID configured:", msg91WidgetId ? "yes" : "NO");
-console.log("=== MSG91 OTP Verification Debug Info ===");
-console.log("Widget ID:", msg91WidgetId || "MISSING!");
-console.log("Token Auth:", msg91TokenAuth ? "configured" : "MISSING!");
-console.log("Request ID:", requestId || "none");
-console.log("Parent Origin:", parentOrigin);
-console.log("Initial Phone:", initialPhone || "none");
-console.log("===== Waiting for MSG91 Script =====");
 </script>
 <script type="text/javascript">
 // Additional debugging for MSG91 script loading
