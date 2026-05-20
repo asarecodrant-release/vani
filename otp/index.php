@@ -250,8 +250,11 @@ sendOtpBtn.addEventListener("click", sendOtp);
 resendBtn.addEventListener("click", sendOtp);
 verifyOtpBtn.addEventListener("click", verifyOtp);
 cancelBtn.addEventListener("click", () => post("cancelled"));
-phoneInput.addEventListener("input", () => {
-  phoneInput.value = cleanPhone(phoneInput.value);
+phoneInput.addEventListener("input", (event) => {
+  const cleaned = cleanPhone(phoneInput.value);
+  if (phoneInput.value !== cleaned) {
+    phoneInput.value = cleaned;
+  }
 });
 otpInput.addEventListener("keydown", event => {
   if (event.key === "Enter") verifyOtp();
