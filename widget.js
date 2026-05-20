@@ -16,6 +16,28 @@
     "https://verify.msg91.com/otp-provider.js",
     "https://verify.phone91.com/otp-provider.js"
   ];
+  const countryDialCodes = [
+    ["IN", "+91", "India"],
+    ["US", "+1", "United States"],
+    ["GB", "+44", "United Kingdom"],
+    ["AE", "+971", "United Arab Emirates"],
+    ["CA", "+1", "Canada"],
+    ["AU", "+61", "Australia"],
+    ["SG", "+65", "Singapore"],
+    ["MY", "+60", "Malaysia"],
+    ["NP", "+977", "Nepal"],
+    ["BD", "+880", "Bangladesh"],
+    ["LK", "+94", "Sri Lanka"],
+    ["PK", "+92", "Pakistan"],
+    ["SA", "+966", "Saudi Arabia"],
+    ["QA", "+974", "Qatar"],
+    ["KW", "+965", "Kuwait"],
+    ["OM", "+968", "Oman"],
+    ["ZA", "+27", "South Africa"],
+    ["DE", "+49", "Germany"],
+    ["FR", "+33", "France"],
+    ["NL", "+31", "Netherlands"]
+  ];
   let config = {};
   let msg91OtpScriptPromise = null;
 
@@ -291,6 +313,7 @@
       <div data-vani-messages style="flex:1;overflow:auto;padding:12px;background:#f8fafc;"></div>
       <div data-vani-suggestions style="max-height:132px;overflow:auto;background:#fff;border-top:1px solid #e5e7eb;"></div>
       <div data-vani-lead-prompt style="display:none;padding:10px;border-top:1px solid #e5e7eb;background:#fff;"></div>
+      <div data-vani-whatsapp-action style="display:none;padding:10px;border-top:1px solid #e5e7eb;background:#fff;"></div>
       <div style="display:flex;border-top:1px solid #e5e7eb;background:#fff;">
         <input data-vani-input placeholder="Type message..." style="flex:1;min-width:0;padding:12px;border:0;outline:0;font:inherit;">
         <button data-vani-send type="button" style="padding:0 15px;background:${color};color:#fff;border:0;font-weight:700;cursor:pointer;">Send</button>
@@ -305,6 +328,7 @@
     const input = box.querySelector("[data-vani-input]");
     const sendBtn = box.querySelector("[data-vani-send]");
     const suggestionsBox = box.querySelector("[data-vani-suggestions]");
+    const whatsappAction = box.querySelector("[data-vani-whatsapp-action]");
     box.querySelector("[data-vani-title]").textContent = config.bot_name || "Chat Support";
     let debounce;
 
@@ -351,6 +375,14 @@
 
     function normalizePhone(value) {
       return (value || "").trim().replace(/[^\d+]/g, "").replace(/(?!^)\+/g, "");
+    }
+
+    function whatsappPhone(value) {
+      return normalizePhone(value).replace(/\D+/g, "");
+    }
+
+    function isMobileDevice() {
+      return /Android|iPhone|iPad|iPod|IEMobile|Mobile/i.test(navigator.userAgent || "");
     }
 
     function nestedValue(data, keys) {
@@ -486,6 +518,67 @@
       return button;
     }
 
+    function renderWhatsAppAction() {
+      if (!whatsappAction) return;
+      const leadCfg = config.lead_generation || {};
+      const phone = whatsappPhone(leadCfg.whatsapp_mobile_number || "");
+      if (!isEnabled(leadCfg.redirect_whatsapp) || !validPhone(phone)) {
+        whatsappAction.style.display = "none";
+        whatsappAction.innerHTML = "";
+        return;
+      }
+
+      whatsappAction.innerHTML = "";
+      whatsappAction.style.display = "block";
+
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = "Contact with us on WhatsApp";
+      css(button, {
+        width: "100%",
+        border: "0",
+        borderRadius: "10px",
+        background: "#25D366",
+        color: "#fff",
+        padding: "10px 12px",
+        cursor: "pointer",
+        fontWeight: "700",
+        fontSize: "14px",
+        lineHeight: "1.25",
+        boxShadow: "0 8px 18px rgba(37, 211, 102, .25)"
+      });
+      button.onmouseenter = () => button.style.background = "#1ebe5d";
+      button.onmouseleave = () => button.style.background = "#25D366";
+      button.onclick = async () => {
+        await api("create_lead", "POST", {
+          customer_id: customerId,
+          user_id: userId,
+          source_url: window.location.href,
+          whatsapp_redirected: true
+        });
+
+        if (isMobileDevice()) {
+          window.location.href = `https://wa.me/${phone}`;
+          return;
+        }
+
+        const launchedAt = Date.now();
+        const link = document.createElement("a");
+        link.href = `whatsapp://send?phone=${phone}`;
+        link.style.display = "none";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.setTimeout(() => {
+          if (Date.now() - launchedAt < 2400 && !document.hidden) {
+            addMessage(messages, "You cannot go to WhatsApp from here because this is a mobile function.", "bot");
+          }
+        }, 1800);
+      };
+
+      whatsappAction.appendChild(button);
+    }
+
     function requiredPromptButton(text) {
       const button = promptButton("");
       const label = document.createElement("span");
@@ -568,7 +661,9 @@
         const overlay = document.createElement("div");
         const dialog = document.createElement("div");
         const title = document.createElement("div");
-        const phoneInput = promptInput("tel", "Mobile number with country code");
+        const phoneRow = document.createElement("div");
+        const countrySelect = document.createElement("select");
+        const phoneInput = promptInput("tel", "98765 43210");
         const otpInput = promptInput("text", "Enter OTP");
         const captchaMount = document.createElement("div");
         const status = document.createElement("div");
@@ -603,6 +698,18 @@
           fontFamily: "Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
         });
         css(title, { fontWeight: "700", color: "#0f172a", marginBottom: "12px" });
+        css(phoneRow, { display: "flex", gap: "8px", alignItems: "center" });
+        css(countrySelect, {
+          width: "112px",
+          flex: "0 0 112px",
+          padding: "8px",
+          border: "1px solid #e5e7eb",
+          borderRadius: "10px",
+          background: "#fff",
+          color: "#0f172a",
+          font: "inherit",
+          boxSizing: "border-box"
+        });
         css(phoneInput, { width: "100%", marginRight: "0", boxSizing: "border-box" });
         css(otpInput, { width: "100%", marginRight: "0", boxSizing: "border-box", display: "none", marginTop: "10px" });
         css(captchaMount, { marginTop: "10px" });
@@ -610,18 +717,28 @@
         css(actions, { display: "flex", gap: "8px", justifyContent: "flex-end", marginTop: "12px" });
         title.textContent = "Mobile verification";
         phoneInput.inputMode = "tel";
+        phoneInput.autocomplete = "tel-national";
         otpInput.inputMode = "numeric";
         otpInput.maxLength = 8;
         captchaMount.id = captchaId;
         verifyOtpBtn.style.display = "none";
+        countryDialCodes.forEach(([iso, dialCode, country]) => {
+          const option = document.createElement("option");
+          option.value = dialCode;
+          option.textContent = `${iso} ${dialCode}`;
+          option.title = country;
+          countrySelect.appendChild(option);
+        });
+        countrySelect.value = "+91";
         closeBtn.onclick = () => {
           cleanup();
           reject(new Error("Mobile OTP cancelled"));
         };
         sendOtpBtn.onclick = () => {
-          const normalized = normalizePhone(phoneInput.value);
+          const nationalNumber = (phoneInput.value || "").replace(/\D+/g, "");
+          const normalized = normalizePhone(countrySelect.value + nationalNumber);
           if (!validPhone(normalized)) {
-            setStatus("Enter a valid mobile number with country code.", true);
+            setStatus("Enter a valid mobile number.", true);
             return;
           }
           if (typeof window.sendOtp !== "function") {
@@ -635,6 +752,7 @@
             activePhone.replace(/^\+/, ""),
             data => {
               requestId = msg91RequestId(data);
+              countrySelect.disabled = true;
               phoneInput.disabled = true;
               otpInput.style.display = "block";
               sendOtpBtn.style.display = "none";
@@ -690,7 +808,9 @@
         actions.appendChild(sendOtpBtn);
         actions.appendChild(verifyOtpBtn);
         dialog.appendChild(title);
-        dialog.appendChild(phoneInput);
+        phoneRow.appendChild(countrySelect);
+        phoneRow.appendChild(phoneInput);
+        dialog.appendChild(phoneRow);
         dialog.appendChild(otpInput);
         dialog.appendChild(captchaMount);
         dialog.appendChild(status);
@@ -855,7 +975,7 @@
 
       if ((collectMobile || verifyMobileOtp) && !(verifyMobileOtp ? leadState.mobileVerified : leadState.mobileSaved)) {
         if (verifyMobileOtp) {
-          const verifyBtn = requiredPromptButton("Verify mobile number");
+          const verifyBtn = requiredPromptButton("Please Verify Identity");
           css(verifyBtn, { width: "100%" });
           verifyBtn.onclick = async () => {
             verifyBtn.disabled = true;
@@ -967,6 +1087,7 @@
       if (!open) {
         input.focus();
         loadTop();
+        renderWhatsAppAction();
         renderLeadPrompt();
       }
     };

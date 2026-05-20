@@ -1001,11 +1001,11 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                 <div class="lead-option">
                   <div class="lead-option-top">
                     <div>
-                      <h4>Email OTP verification</h4>
-                      <small>Verify the lead with an OTP sent to the user's email address.</small>
+                      <h4>Collect email without OTP</h4>
+                      <small>Ask users for an email address and save it without sending a verification code.</small>
                     </div>
-                    <label class="switch" title="Email OTP verification">
-                      <input id="leadEmailOtpToggle" class="lead-toggle" type="checkbox" <?php echo $leadVerifyEmailOtp ? 'checked' : ''; ?> aria-label="Email OTP verification">
+                    <label class="switch" title="Collect email without OTP">
+                      <input id="leadCollectEmailToggle" class="lead-toggle" type="checkbox" <?php echo $leadCollectEmail ? 'checked' : ''; ?> aria-label="Collect email without OTP">
                       <span class="switch-slider"></span>
                     </label>
                   </div>
@@ -1014,11 +1014,11 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                 <div class="lead-option">
                   <div class="lead-option-top">
                     <div>
-                      <h4>Collect email without OTP</h4>
-                      <small>Ask users for an email address and save it without sending a verification code.</small>
+                      <h4>Collect mobile without OTP</h4>
+                      <small>Ask users for a phone number and save it without OTP verification.</small>
                     </div>
-                    <label class="switch" title="Collect email without OTP">
-                      <input id="leadCollectEmailToggle" class="lead-toggle" type="checkbox" <?php echo $leadCollectEmail ? 'checked' : ''; ?> aria-label="Collect email without OTP">
+                    <label class="switch" title="Collect mobile without OTP">
+                      <input id="leadCollectMobileToggle" class="lead-toggle" type="checkbox" <?php echo $leadCollectMobile ? 'checked' : ''; ?> aria-label="Collect mobile without OTP">
                       <span class="switch-slider"></span>
                     </label>
                   </div>
@@ -1057,11 +1057,11 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                 <div class="lead-option">
                   <div class="lead-option-top">
                     <div>
-                      <h4>Mobile OTP verification</h4>
-                      <small>Verify the lead with an OTP sent to the user's mobile number through Firebase.</small>
+                      <h4>Collect email with OTP</h4>
+                      <small>Verify the lead with an OTP sent to the user's email address.</small>
                     </div>
-                    <label class="switch" title="Mobile OTP verification">
-                      <input id="leadMobileOtpToggle" class="lead-toggle" type="checkbox" <?php echo $leadVerifyMobileOtp ? 'checked' : ''; ?> aria-label="Mobile OTP verification">
+                    <label class="switch" title="Collect email with OTP">
+                      <input id="leadEmailOtpToggle" class="lead-toggle" type="checkbox" <?php echo $leadVerifyEmailOtp ? 'checked' : ''; ?> aria-label="Collect email with OTP">
                       <span class="switch-slider"></span>
                     </label>
                   </div>
@@ -1070,11 +1070,11 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                 <div class="lead-option">
                   <div class="lead-option-top">
                     <div>
-                      <h4>Collect mobile without OTP</h4>
-                      <small>Ask users for a phone number and save it without OTP verification.</small>
+                      <h4>Mobile OTP verification</h4>
+                      <small>Verify the lead with an OTP sent to the user's mobile number.</small>
                     </div>
-                    <label class="switch" title="Collect mobile without OTP">
-                      <input id="leadCollectMobileToggle" class="lead-toggle" type="checkbox" <?php echo $leadCollectMobile ? 'checked' : ''; ?> aria-label="Collect mobile without OTP">
+                    <label class="switch" title="Mobile OTP verification">
+                      <input id="leadMobileOtpToggle" class="lead-toggle" type="checkbox" <?php echo $leadVerifyMobileOtp ? 'checked' : ''; ?> aria-label="Mobile OTP verification">
                       <span class="switch-slider"></span>
                     </label>
                   </div>
