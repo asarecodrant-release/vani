@@ -39,8 +39,68 @@ create table if not exists public.chatbot_conversations (
   status text not null default 'unanswered' check (status in ('answered', 'unanswered')),
   is_answered boolean not null default false,
   user_id text,
+  session_id text,
   source_url text,
+  referrer_url text,
+  device_type text,
+  browser_name text,
+  browser_version text,
+  os_name text,
+  country_code text,
+  country_name text,
+  city text,
+  timezone text,
+  locale text,
+  screen_width integer,
+  screen_height integer,
+  response_time_ms integer,
   created_at timestamptz not null default now()
+);
+
+alter table public.chatbot_conversations
+  add column if not exists session_id text,
+  add column if not exists referrer_url text,
+  add column if not exists device_type text,
+  add column if not exists browser_name text,
+  add column if not exists browser_version text,
+  add column if not exists os_name text,
+  add column if not exists country_code text,
+  add column if not exists country_name text,
+  add column if not exists city text,
+  add column if not exists timezone text,
+  add column if not exists locale text,
+  add column if not exists screen_width integer,
+  add column if not exists screen_height integer,
+  add column if not exists response_time_ms integer;
+
+create table if not exists public.chatbot_sessions (
+  id bigserial primary key,
+  customer_id uuid not null references public.chatbot_signups(customer_id) on delete cascade,
+  session_id text not null,
+  user_id text,
+  source_url text,
+  referrer_url text,
+  current_page text,
+  device_type text,
+  browser_name text,
+  browser_version text,
+  os_name text,
+  country_code text,
+  country_name text,
+  city text,
+  timezone text,
+  locale text,
+  screen_width integer,
+  screen_height integer,
+  opened_at timestamptz,
+  started_at timestamptz,
+  last_seen_at timestamptz not null default now(),
+  ended_at timestamptz,
+  duration_seconds integer not null default 0,
+  message_count integer not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint chatbot_sessions_customer_session_unique unique (customer_id, session_id)
 );
 
 create table if not exists public.customer_profiles (
@@ -126,6 +186,18 @@ create index if not exists idx_chatbot_conversations_customer_id_created_at
 create index if not exists idx_chatbot_conversations_status
   on public.chatbot_conversations(status);
 
+create index if not exists idx_chatbot_conversations_session_id
+  on public.chatbot_conversations(customer_id, session_id);
+
+create index if not exists idx_chatbot_conversations_device
+  on public.chatbot_conversations(customer_id, device_type);
+
+create index if not exists idx_chatbot_sessions_customer_last_seen
+  on public.chatbot_sessions(customer_id, last_seen_at desc);
+
+create index if not exists idx_chatbot_sessions_customer_session
+  on public.chatbot_sessions(customer_id, session_id);
+
 create index if not exists idx_faq_questions_customer_category
   on public.faq_questions(customer_id, category);
 
@@ -172,8 +244,15 @@ before update on public.lead_generation_settings
 for each row
 execute function public.set_updated_at();
 
+drop trigger if exists set_chatbot_sessions_updated_at on public.chatbot_sessions;
+create trigger set_chatbot_sessions_updated_at
+before update on public.chatbot_sessions
+for each row
+execute function public.set_updated_at();
+
 alter table public.chatbot_settings enable row level security;
 alter table public.chatbot_conversations enable row level security;
+alter table public.chatbot_sessions enable row level security;
 alter table public.customer_profiles enable row level security;
 alter table public.lead_generation_settings enable row level security;
 alter table public.lead_generation_leads enable row level security;
@@ -212,6 +291,28 @@ create policy "dashboard conversations insertable"
 on public.chatbot_conversations
 for insert
 to anon, authenticated
+with check (true);
+
+drop policy if exists "dashboard sessions readable" on public.chatbot_sessions;
+create policy "dashboard sessions readable"
+on public.chatbot_sessions
+for select
+to anon, authenticated
+using (true);
+
+drop policy if exists "dashboard sessions insertable" on public.chatbot_sessions;
+create policy "dashboard sessions insertable"
+on public.chatbot_sessions
+for insert
+to anon, authenticated
+with check (true);
+
+drop policy if exists "dashboard sessions updatable" on public.chatbot_sessions;
+create policy "dashboard sessions updatable"
+on public.chatbot_sessions
+for update
+to anon, authenticated
+using (true)
 with check (true);
 
 drop policy if exists "customer profiles readable" on public.customer_profiles;
@@ -326,6 +427,7 @@ using (true);
 
 grant select, insert, update, delete on public.chatbot_settings to anon, authenticated;
 grant select, insert, update, delete on public.chatbot_conversations to anon, authenticated;
+grant select, insert, update, delete on public.chatbot_sessions to anon, authenticated;
 grant select, insert, update, delete on public.customer_profiles to anon, authenticated;
 grant select, insert, update, delete on public.faq_questions to anon, authenticated;
 grant select, insert, update, delete on public.lead_generation_settings to anon, authenticated;
@@ -333,6 +435,7 @@ grant select, insert, update, delete on public.lead_generation_leads to anon, au
 grant update(password) on public.customers to anon, authenticated;
 grant usage, select on sequence public.chatbot_settings_id_seq to anon, authenticated;
 grant usage, select on sequence public.chatbot_conversations_id_seq to anon, authenticated;
+grant usage, select on sequence public.chatbot_sessions_id_seq to anon, authenticated;
 grant usage, select on sequence public.customer_profiles_id_seq to anon, authenticated;
 grant usage, select on sequence public.lead_generation_settings_id_seq to anon, authenticated;
 grant usage, select on sequence public.lead_generation_leads_id_seq to anon, authenticated;

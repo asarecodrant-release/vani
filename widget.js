@@ -104,6 +104,112 @@
     return value === true || value === 1 || value === "1" || value === "true";
   }
 
+  function sessionStorageKey(customerId) {
+    return `vani_widget_session_id_${customerId}`;
+  }
+
+  let sessionId = sessionStorage.getItem(sessionStorageKey(customerId));
+  if (!sessionId) {
+    sessionId = window.crypto?.randomUUID
+      ? window.crypto.randomUUID()
+      : "session-" + Date.now() + "-" + Math.random().toString(16).slice(2);
+    sessionStorage.setItem(sessionStorageKey(customerId), sessionId);
+  }
+  const sessionStartedAt = Date.now();
+  let sessionOpenedAt = null;
+  let sessionChatStartedAt = null;
+  let sessionMessageCount = 0;
+
+  function browserInfo() {
+    const ua = navigator.userAgent || "";
+    const rules = [
+      ["Edge", /Edg\/([\d.]+)/],
+      ["Chrome", /Chrome\/([\d.]+)/],
+      ["Safari", /Version\/([\d.]+).*Safari/],
+      ["Firefox", /Firefox\/([\d.]+)/],
+      ["Opera", /OPR\/([\d.]+)/]
+    ];
+    for (const [name, pattern] of rules) {
+      const match = ua.match(pattern);
+      if (match) return {name, version: match[1] || ""};
+    }
+    return {name: "Other", version: ""};
+  }
+
+  function osName() {
+    const ua = navigator.userAgent || "";
+    if (/windows/i.test(ua)) return "Windows";
+    if (/android/i.test(ua)) return "Android";
+    if (/iphone|ipad|ipod/i.test(ua)) return "iOS";
+    if (/mac os|macintosh/i.test(ua)) return "macOS";
+    if (/linux/i.test(ua)) return "Linux";
+    return "Other";
+  }
+
+  function deviceType() {
+    const ua = navigator.userAgent || "";
+    if (/ipad|tablet/i.test(ua)) return "Tablet";
+    if (/mobi|android|iphone|ipod/i.test(ua)) return "Mobile";
+    return "Desktop";
+  }
+
+  function localeRegion() {
+    const locale = navigator.language || "";
+    const region = locale.match(/-([A-Z]{2})\b/i)?.[1]?.toUpperCase() || "";
+    let country = "";
+    try {
+      if (region && Intl.DisplayNames) {
+        country = new Intl.DisplayNames([locale || "en"], {type: "region"}).of(region) || "";
+      }
+    } catch (error) {}
+    return {locale, region, country};
+  }
+
+  function analyticsPayload(extra = {}) {
+    const browser = browserInfo();
+    const region = localeRegion();
+    return {
+      session_id: sessionId,
+      source_url: window.location.href,
+      current_page: window.location.pathname || window.location.href,
+      referrer_url: document.referrer || "",
+      device_type: deviceType(),
+      browser_name: browser.name,
+      browser_version: browser.version,
+      os_name: osName(),
+      country_code: region.region,
+      country_name: region.country,
+      city: "",
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "",
+      locale: region.locale,
+      screen_width: window.screen?.width || window.innerWidth || 0,
+      screen_height: window.screen?.height || window.innerHeight || 0,
+      ...extra
+    };
+  }
+
+  function sessionDurationSeconds() {
+    return Math.max(0, Math.round((Date.now() - sessionStartedAt) / 1000));
+  }
+
+  async function trackWidgetSession(extra = {}) {
+    const payload = {
+      customer_id: customerId,
+      user_id: userId,
+      session_id: sessionId,
+      source_url: window.location.href,
+      duration_seconds: sessionDurationSeconds(),
+      message_count: sessionMessageCount,
+      analytics: analyticsPayload(),
+      ...extra
+    };
+    await api("track_widget_session", "POST", payload);
+  }
+
+  function trackWidgetSessionSoon(extra = {}) {
+    trackWidgetSession(extra).catch(() => {});
+  }
+
   function css(node, styles) {
     Object.assign(node.style, styles);
   }
@@ -200,6 +306,7 @@
     const greetingSideStyles = position === "left" ? {left: "90px"} : {right: "90px"};
     const avatarUrl = resolveAssetUrl(config.avatar_url);
     const greetingText = (config.welcome_message || defaultGreeting).trim() || defaultGreeting;
+    trackWidgetSessionSoon();
 
     // Add breathing animation
     const style = document.createElement("style");
@@ -1391,15 +1498,26 @@
       addMessage(messages, message, "user");
       input.value = "";
       suggestionsBox.innerHTML = "";
+      sessionChatStartedAt = sessionChatStartedAt || new Date().toISOString();
+      sessionMessageCount++;
+      const requestStartedAt = Date.now();
 
       const response = await api("chat", "POST", {
         customer_id: customerId,
         message,
         user_id: userId,
-        source_url: window.location.href
+        session_id: sessionId,
+        source_url: window.location.href,
+        started_at: sessionChatStartedAt,
+        duration_seconds: sessionDurationSeconds(),
+        message_count: sessionMessageCount,
+        analytics: analyticsPayload({
+          response_time_ms: Date.now() - requestStartedAt
+        })
       });
 
       addMessage(messages, response.reply || "No response", "bot");
+      trackWidgetSessionSoon({started_at: sessionChatStartedAt});
     };
 
     icon.onclick = () => {
@@ -1407,10 +1525,14 @@
       box.style.display = open ? "none" : "flex";
       greeting.style.display = open ? "block" : "none";
       if (!open) {
+        sessionOpenedAt = sessionOpenedAt || new Date().toISOString();
+        trackWidgetSessionSoon({opened_at: sessionOpenedAt});
         input.focus();
         loadTop();
         renderWhatsAppAction();
         renderLeadPrompt();
+      } else {
+        trackWidgetSessionSoon();
       }
     };
     greeting.onclick = icon.onclick;
@@ -1427,6 +1549,15 @@
       }
     });
     sendBtn.onclick = window.sendMessage;
+
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") {
+        trackWidgetSessionSoon();
+      }
+    });
+    window.addEventListener("beforeunload", () => {
+      trackWidgetSessionSoon({ended_at: new Date().toISOString()});
+    });
   }
 
   boot();

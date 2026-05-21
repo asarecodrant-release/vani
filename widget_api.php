@@ -358,6 +358,122 @@ function widget_access_result(array $settings, array $signup, string $sourceUrl)
     ];
 }
 
+function widget_int_or_null($value): ?int {
+    if ($value === null || $value === '') {
+        return null;
+    }
+    return is_numeric($value) ? (int)$value : null;
+}
+
+function widget_string_or_null($value, int $max = 500): ?string {
+    $text = trim((string)$value);
+    if ($text === '') {
+        return null;
+    }
+    return substr($text, 0, $max);
+}
+
+function widget_geo_headers(): array {
+    $countryCode = $_SERVER['HTTP_CF_IPCOUNTRY']
+        ?? $_SERVER['HTTP_X_VERCEL_IP_COUNTRY']
+        ?? $_SERVER['HTTP_CLOUDFRONT_VIEWER_COUNTRY']
+        ?? '';
+    $countryName = $_SERVER['HTTP_X_VERCEL_IP_COUNTRY_REGION']
+        ?? $_SERVER['HTTP_X_APPENGINE_COUNTRY']
+        ?? '';
+    $city = $_SERVER['HTTP_CF_IPCITY']
+        ?? $_SERVER['HTTP_X_VERCEL_IP_CITY']
+        ?? $_SERVER['HTTP_X_APPENGINE_CITY']
+        ?? '';
+
+    return [
+        "country_code" => widget_string_or_null($countryCode, 8),
+        "country_name" => widget_string_or_null($countryName ?: $countryCode, 120),
+        "city" => widget_string_or_null(urldecode((string)$city), 120)
+    ];
+}
+
+function widget_analytics_payload(array $data): array {
+    $analytics = is_array($data['analytics'] ?? null) ? $data['analytics'] : [];
+    $geo = widget_geo_headers();
+    $payload = [
+        "session_id" => widget_string_or_null($data['session_id'] ?? $analytics['session_id'] ?? '', 120),
+        "referrer_url" => widget_string_or_null($analytics['referrer_url'] ?? '', 1000),
+        "device_type" => widget_string_or_null($analytics['device_type'] ?? '', 40),
+        "browser_name" => widget_string_or_null($analytics['browser_name'] ?? '', 80),
+        "browser_version" => widget_string_or_null($analytics['browser_version'] ?? '', 40),
+        "os_name" => widget_string_or_null($analytics['os_name'] ?? '', 80),
+        "country_code" => $geo['country_code'] ?: widget_string_or_null($analytics['country_code'] ?? '', 8),
+        "country_name" => $geo['country_name'] ?: widget_string_or_null($analytics['country_name'] ?? '', 120),
+        "city" => $geo['city'] ?: widget_string_or_null($analytics['city'] ?? '', 120),
+        "timezone" => widget_string_or_null($analytics['timezone'] ?? '', 120),
+        "locale" => widget_string_or_null($analytics['locale'] ?? '', 80),
+        "screen_width" => widget_int_or_null($analytics['screen_width'] ?? null),
+        "screen_height" => widget_int_or_null($analytics['screen_height'] ?? null),
+        "response_time_ms" => widget_int_or_null($analytics['response_time_ms'] ?? null)
+    ];
+
+    return array_filter($payload, fn($value) => $value !== null);
+}
+
+function widget_session_payload(array $data): array {
+    $analytics = is_array($data['analytics'] ?? null) ? $data['analytics'] : $data;
+    $geo = widget_geo_headers();
+    $payload = [
+        "customer_id" => widget_string_or_null($data['customer_id'] ?? '', 80),
+        "session_id" => widget_string_or_null($data['session_id'] ?? $analytics['session_id'] ?? '', 120),
+        "user_id" => widget_string_or_null($data['user_id'] ?? '', 120),
+        "source_url" => widget_string_or_null($data['source_url'] ?? $analytics['source_url'] ?? '', 1000),
+        "referrer_url" => widget_string_or_null($analytics['referrer_url'] ?? '', 1000),
+        "current_page" => widget_string_or_null($analytics['current_page'] ?? '', 1000),
+        "device_type" => widget_string_or_null($analytics['device_type'] ?? '', 40),
+        "browser_name" => widget_string_or_null($analytics['browser_name'] ?? '', 80),
+        "browser_version" => widget_string_or_null($analytics['browser_version'] ?? '', 40),
+        "os_name" => widget_string_or_null($analytics['os_name'] ?? '', 80),
+        "country_code" => $geo['country_code'] ?: widget_string_or_null($analytics['country_code'] ?? '', 8),
+        "country_name" => $geo['country_name'] ?: widget_string_or_null($analytics['country_name'] ?? '', 120),
+        "city" => $geo['city'] ?: widget_string_or_null($analytics['city'] ?? '', 120),
+        "timezone" => widget_string_or_null($analytics['timezone'] ?? '', 120),
+        "locale" => widget_string_or_null($analytics['locale'] ?? '', 80),
+        "screen_width" => widget_int_or_null($analytics['screen_width'] ?? null),
+        "screen_height" => widget_int_or_null($analytics['screen_height'] ?? null),
+        "duration_seconds" => widget_int_or_null($data['duration_seconds'] ?? null),
+        "message_count" => widget_int_or_null($data['message_count'] ?? null)
+    ];
+    foreach (["opened_at", "started_at", "ended_at"] as $key) {
+        if (!empty($data[$key])) {
+            $payload[$key] = $data[$key];
+        }
+    }
+    $payload["last_seen_at"] = gmdate('Y-m-d\TH:i:s\Z');
+
+    return array_filter($payload, fn($value) => $value !== null && $value !== '');
+}
+
+function widget_save_session(array $data): array {
+    $payload = widget_session_payload($data);
+    $customerId = $payload['customer_id'] ?? '';
+    $sessionId = $payload['session_id'] ?? '';
+    if ($customerId === '' || $sessionId === '') {
+        return ["status" => 400, "data" => [], "raw" => "Missing customer_id or session_id"];
+    }
+
+    $existing = widget_safe_rows(supabase(
+        "GET",
+        "chatbot_sessions?select=id&customer_id=eq." . urlencode($customerId) . "&session_id=eq." . urlencode($sessionId) . "&limit=1"
+    ));
+
+    if (!empty($existing[0]['id'])) {
+        return supabase(
+            "PATCH",
+            "chatbot_sessions?id=eq." . urlencode((string)$existing[0]['id']),
+            $payload
+        );
+    }
+
+    return supabase("POST", "chatbot_sessions", [$payload]);
+}
+
 if ($action === "get_widget_config" || $action === "get_theme") {
     $customerId = widget_customer_id();
     if (!$customerId) {
@@ -415,6 +531,7 @@ if ($action === "get_widget_config" || $action === "get_theme") {
 
 if ($action === "chat") {
     $data = widget_get_json();
+    $requestStartedAt = microtime(true);
     $customerId = widget_customer_id($data);
     $message = trim((string)($data['message'] ?? ''));
     $userId = trim((string)($data['user_id'] ?? ''));
@@ -470,7 +587,7 @@ if ($action === "chat") {
         $reply = "Sorry, I don't have an answer for that yet. Please contact customer support for help.";
     }
 
-    supabase("POST", "chatbot_conversations", [[
+    $conversationPayload = [
         "customer_id" => $customerId,
         "user_question" => $message,
         "bot_response" => $reply,
@@ -479,7 +596,37 @@ if ($action === "chat") {
         "is_answered" => $answered,
         "user_id" => $userId,
         "source_url" => $sourceUrl
-    ]]);
+    ];
+    $conversationPayload = array_merge($conversationPayload, widget_analytics_payload($data));
+    $conversationPayload["response_time_ms"] = (int)round((microtime(true) - $requestStartedAt) * 1000);
+
+    $conversationRes = supabase("POST", "chatbot_conversations", [$conversationPayload]);
+    if ($conversationRes['status'] >= 400) {
+        unset(
+            $conversationPayload["session_id"],
+            $conversationPayload["referrer_url"],
+            $conversationPayload["device_type"],
+            $conversationPayload["browser_name"],
+            $conversationPayload["browser_version"],
+            $conversationPayload["os_name"],
+            $conversationPayload["country_code"],
+            $conversationPayload["country_name"],
+            $conversationPayload["city"],
+            $conversationPayload["timezone"],
+            $conversationPayload["locale"],
+            $conversationPayload["screen_width"],
+            $conversationPayload["screen_height"],
+            $conversationPayload["response_time_ms"]
+        );
+        supabase("POST", "chatbot_conversations", [$conversationPayload]);
+    }
+
+    if (!empty($data['session_id'])) {
+        widget_save_session(array_merge($data, [
+            "started_at" => $data['started_at'] ?? gmdate('Y-m-d\TH:i:s\Z'),
+            "message_count" => (int)($data['message_count'] ?? 1)
+        ]));
+    }
 
     widget_json_response([
         "success" => true,
@@ -527,6 +674,15 @@ if ($action === "get_top_faqs") {
     $questions = widget_safe_rows($res);
     usort($questions, fn($a, $b) => ($counts[$b['id']] ?? 0) <=> ($counts[$a['id']] ?? 0));
     widget_json_response(["success" => true, "data" => $questions]);
+}
+
+if ($action === "track_widget_session") {
+    $data = widget_get_json();
+    $res = widget_save_session($data);
+    widget_json_response([
+        "success" => ($res['status'] >= 200 && $res['status'] < 300),
+        "debug" => $res
+    ]);
 }
 
 // Create a lead record (generic) - used for location or simple lead saves

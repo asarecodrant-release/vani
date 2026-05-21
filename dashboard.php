@@ -87,7 +87,14 @@ $usageRows = $selectedBotId
 $conversationRows = $selectedBotId
     ? safe_data(supabase(
         "GET",
-        "chatbot_conversations?select=*&customer_id=eq." . urlencode($selectedBotId) . "&order=created_at.desc&limit=50"
+        "chatbot_conversations?select=*&customer_id=eq." . urlencode($selectedBotId) . "&order=created_at.desc&limit=500"
+    ))
+    : [];
+
+$sessionRows = $selectedBotId
+    ? safe_data(supabase(
+        "GET",
+        "chatbot_sessions?select=*&customer_id=eq." . urlencode($selectedBotId) . "&order=last_seen_at.desc&limit=500"
     ))
     : [];
 
@@ -102,6 +109,13 @@ $leadSettingsRows = $selectedBotId
     ? safe_data(supabase(
         "GET",
         "lead_generation_settings?select=*&customer_id=eq." . urlencode($selectedBotId) . "&limit=1"
+    ))
+    : [];
+
+$leadRows = $selectedBotId
+    ? safe_data(supabase(
+        "GET",
+        "lead_generation_leads?select=*&customer_id=eq." . urlencode($selectedBotId) . "&order=created_at.desc&limit=100"
     ))
     : [];
 
@@ -127,6 +141,24 @@ $topQuestionCounts = [];
 $faqById = [];
 $topFaqQuestionCounts = [];
 $outsideFaqQuestions = [];
+$sourcePageStats = [];
+$uniqueVisitors = [];
+$returningVisitors = [];
+$deviceCounts = [];
+$browserCounts = [];
+$countryCounts = [];
+$cityCounts = [];
+$responseTimes = [];
+$sessionDurations = [];
+$sessionMessageTotal = 0;
+$yesterdayQueries = 0;
+$last7Queries = 0;
+$last30Queries = 0;
+$chatOpenedCount = count($conversationRows);
+$nowTs = time();
+$yesterday = gmdate('Y-m-d', $nowTs - 86400);
+$last7Cutoff = gmdate('Y-m-d', $nowTs - (6 * 86400));
+$last30Cutoff = gmdate('Y-m-d', $nowTs - (29 * 86400));
 
 foreach ($faqs as $faq) {
     if (isset($faq['id'])) {
@@ -138,6 +170,18 @@ foreach ($conversationRows as $row) {
     $created = (string)($row['created_at'] ?? '');
     if ($created && substr($created, 0, 10) === $today) {
         $todayQueries++;
+    }
+    if ($created && substr($created, 0, 10) === $yesterday) {
+        $yesterdayQueries++;
+    }
+    if ($created) {
+        $createdDay = substr($created, 0, 10);
+        if ($createdDay >= $last7Cutoff) {
+            $last7Queries++;
+        }
+        if ($createdDay >= $last30Cutoff) {
+            $last30Queries++;
+        }
     }
     if (!$lastActivity || strcmp($created, $lastActivity) > 0) {
         $lastActivity = $created;
@@ -158,15 +202,57 @@ foreach ($conversationRows as $row) {
         }
     }
     $question = trim((string)($row['user_question'] ?? $row['question'] ?? ''));
+    $sourceUrl = trim((string)($row['source_url'] ?? ''));
+    $sourceLabel = $sourceUrl !== '' ? parse_url($sourceUrl, PHP_URL_PATH) : '';
+    $sourceLabel = $sourceLabel ?: ($sourceUrl ?: 'Unknown page');
+    if (!isset($sourcePageStats[$sourceLabel])) {
+        $sourcePageStats[$sourceLabel] = [
+            'page' => $sourceLabel,
+            'conversations' => 0,
+            'leads' => 0,
+            'answered' => 0
+        ];
+    }
+    $sourcePageStats[$sourceLabel]['conversations']++;
+    if ($answered) {
+        $sourcePageStats[$sourceLabel]['answered']++;
+    }
+    $visitorId = trim((string)($row['user_id'] ?? ''));
+    if ($visitorId !== '') {
+        $uniqueVisitors[$visitorId] = true;
+        $returningVisitors[$visitorId] = ($returningVisitors[$visitorId] ?? 0) + 1;
+    }
+    $device = first_value($row, ['device_type'], '');
+    if ($device !== '') {
+        $deviceCounts[$device] = ($deviceCounts[$device] ?? 0) + 1;
+    }
+    $browser = first_value($row, ['browser_name'], '');
+    if ($browser !== '') {
+        $browserCounts[$browser] = ($browserCounts[$browser] ?? 0) + 1;
+    }
+    $country = first_value($row, ['country_name', 'country_code'], '');
+    if ($country !== '') {
+        $countryCounts[$country] = ($countryCounts[$country] ?? 0) + 1;
+    }
+    $city = first_value($row, ['city'], '');
+    if ($city !== '') {
+        $cityCounts[$city] = ($cityCounts[$city] ?? 0) + 1;
+    }
+    $responseTime = (int)($row['response_time_ms'] ?? 0);
+    if ($responseTime > 0) {
+        $responseTimes[] = $responseTime;
+    }
     if ($question !== '') {
         $key = strtolower($question);
         $topQuestionCounts[$key] = [
             'question' => $question,
-            'count' => ($topQuestionCounts[$key]['count'] ?? 0) + 1
+            'count' => ($topQuestionCounts[$key]['count'] ?? 0) + 1,
+            'answered' => ($topQuestionCounts[$key]['answered'] ?? 0) + ($answered ? 1 : 0)
         ];
         if (!$answered) {
             $outsideFaqQuestions[] = [
                 'question' => $question,
+                'source_page' => $sourceLabel,
                 'bot_response' => (string)($row['bot_response'] ?? $row['response'] ?? ''),
                 'created_at' => (string)($row['created_at'] ?? '')
             ];
@@ -179,6 +265,50 @@ foreach ($conversationRows as $row) {
             'question' => $faqQuestion,
             'count' => ($topFaqQuestionCounts[$matchedFaqId]['count'] ?? 0)
         ];
+    }
+}
+
+foreach ($leadRows as $lead) {
+    $sourceUrl = trim((string)($lead['source_url'] ?? ''));
+    $sourceLabel = $sourceUrl !== '' ? parse_url($sourceUrl, PHP_URL_PATH) : '';
+    $sourceLabel = $sourceLabel ?: ($sourceUrl ?: 'Unknown page');
+    if (!isset($sourcePageStats[$sourceLabel])) {
+        $sourcePageStats[$sourceLabel] = [
+            'page' => $sourceLabel,
+            'conversations' => 0,
+            'leads' => 0,
+            'answered' => 0
+        ];
+    }
+    $sourcePageStats[$sourceLabel]['leads']++;
+}
+
+foreach ($sessionRows as $session) {
+    $sessionId = trim((string)($session['session_id'] ?? ''));
+    $visitorId = trim((string)($session['user_id'] ?? ''));
+    if ($visitorId !== '') {
+        $uniqueVisitors[$visitorId] = true;
+    }
+    $duration = (int)($session['duration_seconds'] ?? 0);
+    if ($duration > 0) {
+        $sessionDurations[] = $duration;
+    }
+    $sessionMessageTotal += max(0, (int)($session['message_count'] ?? 0));
+    $device = first_value($session, ['device_type'], '');
+    if ($device !== '') {
+        $deviceCounts[$device] = ($deviceCounts[$device] ?? 0) + 1;
+    }
+    $browser = first_value($session, ['browser_name'], '');
+    if ($browser !== '') {
+        $browserCounts[$browser] = ($browserCounts[$browser] ?? 0) + 1;
+    }
+    $country = first_value($session, ['country_name', 'country_code'], '');
+    if ($country !== '') {
+        $countryCounts[$country] = ($countryCounts[$country] ?? 0) + 1;
+    }
+    $city = first_value($session, ['city'], '');
+    if ($city !== '') {
+        $cityCounts[$city] = ($cityCounts[$city] ?? 0) + 1;
     }
 }
 
@@ -218,8 +348,73 @@ $unansweredPercent = $conversationCount > 0
 
 uasort($topQuestionCounts, fn($a, $b) => $b['count'] <=> $a['count']);
 uasort($topFaqQuestionCounts, fn($a, $b) => $b['count'] <=> $a['count']);
+uasort($sourcePageStats, fn($a, $b) => $b['conversations'] <=> $a['conversations']);
+arsort($deviceCounts);
+arsort($browserCounts);
+arsort($countryCounts);
+arsort($cityCounts);
+$dailyChartCounts = $dailyCounts;
+ksort($dailyChartCounts);
+$hourChartCounts = $hourCounts;
+ksort($hourChartCounts);
 arsort($hourCounts);
 $peakUsage = !empty($hourCounts) ? array_key_first($hourCounts) . ":00" : "Not enough data";
+$uniqueVisitorCount = count($uniqueVisitors);
+$returningVisitorCount = count(array_filter($returningVisitors, fn($count) => $count > 1));
+$returningUsersPercent = $uniqueVisitorCount > 0 ? round(($returningVisitorCount / max(1, $uniqueVisitorCount)) * 100) : 0;
+$totalMessages = max($conversationCount, $sessionMessageTotal);
+$leadCount = count($leadRows);
+$verifiedLeadCount = 0;
+$emailLeadCount = 0;
+$phoneLeadCount = 0;
+$mostActivePage = !empty($sourcePageStats) ? array_values($sourcePageStats)[0]['page'] : 'No data yet';
+$activeChatbotCount = filter_var($settings['is_active'] ?? true, FILTER_VALIDATE_BOOLEAN) ? 1 : 0;
+
+foreach ($leadRows as $lead) {
+    $emailVerified = filter_var($lead['email_otp_verified'] ?? false, FILTER_VALIDATE_BOOLEAN);
+    $mobileVerified = filter_var($lead['mobile_otp_verified'] ?? false, FILTER_VALIDATE_BOOLEAN);
+    if ($emailVerified || $mobileVerified || (string)($lead['verification_quality'] ?? '') === 'real') {
+        $verifiedLeadCount++;
+    }
+    if (!empty($lead['email'])) {
+        $emailLeadCount++;
+    }
+    if (!empty($lead['phone_number'])) {
+        $phoneLeadCount++;
+    }
+}
+
+$leadConversionRate = $conversationCount > 0 ? round(($leadCount / max(1, $conversationCount)) * 100) : 0;
+$otpVerifiedLeadPercent = $leadCount > 0 ? round(($verifiedLeadCount / max(1, $leadCount)) * 100) : 0;
+$avgResponseTimeMs = !empty($responseTimes) ? round(array_sum($responseTimes) / count($responseTimes)) : 0;
+$avgConversationDurationSeconds = !empty($sessionDurations) ? round(array_sum($sessionDurations) / count($sessionDurations)) : 0;
+$avgConversationDuration = $avgConversationDurationSeconds > 0
+    ? gmdate($avgConversationDurationSeconds >= 3600 ? 'H:i:s' : 'i:s', $avgConversationDurationSeconds)
+    : 'No data yet';
+$activeUsersNow = 0;
+$now = time();
+foreach ($sessionRows as $session) {
+    $lastSeen = strtotime((string)($session['last_seen_at'] ?? '')) ?: 0;
+    $endedAt = (string)($session['ended_at'] ?? '');
+    if ($lastSeen && ($now - $lastSeen) <= 300 && $endedAt === '') {
+        $activeUsersNow++;
+    }
+}
+$sessionsOpened = count(array_filter($sessionRows, fn($session) => !empty($session['opened_at'])));
+$sessionsStarted = count(array_filter($sessionRows, fn($session) => !empty($session['started_at']) || (int)($session['message_count'] ?? 0) > 0));
+$chatOpenedCount = $sessionsOpened ?: $chatOpenedCount;
+$bounceAfterOpenRate = $sessionsOpened > 0 ? round((($sessionsOpened - $sessionsStarted) / max(1, $sessionsOpened)) * 100) : 0;
+$fallbackRate = $unansweredPercent;
+$escalationRate = 0;
+$handoffRate = 0;
+$abandonmentRate = 0;
+$satisfactionPercent = $accuracy;
+$avgMessagesPerConversation = $sessionsStarted > 0
+    ? round($sessionMessageTotal / max(1, $sessionsStarted), 1)
+    : ($conversationCount > 0 ? round($totalMessages / max(1, $conversationCount), 1) : 0);
+$chatOpenRate = $uniqueVisitorCount > 0 ? round(($sessionsOpened / max(1, $uniqueVisitorCount)) * 100) : 0;
+$maxDailyCount = !empty($dailyChartCounts) ? max($dailyChartCounts) : 0;
+$maxHourCount = !empty($hourChartCounts) ? max($hourChartCounts) : 0;
 $themeColor = first_value($selectedBot, ['theme_color'], '#6366f1');
 $chatbotImage = first_value($settings, ['avatar_url'], $botImages[0] ?? '');
 $botName = first_value($settings, ['bot_name'], first_value($selectedBot, ['website_name'], 'Vani Bot'));
@@ -441,6 +636,24 @@ tr.editing .faq-edit-btn{display:none}
 .split{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;min-width:0}
 .empty{padding:28px;text-align:center;color:var(--muted)}
 .notice{padding:14px 16px;border-radius:14px;background:rgba(99,102,241,.1);border:1px solid rgba(99,102,241,.18);color:var(--ink);line-height:1.6}
+.analytics-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.analytics-grid.two{grid-template-columns:repeat(2,minmax(0,1fr))}
+.filter-bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.filter-chip{border:1px solid var(--line);background:var(--panel-strong);color:var(--ink);border-radius:999px;padding:8px 12px;font-size:13px;font-weight:700}
+.mini-chart{display:grid;gap:10px;margin-top:12px}
+.bar-row{display:grid;grid-template-columns:minmax(82px,.45fr) minmax(0,1fr) 44px;gap:10px;align-items:center;font-size:13px;color:var(--muted)}
+.bar-track{height:12px;border-radius:999px;background:rgba(148,163,184,.2);overflow:hidden}
+.bar-fill{height:100%;border-radius:999px;background:linear-gradient(90deg,var(--brand),var(--brand-2));min-width:3px}
+.trend-line{height:180px;display:flex;align-items:flex-end;gap:10px;border-left:1px solid var(--line);border-bottom:1px solid var(--line);padding:12px 8px 0;margin-top:14px}
+.trend-column{flex:1;display:grid;align-content:end;gap:8px;min-width:0;text-align:center}
+.trend-bar{border-radius:8px 8px 0 0;background:linear-gradient(180deg,var(--brand),var(--brand-2));min-height:4px}
+.trend-label{font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.funnel{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-top:12px}
+.funnel-step{padding:12px;border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.36);display:grid;gap:6px}
+body.dark .funnel-step{background:rgba(15,23,42,.38)}
+.funnel-step strong{font-size:20px}
+.funnel-step span{font-size:12px;color:var(--muted);font-weight:700}
+.report-actions{display:flex;gap:10px;flex-wrap:wrap}
 .outside-faq-list{display:grid;gap:14px}
 .outside-faq-card{padding:16px;border:1px solid var(--line);border-radius:18px;background:rgba(255,255,255,.42);display:grid;gap:14px}
 body.dark .outside-faq-card{background:rgba(15,23,42,.44)}
@@ -549,7 +762,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
   .section-head{align-items:flex-start;flex-direction:column;padding:16px 16px 0}
   .section-body{padding:16px}
   .overview-hero h2{font-size:28px}
-  .metrics,.quick-actions,.form-grid,.outside-faq-grid,.lead-grid{grid-template-columns:1fr}
+  .metrics,.quick-actions,.form-grid,.outside-faq-grid,.lead-grid,.analytics-grid,.analytics-grid.two,.funnel{grid-template-columns:1fr}
   .panel-actions{justify-content:stretch}
   .panel-actions .pill-btn,.panel-actions .ghost-btn,.panel-actions .danger-btn{width:100%}
   .user-menu{justify-content:space-between}
@@ -914,29 +1127,195 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
       -->
 
       <section class="tab-panel" id="analytics">
-        <div class="split">
-          <div class="panel metric"><span>Total chats</span><strong><?php echo h($conversationCount); ?></strong><small>All-time tracked chat events.</small></div>
-          <div class="panel metric"><span>Unanswered questions</span><strong><?php echo h($unansweredPercent); ?>%</strong><small>Queries needing FAQ improvement.</small></div>
-        </div>
-        <div class="split">
-          <div class="panel section-body">
-            <h3>Daily / weekly usage</h3>
-            <p class="muted" style="margin:10px 0 14px">Recent daily chat counts.</p>
-            <?php if (empty($dailyCounts)): ?><p class="empty">No usage data yet.</p><?php endif; ?>
-            <?php foreach (array_slice(array_reverse($dailyCounts, true), 0, 7, true) as $day => $count): ?>
-              <div class="inline-row" style="justify-content:space-between;border-bottom:1px solid var(--line);padding:10px 0"><span><?php echo h($day); ?></span><strong><?php echo h($count); ?></strong></div>
-            <?php endforeach; ?>
-          </div>
-          <div class="panel section-body">
-            <h3>Top questions</h3>
-            <p class="muted" style="margin:10px 0 14px">Most repeated customer questions.</p>
-            <?php if (empty($topQuestionCounts)): ?><p class="empty">No top questions yet.</p><?php endif; ?>
-            <?php foreach (array_slice($topQuestionCounts, 0, 5) as $item): ?>
-              <div class="inline-row" style="justify-content:space-between;border-bottom:1px solid var(--line);padding:10px 0"><span><?php echo h($item['question']); ?></span><strong><?php echo h($item['count']); ?></strong></div>
-            <?php endforeach; ?>
+        <div class="panel section-body">
+          <div class="section-head" style="padding:0">
+            <div>
+              <span class="eyebrow">Analytics</span>
+              <h3 style="margin-top:8px">Performance Dashboard</h3>
+            </div>
+            <div class="filter-bar">
+              <span class="filter-chip">Today: <?php echo h($todayQueries); ?></span>
+              <span class="filter-chip">Yesterday: <?php echo h($yesterdayQueries); ?></span>
+              <span class="filter-chip">7 days: <?php echo h($last7Queries); ?></span>
+              <span class="filter-chip">30 days: <?php echo h($last30Queries); ?></span>
+              <span class="filter-chip">Custom range</span>
+            </div>
           </div>
         </div>
-        <div class="panel metric"><span>Peak usage time</span><strong><?php echo h($peakUsage); ?></strong><small>Based on stored conversation timestamps.</small></div>
+
+        <div class="metrics">
+          <div class="panel metric"><span>Total Conversations</span><strong><?php echo h($conversationCount); ?></strong><small>Tracked chat sessions/queries.</small></div>
+          <div class="panel metric"><span>Total Messages</span><strong><?php echo h($totalMessages); ?></strong><small>User messages currently tracked.</small></div>
+          <div class="panel metric"><span>Unique Visitors</span><strong><?php echo h($uniqueVisitorCount); ?></strong><small>Based on widget user IDs.</small></div>
+          <div class="panel metric"><span>Answered Queries</span><strong><?php echo h($accuracy); ?>%</strong><small><?php echo h($answeredCount); ?> answered.</small></div>
+          <div class="panel metric"><span>Unanswered Queries</span><strong><?php echo h($unansweredPercent); ?>%</strong><small><?php echo h($unansweredCount); ?> need FAQ improvement.</small></div>
+          <div class="panel metric"><span>Avg Response Time</span><strong><?php echo $avgResponseTimeMs ? h($avgResponseTimeMs) . 'ms' : 'No data'; ?></strong><small>Measured by the widget API.</small></div>
+          <div class="panel metric"><span>Leads Collected</span><strong><?php echo h($leadCount); ?></strong><small><?php echo h($leadConversionRate); ?>% conversion from conversations.</small></div>
+          <div class="panel metric"><span>OTP Verified Leads</span><strong><?php echo h($verifiedLeadCount); ?></strong><small><?php echo h($otpVerifiedLeadPercent); ?>% of collected leads.</small></div>
+          <div class="panel metric"><span>Active Chatbots</span><strong><?php echo h($activeChatbotCount); ?></strong><small>Selected bot status.</small></div>
+          <div class="panel metric"><span>Most Active Page</span><strong style="font-size:18px"><?php echo h($mostActivePage); ?></strong><small>Highest tracked conversation source.</small></div>
+          <div class="panel metric"><span>Returning Users</span><strong><?php echo h($returningUsersPercent); ?>%</strong><small><?php echo h($returningVisitorCount); ?> visitors returned.</small></div>
+          <div class="panel metric"><span>Avg Conversation Duration</span><strong><?php echo h($avgConversationDuration); ?></strong><small>Based on widget session duration.</small></div>
+        </div>
+
+        <div class="analytics-grid two">
+          <div class="panel section-body">
+            <h3>Conversations Trend</h3>
+            <p class="muted" style="margin:10px 0 0">Date vs conversations.</p>
+            <?php if (empty($dailyChartCounts)): ?><p class="empty">No conversation trend data yet.</p><?php endif; ?>
+            <?php if (!empty($dailyChartCounts)): ?>
+              <div class="trend-line">
+                <?php foreach (array_slice($dailyChartCounts, -14, null, true) as $day => $count): ?>
+                  <div class="trend-column">
+                    <div class="trend-bar" style="height:<?php echo h(max(4, round(($count / max(1, $maxDailyCount)) * 150))); ?>px"></div>
+                    <span class="trend-label"><?php echo h(substr($day, 5)); ?></span>
+                  </div>
+                <?php endforeach; ?>
+              </div>
+            <?php endif; ?>
+          </div>
+          <div class="panel section-body">
+            <h3>Peak Usage Hours</h3>
+            <p class="muted" style="margin:10px 0 0">Hour vs number of queries. Peak: <?php echo h($peakUsage); ?>.</p>
+            <div class="mini-chart">
+              <?php if (empty($hourChartCounts)): ?><p class="empty">No hourly usage data yet.</p><?php endif; ?>
+              <?php foreach (array_slice($hourChartCounts, 0, 12, true) as $hour => $count): ?>
+                <div class="bar-row"><span><?php echo h($hour); ?>:00</span><div class="bar-track"><div class="bar-fill" style="width:<?php echo h(round(($count / max(1, $maxHourCount)) * 100)); ?>%"></div></div><strong><?php echo h($count); ?></strong></div>
+              <?php endforeach; ?>
+            </div>
+          </div>
+        </div>
+
+        <div class="analytics-grid">
+          <div class="panel section-body">
+            <h3>Device Analytics</h3>
+            <div class="mini-chart">
+              <?php if (empty($deviceCounts)): ?><p class="empty">No device data yet. New widget sessions will populate this.</p><?php endif; ?>
+              <?php foreach (array_slice($deviceCounts, 0, 5, true) as $device => $count): ?>
+                <div class="bar-row"><span><?php echo h($device); ?></span><div class="bar-track"><div class="bar-fill" style="width:<?php echo h(round(($count / max(1, max($deviceCounts))) * 100)); ?>%"></div></div><strong><?php echo h($count); ?></strong></div>
+              <?php endforeach; ?>
+            </div>
+          </div>
+          <div class="panel section-body">
+            <h3>Browser Analytics</h3>
+            <div class="mini-chart">
+              <?php if (empty($browserCounts)): ?><p class="empty">No browser data yet. New widget sessions will populate this.</p><?php endif; ?>
+              <?php foreach (array_slice($browserCounts, 0, 5, true) as $browser => $count): ?>
+                <div class="bar-row"><span><?php echo h($browser); ?></span><div class="bar-track"><div class="bar-fill" style="width:<?php echo h(round(($count / max(1, max($browserCounts))) * 100)); ?>%"></div></div><strong><?php echo h($count); ?></strong></div>
+              <?php endforeach; ?>
+            </div>
+          </div>
+          <div class="panel section-body">
+            <h3>Country / City Analytics</h3>
+            <div class="mini-chart">
+              <?php if (empty($countryCounts) && empty($cityCounts)): ?><p class="empty">No location data yet. Country is estimated from browser locale; city needs geolocation or IP lookup later.</p><?php endif; ?>
+              <?php foreach (array_slice($countryCounts, 0, 4, true) as $country => $count): ?>
+                <div class="bar-row"><span><?php echo h($country); ?></span><div class="bar-track"><div class="bar-fill" style="width:<?php echo h(round(($count / max(1, max($countryCounts))) * 100)); ?>%"></div></div><strong><?php echo h($count); ?></strong></div>
+              <?php endforeach; ?>
+              <?php foreach (array_slice($cityCounts, 0, 3, true) as $city => $count): ?>
+                <div class="bar-row"><span><?php echo h($city); ?></span><div class="bar-track"><div class="bar-fill" style="width:<?php echo h(round(($count / max(1, max($cityCounts))) * 100)); ?>%"></div></div><strong><?php echo h($count); ?></strong></div>
+              <?php endforeach; ?>
+            </div>
+          </div>
+        </div>
+
+        <div class="analytics-grid two">
+          <div class="panel">
+            <div class="section-head"><h3>Most Asked Questions</h3><span class="tag"><?php echo h(count($topQuestionCounts)); ?> tracked</span></div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Question</th><th>Count</th><th>Success Rate</th></tr></thead>
+                <tbody>
+                  <?php if (empty($topQuestionCounts)): ?><tr><td colspan="3" class="empty">No asked questions yet.</td></tr><?php endif; ?>
+                  <?php foreach (array_slice($topQuestionCounts, 0, 8) as $item): ?>
+                    <?php $questionSuccess = $item['count'] > 0 ? round((($item['answered'] ?? 0) / max(1, $item['count'])) * 100) : 0; ?>
+                    <tr><td><?php echo h($item['question']); ?></td><td><?php echo h($item['count']); ?></td><td><?php echo h($questionSuccess); ?>%</td></tr>
+                  <?php endforeach; ?>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="section-head"><h3>Unanswered Questions</h3><span class="tag bad"><?php echo h($unansweredCount); ?> open</span></div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>User Question</th><th>Source Page</th><th>Date</th><th>Action</th></tr></thead>
+                <tbody>
+                  <?php if (empty($outsideFaqQuestions)): ?><tr><td colspan="4" class="empty">No unanswered questions yet.</td></tr><?php endif; ?>
+                  <?php foreach (array_slice($outsideFaqQuestions, 0, 8) as $item): ?>
+                    <tr>
+                      <td><?php echo h($item['question']); ?></td>
+                      <td><?php echo h($item['source_page'] ?? 'Unknown page'); ?></td>
+                      <td><?php echo h(substr((string)($item['created_at'] ?? ''), 0, 10)); ?></td>
+                      <td><button class="ghost-btn" type="button" data-question="<?php echo h($item['question']); ?>" data-jump="faqs">Add to FAQ</button></td>
+                    </tr>
+                  <?php endforeach; ?>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="analytics-grid two">
+          <div class="panel section-body">
+            <h3>Accuracy / Resolution</h3>
+            <div class="mini-chart">
+              <div class="bar-row"><span>Answered</span><div class="bar-track"><div class="bar-fill" style="width:<?php echo h($accuracy); ?>%"></div></div><strong><?php echo h($accuracy); ?>%</strong></div>
+              <div class="bar-row"><span>Fallback</span><div class="bar-track"><div class="bar-fill" style="width:<?php echo h($fallbackRate); ?>%"></div></div><strong><?php echo h($fallbackRate); ?>%</strong></div>
+              <div class="bar-row"><span>Escalation</span><div class="bar-track"><div class="bar-fill" style="width:<?php echo h($escalationRate); ?>%"></div></div><strong><?php echo h($escalationRate); ?>%</strong></div>
+              <div class="bar-row"><span>Handoff</span><div class="bar-track"><div class="bar-fill" style="width:<?php echo h($handoffRate); ?>%"></div></div><strong><?php echo h($handoffRate); ?>%</strong></div>
+              <div class="bar-row"><span>Abandon</span><div class="bar-track"><div class="bar-fill" style="width:<?php echo h($abandonmentRate); ?>%"></div></div><strong><?php echo h($abandonmentRate); ?>%</strong></div>
+              <div class="bar-row"><span>Satisfaction</span><div class="bar-track"><div class="bar-fill" style="width:<?php echo h($satisfactionPercent); ?>%"></div></div><strong><?php echo h($satisfactionPercent); ?>%</strong></div>
+            </div>
+          </div>
+          <div class="panel section-body">
+            <h3>Lead Generation Funnel</h3>
+            <div class="funnel">
+              <div class="funnel-step"><span>Visitors</span><strong><?php echo h($uniqueVisitorCount); ?></strong></div>
+              <div class="funnel-step"><span>Chat Opened</span><strong><?php echo h($chatOpenedCount); ?></strong></div>
+              <div class="funnel-step"><span>Started Chat</span><strong><?php echo h($conversationCount); ?></strong></div>
+              <div class="funnel-step"><span>Shared Contact</span><strong><?php echo h($leadCount); ?></strong></div>
+              <div class="funnel-step"><span>OTP Verified</span><strong><?php echo h($verifiedLeadCount); ?></strong></div>
+            </div>
+            <div class="mini-chart">
+              <div class="inline-row" style="justify-content:space-between;border-bottom:1px solid var(--line);padding:10px 0"><span>Email collected</span><strong><?php echo h($emailLeadCount); ?></strong></div>
+              <div class="inline-row" style="justify-content:space-between;border-bottom:1px solid var(--line);padding:10px 0"><span>Phone collected</span><strong><?php echo h($phoneLeadCount); ?></strong></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="analytics-grid two">
+          <div class="panel section-body">
+            <h3>User Engagement</h3>
+            <div class="mini-chart">
+              <div class="inline-row" style="justify-content:space-between;border-bottom:1px solid var(--line);padding:10px 0"><span>Avg messages per conversation</span><strong><?php echo h($avgMessagesPerConversation); ?></strong></div>
+              <div class="inline-row" style="justify-content:space-between;border-bottom:1px solid var(--line);padding:10px 0"><span>Returning visitors</span><strong><?php echo h($returningUsersPercent); ?>%</strong></div>
+              <div class="inline-row" style="justify-content:space-between;border-bottom:1px solid var(--line);padding:10px 0"><span>Chat open rate</span><strong><?php echo h($chatOpenRate); ?>%</strong></div>
+              <div class="inline-row" style="justify-content:space-between;border-bottom:1px solid var(--line);padding:10px 0"><span>Bounce after chatbot open</span><strong><?php echo h($bounceAfterOpenRate); ?>%</strong></div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="section-head"><h3>Source Page Analytics</h3><span class="tag"><?php echo h(count($sourcePageStats)); ?> pages</span></div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Page URL</th><th>Conversations</th><th>Leads</th><th>Success %</th></tr></thead>
+                <tbody>
+                  <?php if (empty($sourcePageStats)): ?><tr><td colspan="4" class="empty">No source page data yet.</td></tr><?php endif; ?>
+                  <?php foreach (array_slice($sourcePageStats, 0, 8) as $page): ?>
+                    <?php $pageSuccess = $page['conversations'] > 0 ? round(($page['answered'] / max(1, $page['conversations'])) * 100) : 0; ?>
+                    <tr><td><?php echo h($page['page']); ?></td><td><?php echo h($page['conversations']); ?></td><td><?php echo h($page['leads']); ?></td><td><?php echo h($pageSuccess); ?>%</td></tr>
+                  <?php endforeach; ?>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="analytics-grid">
+          <div class="panel section-body"><h3>Real-Time Analytics</h3><p class="muted" style="margin-top:10px">Active users currently chatting: <strong><?php echo h($activeUsersNow); ?></strong></p><p class="muted">Current page: <strong><?php echo h($mostActivePage); ?></strong></p></div>
+          <div class="panel section-body"><h3>Export & Reports</h3><div class="report-actions" style="margin-top:12px"><button class="ghost-btn" type="button" data-save-note="CSV export">Export CSV</button><button class="ghost-btn" type="button" data-save-note="PDF export">Export PDF</button><button class="ghost-btn" type="button" data-save-note="Weekly email reports">Weekly report</button><button class="ghost-btn" type="button" data-save-note="Monthly summary reports">Monthly report</button></div></div>
+          <div class="panel section-body"><h3>Notifications / Alerts</h3><div class="mini-chart"><div class="notice">Fallback rate: <?php echo h($fallbackRate); ?>%</div><div class="notice">Trending unanswered questions: <?php echo h($unansweredCount); ?></div><div class="notice">Lead conversion: <?php echo h($leadConversionRate); ?>%</div></div></div>
+        </div>
       </section>
 
       <section class="tab-panel" id="install">
