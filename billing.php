@@ -126,18 +126,24 @@ function billing_wallet_charge_paise(string $planId, string $chargeKey): int {
             'fresh_email_lead' => 400,
             'repeat_email_lead' => 100,
             'fresh_mobile_lead' => 800,
-            'repeat_mobile_lead' => 200
+            'repeat_mobile_lead' => 200,
+            'whatsapp_redirect_addon' => 9900
         ],
         'business' => [
             'fresh_combined_lead' => 1000,
             'repeat_combined_lead' => 300,
-            'reactivated_combined_lead' => 1000
+            'reactivated_combined_lead' => 1000,
+            'whatsapp_redirect_addon' => 9900
         ],
         'automation' => [
             'fresh_email_lead' => 300,
             'fresh_mobile_lead' => 600,
             'fresh_combined_lead' => 800,
-            'repeat_lead' => 100
+            'repeat_lead' => 100,
+            'whatsapp_redirect_addon' => 9900
+        ],
+        'enterprise' => [
+            'whatsapp_redirect_addon' => 9900
         ]
     ];
     return (int)($charges[$planId][$chargeKey] ?? 0);

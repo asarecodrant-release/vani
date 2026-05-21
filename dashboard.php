@@ -761,9 +761,12 @@ body.dark .funnel-step{background:rgba(15,23,42,.38)}
 .funnel-step strong{font-size:20px}
 .funnel-step span{font-size:12px;color:var(--muted);font-weight:700}
 .report-actions{display:flex;gap:10px;flex-wrap:wrap}
-.pricing-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:18px}
-.pricing-card{padding:18px;display:grid;gap:14px;align-content:start}
-.pricing-card.featured{border-color:rgba(34,197,94,.45);box-shadow:0 16px 36px rgba(34,197,94,.12)}
+.pricing-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:16px;margin-top:18px;align-items:stretch}
+.pricing-card{grid-column:span 2;padding:16px;display:grid;gap:12px;align-content:start}
+.pricing-card.featured{grid-column:span 3;padding:22px;border-color:rgba(34,197,94,.55);box-shadow:0 18px 42px rgba(34,197,94,.16);transform:scale(1.02);z-index:1}
+.pricing-card.current-plan{border-color:rgba(99,102,241,.7);box-shadow:0 14px 34px rgba(99,102,241,.16)}
+.current-plan-note{padding:9px 11px;border-radius:10px;background:rgba(99,102,241,.12);color:#4f46e5;font-size:13px;font-weight:800}
+.pricing-card.featured .price{font-size:36px}
 .pricing-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
 .price{font-size:30px;font-weight:800}
 .price small{font-size:13px;color:var(--muted);font-weight:700}
@@ -1554,7 +1557,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
             <div>
               <h3>Lead Generation Setup</h3>
               <p class="muted">Control what customer information the chatbot asks for before handing over a lead.</p>
-              <div class="critical-save-note">IMPORTANT: Before leaving this tab, please save your changes using the Save lead setup button at the bottom of this page.</div>
+              <div class="critical-save-note">IMPORTANT: Toggle changes save automatically. After editing the WhatsApp mobile number, use the Save WhatsApp number button beside that field.</div>
             </div>
           </div>
           <div class="section-body">
@@ -1692,7 +1695,10 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                   </div>
                   <div class="field">
                     <label>WhatsApp Business mobile number</label>
-                    <input id="whatsappLeadNumber" type="tel" inputmode="tel" value="<?php echo h($leadWhatsappNumber); ?>" placeholder="+919876543210" autocomplete="tel" maxlength="16">
+                    <div class="inline-row">
+                      <input id="whatsappLeadNumber" type="tel" inputmode="tel" value="<?php echo h($leadWhatsappNumber); ?>" placeholder="+919876543210" autocomplete="tel" maxlength="16">
+                      <button class="pill-btn" type="button" id="saveLeadSetupBtn">Save WhatsApp number</button>
+                    </div>
                     <small class="input-help" id="whatsappLeadHelp">Use country code and digits only, for example +919876543210.</small>
                   </div>
                   <button class="ghost-btn" type="button" data-save-note="WhatsApp Business integration">No WhatsApp Business account?</button>
@@ -1703,10 +1709,6 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                   WhatsApp redirect can be connected when that integration is ready.
                 </div>
               </div>
-            </div>
-
-            <div class="panel-actions">
-              <button class="pill-btn" type="button" id="saveLeadSetupBtn">Save lead setup</button>
             </div>
           </div>
         </div>
@@ -1724,47 +1726,52 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
           </div>
 
           <div class="pricing-grid">
-            <div class="panel pricing-card">
+            <div class="panel pricing-card <?php echo $activePlanId === 'starter' ? 'current-plan' : ''; ?>">
               <div class="pricing-head"><div><span class="eyebrow">Starter</span><h3>Starter Plan</h3></div><span class="tag">Small</span></div>
+              <?php if ($activePlanId === 'starter'): ?><div class="current-plan-note">Current plan</div><?php endif; ?>
               <div class="price">₹199<small>/month</small></div>
-              <div class="feature-list"><span>100 FAQs</span><span>Email OTP support</span><span>Mobile OTP service</span><span>WhatsApp Redirect add-on</span><span>Wallet recharge enabled</span></div>
+              <div class="feature-list"><span>100 FAQ answers for small websites</span><span>Email OTP verification for real leads</span><span>Mobile OTP service with wallet usage billing</span><span>WhatsApp Redirect add-on billed at ₹99 / 30 days</span><span>Wallet recharge enabled for paid usage</span></div>
               <div class="wallet-table"><table><thead><tr><th>Wallet action</th><th>Charge</th></tr></thead><tbody><tr><td>Fresh Email Lead</td><td>₹5</td></tr><tr><td>Repeat Email Lead</td><td>₹1</td></tr><tr><td>Email Lead after 30 days</td><td>₹5</td></tr><tr><td>Fresh Mobile OTP Lead</td><td>₹10</td></tr><tr><td>Repeat Mobile OTP</td><td>₹2</td></tr><tr><td>Mobile Lead after 30 days</td><td>₹10</td></tr><tr><td>WhatsApp Redirect</td><td>Add-on ₹99, refundable within 1 hour</td></tr></tbody></table></div>
               <button class="pill-btn billing-plan-btn" type="button" data-plan-id="starter">Subscribe Starter</button>
               <small class="muted">Best for portfolios, coaches, and small businesses.</small>
             </div>
 
-            <div class="panel pricing-card featured">
+            <div class="panel pricing-card featured <?php echo $activePlanId === 'growth' ? 'current-plan' : ''; ?>">
               <div class="pricing-head"><div><span class="eyebrow">Growth</span><h3>Growth Plan</h3></div><span class="tag good">Popular</span></div>
+              <?php if ($activePlanId === 'growth'): ?><div class="current-plan-note">Current plan</div><?php endif; ?>
               <div class="price">₹499<small>/month</small></div>
-              <div class="feature-list"><span>300 FAQs</span><span>Email OTP</span><span>Mobile OTP</span><span>WhatsApp Redirect included</span><span>Lead dashboard</span></div>
-              <div class="wallet-table"><table><thead><tr><th>Wallet action</th><th>Charge</th></tr></thead><tbody><tr><td>Fresh Email Lead</td><td>₹4</td></tr><tr><td>Repeat Email Lead</td><td>₹1</td></tr><tr><td>Fresh Mobile Lead</td><td>₹8</td></tr><tr><td>Repeat Mobile Lead</td><td>₹2</td></tr><tr><td>WhatsApp Redirect</td><td>Included</td></tr></tbody></table></div>
+              <div class="feature-list"><span>300 FAQ answers for growing local businesses</span><span>Email and Mobile OTP lead verification</span><span>Lead dashboard for tracking captured contacts</span><span>Better wallet rates than Starter on email and mobile leads</span><span>WhatsApp Redirect add-on billed at ₹99 / 30 days</span></div>
+              <div class="wallet-table"><table><thead><tr><th>Wallet action</th><th>Charge</th></tr></thead><tbody><tr><td>Fresh Email Lead</td><td>₹4</td></tr><tr><td>Repeat Email Lead</td><td>₹1</td></tr><tr><td>Fresh Mobile Lead</td><td>₹8</td></tr><tr><td>Repeat Mobile Lead</td><td>₹2</td></tr><tr><td>WhatsApp Redirect</td><td>Add-on ₹99, refundable within 1 hour</td></tr></tbody></table></div>
               <button class="pill-btn billing-plan-btn" type="button" data-plan-id="growth">Subscribe Growth</button>
               <small class="muted">Best for local businesses, agencies, and service providers.</small>
             </div>
 
-            <div class="panel pricing-card">
+            <div class="panel pricing-card <?php echo $activePlanId === 'business' ? 'current-plan' : ''; ?>">
               <div class="pricing-head"><div><span class="eyebrow">Business</span><h3>Business Plan</h3></div><span class="tag">Scale</span></div>
+              <?php if ($activePlanId === 'business'): ?><div class="current-plan-note">Current plan</div><?php endif; ?>
               <div class="price">₹999<small>/month</small></div>
-              <div class="feature-list"><span>1000 FAQs</span><span>Email + Mobile combined verification</span><span>WhatsApp Redirect</span><span>Analytics</span><span>CSV Export</span></div>
-              <div class="wallet-table"><table><thead><tr><th>Wallet action</th><th>Charge</th></tr></thead><tbody><tr><td>Fresh Combined Lead</td><td>₹10</td></tr><tr><td>Repeat Combined Lead</td><td>₹3</td></tr><tr><td>Re-activated Lead after 30 days</td><td>₹10</td></tr></tbody></table></div>
+              <div class="feature-list"><span>1000 FAQ answers for high-intent traffic</span><span>Email + Mobile combined verification</span><span>Advanced analytics and CSV export</span><span>Built for teams that review lead quality regularly</span><span>WhatsApp Redirect add-on billed at ₹99 / 30 days</span></div>
+              <div class="wallet-table"><table><thead><tr><th>Wallet action</th><th>Charge</th></tr></thead><tbody><tr><td>Fresh Combined Lead</td><td>₹10</td></tr><tr><td>Repeat Combined Lead</td><td>₹3</td></tr><tr><td>Re-activated Lead after 30 days</td><td>₹10</td></tr><tr><td>WhatsApp Redirect</td><td>Add-on ₹99, refundable within 1 hour</td></tr></tbody></table></div>
               <button class="pill-btn billing-plan-btn" type="button" data-plan-id="business">Subscribe Business</button>
               <small class="muted">Best for real estate, education institutes, and marketing agencies.</small>
             </div>
 
-            <div class="panel pricing-card">
+            <div class="panel pricing-card <?php echo $activePlanId === 'automation' ? 'current-plan' : ''; ?>">
               <div class="pricing-head"><div><span class="eyebrow">Automation</span><h3>Pro Automation Plan</h3></div><span class="tag">Advanced</span></div>
+              <?php if ($activePlanId === 'automation'): ?><div class="current-plan-note">Current plan</div><?php endif; ?>
               <div class="price">₹2499<small>/month</small></div>
-              <div class="feature-list"><span>Unlimited FAQs</span><span>AI chatbot</span><span>WhatsApp redirect</span><span>API access</span><span>Automation workflows</span><span>Webhook support</span></div>
-              <div class="wallet-table"><table><thead><tr><th>Wallet action</th><th>Charge</th></tr></thead><tbody><tr><td>Fresh Email Lead</td><td>₹3</td></tr><tr><td>Fresh Mobile Lead</td><td>₹6</td></tr><tr><td>Fresh Combined Lead</td><td>₹8</td></tr><tr><td>Repeat Leads</td><td>₹1-₹2</td></tr></tbody></table></div>
+              <div class="feature-list"><span>Unlimited FAQ capacity for large catalogs</span><span>AI chatbot with API access</span><span>Automation workflows and webhook support</span><span>Lower wallet rates for high lead volume</span><span>WhatsApp Redirect add-on billed at ₹99 / 30 days</span></div>
+              <div class="wallet-table"><table><thead><tr><th>Wallet action</th><th>Charge</th></tr></thead><tbody><tr><td>Fresh Email Lead</td><td>₹3</td></tr><tr><td>Fresh Mobile Lead</td><td>₹6</td></tr><tr><td>Fresh Combined Lead</td><td>₹8</td></tr><tr><td>Repeat Leads</td><td>₹1-₹2</td></tr><tr><td>WhatsApp Redirect</td><td>Add-on ₹99, refundable within 1 hour</td></tr></tbody></table></div>
               <button class="pill-btn billing-plan-btn" type="button" data-plan-id="automation">Subscribe Pro Automation</button>
               <small class="muted">Best for SaaS businesses, automation agencies, and lead generation companies.</small>
             </div>
 
-            <div class="panel pricing-card">
+            <div class="panel pricing-card <?php echo $activePlanId === 'enterprise' ? 'current-plan' : ''; ?>">
               <div class="pricing-head"><div><span class="eyebrow">Enterprise</span><h3>Enterprise Plan</h3></div><span class="tag">Custom</span></div>
+              <?php if ($activePlanId === 'enterprise'): ?><div class="current-plan-note">Current plan</div><?php endif; ?>
               <div class="price">₹4999+<small>/month</small></div>
-              <div class="feature-list"><span>White-label platform</span><span>Custom branding</span><span>Dedicated support</span><span>Custom API</span><span>Multi-user access</span><span>CRM integration</span></div>
-              <div class="notice"><strong>Wallet charges:</strong><br>Negotiated custom rates based on lead volume, OTP volume, and integration needs.</div>
+              <div class="feature-list"><span>White-label platform and custom branding</span><span>Dedicated support and onboarding</span><span>Custom API, CRM integration, and multi-user access</span><span>Volume pricing for OTP and lead usage</span><span>WhatsApp Redirect add-on billed at ₹99 / 30 days</span></div>
+              <div class="notice"><strong>Wallet charges:</strong><br>Negotiated custom rates based on lead volume, OTP volume, and integration needs. WhatsApp redirection remains ₹99 per 30 days.</div>
               <button class="pill-btn billing-plan-btn" type="button" data-plan-id="enterprise">Subscribe Enterprise</button>
               <small class="muted">Best for enterprises, large agencies, and franchise businesses.</small>
             </div>
@@ -2523,7 +2530,7 @@ async function saveLeadSetup({button = null, live = false} = {}) {
     leadSetupSaving = false;
     if (button) {
       button.disabled = false;
-      button.textContent = originalText || "Save lead setup";
+      button.textContent = originalText || "Save WhatsApp number";
     }
     if (leadSetupSaveQueued) {
       leadSetupSaveQueued = false;

@@ -618,6 +618,7 @@ footer{
 <?php else: ?>
 
   <a href="login.php" class="nav-a1">Login</a>
+  <a href="subscription.php" class="nav-a1">Subscription</a>
   <a href="#products" class="nav-btn1">Get Started</a>
 
 <?php endif; ?>
