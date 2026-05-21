@@ -177,6 +177,11 @@ $billingAccountRows = safe_data(supabase(
     "billing_accounts?select=*&email=eq." . urlencode($email) . "&limit=1"
 ));
 
+$walletTransactionRows = safe_data(supabase(
+    "GET",
+    "wallet_transactions?select=*&email=eq." . urlencode($email) . "&order=created_at.desc&limit=100"
+));
+
 $todayAllQueries = count(array_filter($conversationRows, fn($row) => date_in_range($row, 'created_at', $analyticsToday, $analyticsToday)));
 $yesterdayAllQueries = count(array_filter($conversationRows, fn($row) => date_in_range($row, 'created_at', $analyticsYesterday, $analyticsYesterday)));
 $last7AllQueries = count(array_filter($conversationRows, fn($row) => date_in_range($row, 'created_at', gmdate('Y-m-d', time() - (6 * 86400)), $analyticsToday)));
@@ -197,6 +202,11 @@ $billingWalletPaise = (int)($billingAccount['wallet_balance_paise'] ?? 0);
 $planFaqLimit = billing_faq_limit($activePlanId);
 $canUseAdvancedAnalytics = billing_feature_enabled($activePlanId, 'advanced_analytics');
 $canExportReports = billing_feature_enabled($activePlanId, 'export_reports');
+$canUseEmailOtp = billing_feature_enabled($activePlanId, 'email_otp');
+$canUseMobileOtp = billing_feature_enabled($activePlanId, 'mobile_otp');
+$canUseWhatsappRedirect = billing_feature_enabled($activePlanId, 'whatsapp_redirect');
+$walletCreditPaise = array_sum(array_map(fn($row) => ($row['transaction_type'] ?? '') === 'credit' ? (int)($row['amount_paise'] ?? 0) : 0, $walletTransactionRows));
+$walletDebitPaise = array_sum(array_map(fn($row) => ($row['transaction_type'] ?? '') === 'debit' ? (int)($row['amount_paise'] ?? 0) : 0, $walletTransactionRows));
 $faqCount = count($faqs);
 $freeFaqLimit = $planFaqLimit === PHP_INT_MAX ? 999999 : $planFaqLimit;
 $conversationCount = count($conversationRows);
@@ -920,7 +930,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
       <button class="tab-btn" data-tab="bot-settings">Bot Settings</button>
       -->
       <button class="tab-btn" data-tab="lead-generation">Lead Generation Setup</button>
-      <button class="tab-btn" data-tab="premium">Premium</button>
+      <button class="tab-btn" data-tab="subscription">Subscription</button>
       <button class="tab-btn" data-tab="profile">Profile</button>
       <button class="tab-btn" data-tab="billing">Billing</button>
       <a class="tab-btn" href="test-chatbot.php?bot=<?php echo h(urlencode($selectedBotId)); ?>">Test Chatbot</a>
@@ -1258,12 +1268,12 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
         <div class="panel section-body">
           <div class="analytics-tabs" role="tablist" aria-label="Analytics sections">
             <button class="analytics-tab-btn active" type="button" data-analytics-tab="analytics-overview">Overview</button>
-            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-conversations" <?php echo $canUseAdvancedAnalytics ? '' : 'data-premium-lock="Business plan required"'; ?>>Conversations</button>
-            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-faq" <?php echo $canUseAdvancedAnalytics ? '' : 'data-premium-lock="Business plan required"'; ?>>FAQ Insights</button>
-            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-leads" <?php echo $canUseAdvancedAnalytics ? '' : 'data-premium-lock="Business plan required"'; ?>>Leads</button>
-            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-pages" <?php echo $canUseAdvancedAnalytics ? '' : 'data-premium-lock="Business plan required"'; ?>>Pages</button>
-            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-realtime" <?php echo $canUseAdvancedAnalytics ? '' : 'data-premium-lock="Business plan required"'; ?>>Real-Time</button>
-            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-reports" <?php echo $canExportReports ? '' : 'data-premium-lock="Business plan required"'; ?>>Reports</button>
+            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-conversations" <?php echo $canUseAdvancedAnalytics ? '' : 'data-premium-lock="Business subscription required"'; ?>>Conversations</button>
+            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-faq" <?php echo $canUseAdvancedAnalytics ? '' : 'data-premium-lock="Business subscription required"'; ?>>FAQ Insights</button>
+            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-leads" <?php echo $canUseAdvancedAnalytics ? '' : 'data-premium-lock="Business subscription required"'; ?>>Leads</button>
+            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-pages" <?php echo $canUseAdvancedAnalytics ? '' : 'data-premium-lock="Business subscription required"'; ?>>Pages</button>
+            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-realtime" <?php echo $canUseAdvancedAnalytics ? '' : 'data-premium-lock="Business subscription required"'; ?>>Real-Time</button>
+            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-reports" <?php echo $canExportReports ? '' : 'data-premium-lock="Business subscription required"'; ?>>Reports</button>
           </div>
         </div>
 
@@ -1453,7 +1463,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
 
         <div class="analytics-subpanel" id="analytics-reports">
         <div class="analytics-grid two">
-          <div class="panel section-body"><h3>Export & Reports</h3><?php if (!$canExportReports): ?><div class="notice" style="margin-top:12px"><strong>Premium required:</strong><br>CSV export and downloadable reports are available on Business plan and higher.</div><?php else: ?><div class="report-actions" style="margin-top:12px"><button class="ghost-btn" type="button" id="exportAnalyticsCsvBtn">Export CSV</button><button class="ghost-btn" type="button" id="downloadAnalyticsReportBtn">Download report</button><button class="ghost-btn" type="button" id="printAnalyticsReportBtn">Print / Save PDF</button><button class="ghost-btn" type="button" id="downloadWeeklyReportBtn">Weekly report</button><button class="ghost-btn" type="button" id="downloadMonthlyReportBtn">Monthly report</button></div><?php endif; ?></div>
+          <div class="panel section-body"><h3>Export & Reports</h3><?php if (!$canExportReports): ?><div class="notice" style="margin-top:12px"><strong>Subscription required:</strong><br>CSV export and downloadable reports are available on Business plan and higher.</div><?php else: ?><div class="report-actions" style="margin-top:12px"><button class="ghost-btn" type="button" id="exportAnalyticsCsvBtn">Export CSV</button><button class="ghost-btn" type="button" id="downloadAnalyticsReportBtn">Download report</button><button class="ghost-btn" type="button" id="printAnalyticsReportBtn">Print / Save PDF</button><button class="ghost-btn" type="button" id="downloadWeeklyReportBtn">Weekly report</button><button class="ghost-btn" type="button" id="downloadMonthlyReportBtn">Monthly report</button></div><?php endif; ?></div>
           <div class="panel section-body"><h3>Notifications / Alerts</h3><div class="mini-chart"><div class="notice">Fallback rate: <?php echo h($fallbackRate); ?>%</div><div class="notice">Trending unanswered questions: <?php echo h($unansweredCount); ?></div><div class="notice">Lead conversion: <?php echo h($leadConversionRate); ?>%</div></div></div>
         </div>
         </div>
@@ -1632,6 +1642,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                     <div>
                       <h4>Collect email with OTP</h4>
                       <small>Verify the lead with an OTP sent to the user's email address.</small>
+                      <?php if (!$canUseEmailOtp): ?><small class="input-help error">Subscription required.</small><?php endif; ?>
                     </div>
                     <label class="switch" title="Collect email with OTP">
                       <input id="leadEmailOtpToggle" class="lead-toggle" type="checkbox" <?php echo $leadVerifyEmailOtp ? 'checked' : ''; ?> aria-label="Collect email with OTP">
@@ -1645,6 +1656,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                     <div>
                       <h4>Mobile OTP verification</h4>
                       <small>Verify the lead with an OTP sent to the user's mobile number.</small>
+                      <?php if (!$canUseMobileOtp): ?><small class="input-help error">Growth plan or higher required.</small><?php endif; ?>
                     </div>
                     <label class="switch" title="Mobile OTP verification">
                       <input id="leadMobileOtpToggle" class="lead-toggle" type="checkbox" <?php echo $leadVerifyMobileOtp ? 'checked' : ''; ?> aria-label="Mobile OTP verification">
@@ -1658,6 +1670,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                     <div>
                       <h4>Redirect to WhatsApp Business</h4>
                       <small>Send users to the customer's WhatsApp Business account after lead capture.</small>
+                      <?php if (!$canUseWhatsappRedirect): ?><small class="input-help error">Growth plan or higher required.</small><?php endif; ?>
                     </div>
                     <label class="switch" title="Redirect to WhatsApp Business">
                       <input id="whatsappLeadToggle" class="lead-toggle" type="checkbox" <?php echo $leadRedirectWhatsapp ? 'checked' : ''; ?> aria-label="Redirect to WhatsApp Business">
@@ -1686,112 +1699,9 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
         </div>
       </section>
 
-      <section class="tab-panel" id="premium">
+      <section class="tab-panel" id="subscription">
         <div class="panel section-body">
-          <span class="eyebrow">Premium</span>
-          <h2 style="margin:8px 0 10px">Premium Plans</h2>
-          <p class="muted">Premium plans will be added here. Upgrade is required when you need more than <?php echo h($freeFaqLimit); ?> FAQs.</p>
-        </div>
-      </section>
-
-      <section class="tab-panel" id="profile">
-        <div class="panel">
-          <div class="section-head">
-            <div>
-              <h3>Customer Profile</h3>
-              <p class="muted">This is your account identity. It is separate from chatbot setup and bot settings.</p>
-            </div>
-          </div>
-          <div class="section-body profile-grid">
-            <div class="profile-photo">
-              <div class="profile-avatar" id="profileAvatarPreview">
-                <?php if (!empty($profile['avatar_url'])): ?>
-                  <img src="<?php echo h($profile['avatar_url']); ?>" alt="Profile avatar">
-                <?php else: ?>
-                  <?php echo h($initials); ?>
-                <?php endif; ?>
-              </div>
-              <div class="field">
-                <label>Image URL or avatar</label>
-                <input id="profileAvatarInput" value="<?php echo h($profile['avatar_url'] ?? ''); ?>" placeholder="https://example.com/photo.jpg">
-                <button class="ghost-btn" type="button" id="generateAvatarBtn">Create avatar</button>
-              </div>
-            </div>
-
-            <div class="form-grid">
-              <div class="field"><label>First name</label><input id="firstNameInput" value="<?php echo h($profileFirstName); ?>" autocomplete="given-name"></div>
-              <div class="field"><label>Last name</label><input id="lastNameInput" value="<?php echo h($profileLastName); ?>" autocomplete="family-name"></div>
-              <div class="field full"><label>Account email</label><input id="profileEmailInput" value="<?php echo h($email); ?>" readonly></div>
-              <div class="field"><label>Country code</label><input id="countryCodeInput" list="countryCodeList" value="<?php echo h($profile['country_code'] ?? '+91'); ?>" placeholder="+91" title="Type any country calling code"></div>
-              <div class="field"><label>Mobile number</label><input id="mobileInput" value="<?php echo h($profile['mobile_number'] ?? ''); ?>" placeholder="9876543210" autocomplete="tel"></div>
-              <div class="field full"><label>Address line 1</label><input id="address1Input" value="<?php echo h($profile['address_line1'] ?? ''); ?>" autocomplete="address-line1"></div>
-              <div class="field full"><label>Address line 2</label><input id="address2Input" value="<?php echo h($profile['address_line2'] ?? ''); ?>" autocomplete="address-line2"></div>
-              <div class="field"><label>City</label><input id="cityInput" value="<?php echo h($profile['city'] ?? ''); ?>" autocomplete="address-level2"></div>
-              <div class="field"><label>State / Region</label><input id="stateInput" value="<?php echo h($profile['state_region'] ?? ''); ?>" autocomplete="address-level1"></div>
-              <div class="field"><label>Country</label><input id="countryInput" value="<?php echo h($profile['country'] ?? 'India'); ?>" autocomplete="country-name"></div>
-              <div class="field"><label>Postal code</label><input id="postalInput" value="<?php echo h($profile['postal_code'] ?? ''); ?>" autocomplete="postal-code"></div>
-              <div class="field full"><label>Location notes</label><textarea id="locationInput" placeholder="Office, branch, timezone, preferred contact hours"><?php echo h($profile['location_notes'] ?? ''); ?></textarea></div>
-              <div class="field"><label>New password</label><input id="newPasswordInput" type="password" placeholder="Minimum 8 characters" autocomplete="new-password"></div>
-              <div class="field"><label>Confirm password</label><input id="confirmPasswordInput" type="password" placeholder="Repeat new password" autocomplete="new-password"></div>
-            </div>
-            <div class="panel-actions"><button class="pill-btn" type="button" id="saveProfileBtn">Save profile</button></div>
-          </div>
-        </div>
-        <datalist id="countryCodeList">
-          <option value="+1">United States / Canada</option>
-          <option value="+7">Russia / Kazakhstan</option>
-          <option value="+20">Egypt</option>
-          <option value="+27">South Africa</option>
-          <option value="+30">Greece</option>
-          <option value="+31">Netherlands</option>
-          <option value="+32">Belgium</option>
-          <option value="+33">France</option>
-          <option value="+34">Spain</option>
-          <option value="+36">Hungary</option>
-          <option value="+39">Italy</option>
-          <option value="+40">Romania</option>
-          <option value="+41">Switzerland</option>
-          <option value="+43">Austria</option>
-          <option value="+44">United Kingdom</option>
-          <option value="+45">Denmark</option>
-          <option value="+46">Sweden</option>
-          <option value="+47">Norway</option>
-          <option value="+48">Poland</option>
-          <option value="+49">Germany</option>
-          <option value="+52">Mexico</option>
-          <option value="+55">Brazil</option>
-          <option value="+60">Malaysia</option>
-          <option value="+61">Australia</option>
-          <option value="+62">Indonesia</option>
-          <option value="+63">Philippines</option>
-          <option value="+64">New Zealand</option>
-          <option value="+65">Singapore</option>
-          <option value="+66">Thailand</option>
-          <option value="+81">Japan</option>
-          <option value="+82">South Korea</option>
-          <option value="+84">Vietnam</option>
-          <option value="+86">China</option>
-          <option value="+90">Turkey</option>
-          <option value="+91">India</option>
-          <option value="+92">Pakistan</option>
-          <option value="+93">Afghanistan</option>
-          <option value="+94">Sri Lanka</option>
-          <option value="+95">Myanmar</option>
-          <option value="+971">United Arab Emirates</option>
-          <option value="+972">Israel</option>
-          <option value="+973">Bahrain</option>
-          <option value="+974">Qatar</option>
-          <option value="+975">Bhutan</option>
-          <option value="+977">Nepal</option>
-          <option value="+966">Saudi Arabia</option>
-          <option value="+968">Oman</option>
-          <option value="+880">Bangladesh</option>
-        </datalist>
-      </section>
-
-      <section class="tab-panel" id="billing">
-        <div class="panel section-body">
-          <span class="eyebrow">Billing</span>
+          <span class="eyebrow">Subscription</span>
           <h2 style="margin:8px 0 10px">Subscription + Wallet Billing</h2>
           <p class="muted">Customers pay a monthly platform fee, then usage charges are deducted from wallet balance for OTPs, fresh leads, returning leads, WhatsApp redirects, and extra FAQs.</p>
 
@@ -1862,6 +1772,95 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
           </div>
         </div>
       </section>
+
+      <section class="tab-panel" id="profile">
+        <div class="panel">
+          <div class="section-head">
+            <div>
+              <h3>Customer Profile</h3>
+              <p class="muted">This is your account identity. It is separate from chatbot setup and bot settings.</p>
+            </div>
+          </div>
+          <div class="section-body profile-grid">
+            <div class="profile-photo">
+              <div class="profile-avatar" id="profileAvatarPreview">
+                <?php if (!empty($profile['avatar_url'])): ?>
+                  <img src="<?php echo h($profile['avatar_url']); ?>" alt="Profile avatar">
+                <?php else: ?>
+                  <?php echo h($initials); ?>
+                <?php endif; ?>
+              </div>
+              <div class="field">
+                <label>Image URL or avatar</label>
+                <input id="profileAvatarInput" value="<?php echo h($profile['avatar_url'] ?? ''); ?>" placeholder="https://example.com/photo.jpg">
+                <button class="ghost-btn" type="button" id="generateAvatarBtn">Create avatar</button>
+              </div>
+            </div>
+
+            <div class="form-grid">
+              <div class="field"><label>First name</label><input id="firstNameInput" value="<?php echo h($profileFirstName); ?>" autocomplete="given-name"></div>
+              <div class="field"><label>Last name</label><input id="lastNameInput" value="<?php echo h($profileLastName); ?>" autocomplete="family-name"></div>
+              <div class="field full"><label>Account email</label><input id="profileEmailInput" value="<?php echo h($email); ?>" readonly></div>
+              <div class="field"><label>Country code</label><input id="countryCodeInput" list="countryCodeList" value="<?php echo h($profile['country_code'] ?? '+91'); ?>" placeholder="+91" title="Type any country calling code"></div>
+              <div class="field"><label>Mobile number</label><input id="mobileInput" value="<?php echo h($profile['mobile_number'] ?? ''); ?>" placeholder="9876543210" autocomplete="tel"></div>
+              <div class="field full"><label>Address line 1</label><input id="address1Input" value="<?php echo h($profile['address_line1'] ?? ''); ?>" autocomplete="address-line1"></div>
+              <div class="field full"><label>Address line 2</label><input id="address2Input" value="<?php echo h($profile['address_line2'] ?? ''); ?>" autocomplete="address-line2"></div>
+              <div class="field"><label>City</label><input id="cityInput" value="<?php echo h($profile['city'] ?? ''); ?>" autocomplete="address-level2"></div>
+              <div class="field"><label>State / Region</label><input id="stateInput" value="<?php echo h($profile['state_region'] ?? ''); ?>" autocomplete="address-level1"></div>
+              <div class="field"><label>Country</label><input id="countryInput" value="<?php echo h($profile['country'] ?? 'India'); ?>" autocomplete="country-name"></div>
+              <div class="field"><label>Postal code</label><input id="postalInput" value="<?php echo h($profile['postal_code'] ?? ''); ?>" autocomplete="postal-code"></div>
+              <div class="field full"><label>Location notes</label><textarea id="locationInput" placeholder="Office, branch, timezone, preferred contact hours"><?php echo h($profile['location_notes'] ?? ''); ?></textarea></div>
+              <div class="field"><label>New password</label><input id="newPasswordInput" type="password" placeholder="Minimum 8 characters" autocomplete="new-password"></div>
+              <div class="field"><label>Confirm password</label><input id="confirmPasswordInput" type="password" placeholder="Repeat new password" autocomplete="new-password"></div>
+            </div>
+            <div class="panel-actions"><button class="pill-btn" type="button" id="saveProfileBtn">Save profile</button></div>
+          </div>
+        </div>
+        <datalist id="countryCodeList">
+          <option value="+1">United States / Canada</option>
+          <option value="+44">United Kingdom</option>
+          <option value="+91">India</option>
+          <option value="+971">United Arab Emirates</option>
+        </datalist>
+      </section>
+
+      <section class="tab-panel" id="billing">
+        <div class="panel section-body">
+          <span class="eyebrow">Billing</span>
+          <h2 style="margin:8px 0 10px">Wallet Transactions</h2>
+          <p class="muted">Complete summary of wallet credits and deductions for subscription payments, OTP verifications, leads, WhatsApp redirects, and other paid usage.</p>
+
+          <div class="metrics" style="margin-top:18px">
+            <div class="panel metric"><span>Wallet balance</span><strong><?php echo h(billing_rupees($billingWalletPaise)); ?></strong><small>Available for paid usage.</small></div>
+            <div class="panel metric"><span>Current plan</span><strong><?php echo h($activePlan['name']); ?></strong><small>Subscription status: <?php echo h($billingAccount['subscription_status'] ?? 'free'); ?></small></div>
+            <div class="panel metric"><span>Total credited</span><strong><?php echo h(billing_rupees($walletCreditPaise)); ?></strong><small>Money added to wallet.</small></div>
+            <div class="panel metric"><span>Total deducted</span><strong><?php echo h(billing_rupees($walletDebitPaise)); ?></strong><small>Paid feature usage.</small></div>
+            <div class="panel metric"><span>Transactions</span><strong><?php echo h(count($walletTransactionRows)); ?></strong><small>Latest wallet activity.</small></div>
+          </div>
+
+          <div class="table-wrap" style="margin-top:18px">
+            <table>
+              <thead><tr><th>Date</th><th>Type</th><th>Description</th><th>Amount</th><th>Balance After</th><th>Reference</th></tr></thead>
+              <tbody>
+                <?php if (empty($walletTransactionRows)): ?>
+                  <tr><td colspan="6" class="empty">No wallet transactions yet.</td></tr>
+                <?php endif; ?>
+                <?php foreach ($walletTransactionRows as $txn): ?>
+                  <?php $type = (string)($txn['transaction_type'] ?? ''); ?>
+                  <tr>
+                    <td><?php echo h($txn['created_at'] ?? ''); ?></td>
+                    <td><span class="tag <?php echo $type === 'credit' ? 'good' : 'bad'; ?>"><?php echo h(ucfirst($type)); ?></span></td>
+                    <td><?php echo h($txn['description'] ?? ''); ?></td>
+                    <td><?php echo h(($type === 'debit' ? '-' : '+') . billing_rupees((int)($txn['amount_paise'] ?? 0))); ?></td>
+                    <td><?php echo h(billing_rupees((int)($txn['balance_after_paise'] ?? 0))); ?></td>
+                    <td><?php echo h(($txn['reference_type'] ?? '') . ' ' . ($txn['reference_id'] ?? '')); ?></td>
+                  </tr>
+                <?php endforeach; ?>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
     </div>
   </main>
 </div>
@@ -1880,6 +1879,11 @@ let currentFaqCount = <?php echo json_encode($faqCount); ?>;
 const freeFaqLimit = <?php echo json_encode($freeFaqLimit); ?>;
 const selectedCustomerId = <?php echo json_encode($selectedBotId); ?>;
 const billingEmail = <?php echo json_encode($email); ?>;
+const leadPaidFeatures = <?php echo json_encode([
+  "email_otp" => $canUseEmailOtp,
+  "mobile_otp" => $canUseMobileOtp,
+  "whatsapp_redirect" => $canUseWhatsappRedirect
+]); ?>;
 const analyticsReport = <?php echo json_encode([
   "bot_name" => $botName,
   "range_label" => $analyticsRangeLabel,
@@ -1981,8 +1985,9 @@ function openAnalyticsTab(id, updateHash = true) {
   let target = document.getElementById(id) ? id : "analytics-overview";
   const targetButton = document.querySelector(`.analytics-tab-btn[data-analytics-tab="${target}"]`);
   if (targetButton?.dataset.premiumLock) {
-    showToast(targetButton.dataset.premiumLock);
+    alert(targetButton.dataset.premiumLock);
     target = "analytics-overview";
+    openTab("subscription");
   }
   document.querySelectorAll(".analytics-tab-btn").forEach(tab => {
     tab.classList.toggle("active", tab.dataset.analyticsTab === target);
@@ -1996,8 +2001,8 @@ function openAnalyticsTab(id, updateHash = true) {
 document.querySelectorAll(".analytics-tab-btn").forEach(tab => {
   tab.addEventListener("click", () => {
     if (tab.dataset.premiumLock) {
-      showToast(tab.dataset.premiumLock);
-      openTab("billing");
+      alert(tab.dataset.premiumLock);
+      openTab("subscription");
       return;
     }
     openAnalyticsTab(tab.dataset.analyticsTab);
@@ -2190,7 +2195,7 @@ async function startPlanCheckout(planId, button) {
         showToast(verifyData.message || "Payment verification failed");
         return;
       }
-      showToast("Premium activated");
+      showToast("Subscription activated");
       setTimeout(() => location.reload(), 900);
     }
   });
@@ -2299,12 +2304,22 @@ leadGenerationEnabled?.addEventListener("change", () => {
   showToast(leadGenerationEnabled.checked ? "Lead generation enabled" : "Lead generation disabled");
 });
 
+function requireLeadPaidFeature(feature, control, message) {
+  if (!control?.checked || leadPaidFeatures[feature]) return true;
+  control.checked = false;
+  showToast(message);
+  openTab("subscription");
+  return false;
+}
+
 leadEmailOtpToggle?.addEventListener("change", () => {
+  if (!requireLeadPaidFeature("email_otp", leadEmailOtpToggle, "Email OTP requires an active subscription")) return;
   if (leadCollectEmailToggle) leadCollectEmailToggle.checked = true;
   if (!leadEmailOtpToggle.checked) showToast("Email will be saved without OTP");
 });
 
 leadMobileOtpToggle?.addEventListener("change", () => {
+  if (!requireLeadPaidFeature("mobile_otp", leadMobileOtpToggle, "Mobile OTP requires Growth plan or higher")) return;
   if (leadCollectMobileToggle) leadCollectMobileToggle.checked = true;
   if (!leadMobileOtpToggle.checked) showToast("Mobile number will be saved without OTP");
 });
@@ -2316,7 +2331,10 @@ whatsappLeadNumber?.addEventListener("input", () => {
 
 whatsappLeadNumber?.addEventListener("blur", () => validateWhatsappLeadNumber(false));
 
-whatsappLeadToggle?.addEventListener("change", () => validateWhatsappLeadNumber(false));
+whatsappLeadToggle?.addEventListener("change", () => {
+  if (!requireLeadPaidFeature("whatsapp_redirect", whatsappLeadToggle, "WhatsApp Redirect requires Growth plan or higher")) return;
+  validateWhatsappLeadNumber(false);
+});
 
 leadNotificationEmail?.addEventListener("input", () => validateLeadNotificationEmail(false));
 
@@ -2325,6 +2343,9 @@ leadNotificationEmail?.addEventListener("blur", () => validateLeadNotificationEm
 leadEmailNotifyToggle?.addEventListener("change", () => validateLeadNotificationEmail(false));
 
 document.getElementById("saveLeadSetupBtn")?.addEventListener("click", async event => {
+  if (leadEmailOtpToggle?.checked && !requireLeadPaidFeature("email_otp", leadEmailOtpToggle, "Email OTP requires an active subscription")) return;
+  if (leadMobileOtpToggle?.checked && !requireLeadPaidFeature("mobile_otp", leadMobileOtpToggle, "Mobile OTP requires Growth plan or higher")) return;
+  if (whatsappLeadToggle?.checked && !requireLeadPaidFeature("whatsapp_redirect", whatsappLeadToggle, "WhatsApp Redirect requires Growth plan or higher")) return;
   if (leadGenerationEnabled?.checked && whatsappLeadToggle?.checked && !validateWhatsappLeadNumber(true)) {
     whatsappLeadNumber?.focus();
     return;
@@ -2417,14 +2438,14 @@ document.getElementById("faqForm")?.addEventListener("submit", async event => {
   if (!question || !answer) return showToast("Question and answer are required");
   if (currentFaqCount >= freeFaqLimit) {
     showToast("Upgrade to add more FAQs");
-    openTab("premium");
+    openTab("subscription");
     return;
   }
 
   const saved = await addFaq(customerId, question, answer, category);
   if (saved.requires_premium) {
     showToast(saved.message || "Upgrade to add more FAQs");
-    openTab("premium");
+    openTab("subscription");
     return;
   }
   if (saved.error || saved.success === false) {
@@ -2448,7 +2469,7 @@ document.querySelectorAll(".outsideFaqForm").forEach(form => {
     if (!question || !answer) return showToast("Question and answer are required");
     if (currentFaqCount >= freeFaqLimit) {
       showToast("Upgrade to add more FAQs");
-      openTab("premium");
+      openTab("subscription");
       return;
     }
 
@@ -2464,7 +2485,7 @@ document.querySelectorAll(".outsideFaqForm").forEach(form => {
         button.textContent = "Add to FAQs";
       }
       showToast(saved.message || "Upgrade to add more FAQs");
-      openTab("premium");
+      openTab("subscription");
       return;
     }
     if (saved.error || saved.success === false) {

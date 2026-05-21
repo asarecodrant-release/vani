@@ -53,6 +53,81 @@ function widget_billing_plan_for_customer(string $customerId): string {
     return billing_active_plan_from_account($rows[0] ?? []);
 }
 
+function widget_billing_email_for_customer(string $customerId): string {
+    $signup = widget_get_signup($customerId);
+    return trim((string)($signup['email'] ?? ''));
+}
+
+function widget_debit_wallet(string $email, string $customerId, int $amountPaise, string $description, string $referenceType, string $referenceId, array $metadata = []): array {
+    if ($email === '' || $amountPaise <= 0) {
+        return ["success" => true, "charged" => false, "message" => "No charge required"];
+    }
+    $rows = widget_safe_rows(supabase(
+        "GET",
+        "billing_accounts?select=*&email=eq." . urlencode($email) . "&limit=1"
+    ));
+    $account = $rows[0] ?? [];
+    $balance = (int)($account['wallet_balance_paise'] ?? 0);
+    if ($balance < $amountPaise) {
+        return ["success" => false, "charged" => false, "message" => "Insufficient wallet balance"];
+    }
+    $newBalance = $balance - $amountPaise;
+    supabase("PATCH", "billing_accounts?email=eq." . urlencode($email), [
+        "wallet_balance_paise" => $newBalance
+    ]);
+    supabase("POST", "wallet_transactions", [[
+        "email" => $email,
+        "customer_id" => $customerId ?: null,
+        "transaction_type" => "debit",
+        "amount_paise" => $amountPaise,
+        "balance_after_paise" => $newBalance,
+        "description" => $description,
+        "reference_type" => $referenceType,
+        "reference_id" => $referenceId,
+        "metadata" => (object)$metadata
+    ]]);
+    return ["success" => true, "charged" => true, "balance_after_paise" => $newBalance];
+}
+
+function widget_charge_email_otp_lead(string $customerId, array $lead): array {
+    $meta = is_array($lead['metadata'] ?? null) ? $lead['metadata'] : [];
+    if (!empty($meta['wallet_email_otp_charged_at'])) {
+        return ["success" => true, "charged" => false, "message" => "Already charged"];
+    }
+    $email = widget_billing_email_for_customer($customerId);
+    $planId = widget_billing_plan_for_customer($customerId);
+    $leadEmail = trim((string)($lead['email'] ?? ''));
+    $leadId = (string)($lead['id'] ?? '');
+    $existingLeads = $leadEmail !== '' ? widget_safe_rows(supabase(
+        "GET",
+        "lead_generation_leads?select=id,created_at,metadata,email_otp_verified&customer_id=eq." . urlencode($customerId) . "&email=eq." . urlencode($leadEmail) . "&order=created_at.asc"
+    )) : [];
+    $olderVerified = array_values(array_filter($existingLeads, fn($row) => (string)($row['id'] ?? '') !== $leadId && !empty($row['email_otp_verified'])));
+    $chargeKey = 'fresh_email_lead';
+    if (!empty($olderVerified)) {
+        $last = end($olderVerified);
+        $lastCreated = strtotime((string)($last['created_at'] ?? '')) ?: 0;
+        $chargeKey = ($lastCreated && (time() - $lastCreated) > 30 * 86400) ? 'reactivated_email_lead' : 'repeat_email_lead';
+    }
+    $amountPaise = billing_wallet_charge_paise($planId, $chargeKey);
+    $charge = widget_debit_wallet($email, $customerId, $amountPaise, "Email OTP verification - " . str_replace('_', ' ', $chargeKey), "lead_email_otp", $leadId, [
+        "plan_id" => $planId,
+        "charge_key" => $chargeKey,
+        "lead_email" => $leadEmail
+    ]);
+    if (!$charge['success']) {
+        return $charge;
+    }
+    $meta['wallet_email_otp_charged_at'] = gmdate('Y-m-d\TH:i:s\Z');
+    $meta['wallet_email_otp_charge_key'] = $chargeKey;
+    $meta['wallet_email_otp_amount_paise'] = $amountPaise;
+    supabase("PATCH", "lead_generation_leads?id=eq." . urlencode($leadId), [
+        "metadata" => (object)$meta
+    ]);
+    $charge['metadata'] = $meta;
+    return $charge;
+}
+
 function widget_get_lead_settings(string $customerId): array {
     $rows = widget_safe_rows(supabase(
         "GET",
@@ -929,7 +1004,17 @@ if ($action === "verify_lead_email_otp") {
         widget_json_response(["success" => false, "message" => "OTP expired"], 400);
     }
 
+    $walletCharge = widget_charge_email_otp_lead($customerId, $row);
+    if (empty($walletCharge['success'])) {
+        widget_json_response([
+            "success" => false,
+            "requires_wallet_recharge" => true,
+            "message" => $walletCharge['message'] ?? "Wallet could not be charged for email OTP verification"
+        ], 402);
+    }
+
     // Mark verified
+    $meta = is_array($walletCharge['metadata'] ?? null) ? $walletCharge['metadata'] : (is_array($row['metadata'] ?? null) ? $row['metadata'] : []);
     $update = [
         "email_otp_verified" => true,
         "verification_quality" => 'real',

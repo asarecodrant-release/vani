@@ -111,4 +111,31 @@ function billing_active_plan_from_account(array $account): string {
 function billing_rupees(int $paise): string {
     return '₹' . rtrim(rtrim(number_format($paise / 100, 2, '.', ''), '0'), '.');
 }
+function billing_wallet_charge_paise(string $planId, string $chargeKey): int {
+    $charges = [
+        'starter' => [
+            'fresh_email_lead' => 500,
+            'repeat_email_lead' => 100,
+            'reactivated_email_lead' => 500
+        ],
+        'growth' => [
+            'fresh_email_lead' => 400,
+            'repeat_email_lead' => 100,
+            'fresh_mobile_lead' => 800,
+            'repeat_mobile_lead' => 200
+        ],
+        'business' => [
+            'fresh_combined_lead' => 1000,
+            'repeat_combined_lead' => 300,
+            'reactivated_combined_lead' => 1000
+        ],
+        'automation' => [
+            'fresh_email_lead' => 300,
+            'fresh_mobile_lead' => 600,
+            'fresh_combined_lead' => 800,
+            'repeat_lead' => 100
+        ]
+    ];
+    return (int)($charges[$planId][$chargeKey] ?? 0);
+}
 ?>
