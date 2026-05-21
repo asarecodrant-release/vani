@@ -226,6 +226,47 @@ function wallet_credit_subscription(string $email, string $customerId, string $p
     ]]);
 }
 
+function wallet_adjust_balance(string $email, string $customerId, int $amountPaise, string $transactionType, string $description, string $referenceType, string $referenceId, array $metadata = []): array {
+    if ($email === '' || $amountPaise <= 0) {
+        return ["success" => true, "charged" => false, "message" => "No wallet adjustment required"];
+    }
+    $account = billing_account_for_email($email);
+    $balance = (int)($account['wallet_balance_paise'] ?? 0);
+    if ($transactionType === 'debit' && $balance < $amountPaise) {
+        return ["success" => false, "charged" => false, "message" => "Insufficient wallet balance"];
+    }
+    $newBalance = $transactionType === 'credit' ? $balance + $amountPaise : $balance - $amountPaise;
+    supabase("PATCH", "billing_accounts?email=eq." . urlencode($email), [
+        "wallet_balance_paise" => $newBalance
+    ]);
+    $txn = supabase("POST", "wallet_transactions", [[
+        "email" => $email,
+        "customer_id" => $customerId ?: null,
+        "transaction_type" => $transactionType,
+        "amount_paise" => $amountPaise,
+        "balance_after_paise" => $newBalance,
+        "description" => $description,
+        "reference_type" => $referenceType,
+        "reference_id" => $referenceId,
+        "metadata" => (object)$metadata
+    ]]);
+    return [
+        "success" => ($txn['status'] >= 200 && $txn['status'] < 300),
+        "charged" => true,
+        "balance_after_paise" => $newBalance,
+        "transaction" => $txn['data'][0] ?? null,
+        "debug" => $txn
+    ];
+}
+
+function wallet_debit_usage(string $email, string $customerId, int $amountPaise, string $description, string $referenceType, string $referenceId, array $metadata = []): array {
+    return wallet_adjust_balance($email, $customerId, $amountPaise, 'debit', $description, $referenceType, $referenceId, $metadata);
+}
+
+function wallet_credit_usage(string $email, string $customerId, int $amountPaise, string $description, string $referenceType, string $referenceId, array $metadata = []): array {
+    return wallet_adjust_balance($email, $customerId, $amountPaise, 'credit', $description, $referenceType, $referenceId, $metadata);
+}
+
 // ==========================
 // ==========================
 
@@ -672,12 +713,12 @@ if ($action === "save_lead_generation_settings") {
     }
 
     if ($verify_mobile_otp && !billing_feature_enabled($activePlan, 'mobile_otp')) {
-        echo json_encode(["success" => false, "requires_premium" => true, "message" => "Mobile OTP requires Growth plan or higher."]);
+        echo json_encode(["success" => false, "requires_premium" => true, "message" => "Mobile OTP requires an active paid plan."]);
         exit;
     }
 
     if ($redirect_whatsapp && !billing_feature_enabled($activePlan, 'whatsapp_redirect')) {
-        echo json_encode(["success" => false, "requires_premium" => true, "message" => "WhatsApp Redirect requires Growth plan or higher."]);
+        echo json_encode(["success" => false, "requires_premium" => true, "message" => "WhatsApp Redirect requires an active paid plan."]);
         exit;
     }
 
@@ -697,7 +738,69 @@ if ($action === "save_lead_generation_settings") {
         exit;
     }
 
-    $payload = [
+    $existingRows = safe_data(supabase(
+        "GET",
+        "lead_generation_settings?select=*&customer_id=eq." . urlencode($customer_id) . "&limit=1"
+    ));
+    $existingSettings = $existingRows[0] ?? [];
+    $wasWhatsappEnabled = filter_var($existingSettings['redirect_whatsapp'] ?? false, FILTER_VALIDATE_BOOLEAN);
+    $whatsappBillingUpdate = [];
+
+    if ($redirect_whatsapp && !$wasWhatsappEnabled) {
+        $amountPaise = billing_wallet_charge_paise($activePlan, 'whatsapp_redirect_addon');
+        if ($amountPaise > 0) {
+            $charge = wallet_debit_usage(
+                $billingEmail,
+                $customer_id,
+                $amountPaise,
+                "WhatsApp Redirect add-on activation",
+                "whatsapp_redirect_addon",
+                $customer_id,
+                ["plan_id" => $activePlan, "refund_window_minutes" => 60]
+            );
+            if (empty($charge['success'])) {
+                echo json_encode([
+                    "success" => false,
+                    "requires_wallet_recharge" => true,
+                    "message" => $charge['message'] ?? "Wallet could not be charged for WhatsApp Redirect"
+                ]);
+                exit;
+            }
+            $chargedAt = gmdate('Y-m-d\TH:i:s\Z');
+            $whatsappBillingUpdate = [
+                "whatsapp_redirect_charged_at" => $chargedAt,
+                "whatsapp_redirect_refund_deadline" => gmdate('Y-m-d\TH:i:s\Z', time() + 3600),
+                "whatsapp_redirect_charge_txn_id" => $charge['transaction']['id'] ?? null,
+                "whatsapp_redirect_charge_amount_paise" => $amountPaise,
+                "whatsapp_redirect_refunded_at" => null
+            ];
+        }
+    } elseif (!$redirect_whatsapp && $wasWhatsappEnabled) {
+        $chargedAt = trim((string)($existingSettings['whatsapp_redirect_charged_at'] ?? ''));
+        $refundDeadline = trim((string)($existingSettings['whatsapp_redirect_refund_deadline'] ?? ''));
+        $refundedAt = trim((string)($existingSettings['whatsapp_redirect_refunded_at'] ?? ''));
+        $deadlineTime = $refundDeadline !== '' ? strtotime($refundDeadline) : 0;
+        $amountPaise = (int)($existingSettings['whatsapp_redirect_charge_amount_paise'] ?? 0);
+        if ($chargedAt !== '' && $refundedAt === '' && $deadlineTime && time() <= $deadlineTime && $amountPaise > 0) {
+            $refund = wallet_credit_usage(
+                $billingEmail,
+                $customer_id,
+                $amountPaise,
+                "WhatsApp Redirect add-on refund",
+                "whatsapp_redirect_refund",
+                $customer_id,
+                [
+                    "plan_id" => $activePlan,
+                    "original_charge_txn_id" => $existingSettings['whatsapp_redirect_charge_txn_id'] ?? null
+                ]
+            );
+            if (!empty($refund['success'])) {
+                $whatsappBillingUpdate["whatsapp_redirect_refunded_at"] = gmdate('Y-m-d\TH:i:s\Z');
+            }
+        }
+    }
+
+    $payload = array_merge([
         "customer_id" => $customer_id,
         "is_enabled" => filter_var($data['is_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN),
         "collect_location" => filter_var($data['collect_location'] ?? false, FILTER_VALIDATE_BOOLEAN),
@@ -710,14 +813,9 @@ if ($action === "save_lead_generation_settings") {
         "whatsapp_mobile_number" => $whatsapp_mobile_number !== '' ? $whatsapp_mobile_number : null,
         "verify_mobile_otp" => $verify_mobile_otp,
         "service_tier" => $verify_mobile_otp ? "paid" : "free"
-    ];
+    ], $whatsappBillingUpdate);
 
-    $existing = supabase(
-        "GET",
-        "lead_generation_settings?select=id&customer_id=eq." . urlencode($customer_id) . "&limit=1"
-    );
-
-    if (!empty($existing['data'])) {
+    if (!empty($existingRows)) {
         $res = supabase(
             "PATCH",
             "lead_generation_settings?customer_id=eq." . urlencode($customer_id),
@@ -731,9 +829,26 @@ if ($action === "save_lead_generation_settings") {
         );
     }
 
+    $saved = ($res['status'] >= 200 && $res['status'] < 300);
+    if (!$saved && $redirect_whatsapp && !$wasWhatsappEnabled && !empty($charge['success'] ?? false)) {
+        wallet_credit_usage(
+            $billingEmail,
+            $customer_id,
+            $amountPaise,
+            "WhatsApp Redirect add-on refund after settings save failure",
+            "whatsapp_redirect_refund",
+            $customer_id,
+            [
+                "plan_id" => $activePlan,
+                "original_charge_txn_id" => $charge['transaction']['id'] ?? null,
+                "reason" => "settings_save_failed"
+            ]
+        );
+    }
+
     echo json_encode([
-        "success" => ($res['status'] >= 200 && $res['status'] < 300),
-        "message" => ($res['status'] >= 200 && $res['status'] < 300) ? "Lead generation settings saved" : "Lead generation settings could not be saved",
+        "success" => $saved,
+        "message" => $saved ? "Lead generation settings saved" : "Lead generation settings could not be saved",
         "debug" => $res
     ]);
     exit;

@@ -128,6 +128,43 @@ function widget_charge_email_otp_lead(string $customerId, array $lead): array {
     return $charge;
 }
 
+function widget_charge_mobile_otp_lead(string $customerId, array $lead): array {
+    $meta = is_array($lead['metadata'] ?? null) ? $lead['metadata'] : [];
+    if (!empty($meta['wallet_mobile_otp_charged_at'])) {
+        return ["success" => true, "charged" => false, "message" => "Already charged", "metadata" => $meta];
+    }
+    $email = widget_billing_email_for_customer($customerId);
+    $planId = widget_billing_plan_for_customer($customerId);
+    $leadPhone = preg_replace('/\D+/', '', (string)($lead['phone_number'] ?? ''));
+    $leadId = (string)($lead['id'] ?? '');
+    $existingLeads = $leadPhone !== '' ? widget_safe_rows(supabase(
+        "GET",
+        "lead_generation_leads?select=id,created_at,metadata,phone_number,mobile_otp_verified&customer_id=eq." . urlencode($customerId) . "&order=created_at.asc"
+    )) : [];
+    $olderVerified = array_values(array_filter($existingLeads, function($row) use ($leadId, $leadPhone) {
+        $rowPhone = preg_replace('/\D+/', '', (string)($row['phone_number'] ?? ''));
+        return (string)($row['id'] ?? '') !== $leadId && $rowPhone === $leadPhone && !empty($row['mobile_otp_verified']);
+    }));
+    $chargeKey = empty($olderVerified) ? 'fresh_mobile_lead' : 'repeat_mobile_lead';
+    $amountPaise = billing_wallet_charge_paise($planId, $chargeKey);
+    $charge = widget_debit_wallet($email, $customerId, $amountPaise, "Mobile OTP verification - " . str_replace('_', ' ', $chargeKey), "lead_mobile_otp", $leadId, [
+        "plan_id" => $planId,
+        "charge_key" => $chargeKey,
+        "lead_phone" => $leadPhone
+    ]);
+    if (!$charge['success']) {
+        return $charge;
+    }
+    $meta['wallet_mobile_otp_charged_at'] = gmdate('Y-m-d\TH:i:s\Z');
+    $meta['wallet_mobile_otp_charge_key'] = $chargeKey;
+    $meta['wallet_mobile_otp_amount_paise'] = $amountPaise;
+    supabase("PATCH", "lead_generation_leads?id=eq." . urlencode($leadId), [
+        "metadata" => (object)$meta
+    ]);
+    $charge['metadata'] = $meta;
+    return $charge;
+}
+
 function widget_get_lead_settings(string $customerId): array {
     $rows = widget_safe_rows(supabase(
         "GET",
@@ -889,7 +926,7 @@ if ($action === "verify_lead_mobile_msg91") {
         widget_json_response(["success" => false, "message" => "Missing mobile verification data"], 400);
     }
     if (!billing_feature_enabled(widget_billing_plan_for_customer($customerId), 'mobile_otp')) {
-        widget_json_response(["success" => false, "requires_premium" => true, "message" => "Mobile OTP requires Growth plan or higher."], 403);
+        widget_json_response(["success" => false, "requires_premium" => true, "message" => "Mobile OTP requires an active paid plan."], 403);
     }
 
     $lookup = widget_msg91_verify_access_token($accessToken);
@@ -959,10 +996,10 @@ if ($action === "verify_lead_mobile_msg91") {
         widget_json_response(["success" => false, "message" => "Verified phone number does not match"], 400);
     }
 
-    $res = widget_save_lead($customerId, $userId, [
+    $leadPayload = [
         "phone_number" => $verifiedPhone,
         "source_url" => $sourceUrl ?: null,
-        "mobile_otp_verified" => true,
+        "mobile_otp_verified" => false,
         "verification_quality" => "real",
         "metadata" => [
             "mobile_otp_status" => "verified",
@@ -971,11 +1008,33 @@ if ($action === "verify_lead_mobile_msg91") {
             "msg91_verify_response" => $verifyData,
             "msg91_widget_response" => $widgetResponse
         ]
-    ]);
+    ];
+    $res = widget_save_lead($customerId, $userId, $leadPayload);
     $ok = ($res['status'] >= 200 && $res['status'] < 300);
     $lead = $res['data'][0] ?? null;
+    if (!$ok || !$lead) {
+        widget_json_response(["success" => $ok, "lead" => $lead, "notified" => false, "debug" => $res]);
+    }
+
+    $walletCharge = widget_charge_mobile_otp_lead($customerId, $lead);
+    if (empty($walletCharge['success'])) {
+        widget_json_response([
+            "success" => false,
+            "requires_wallet_recharge" => true,
+            "message" => $walletCharge['message'] ?? "Wallet could not be charged for mobile OTP verification"
+        ], 402);
+    }
+    $meta = is_array($walletCharge['metadata'] ?? null) ? $walletCharge['metadata'] : widget_lead_metadata($lead);
+    $verifyRes = supabase("PATCH", "lead_generation_leads?id=eq." . urlencode((string)($lead['id'] ?? '')) . "&customer_id=eq." . urlencode($customerId), [
+        "mobile_otp_verified" => true,
+        "metadata" => (object)$meta
+    ]);
+    $ok = ($verifyRes['status'] >= 200 && $verifyRes['status'] < 300);
+    if ($ok && !empty($verifyRes['data'][0])) {
+        $lead = $verifyRes['data'][0];
+    }
     $notified = (!$suppressNotification && $ok && $lead) ? widget_notify_lead_by_email($customerId, $lead, 'mobile') : false;
-    widget_json_response(["success" => $ok, "lead" => $lead, "notified" => $notified, "debug" => $res]);
+    widget_json_response(["success" => $ok, "lead" => $lead, "notified" => $notified, "debug" => $verifyRes]);
 }
 
 // Verify OTP for a lead email

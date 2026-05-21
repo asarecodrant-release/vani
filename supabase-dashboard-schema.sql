@@ -135,6 +135,11 @@ create table if not exists public.lead_generation_settings (
   redirect_whatsapp boolean not null default false,
   whatsapp_mobile_number text,
   verify_mobile_otp boolean not null default false,
+  whatsapp_redirect_charged_at timestamptz,
+  whatsapp_redirect_refund_deadline timestamptz,
+  whatsapp_redirect_charge_txn_id bigint,
+  whatsapp_redirect_charge_amount_paise integer,
+  whatsapp_redirect_refunded_at timestamptz,
   service_tier text not null default 'free' check (service_tier in ('free', 'paid')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
@@ -149,6 +154,21 @@ alter table public.lead_generation_settings
 
 alter table public.lead_generation_settings
   add column if not exists collect_mobile boolean not null default false;
+
+alter table public.lead_generation_settings
+  add column if not exists whatsapp_redirect_charged_at timestamptz;
+
+alter table public.lead_generation_settings
+  add column if not exists whatsapp_redirect_refund_deadline timestamptz;
+
+alter table public.lead_generation_settings
+  add column if not exists whatsapp_redirect_charge_txn_id bigint;
+
+alter table public.lead_generation_settings
+  add column if not exists whatsapp_redirect_charge_amount_paise integer;
+
+alter table public.lead_generation_settings
+  add column if not exists whatsapp_redirect_refunded_at timestamptz;
 
 create table if not exists public.lead_generation_leads (
   id bigserial primary key,

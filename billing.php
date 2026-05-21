@@ -20,8 +20,8 @@ function billing_plans(): array {
             'faq_limit' => 100,
             'features' => [
                 'email_otp' => true,
-                'mobile_otp' => false,
-                'whatsapp_redirect' => false,
+                'mobile_otp' => true,
+                'whatsapp_redirect' => true,
                 'export_reports' => false,
                 'advanced_analytics' => false
             ]
@@ -116,7 +116,10 @@ function billing_wallet_charge_paise(string $planId, string $chargeKey): int {
         'starter' => [
             'fresh_email_lead' => 500,
             'repeat_email_lead' => 100,
-            'reactivated_email_lead' => 500
+            'reactivated_email_lead' => 500,
+            'fresh_mobile_lead' => 1000,
+            'repeat_mobile_lead' => 200,
+            'whatsapp_redirect_addon' => 9900
         ],
         'growth' => [
             'fresh_email_lead' => 400,

@@ -1721,8 +1721,8 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
             <div class="panel pricing-card">
               <div class="pricing-head"><div><span class="eyebrow">Starter</span><h3>Starter Plan</h3></div><span class="tag">Small</span></div>
               <div class="price">₹199<small>/month</small></div>
-              <div class="feature-list"><span>100 FAQs</span><span>Email OTP support</span><span>Basic chatbot</span><span>Wallet recharge enabled</span></div>
-              <div class="wallet-table"><table><thead><tr><th>Wallet action</th><th>Charge</th></tr></thead><tbody><tr><td>Fresh Email Lead</td><td>₹5</td></tr><tr><td>Repeat Email Lead</td><td>₹1</td></tr><tr><td>Email Lead after 30 days</td><td>₹5</td></tr><tr><td>WhatsApp Redirect</td><td>Add-on ₹99</td></tr></tbody></table></div>
+              <div class="feature-list"><span>100 FAQs</span><span>Email OTP support</span><span>Mobile OTP service</span><span>WhatsApp Redirect add-on</span><span>Wallet recharge enabled</span></div>
+              <div class="wallet-table"><table><thead><tr><th>Wallet action</th><th>Charge</th></tr></thead><tbody><tr><td>Fresh Email Lead</td><td>₹5</td></tr><tr><td>Repeat Email Lead</td><td>₹1</td></tr><tr><td>Email Lead after 30 days</td><td>₹5</td></tr><tr><td>Fresh Mobile OTP Lead</td><td>₹10</td></tr><tr><td>Repeat Mobile OTP</td><td>₹2</td></tr><tr><td>WhatsApp Redirect</td><td>Add-on ₹99, refundable within 1 hour</td></tr></tbody></table></div>
               <button class="pill-btn billing-plan-btn" type="button" data-plan-id="starter">Subscribe Starter</button>
               <small class="muted">Best for portfolios, coaches, and small businesses.</small>
             </div>
@@ -2319,7 +2319,7 @@ leadEmailOtpToggle?.addEventListener("change", () => {
 });
 
 leadMobileOtpToggle?.addEventListener("change", () => {
-  if (!requireLeadPaidFeature("mobile_otp", leadMobileOtpToggle, "Mobile OTP requires Growth plan or higher")) return;
+  if (!requireLeadPaidFeature("mobile_otp", leadMobileOtpToggle, "Mobile OTP requires an active paid plan")) return;
   if (leadCollectMobileToggle) leadCollectMobileToggle.checked = true;
   if (!leadMobileOtpToggle.checked) showToast("Mobile number will be saved without OTP");
 });
@@ -2332,7 +2332,7 @@ whatsappLeadNumber?.addEventListener("input", () => {
 whatsappLeadNumber?.addEventListener("blur", () => validateWhatsappLeadNumber(false));
 
 whatsappLeadToggle?.addEventListener("change", () => {
-  if (!requireLeadPaidFeature("whatsapp_redirect", whatsappLeadToggle, "WhatsApp Redirect requires Growth plan or higher")) return;
+  if (!requireLeadPaidFeature("whatsapp_redirect", whatsappLeadToggle, "WhatsApp Redirect requires an active paid plan")) return;
   validateWhatsappLeadNumber(false);
 });
 
@@ -2344,8 +2344,8 @@ leadEmailNotifyToggle?.addEventListener("change", () => validateLeadNotification
 
 document.getElementById("saveLeadSetupBtn")?.addEventListener("click", async event => {
   if (leadEmailOtpToggle?.checked && !requireLeadPaidFeature("email_otp", leadEmailOtpToggle, "Email OTP requires an active subscription")) return;
-  if (leadMobileOtpToggle?.checked && !requireLeadPaidFeature("mobile_otp", leadMobileOtpToggle, "Mobile OTP requires Growth plan or higher")) return;
-  if (whatsappLeadToggle?.checked && !requireLeadPaidFeature("whatsapp_redirect", whatsappLeadToggle, "WhatsApp Redirect requires Growth plan or higher")) return;
+  if (leadMobileOtpToggle?.checked && !requireLeadPaidFeature("mobile_otp", leadMobileOtpToggle, "Mobile OTP requires an active paid plan")) return;
+  if (whatsappLeadToggle?.checked && !requireLeadPaidFeature("whatsapp_redirect", whatsappLeadToggle, "WhatsApp Redirect requires an active paid plan")) return;
   if (leadGenerationEnabled?.checked && whatsappLeadToggle?.checked && !validateWhatsappLeadNumber(true)) {
     whatsappLeadNumber?.focus();
     return;
