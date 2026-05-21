@@ -704,6 +704,12 @@ if ($action === "save_lead_generation_settings") {
     $collect_mobile = filter_var($data['collect_mobile'] ?? false, FILTER_VALIDATE_BOOLEAN);
     $verify_email_otp = filter_var($data['verify_email_otp'] ?? false, FILTER_VALIDATE_BOOLEAN);
     $verify_mobile_otp = filter_var($data['verify_mobile_otp'] ?? false, FILTER_VALIDATE_BOOLEAN);
+    if ($verify_email_otp) {
+        $collect_email = false;
+    }
+    if ($verify_mobile_otp) {
+        $collect_mobile = false;
+    }
     $billingEmail = is_authenticated_user() ? authenticated_email() : billing_email_for_customer($customer_id);
     $activePlan = $billingEmail ? billing_active_plan_for_email($billingEmail) : 'free';
 
@@ -738,10 +744,11 @@ if ($action === "save_lead_generation_settings") {
         exit;
     }
 
-    $existingRows = safe_data(supabase(
+    $existingResponse = supabase(
         "GET",
         "lead_generation_settings?select=*&customer_id=eq." . urlencode($customer_id) . "&limit=1"
-    ));
+    );
+    $existingRows = is_array($existingResponse['data'] ?? null) ? $existingResponse['data'] : [];
     $existingSettings = $existingRows[0] ?? [];
     $wasWhatsappEnabled = filter_var($existingSettings['redirect_whatsapp'] ?? false, FILTER_VALIDATE_BOOLEAN);
     $whatsappBillingUpdate = [];

@@ -723,6 +723,8 @@ tr.editing .faq-edit-btn{display:none}
 .split{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;min-width:0}
 .empty{padding:28px;text-align:center;color:var(--muted)}
 .notice{padding:14px 16px;border-radius:14px;background:rgba(99,102,241,.1);border:1px solid rgba(99,102,241,.18);color:var(--ink);line-height:1.6}
+.critical-save-note{margin-top:14px;padding:13px 15px;border-radius:12px;border:1px solid rgba(220,38,38,.35);background:rgba(254,226,226,.75);color:#b91c1c;font-size:17px;font-weight:800;line-height:1.45}
+body.dark .critical-save-note{background:rgba(127,29,29,.22);border-color:rgba(248,113,113,.38);color:#fecaca}
 .analytics-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
 .analytics-grid.two{grid-template-columns:repeat(2,minmax(0,1fr))}
 .filter-bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
@@ -1543,6 +1545,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
             <div>
               <h3>Lead Generation Setup</h3>
               <p class="muted">Control what customer information the chatbot asks for before handing over a lead.</p>
+              <div class="critical-save-note">IMPORTANT: Before leaving this tab, please save your changes using the Save lead setup button at the bottom of this page.</div>
             </div>
           </div>
           <div class="section-body">
@@ -1722,7 +1725,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
               <div class="pricing-head"><div><span class="eyebrow">Starter</span><h3>Starter Plan</h3></div><span class="tag">Small</span></div>
               <div class="price">₹199<small>/month</small></div>
               <div class="feature-list"><span>100 FAQs</span><span>Email OTP support</span><span>Mobile OTP service</span><span>WhatsApp Redirect add-on</span><span>Wallet recharge enabled</span></div>
-              <div class="wallet-table"><table><thead><tr><th>Wallet action</th><th>Charge</th></tr></thead><tbody><tr><td>Fresh Email Lead</td><td>₹5</td></tr><tr><td>Repeat Email Lead</td><td>₹1</td></tr><tr><td>Email Lead after 30 days</td><td>₹5</td></tr><tr><td>Fresh Mobile OTP Lead</td><td>₹10</td></tr><tr><td>Repeat Mobile OTP</td><td>₹2</td></tr><tr><td>WhatsApp Redirect</td><td>Add-on ₹99, refundable within 1 hour</td></tr></tbody></table></div>
+              <div class="wallet-table"><table><thead><tr><th>Wallet action</th><th>Charge</th></tr></thead><tbody><tr><td>Fresh Email Lead</td><td>₹5</td></tr><tr><td>Repeat Email Lead</td><td>₹1</td></tr><tr><td>Email Lead after 30 days</td><td>₹5</td></tr><tr><td>Fresh Mobile OTP Lead</td><td>₹10</td></tr><tr><td>Repeat Mobile OTP</td><td>₹2</td></tr><tr><td>Mobile Lead after 30 days</td><td>₹10</td></tr><tr><td>WhatsApp Redirect</td><td>Add-on ₹99, refundable within 1 hour</td></tr></tbody></table></div>
               <button class="pill-btn billing-plan-btn" type="button" data-plan-id="starter">Subscribe Starter</button>
               <small class="muted">Best for portfolios, coaches, and small businesses.</small>
             </div>
@@ -1883,6 +1886,15 @@ const leadPaidFeatures = <?php echo json_encode([
   "email_otp" => $canUseEmailOtp,
   "mobile_otp" => $canUseMobileOtp,
   "whatsapp_redirect" => $canUseWhatsappRedirect
+]); ?>;
+const leadWalletCharges = <?php echo json_encode([
+  "fresh_email_lead" => billing_wallet_charge_paise($activePlanId, "fresh_email_lead"),
+  "repeat_email_lead" => billing_wallet_charge_paise($activePlanId, "repeat_email_lead"),
+  "reactivated_email_lead" => billing_wallet_charge_paise($activePlanId, "reactivated_email_lead"),
+  "fresh_mobile_lead" => billing_wallet_charge_paise($activePlanId, "fresh_mobile_lead"),
+  "repeat_mobile_lead" => billing_wallet_charge_paise($activePlanId, "repeat_mobile_lead"),
+  "reactivated_mobile_lead" => billing_wallet_charge_paise($activePlanId, "reactivated_mobile_lead"),
+  "whatsapp_redirect_addon" => billing_wallet_charge_paise($activePlanId, "whatsapp_redirect_addon")
 ]); ?>;
 const analyticsReport = <?php echo json_encode([
   "bot_name" => $botName,
@@ -2297,6 +2309,25 @@ function updateLeadGenerationUI() {
   leadServiceOptions?.querySelectorAll("input, button").forEach(control => {
     control.disabled = !enabled;
   });
+  syncOtpCollectionLocks();
+}
+
+function syncOtpCollectionLocks() {
+  const enabled = !!leadGenerationEnabled?.checked;
+  if (leadEmailOtpToggle?.checked && leadCollectEmailToggle) {
+    leadCollectEmailToggle.checked = false;
+  }
+  if (leadMobileOtpToggle?.checked && leadCollectMobileToggle) {
+    leadCollectMobileToggle.checked = false;
+  }
+  if (leadCollectEmailToggle) {
+    leadCollectEmailToggle.disabled = !enabled || !!leadEmailOtpToggle?.checked;
+    leadCollectEmailToggle.title = leadEmailOtpToggle?.checked ? "Turn off Email OTP before collecting email without OTP." : "";
+  }
+  if (leadCollectMobileToggle) {
+    leadCollectMobileToggle.disabled = !enabled || !!leadMobileOtpToggle?.checked;
+    leadCollectMobileToggle.title = leadMobileOtpToggle?.checked ? "Turn off Mobile OTP before collecting mobile without OTP." : "";
+  }
 }
 
 leadGenerationEnabled?.addEventListener("change", () => {
@@ -2312,15 +2343,33 @@ function requireLeadPaidFeature(feature, control, message) {
   return false;
 }
 
+function walletChargeText(key) {
+  const paise = Number(leadWalletCharges[key] || 0);
+  if (!paise) return "included";
+  return `₹${Number((paise / 100).toFixed(2)).toString()}`;
+}
+
+function paidServiceAlert(message) {
+  alert(message);
+}
+
 leadEmailOtpToggle?.addEventListener("change", () => {
   if (!requireLeadPaidFeature("email_otp", leadEmailOtpToggle, "Email OTP requires an active subscription")) return;
-  if (leadCollectEmailToggle) leadCollectEmailToggle.checked = true;
+  if (leadCollectEmailToggle) leadCollectEmailToggle.checked = false;
+  syncOtpCollectionLocks();
+  if (leadEmailOtpToggle.checked) {
+    paidServiceAlert(`Email OTP service is ON. Wallet deductions will apply after successful verification: fresh email lead ${walletChargeText("fresh_email_lead")}, repeat email lead ${walletChargeText("repeat_email_lead")}, email lead after 30 days ${walletChargeText("reactivated_email_lead")}.`);
+  }
   if (!leadEmailOtpToggle.checked) showToast("Email will be saved without OTP");
 });
 
 leadMobileOtpToggle?.addEventListener("change", () => {
   if (!requireLeadPaidFeature("mobile_otp", leadMobileOtpToggle, "Mobile OTP requires an active paid plan")) return;
-  if (leadCollectMobileToggle) leadCollectMobileToggle.checked = true;
+  if (leadCollectMobileToggle) leadCollectMobileToggle.checked = false;
+  syncOtpCollectionLocks();
+  if (leadMobileOtpToggle.checked) {
+    paidServiceAlert(`Mobile OTP service is ON. Wallet deductions will apply after successful verification: fresh mobile lead ${walletChargeText("fresh_mobile_lead")}, repeat mobile OTP ${walletChargeText("repeat_mobile_lead")}, mobile lead after 30 days ${walletChargeText("reactivated_mobile_lead")}.`);
+  }
   if (!leadMobileOtpToggle.checked) showToast("Mobile number will be saved without OTP");
 });
 
@@ -2333,6 +2382,10 @@ whatsappLeadNumber?.addEventListener("blur", () => validateWhatsappLeadNumber(fa
 
 whatsappLeadToggle?.addEventListener("change", () => {
   if (!requireLeadPaidFeature("whatsapp_redirect", whatsappLeadToggle, "WhatsApp Redirect requires an active paid plan")) return;
+  if (whatsappLeadToggle.checked) {
+    const charge = walletChargeText("whatsapp_redirect_addon");
+    paidServiceAlert(charge === "included" ? "WhatsApp redirection service is ON. This service is included in your current plan." : `WhatsApp redirection service is ON. ${charge} will be deducted from your wallet when you save. If you turn it off within 1 hour, the amount will be refunded to your wallet.`);
+  }
   validateWhatsappLeadNumber(false);
 });
 

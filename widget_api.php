@@ -145,7 +145,12 @@ function widget_charge_mobile_otp_lead(string $customerId, array $lead): array {
         $rowPhone = preg_replace('/\D+/', '', (string)($row['phone_number'] ?? ''));
         return (string)($row['id'] ?? '') !== $leadId && $rowPhone === $leadPhone && !empty($row['mobile_otp_verified']);
     }));
-    $chargeKey = empty($olderVerified) ? 'fresh_mobile_lead' : 'repeat_mobile_lead';
+    $chargeKey = 'fresh_mobile_lead';
+    if (!empty($olderVerified)) {
+        $last = end($olderVerified);
+        $lastCreated = strtotime((string)($last['created_at'] ?? '')) ?: 0;
+        $chargeKey = ($lastCreated && (time() - $lastCreated) > 30 * 86400) ? 'reactivated_mobile_lead' : 'repeat_mobile_lead';
+    }
     $amountPaise = billing_wallet_charge_paise($planId, $chargeKey);
     $charge = widget_debit_wallet($email, $customerId, $amountPaise, "Mobile OTP verification - " . str_replace('_', ' ', $chargeKey), "lead_mobile_otp", $leadId, [
         "plan_id" => $planId,
