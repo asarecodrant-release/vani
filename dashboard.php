@@ -727,6 +727,18 @@ body.dark .funnel-step{background:rgba(15,23,42,.38)}
 .funnel-step strong{font-size:20px}
 .funnel-step span{font-size:12px;color:var(--muted);font-weight:700}
 .report-actions{display:flex;gap:10px;flex-wrap:wrap}
+.pricing-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:18px}
+.pricing-card{padding:18px;display:grid;gap:14px;align-content:start}
+.pricing-card.featured{border-color:rgba(34,197,94,.45);box-shadow:0 16px 36px rgba(34,197,94,.12)}
+.pricing-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.price{font-size:30px;font-weight:800}
+.price small{font-size:13px;color:var(--muted);font-weight:700}
+.feature-list{display:grid;gap:8px;color:var(--ink);font-size:14px}
+.feature-list span:before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:#22c55e;margin-right:8px}
+.wallet-table{min-width:0}
+.wallet-table table{min-width:0}
+.wallet-table th,.wallet-table td{padding:9px 0;font-size:13px}
+.wallet-table th:last-child,.wallet-table td:last-child{text-align:right}
 .outside-faq-list{display:grid;gap:14px}
 .outside-faq-card{padding:16px;border:1px solid var(--line);border-radius:18px;background:rgba(255,255,255,.42);display:grid;gap:14px}
 body.dark .outside-faq-card{background:rgba(15,23,42,.44)}
@@ -835,7 +847,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
   .section-head{align-items:flex-start;flex-direction:column;padding:16px 16px 0}
   .section-body{padding:16px}
   .overview-hero h2{font-size:28px}
-  .metrics,.quick-actions,.form-grid,.outside-faq-grid,.lead-grid,.analytics-grid,.analytics-grid.two,.funnel{grid-template-columns:1fr}
+  .metrics,.quick-actions,.form-grid,.outside-faq-grid,.lead-grid,.analytics-grid,.analytics-grid.two,.funnel,.pricing-grid{grid-template-columns:1fr}
   .panel-actions{justify-content:stretch}
   .panel-actions .pill-btn,.panel-actions .ghost-btn,.panel-actions .danger-btn{width:100%}
   .user-menu{justify-content:space-between}
@@ -1767,14 +1779,68 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
       <section class="tab-panel" id="billing">
         <div class="panel section-body">
           <span class="eyebrow">Billing</span>
-          <h2 style="margin:8px 0 10px">Free Plan</h2>
-          <p class="muted">Free Plan - <?php echo h($freeFaqLimit); ?> FAQs limit. Upgrade options can be added here when paid plans are ready.</p>
+          <h2 style="margin:8px 0 10px">Subscription + Wallet Billing</h2>
+          <p class="muted">Customers pay a monthly platform fee, then usage charges are deducted from wallet balance for OTPs, fresh leads, returning leads, WhatsApp redirects, and extra FAQs.</p>
+
           <div class="metrics" style="margin-top:18px">
-            <div class="panel metric"><span>Plan</span><strong>Free</strong><small>No credit card required.</small></div>
-            <div class="panel metric"><span>FAQ usage</span><strong><?php echo h($faqCount); ?>/<?php echo h($freeFaqLimit); ?></strong><small><?php echo h(max(0, $freeFaqLimit - $faqCount)); ?> FAQs remaining.</small></div>
-            <div class="panel metric"><span>Bot type</span><strong>Free</strong><small>From customer_bot_type.</small></div>
-            <div class="panel metric"><span>Lead email notifications</span><strong>Available</strong><small>Configure email lead alerts in Lead Generation Setup.</small></div>
-            <div class="panel metric"><span>Upgrade</span><strong>Future</strong><small>Ready for paid tiers.</small></div>
+            <div class="panel metric"><span>Current plan</span><strong>Free</strong><small><?php echo h($faqCount); ?>/<?php echo h($freeFaqLimit); ?> free FAQs used.</small></div>
+            <div class="panel metric"><span>Wallet</span><strong>₹0</strong><small>Recharge flow can connect to payment gateway.</small></div>
+            <div class="panel metric"><span>Billing model</span><strong>Hybrid</strong><small>Monthly subscription plus usage wallet.</small></div>
+            <div class="panel metric"><span>Best default</span><strong>Growth</strong><small>Most local businesses will fit this tier.</small></div>
+          </div>
+
+          <div class="split" style="margin-top:18px">
+            <div class="notice"><strong>Monthly subscription:</strong><br>Fixed platform fee for dashboard access, FAQ limits, analytics, and plan features.</div>
+            <div class="notice"><strong>Wallet usage:</strong><br>Variable charges deduct automatically so heavy users pay more while small businesses can start cheaply.</div>
+          </div>
+
+          <div class="pricing-grid">
+            <div class="panel pricing-card">
+              <div class="pricing-head"><div><span class="eyebrow">Starter</span><h3>Starter Plan</h3></div><span class="tag">Small</span></div>
+              <div class="price">₹199<small>/month</small></div>
+              <div class="feature-list"><span>100 FAQs</span><span>Email OTP support</span><span>Basic chatbot</span><span>Wallet recharge enabled</span></div>
+              <div class="wallet-table"><table><thead><tr><th>Wallet action</th><th>Charge</th></tr></thead><tbody><tr><td>Fresh Email Lead</td><td>₹5</td></tr><tr><td>Repeat Email Lead</td><td>₹1</td></tr><tr><td>Email Lead after 30 days</td><td>₹5</td></tr><tr><td>WhatsApp Redirect</td><td>Add-on ₹99</td></tr></tbody></table></div>
+              <small class="muted">Best for portfolios, coaches, and small businesses.</small>
+            </div>
+
+            <div class="panel pricing-card featured">
+              <div class="pricing-head"><div><span class="eyebrow">Growth</span><h3>Growth Plan</h3></div><span class="tag good">Popular</span></div>
+              <div class="price">₹499<small>/month</small></div>
+              <div class="feature-list"><span>300 FAQs</span><span>Email OTP</span><span>Mobile OTP</span><span>WhatsApp Redirect included</span><span>Lead dashboard</span></div>
+              <div class="wallet-table"><table><thead><tr><th>Wallet action</th><th>Charge</th></tr></thead><tbody><tr><td>Fresh Email Lead</td><td>₹4</td></tr><tr><td>Repeat Email Lead</td><td>₹1</td></tr><tr><td>Fresh Mobile Lead</td><td>₹8</td></tr><tr><td>Repeat Mobile Lead</td><td>₹2</td></tr><tr><td>WhatsApp Redirect</td><td>Included</td></tr></tbody></table></div>
+              <small class="muted">Best for local businesses, agencies, and service providers.</small>
+            </div>
+
+            <div class="panel pricing-card">
+              <div class="pricing-head"><div><span class="eyebrow">Business</span><h3>Business Plan</h3></div><span class="tag">Scale</span></div>
+              <div class="price">₹999<small>/month</small></div>
+              <div class="feature-list"><span>1000 FAQs</span><span>Email + Mobile combined verification</span><span>WhatsApp Redirect</span><span>Analytics</span><span>CSV Export</span></div>
+              <div class="wallet-table"><table><thead><tr><th>Wallet action</th><th>Charge</th></tr></thead><tbody><tr><td>Fresh Combined Lead</td><td>₹10</td></tr><tr><td>Repeat Combined Lead</td><td>₹3</td></tr><tr><td>Re-activated Lead after 30 days</td><td>₹10</td></tr></tbody></table></div>
+              <small class="muted">Best for real estate, education institutes, and marketing agencies.</small>
+            </div>
+
+            <div class="panel pricing-card">
+              <div class="pricing-head"><div><span class="eyebrow">Automation</span><h3>Pro Automation Plan</h3></div><span class="tag">Advanced</span></div>
+              <div class="price">₹2499<small>/month</small></div>
+              <div class="feature-list"><span>Unlimited FAQs</span><span>AI chatbot</span><span>WhatsApp redirect</span><span>API access</span><span>Automation workflows</span><span>Webhook support</span></div>
+              <div class="wallet-table"><table><thead><tr><th>Wallet action</th><th>Charge</th></tr></thead><tbody><tr><td>Fresh Email Lead</td><td>₹3</td></tr><tr><td>Fresh Mobile Lead</td><td>₹6</td></tr><tr><td>Fresh Combined Lead</td><td>₹8</td></tr><tr><td>Repeat Leads</td><td>₹1-₹2</td></tr></tbody></table></div>
+              <small class="muted">Best for SaaS businesses, automation agencies, and lead generation companies.</small>
+            </div>
+
+            <div class="panel pricing-card">
+              <div class="pricing-head"><div><span class="eyebrow">Enterprise</span><h3>Enterprise Plan</h3></div><span class="tag">Custom</span></div>
+              <div class="price">₹4999+<small>/month</small></div>
+              <div class="feature-list"><span>White-label platform</span><span>Custom branding</span><span>Dedicated support</span><span>Custom API</span><span>Multi-user access</span><span>CRM integration</span></div>
+              <div class="notice"><strong>Wallet charges:</strong><br>Negotiated custom rates based on lead volume, OTP volume, and integration needs.</div>
+              <small class="muted">Best for enterprises, large agencies, and franchise businesses.</small>
+            </div>
+
+            <div class="panel pricing-card">
+              <div class="pricing-head"><div><span class="eyebrow">Wallet Rules</span><h3>Usage Deductions</h3></div></div>
+              <div class="feature-list"><span>OTP verification charges are variable</span><span>Fresh leads cost more than returning leads</span><span>Repeat leads after 30 days can be reactivated</span><span>Extra FAQs can deduct from wallet when plan limit is crossed</span></div>
+              <button class="pill-btn" type="button" data-save-note="Wallet recharge">Recharge wallet</button>
+              <button class="ghost-btn" type="button" data-save-note="Plan upgrade">Upgrade plan</button>
+            </div>
           </div>
         </div>
       </section>
