@@ -1825,9 +1825,14 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
 
       <section class="tab-panel" id="billing">
         <div class="panel section-body">
-          <span class="eyebrow">Billing</span>
-          <h2 style="margin:8px 0 10px">Wallet Transactions</h2>
-          <p class="muted">Complete summary of wallet credits and deductions for subscription payments, OTP verifications, leads, WhatsApp redirects, and other paid usage.</p>
+          <div class="section-head" style="padding:0">
+            <div>
+              <span class="eyebrow">Billing</span>
+              <h2 style="margin:8px 0 10px">Wallet Transactions</h2>
+              <p class="muted">Complete summary of wallet credits and deductions for subscription payments, OTP verifications, leads, WhatsApp redirects, and other paid usage.</p>
+            </div>
+            <button class="ghost-btn" type="button" id="refreshBillingBtn">Refresh Billing</button>
+          </div>
 
           <div class="metrics" style="margin-top:18px">
             <div class="panel metric"><span>Wallet balance</span><strong><?php echo h(billing_rupees($billingWalletPaise)); ?></strong><small>Available for paid usage.</small></div>
@@ -1996,6 +2001,32 @@ function openTab(id, updateHash = true) {
 }
 
 tabs.forEach(tab => tab.addEventListener("click", () => openTab(tab.dataset.tab)));
+
+function bindBillingRefresh() {
+  document.getElementById("refreshBillingBtn")?.addEventListener("click", async event => {
+    const button = event.currentTarget;
+    const originalText = button.textContent;
+    button.disabled = true;
+    button.textContent = "Refreshing...";
+    try {
+      const response = await fetch(window.location.pathname + window.location.search, {cache: "no-store"});
+      const html = await response.text();
+      const doc = new DOMParser().parseFromString(html, "text/html");
+      const freshBilling = doc.getElementById("billing");
+      const currentBilling = document.getElementById("billing");
+      if (!freshBilling || !currentBilling) throw new Error("Billing tab not found");
+      currentBilling.innerHTML = freshBilling.innerHTML;
+      bindBillingRefresh();
+      showToast("Billing refreshed");
+    } catch (error) {
+      button.disabled = false;
+      button.textContent = originalText;
+      showToast("Billing could not be refreshed");
+    }
+  });
+}
+
+bindBillingRefresh();
 
 function openAnalyticsTab(id, updateHash = true) {
   let target = document.getElementById(id) ? id : "analytics-overview";
@@ -2421,7 +2452,7 @@ whatsappLeadToggle?.addEventListener("change", () => {
   if (!requireLeadPaidFeature("whatsapp_redirect", whatsappLeadToggle, "WhatsApp Redirect requires an active paid plan")) return;
   if (whatsappLeadToggle.checked) {
     const charge = walletChargeText("whatsapp_redirect_addon");
-    paidServiceAlert(charge === "included" ? "WhatsApp redirection service is ON. This service is included in your current plan." : `WhatsApp redirection service is ON. ${charge} will be deducted from your wallet when you save. This add-on is valid for 30 days. If you turn it off within 1 hour, the amount will be refunded to your wallet.`);
+    paidServiceAlert(charge === "included" ? "WhatsApp redirection service is ON. This service is included in your current plan and will be saved automatically." : `WhatsApp redirection service is ON. ${charge} will be deducted from your wallet automatically after this change is saved. This add-on is valid for 30 days. If you turn it off within 1 hour, the amount will be refunded to your wallet.`);
   }
   validateWhatsappLeadNumber(false);
 });
@@ -2432,7 +2463,27 @@ leadNotificationEmail?.addEventListener("blur", () => validateLeadNotificationEm
 
 leadEmailNotifyToggle?.addEventListener("change", () => validateLeadNotificationEmail(false));
 
-document.getElementById("saveLeadSetupBtn")?.addEventListener("click", async event => {
+let leadSetupSaveTimer = null;
+let leadSetupSaving = false;
+let leadSetupSaveQueued = false;
+
+function leadSetupPayload() {
+  return {
+    customer_id: document.getElementById("settingsCustomerId")?.value || "",
+    is_enabled: !!leadGenerationEnabled?.checked,
+    collect_location: !!leadCollectLocationToggle?.checked,
+    collect_email: !!leadCollectEmailToggle?.checked,
+    collect_mobile: !!leadCollectMobileToggle?.checked,
+    verify_email_otp: !!leadEmailOtpToggle?.checked,
+    notify_lead_by_email: !!leadEmailNotifyToggle?.checked,
+    notification_email: leadNotificationEmail?.value.trim() || "",
+    redirect_whatsapp: !!whatsappLeadToggle?.checked,
+    whatsapp_mobile_number: whatsappLeadNumber?.value.trim() || "",
+    verify_mobile_otp: !!leadMobileOtpToggle?.checked
+  };
+}
+
+async function saveLeadSetup({button = null, live = false} = {}) {
   if (leadEmailOtpToggle?.checked && !requireLeadPaidFeature("email_otp", leadEmailOtpToggle, "Email OTP requires an active subscription")) return;
   if (leadMobileOtpToggle?.checked && !requireLeadPaidFeature("mobile_otp", leadMobileOtpToggle, "Mobile OTP requires an active paid plan")) return;
   if (whatsappLeadToggle?.checked && !requireLeadPaidFeature("whatsapp_redirect", whatsappLeadToggle, "WhatsApp Redirect requires an active paid plan")) return;
@@ -2445,31 +2496,40 @@ document.getElementById("saveLeadSetupBtn")?.addEventListener("click", async eve
     return;
   }
 
-  const button = event.currentTarget;
-  button.disabled = true;
-  button.textContent = "Saving...";
+  if (leadSetupSaving) {
+    leadSetupSaveQueued = true;
+    return;
+  }
+  leadSetupSaving = true;
+  const originalText = button?.textContent || "";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Saving...";
+  } else if (live) {
+    showToast("Saving lead setup...");
+  }
 
-  const response = await fetch("/api.php?action=save_lead_generation_settings", {
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({
-      customer_id: document.getElementById("settingsCustomerId")?.value || "",
-      is_enabled: !!leadGenerationEnabled?.checked,
-      collect_location: !!leadCollectLocationToggle?.checked,
-      collect_email: !!leadCollectEmailToggle?.checked,
-      collect_mobile: !!leadCollectMobileToggle?.checked,
-      verify_email_otp: !!leadEmailOtpToggle?.checked,
-      notify_lead_by_email: !!leadEmailNotifyToggle?.checked,
-      notification_email: leadNotificationEmail?.value.trim() || "",
-      redirect_whatsapp: !!whatsappLeadToggle?.checked,
-      whatsapp_mobile_number: whatsappLeadNumber?.value.trim() || "",
-      verify_mobile_otp: !!leadMobileOtpToggle?.checked
-    })
-  });
-
-  const data = await response.json().catch(() => ({}));
-  button.disabled = false;
-  button.textContent = "Save lead setup";
+  let data = {};
+  try {
+    const response = await fetch("/api.php?action=save_lead_generation_settings", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(leadSetupPayload())
+    });
+    data = await response.json().catch(() => ({}));
+  } catch (error) {
+    data = {success: false, message: "Lead generation settings could not be saved"};
+  } finally {
+    leadSetupSaving = false;
+    if (button) {
+      button.disabled = false;
+      button.textContent = originalText || "Save lead setup";
+    }
+    if (leadSetupSaveQueued) {
+      leadSetupSaveQueued = false;
+      scheduleLeadSetupSave();
+    }
+  }
 
   if (!data.success) {
     if (data.whatsapp_redirect_locked && whatsappLeadToggle) {
@@ -2488,7 +2548,20 @@ document.getElementById("saveLeadSetupBtn")?.addEventListener("click", async eve
     return;
   }
 
-  showToast("Lead generation settings saved");
+  showToast(live ? "Lead setup saved automatically" : "Lead generation settings saved");
+}
+
+function scheduleLeadSetupSave() {
+  clearTimeout(leadSetupSaveTimer);
+  leadSetupSaveTimer = setTimeout(() => saveLeadSetup({live: true}), 250);
+}
+
+document.getElementById("saveLeadSetupBtn")?.addEventListener("click", event => {
+  saveLeadSetup({button: event.currentTarget});
+});
+
+document.querySelectorAll(".lead-toggle").forEach(toggle => {
+  toggle.addEventListener("change", scheduleLeadSetupSave);
 });
 
 updateLeadGenerationUI();

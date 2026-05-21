@@ -819,14 +819,14 @@ if ($action === "save_lead_generation_settings") {
                 exit;
             }
             $chargedAt = gmdate('Y-m-d\TH:i:s\Z');
-            $whatsappBillingUpdate = [
+            $whatsappBillingUpdate = array_merge($whatsappBillingUpdate, [
                 "whatsapp_redirect_charged_at" => $chargedAt,
                 "whatsapp_redirect_refund_deadline" => gmdate('Y-m-d\TH:i:s\Z', time() + 3600),
                 "whatsapp_redirect_period_end" => gmdate('Y-m-d\TH:i:s\Z', time() + 30 * 86400),
                 "whatsapp_redirect_charge_txn_id" => $charge['transaction']['id'] ?? null,
                 "whatsapp_redirect_charge_amount_paise" => $amountPaise,
                 "whatsapp_redirect_refunded_at" => null
-            ];
+            ]);
             $walletActivity = "whatsapp_redirect_debit";
         }
     } elseif (!$redirect_whatsapp && $wasWhatsappEnabled) {
