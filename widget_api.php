@@ -13,6 +13,7 @@ ini_set('display_errors', 0);
 error_reporting(E_ALL);
 
 require_once __DIR__ . '/widget_core.php';
+require_once __DIR__ . '/billing.php';
 
 $action = $_GET['action'] ?? '';
 $MSG91_WIDGET_ID = $_ENV['MSG91_WIDGET_ID'] ?? getenv('MSG91_WIDGET_ID') ?: '';
@@ -34,9 +35,22 @@ function widget_get_settings(string $customerId): array {
 function widget_get_signup(string $customerId): array {
     $rows = widget_safe_rows(supabase(
         "GET",
-        "chatbot_signups?select=website_name,theme_color&customer_id=eq." . urlencode($customerId) . "&limit=1"
+        "chatbot_signups?select=website_name,theme_color,email&customer_id=eq." . urlencode($customerId) . "&limit=1"
     ));
     return $rows[0] ?? [];
+}
+
+function widget_billing_plan_for_customer(string $customerId): string {
+    $signup = widget_get_signup($customerId);
+    $email = trim((string)($signup['email'] ?? ''));
+    if ($email === '') {
+        return 'free';
+    }
+    $rows = widget_safe_rows(supabase(
+        "GET",
+        "billing_accounts?select=*&email=eq." . urlencode($email) . "&limit=1"
+    ));
+    return billing_active_plan_from_account($rows[0] ?? []);
 }
 
 function widget_get_lead_settings(string $customerId): array {
@@ -483,6 +497,7 @@ if ($action === "get_widget_config" || $action === "get_theme") {
     $settings = widget_get_settings($customerId);
     $signup = widget_get_signup($customerId);
     $leadSettings = widget_get_lead_settings($customerId);
+    $activePlan = widget_billing_plan_for_customer($customerId);
     $access = widget_access_result($settings, $signup, widget_request_source_url());
     if (($settings['verification_status'] ?? '') !== $access['status']) {
         supabase(
@@ -503,6 +518,12 @@ if ($action === "get_widget_config" || $action === "get_theme") {
         "position" => $settings['position'] ?? 'right',
         "language" => $settings['language'] ?? 'English',
         "is_active" => widget_bool($settings['is_active'] ?? true, true) && $access['allowed'],
+        "billing" => [
+            "active_plan" => $activePlan,
+            "email_otp" => billing_feature_enabled($activePlan, 'email_otp'),
+            "mobile_otp" => billing_feature_enabled($activePlan, 'mobile_otp'),
+            "whatsapp_redirect" => billing_feature_enabled($activePlan, 'whatsapp_redirect')
+        ],
         "website_verification_enabled" => widget_bool($settings['website_verification_enabled'] ?? false),
         "allowed_domains_enabled" => widget_bool($settings['allowed_domains_enabled'] ?? false),
         "allowed_domains" => $settings['allowed_domains'] ?? '',
@@ -514,11 +535,11 @@ if ($action === "get_widget_config" || $action === "get_theme") {
             "collect_location" => widget_bool($leadSettings['collect_location'] ?? false),
             "collect_email" => widget_bool($leadSettings['collect_email'] ?? false),
             "collect_mobile" => widget_bool($leadSettings['collect_mobile'] ?? false),
-            "verify_email_otp" => widget_bool($leadSettings['verify_email_otp'] ?? false),
+            "verify_email_otp" => widget_bool($leadSettings['verify_email_otp'] ?? false) && billing_feature_enabled($activePlan, 'email_otp'),
             "notify_lead_by_email" => widget_bool($leadSettings['notify_lead_by_email'] ?? false),
-            "redirect_whatsapp" => widget_bool($leadSettings['redirect_whatsapp'] ?? false),
+            "redirect_whatsapp" => widget_bool($leadSettings['redirect_whatsapp'] ?? false) && billing_feature_enabled($activePlan, 'whatsapp_redirect'),
             "whatsapp_mobile_number" => $leadSettings['whatsapp_mobile_number'] ?? '',
-            "verify_mobile_otp" => widget_bool($leadSettings['verify_mobile_otp'] ?? false),
+            "verify_mobile_otp" => widget_bool($leadSettings['verify_mobile_otp'] ?? false) && billing_feature_enabled($activePlan, 'mobile_otp'),
             "service_tier" => $leadSettings['service_tier'] ?? 'free'
         ],
         "msg91_widget" => [
@@ -728,6 +749,9 @@ if ($action === "create_lead_send_email_otp") {
     $userId = trim((string)($data['user_id'] ?? ''));
     $suppressNotification = widget_bool($data['suppress_notification'] ?? false);
     if (!$customerId || !$userId || !$toEmail) widget_json_response(["success" => false, "message" => "Missing customer_id, user_id or email"], 400);
+    if (!billing_feature_enabled(widget_billing_plan_for_customer($customerId), 'email_otp')) {
+        widget_json_response(["success" => false, "requires_premium" => true, "message" => "Email OTP requires an active premium plan."], 403);
+    }
 
     require_once __DIR__ . '/email.php';
 
@@ -788,6 +812,9 @@ if ($action === "verify_lead_mobile_msg91") {
 
     if (!$customerId || !$userId || !$accessToken) {
         widget_json_response(["success" => false, "message" => "Missing mobile verification data"], 400);
+    }
+    if (!billing_feature_enabled(widget_billing_plan_for_customer($customerId), 'mobile_otp')) {
+        widget_json_response(["success" => false, "requires_premium" => true, "message" => "Mobile OTP requires Growth plan or higher."], 403);
     }
 
     $lookup = widget_msg91_verify_access_token($accessToken);

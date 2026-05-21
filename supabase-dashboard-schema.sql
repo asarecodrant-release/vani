@@ -172,6 +172,50 @@ create table if not exists public.lead_generation_leads (
   constraint lead_generation_leads_customer_user_unique unique (customer_id, user_id)
 );
 
+create table if not exists public.billing_accounts (
+  id bigserial primary key,
+  email text not null unique,
+  wallet_balance_paise integer not null default 0,
+  current_plan text not null default 'free',
+  subscription_status text not null default 'free' check (subscription_status in ('free', 'active', 'expired', 'cancelled')),
+  current_period_start timestamptz,
+  current_period_end timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.billing_orders (
+  id bigserial primary key,
+  email text not null,
+  customer_id uuid references public.chatbot_signups(customer_id) on delete set null,
+  plan_id text not null,
+  order_type text not null default 'subscription' check (order_type in ('subscription', 'wallet')),
+  amount_paise integer not null,
+  currency text not null default 'INR',
+  status text not null default 'created' check (status in ('created', 'paid', 'failed')),
+  razorpay_order_id text unique,
+  razorpay_payment_id text,
+  razorpay_signature text,
+  receipt text,
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  paid_at timestamptz
+);
+
+create table if not exists public.wallet_transactions (
+  id bigserial primary key,
+  email text not null,
+  customer_id uuid references public.chatbot_signups(customer_id) on delete set null,
+  transaction_type text not null check (transaction_type in ('credit', 'debit')),
+  amount_paise integer not null,
+  balance_after_paise integer not null,
+  description text,
+  reference_type text,
+  reference_id text,
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
 alter table public.faq_questions
   add column if not exists category text default 'General';
 
@@ -216,6 +260,15 @@ create index if not exists idx_lead_generation_leads_email
 create index if not exists idx_lead_generation_leads_phone_number
   on public.lead_generation_leads(phone_number);
 
+create index if not exists idx_billing_accounts_email
+  on public.billing_accounts(email);
+
+create index if not exists idx_billing_orders_email_created_at
+  on public.billing_orders(email, created_at desc);
+
+create index if not exists idx_wallet_transactions_email_created_at
+  on public.wallet_transactions(email, created_at desc);
+
 create or replace function public.set_updated_at()
 returns trigger
 language plpgsql
@@ -244,6 +297,12 @@ before update on public.lead_generation_settings
 for each row
 execute function public.set_updated_at();
 
+drop trigger if exists set_billing_accounts_updated_at on public.billing_accounts;
+create trigger set_billing_accounts_updated_at
+before update on public.billing_accounts
+for each row
+execute function public.set_updated_at();
+
 drop trigger if exists set_chatbot_sessions_updated_at on public.chatbot_sessions;
 create trigger set_chatbot_sessions_updated_at
 before update on public.chatbot_sessions
@@ -256,6 +315,9 @@ alter table public.chatbot_sessions enable row level security;
 alter table public.customer_profiles enable row level security;
 alter table public.lead_generation_settings enable row level security;
 alter table public.lead_generation_leads enable row level security;
+alter table public.billing_accounts enable row level security;
+alter table public.billing_orders enable row level security;
+alter table public.wallet_transactions enable row level security;
 
 drop policy if exists "dashboard settings readable" on public.chatbot_settings;
 create policy "dashboard settings readable"
@@ -388,6 +450,64 @@ for delete
 to anon, authenticated
 using (true);
 
+drop policy if exists "billing accounts readable" on public.billing_accounts;
+create policy "billing accounts readable"
+on public.billing_accounts
+for select
+to anon, authenticated
+using (true);
+
+drop policy if exists "billing accounts insertable" on public.billing_accounts;
+create policy "billing accounts insertable"
+on public.billing_accounts
+for insert
+to anon, authenticated
+with check (true);
+
+drop policy if exists "billing accounts updatable" on public.billing_accounts;
+create policy "billing accounts updatable"
+on public.billing_accounts
+for update
+to anon, authenticated
+using (true)
+with check (true);
+
+drop policy if exists "billing orders readable" on public.billing_orders;
+create policy "billing orders readable"
+on public.billing_orders
+for select
+to anon, authenticated
+using (true);
+
+drop policy if exists "billing orders insertable" on public.billing_orders;
+create policy "billing orders insertable"
+on public.billing_orders
+for insert
+to anon, authenticated
+with check (true);
+
+drop policy if exists "billing orders updatable" on public.billing_orders;
+create policy "billing orders updatable"
+on public.billing_orders
+for update
+to anon, authenticated
+using (true)
+with check (true);
+
+drop policy if exists "wallet transactions readable" on public.wallet_transactions;
+create policy "wallet transactions readable"
+on public.wallet_transactions
+for select
+to anon, authenticated
+using (true);
+
+drop policy if exists "wallet transactions insertable" on public.wallet_transactions;
+create policy "wallet transactions insertable"
+on public.wallet_transactions
+for insert
+to anon, authenticated
+with check (true);
+
 drop policy if exists "customers password reset from dashboard" on public.customers;
 create policy "customers password reset from dashboard"
 on public.customers
@@ -432,6 +552,9 @@ grant select, insert, update, delete on public.customer_profiles to anon, authen
 grant select, insert, update, delete on public.faq_questions to anon, authenticated;
 grant select, insert, update, delete on public.lead_generation_settings to anon, authenticated;
 grant select, insert, update, delete on public.lead_generation_leads to anon, authenticated;
+grant select, insert, update, delete on public.billing_accounts to anon, authenticated;
+grant select, insert, update, delete on public.billing_orders to anon, authenticated;
+grant select, insert on public.wallet_transactions to anon, authenticated;
 grant update(password) on public.customers to anon, authenticated;
 grant usage, select on sequence public.chatbot_settings_id_seq to anon, authenticated;
 grant usage, select on sequence public.chatbot_conversations_id_seq to anon, authenticated;
@@ -439,3 +562,6 @@ grant usage, select on sequence public.chatbot_sessions_id_seq to anon, authenti
 grant usage, select on sequence public.customer_profiles_id_seq to anon, authenticated;
 grant usage, select on sequence public.lead_generation_settings_id_seq to anon, authenticated;
 grant usage, select on sequence public.lead_generation_leads_id_seq to anon, authenticated;
+grant usage, select on sequence public.billing_accounts_id_seq to anon, authenticated;
+grant usage, select on sequence public.billing_orders_id_seq to anon, authenticated;
+grant usage, select on sequence public.wallet_transactions_id_seq to anon, authenticated;

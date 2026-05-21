@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/session-auth.php';
 require_once __DIR__ . '/core.php';
+require_once __DIR__ . '/billing.php';
 
 if (!is_authenticated_user()) {
     header("Location: login.php");
@@ -171,6 +172,11 @@ $profileRows = safe_data(supabase(
     "customer_profiles?select=*&email=eq." . urlencode($email) . "&limit=1"
 ));
 
+$billingAccountRows = safe_data(supabase(
+    "GET",
+    "billing_accounts?select=*&email=eq." . urlencode($email) . "&limit=1"
+));
+
 $todayAllQueries = count(array_filter($conversationRows, fn($row) => date_in_range($row, 'created_at', $analyticsToday, $analyticsToday)));
 $yesterdayAllQueries = count(array_filter($conversationRows, fn($row) => date_in_range($row, 'created_at', $analyticsYesterday, $analyticsYesterday)));
 $last7AllQueries = count(array_filter($conversationRows, fn($row) => date_in_range($row, 'created_at', gmdate('Y-m-d', time() - (6 * 86400)), $analyticsToday)));
@@ -184,8 +190,15 @@ $sessionRows = array_values(array_filter($sessionRows, fn($row) => date_in_range
 $settings = $settingsRows[0] ?? [];
 $leadSettings = $leadSettingsRows[0] ?? [];
 $profile = $profileRows[0] ?? [];
+$billingAccount = $billingAccountRows[0] ?? [];
+$activePlanId = billing_active_plan_from_account($billingAccount);
+$activePlan = billing_plan($activePlanId);
+$billingWalletPaise = (int)($billingAccount['wallet_balance_paise'] ?? 0);
+$planFaqLimit = billing_faq_limit($activePlanId);
+$canUseAdvancedAnalytics = billing_feature_enabled($activePlanId, 'advanced_analytics');
+$canExportReports = billing_feature_enabled($activePlanId, 'export_reports');
 $faqCount = count($faqs);
-$freeFaqLimit = 25;
+$freeFaqLimit = $planFaqLimit === PHP_INT_MAX ? 999999 : $planFaqLimit;
 $conversationCount = count($conversationRows);
 $today = gmdate('Y-m-d');
 $todayQueries = 0;
@@ -1245,12 +1258,12 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
         <div class="panel section-body">
           <div class="analytics-tabs" role="tablist" aria-label="Analytics sections">
             <button class="analytics-tab-btn active" type="button" data-analytics-tab="analytics-overview">Overview</button>
-            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-conversations">Conversations</button>
-            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-faq">FAQ Insights</button>
-            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-leads">Leads</button>
-            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-pages">Pages</button>
-            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-realtime">Real-Time</button>
-            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-reports">Reports</button>
+            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-conversations" <?php echo $canUseAdvancedAnalytics ? '' : 'data-premium-lock="Business plan required"'; ?>>Conversations</button>
+            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-faq" <?php echo $canUseAdvancedAnalytics ? '' : 'data-premium-lock="Business plan required"'; ?>>FAQ Insights</button>
+            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-leads" <?php echo $canUseAdvancedAnalytics ? '' : 'data-premium-lock="Business plan required"'; ?>>Leads</button>
+            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-pages" <?php echo $canUseAdvancedAnalytics ? '' : 'data-premium-lock="Business plan required"'; ?>>Pages</button>
+            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-realtime" <?php echo $canUseAdvancedAnalytics ? '' : 'data-premium-lock="Business plan required"'; ?>>Real-Time</button>
+            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-reports" <?php echo $canExportReports ? '' : 'data-premium-lock="Business plan required"'; ?>>Reports</button>
           </div>
         </div>
 
@@ -1440,7 +1453,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
 
         <div class="analytics-subpanel" id="analytics-reports">
         <div class="analytics-grid two">
-          <div class="panel section-body"><h3>Export & Reports</h3><div class="report-actions" style="margin-top:12px"><button class="ghost-btn" type="button" id="exportAnalyticsCsvBtn">Export CSV</button><button class="ghost-btn" type="button" id="downloadAnalyticsReportBtn">Download report</button><button class="ghost-btn" type="button" id="printAnalyticsReportBtn">Print / Save PDF</button><button class="ghost-btn" type="button" id="downloadWeeklyReportBtn">Weekly report</button><button class="ghost-btn" type="button" id="downloadMonthlyReportBtn">Monthly report</button></div></div>
+          <div class="panel section-body"><h3>Export & Reports</h3><?php if (!$canExportReports): ?><div class="notice" style="margin-top:12px"><strong>Premium required:</strong><br>CSV export and downloadable reports are available on Business plan and higher.</div><?php else: ?><div class="report-actions" style="margin-top:12px"><button class="ghost-btn" type="button" id="exportAnalyticsCsvBtn">Export CSV</button><button class="ghost-btn" type="button" id="downloadAnalyticsReportBtn">Download report</button><button class="ghost-btn" type="button" id="printAnalyticsReportBtn">Print / Save PDF</button><button class="ghost-btn" type="button" id="downloadWeeklyReportBtn">Weekly report</button><button class="ghost-btn" type="button" id="downloadMonthlyReportBtn">Monthly report</button></div><?php endif; ?></div>
           <div class="panel section-body"><h3>Notifications / Alerts</h3><div class="mini-chart"><div class="notice">Fallback rate: <?php echo h($fallbackRate); ?>%</div><div class="notice">Trending unanswered questions: <?php echo h($unansweredCount); ?></div><div class="notice">Lead conversion: <?php echo h($leadConversionRate); ?>%</div></div></div>
         </div>
         </div>
@@ -1783,8 +1796,8 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
           <p class="muted">Customers pay a monthly platform fee, then usage charges are deducted from wallet balance for OTPs, fresh leads, returning leads, WhatsApp redirects, and extra FAQs.</p>
 
           <div class="metrics" style="margin-top:18px">
-            <div class="panel metric"><span>Current plan</span><strong>Free</strong><small><?php echo h($faqCount); ?>/<?php echo h($freeFaqLimit); ?> free FAQs used.</small></div>
-            <div class="panel metric"><span>Wallet</span><strong>₹0</strong><small>Recharge flow can connect to payment gateway.</small></div>
+            <div class="panel metric"><span>Current plan</span><strong><?php echo h($activePlan['name']); ?></strong><small><?php echo h($faqCount); ?>/<?php echo $planFaqLimit === PHP_INT_MAX ? 'Unlimited' : h($planFaqLimit); ?> FAQs used.</small></div>
+            <div class="panel metric"><span>Wallet</span><strong><?php echo h(billing_rupees($billingWalletPaise)); ?></strong><small>Subscription payments are credited here.</small></div>
             <div class="panel metric"><span>Billing model</span><strong>Hybrid</strong><small>Monthly subscription plus usage wallet.</small></div>
             <div class="panel metric"><span>Best default</span><strong>Growth</strong><small>Most local businesses will fit this tier.</small></div>
           </div>
@@ -1800,6 +1813,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
               <div class="price">₹199<small>/month</small></div>
               <div class="feature-list"><span>100 FAQs</span><span>Email OTP support</span><span>Basic chatbot</span><span>Wallet recharge enabled</span></div>
               <div class="wallet-table"><table><thead><tr><th>Wallet action</th><th>Charge</th></tr></thead><tbody><tr><td>Fresh Email Lead</td><td>₹5</td></tr><tr><td>Repeat Email Lead</td><td>₹1</td></tr><tr><td>Email Lead after 30 days</td><td>₹5</td></tr><tr><td>WhatsApp Redirect</td><td>Add-on ₹99</td></tr></tbody></table></div>
+              <button class="pill-btn billing-plan-btn" type="button" data-plan-id="starter">Subscribe Starter</button>
               <small class="muted">Best for portfolios, coaches, and small businesses.</small>
             </div>
 
@@ -1808,6 +1822,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
               <div class="price">₹499<small>/month</small></div>
               <div class="feature-list"><span>300 FAQs</span><span>Email OTP</span><span>Mobile OTP</span><span>WhatsApp Redirect included</span><span>Lead dashboard</span></div>
               <div class="wallet-table"><table><thead><tr><th>Wallet action</th><th>Charge</th></tr></thead><tbody><tr><td>Fresh Email Lead</td><td>₹4</td></tr><tr><td>Repeat Email Lead</td><td>₹1</td></tr><tr><td>Fresh Mobile Lead</td><td>₹8</td></tr><tr><td>Repeat Mobile Lead</td><td>₹2</td></tr><tr><td>WhatsApp Redirect</td><td>Included</td></tr></tbody></table></div>
+              <button class="pill-btn billing-plan-btn" type="button" data-plan-id="growth">Subscribe Growth</button>
               <small class="muted">Best for local businesses, agencies, and service providers.</small>
             </div>
 
@@ -1816,6 +1831,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
               <div class="price">₹999<small>/month</small></div>
               <div class="feature-list"><span>1000 FAQs</span><span>Email + Mobile combined verification</span><span>WhatsApp Redirect</span><span>Analytics</span><span>CSV Export</span></div>
               <div class="wallet-table"><table><thead><tr><th>Wallet action</th><th>Charge</th></tr></thead><tbody><tr><td>Fresh Combined Lead</td><td>₹10</td></tr><tr><td>Repeat Combined Lead</td><td>₹3</td></tr><tr><td>Re-activated Lead after 30 days</td><td>₹10</td></tr></tbody></table></div>
+              <button class="pill-btn billing-plan-btn" type="button" data-plan-id="business">Subscribe Business</button>
               <small class="muted">Best for real estate, education institutes, and marketing agencies.</small>
             </div>
 
@@ -1824,6 +1840,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
               <div class="price">₹2499<small>/month</small></div>
               <div class="feature-list"><span>Unlimited FAQs</span><span>AI chatbot</span><span>WhatsApp redirect</span><span>API access</span><span>Automation workflows</span><span>Webhook support</span></div>
               <div class="wallet-table"><table><thead><tr><th>Wallet action</th><th>Charge</th></tr></thead><tbody><tr><td>Fresh Email Lead</td><td>₹3</td></tr><tr><td>Fresh Mobile Lead</td><td>₹6</td></tr><tr><td>Fresh Combined Lead</td><td>₹8</td></tr><tr><td>Repeat Leads</td><td>₹1-₹2</td></tr></tbody></table></div>
+              <button class="pill-btn billing-plan-btn" type="button" data-plan-id="automation">Subscribe Pro Automation</button>
               <small class="muted">Best for SaaS businesses, automation agencies, and lead generation companies.</small>
             </div>
 
@@ -1832,6 +1849,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
               <div class="price">₹4999+<small>/month</small></div>
               <div class="feature-list"><span>White-label platform</span><span>Custom branding</span><span>Dedicated support</span><span>Custom API</span><span>Multi-user access</span><span>CRM integration</span></div>
               <div class="notice"><strong>Wallet charges:</strong><br>Negotiated custom rates based on lead volume, OTP volume, and integration needs.</div>
+              <button class="pill-btn billing-plan-btn" type="button" data-plan-id="enterprise">Subscribe Enterprise</button>
               <small class="muted">Best for enterprises, large agencies, and franchise businesses.</small>
             </div>
 
@@ -1848,6 +1866,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
   </main>
 </div>
 <div class="toast" id="toast">Copied</div>
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 <script>
 const tabs = document.querySelectorAll(".tab-btn");
 const panels = document.querySelectorAll(".tab-panel");
@@ -1859,6 +1878,8 @@ const drawerOverlay = document.getElementById("drawerOverlay");
 const accountToggleText = accountToggle?.textContent || "";
 let currentFaqCount = <?php echo json_encode($faqCount); ?>;
 const freeFaqLimit = <?php echo json_encode($freeFaqLimit); ?>;
+const selectedCustomerId = <?php echo json_encode($selectedBotId); ?>;
+const billingEmail = <?php echo json_encode($email); ?>;
 const analyticsReport = <?php echo json_encode([
   "bot_name" => $botName,
   "range_label" => $analyticsRangeLabel,
@@ -1957,7 +1978,12 @@ function openTab(id, updateHash = true) {
 tabs.forEach(tab => tab.addEventListener("click", () => openTab(tab.dataset.tab)));
 
 function openAnalyticsTab(id, updateHash = true) {
-  const target = document.getElementById(id) ? id : "analytics-overview";
+  let target = document.getElementById(id) ? id : "analytics-overview";
+  const targetButton = document.querySelector(`.analytics-tab-btn[data-analytics-tab="${target}"]`);
+  if (targetButton?.dataset.premiumLock) {
+    showToast(targetButton.dataset.premiumLock);
+    target = "analytics-overview";
+  }
   document.querySelectorAll(".analytics-tab-btn").forEach(tab => {
     tab.classList.toggle("active", tab.dataset.analyticsTab === target);
   });
@@ -1968,7 +1994,14 @@ function openAnalyticsTab(id, updateHash = true) {
 }
 
 document.querySelectorAll(".analytics-tab-btn").forEach(tab => {
-  tab.addEventListener("click", () => openAnalyticsTab(tab.dataset.analyticsTab));
+  tab.addEventListener("click", () => {
+    if (tab.dataset.premiumLock) {
+      showToast(tab.dataset.premiumLock);
+      openTab("billing");
+      return;
+    }
+    openAnalyticsTab(tab.dataset.analyticsTab);
+  });
 });
 
 const analyticsHash = location.hash.startsWith("#analytics/") ? location.hash.split("/")[1] : "";
@@ -2107,6 +2140,68 @@ document.getElementById("printAnalyticsReportBtn")?.addEventListener("click", ()
   reportWindow.document.close();
   reportWindow.focus();
   reportWindow.print();
+});
+
+async function startPlanCheckout(planId, button) {
+  if (!selectedCustomerId) {
+    showToast("Select or create a bot before subscribing");
+    return;
+  }
+  if (!window.Razorpay) {
+    showToast("Razorpay checkout could not be loaded");
+    return;
+  }
+  const originalText = button.textContent;
+  button.disabled = true;
+  button.textContent = "Creating order...";
+
+  const orderResponse = await fetch("/api.php?action=create_razorpay_order", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({plan_id: planId, customer_id: selectedCustomerId})
+  });
+  const orderData = await orderResponse.json().catch(() => ({}));
+  button.disabled = false;
+  button.textContent = originalText;
+
+  if (!orderData.success) {
+    showToast(orderData.message || "Payment order could not be created");
+    return;
+  }
+
+  const checkout = new Razorpay({
+    key: orderData.key_id,
+    amount: orderData.order.amount,
+    currency: orderData.order.currency || "INR",
+    name: "Vani AI",
+    description: `${orderData.plan.name} monthly subscription`,
+    order_id: orderData.order.id,
+    prefill: {email: billingEmail},
+    theme: {color: "#6366f1"},
+    handler: async response => {
+      showToast("Verifying payment...");
+      const verifyResponse = await fetch("/api.php?action=verify_razorpay_payment", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(response)
+      });
+      const verifyData = await verifyResponse.json().catch(() => ({}));
+      if (!verifyData.success) {
+        showToast(verifyData.message || "Payment verification failed");
+        return;
+      }
+      showToast("Premium activated");
+      setTimeout(() => location.reload(), 900);
+    }
+  });
+  checkout.on("payment.failed", response => {
+    showToast(response.error?.description || "Payment failed");
+  });
+  checkout.open();
+}
+
+document.querySelectorAll(".billing-plan-btn").forEach(button => {
+  button.addEventListener("click", () => startPlanCheckout(button.dataset.planId, button));
 });
 
 themeToggle.addEventListener("click", () => {

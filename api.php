@@ -44,6 +44,7 @@ error_reporting(E_ALL);
 // ==========================
 require "core.php";
 require_once __DIR__ . "/session-auth.php";
+require_once __DIR__ . "/billing.php";
 
 // ==========================
 // INPUT SAFE PARSER
@@ -127,8 +128,226 @@ function chatbot_access_result(array $settings, array $signup, string $sourceUrl
     return ["allowed" => true, "message" => ""];
 }
 
+function safe_rows(array $response): array {
+    $data = $response['data'] ?? null;
+    return is_array($data) ? $data : [];
+}
+
+function billing_account_for_email(string $email): array {
+    $rows = safe_rows(supabase(
+        "GET",
+        "billing_accounts?select=*&email=eq." . urlencode($email) . "&limit=1"
+    ));
+    if (!empty($rows[0])) {
+        return $rows[0];
+    }
+    $res = supabase("POST", "billing_accounts", [[
+        "email" => $email,
+        "wallet_balance_paise" => 0,
+        "current_plan" => "free",
+        "subscription_status" => "free"
+    ]]);
+    return $res['data'][0] ?? [
+        "email" => $email,
+        "wallet_balance_paise" => 0,
+        "current_plan" => "free",
+        "subscription_status" => "free"
+    ];
+}
+
+function billing_active_plan_for_email(string $email): string {
+    return billing_active_plan_from_account(billing_account_for_email($email));
+}
+
+function billing_email_for_customer(string $customerId): string {
+    $rows = safe_rows(supabase(
+        "GET",
+        "chatbot_signups?select=email&customer_id=eq." . urlencode($customerId) . "&limit=1"
+    ));
+    return trim((string)($rows[0]['email'] ?? ''));
+}
+
+function razorpay_credentials(): array {
+    return [
+        $_ENV['RAZORPAY_KEY_ID'] ?? getenv('RAZORPAY_KEY_ID') ?: '',
+        $_ENV['RAZORPAY_KEY_SECRET'] ?? getenv('RAZORPAY_KEY_SECRET') ?: ''
+    ];
+}
+
+function razorpay_request(string $method, string $endpoint, array $payload = []): array {
+    [$keyId, $keySecret] = razorpay_credentials();
+    if ($keyId === '' || $keySecret === '') {
+        return ["status" => 500, "data" => [], "raw" => "Razorpay credentials missing"];
+    }
+    $options = [
+        "http" => [
+            "method" => $method,
+            "header" => implode("\r\n", [
+                "Content-Type: application/json",
+                "Authorization: Basic " . base64_encode($keyId . ":" . $keySecret)
+            ]),
+            "ignore_errors" => true
+        ]
+    ];
+    if (!empty($payload)) {
+        $options["http"]["content"] = json_encode($payload);
+    }
+    $raw = file_get_contents("https://api.razorpay.com/v1/" . ltrim($endpoint, "/"), false, stream_context_create($options));
+    $status = 0;
+    if (isset($http_response_header[0])) {
+        preg_match('{HTTP/\S*\s(\d{3})}', $http_response_header[0], $match);
+        $status = intval($match[1] ?? 0);
+    }
+    return ["status" => $status, "data" => json_decode((string)$raw, true), "raw" => $raw];
+}
+
+function wallet_credit_subscription(string $email, string $customerId, string $planId, int $amountPaise, string $paymentId): void {
+    $account = billing_account_for_email($email);
+    $balance = (int)($account['wallet_balance_paise'] ?? 0) + $amountPaise;
+    $periodStart = gmdate('Y-m-d\TH:i:s\Z');
+    $periodEnd = gmdate('Y-m-d\TH:i:s\Z', strtotime('+30 days'));
+    supabase("PATCH", "billing_accounts?email=eq." . urlencode($email), [
+        "wallet_balance_paise" => $balance,
+        "current_plan" => $planId,
+        "subscription_status" => "active",
+        "current_period_start" => $periodStart,
+        "current_period_end" => $periodEnd
+    ]);
+    supabase("POST", "wallet_transactions", [[
+        "email" => $email,
+        "customer_id" => $customerId ?: null,
+        "transaction_type" => "credit",
+        "amount_paise" => $amountPaise,
+        "balance_after_paise" => $balance,
+        "description" => "Subscription amount added to wallet: " . billing_plan($planId)['name'],
+        "reference_type" => "razorpay_payment",
+        "reference_id" => $paymentId,
+        "metadata" => (object)["plan_id" => $planId]
+    ]]);
+}
+
 // ==========================
 // ==========================
+
+if ($action === "billing_plans") {
+    if (!is_authenticated_user()) {
+        echo json_encode(["success" => false, "message" => "Login required"]);
+        exit;
+    }
+    $email = authenticated_email();
+    $account = billing_account_for_email($email);
+    [$keyId] = razorpay_credentials();
+    echo json_encode([
+        "success" => true,
+        "razorpay_key_id" => $keyId,
+        "account" => $account,
+        "active_plan" => billing_active_plan_from_account($account),
+        "plans" => billing_plans()
+    ]);
+    exit;
+}
+
+if ($action === "create_razorpay_order") {
+    if (!is_authenticated_user()) {
+        echo json_encode(["success" => false, "message" => "Login required"]);
+        exit;
+    }
+    $data = getJSON();
+    $planId = trim((string)($data['plan_id'] ?? ''));
+    $customerId = trim((string)($data['customer_id'] ?? ''));
+    if (!in_array($planId, billing_plan_ids(), true) || $planId === 'free') {
+        echo json_encode(["success" => false, "message" => "Select a paid plan"]);
+        exit;
+    }
+    $plan = billing_plan($planId);
+    $amountPaise = (int)$plan['price_paise'];
+    $email = authenticated_email();
+    $receipt = substr("sub_" . $planId . "_" . time() . "_" . bin2hex(random_bytes(3)), 0, 40);
+    $order = razorpay_request("POST", "orders", [
+        "amount" => $amountPaise,
+        "currency" => "INR",
+        "receipt" => $receipt,
+        "notes" => [
+            "email" => $email,
+            "customer_id" => $customerId,
+            "plan_id" => $planId,
+            "order_type" => "subscription"
+        ]
+    ]);
+    if ($order['status'] < 200 || $order['status'] >= 300 || empty($order['data']['id'])) {
+        echo json_encode(["success" => false, "message" => "Razorpay order could not be created", "debug" => $order]);
+        exit;
+    }
+    supabase("POST", "billing_orders", [[
+        "email" => $email,
+        "customer_id" => $customerId ?: null,
+        "plan_id" => $planId,
+        "order_type" => "subscription",
+        "amount_paise" => $amountPaise,
+        "currency" => "INR",
+        "status" => "created",
+        "razorpay_order_id" => $order['data']['id'],
+        "receipt" => $receipt,
+        "metadata" => (object)["plan_name" => $plan['name']]
+    ]]);
+    [$keyId] = razorpay_credentials();
+    echo json_encode([
+        "success" => true,
+        "key_id" => $keyId,
+        "order" => $order['data'],
+        "plan" => $plan
+    ]);
+    exit;
+}
+
+if ($action === "verify_razorpay_payment") {
+    if (!is_authenticated_user()) {
+        echo json_encode(["success" => false, "message" => "Login required"]);
+        exit;
+    }
+    $data = getJSON();
+    $orderId = trim((string)($data['razorpay_order_id'] ?? ''));
+    $paymentId = trim((string)($data['razorpay_payment_id'] ?? ''));
+    $signature = trim((string)($data['razorpay_signature'] ?? ''));
+    [, $secret] = razorpay_credentials();
+    if (!$orderId || !$paymentId || !$signature || !$secret) {
+        echo json_encode(["success" => false, "message" => "Missing payment verification data"]);
+        exit;
+    }
+    $expected = hash_hmac('sha256', $orderId . "|" . $paymentId, $secret);
+    if (!hash_equals($expected, $signature)) {
+        supabase("PATCH", "billing_orders?razorpay_order_id=eq." . urlencode($orderId), ["status" => "failed"]);
+        echo json_encode(["success" => false, "message" => "Payment signature verification failed"]);
+        exit;
+    }
+    $rows = safe_rows(supabase(
+        "GET",
+        "billing_orders?select=*&razorpay_order_id=eq." . urlencode($orderId) . "&email=eq." . urlencode(authenticated_email()) . "&limit=1"
+    ));
+    $order = $rows[0] ?? [];
+    if (empty($order) || ($order['status'] ?? '') === 'paid') {
+        echo json_encode(["success" => false, "message" => "Payment order not found or already processed"]);
+        exit;
+    }
+    $planId = (string)$order['plan_id'];
+    $amountPaise = (int)$order['amount_paise'];
+    $email = authenticated_email();
+    $customerId = (string)($order['customer_id'] ?? '');
+    wallet_credit_subscription($email, $customerId, $planId, $amountPaise, $paymentId);
+    supabase("PATCH", "billing_orders?razorpay_order_id=eq." . urlencode($orderId), [
+        "status" => "paid",
+        "razorpay_payment_id" => $paymentId,
+        "razorpay_signature" => $signature,
+        "paid_at" => gmdate('Y-m-d\TH:i:s\Z')
+    ]);
+    echo json_encode([
+        "success" => true,
+        "message" => "Payment verified and premium activated",
+        "active_plan" => $planId,
+        "account" => billing_account_for_email($email)
+    ]);
+    exit;
+}
 
 
 // ==========================
@@ -272,7 +491,9 @@ if ($action === "add_faq") {
     );
 
     $existingCount = is_array($existingFaqs['data'] ?? null) ? count($existingFaqs['data']) : 0;
-    $freeFaqLimit = 25;
+    $billingEmail = is_authenticated_user() ? authenticated_email() : billing_email_for_customer($customer_id);
+    $activePlan = $billingEmail ? billing_active_plan_for_email($billingEmail) : 'free';
+    $faqLimit = billing_faq_limit($activePlan);
 
     $rows = [];
 
@@ -295,11 +516,11 @@ if ($action === "add_faq") {
         exit;
     }
 
-    if ($existingCount + count($rows) > $freeFaqLimit) {
+    if ($existingCount + count($rows) > $faqLimit) {
         echo json_encode([
             "success" => false,
             "requires_premium" => true,
-            "message" => "Free plan includes up to 25 FAQs"
+            "message" => "Your current plan allows up to " . ($faqLimit === PHP_INT_MAX ? "unlimited" : $faqLimit) . " FAQs. Upgrade to add more."
         ]);
         exit;
     }
@@ -442,6 +663,23 @@ if ($action === "save_lead_generation_settings") {
     $collect_mobile = filter_var($data['collect_mobile'] ?? false, FILTER_VALIDATE_BOOLEAN);
     $verify_email_otp = filter_var($data['verify_email_otp'] ?? false, FILTER_VALIDATE_BOOLEAN);
     $verify_mobile_otp = filter_var($data['verify_mobile_otp'] ?? false, FILTER_VALIDATE_BOOLEAN);
+    $billingEmail = is_authenticated_user() ? authenticated_email() : billing_email_for_customer($customer_id);
+    $activePlan = $billingEmail ? billing_active_plan_for_email($billingEmail) : 'free';
+
+    if ($verify_email_otp && !billing_feature_enabled($activePlan, 'email_otp')) {
+        echo json_encode(["success" => false, "requires_premium" => true, "message" => "Email OTP requires a premium plan."]);
+        exit;
+    }
+
+    if ($verify_mobile_otp && !billing_feature_enabled($activePlan, 'mobile_otp')) {
+        echo json_encode(["success" => false, "requires_premium" => true, "message" => "Mobile OTP requires Growth plan or higher."]);
+        exit;
+    }
+
+    if ($redirect_whatsapp && !billing_feature_enabled($activePlan, 'whatsapp_redirect')) {
+        echo json_encode(["success" => false, "requires_premium" => true, "message" => "WhatsApp Redirect requires Growth plan or higher."]);
+        exit;
+    }
 
     if ($notify_lead_by_email && !filter_var($notification_email, FILTER_VALIDATE_EMAIL)) {
         echo json_encode([
