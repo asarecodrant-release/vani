@@ -28,6 +28,12 @@ body{
     linear-gradient(135deg,#f0f9ff,#eef2ff,#faf5ff);
   color:#0f172a;
   overflow-x:hidden;
+  transition:background .25s ease,color .25s ease;
+}
+
+body.dark{
+  background:linear-gradient(135deg,#020617,#111827,#312e81);
+  color:#e5e7eb;
 }
 
 /* =========================
@@ -509,6 +515,154 @@ footer{
   gap:14px;
 }
 
+.nav-a1{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-height:42px;
+  padding:0 16px;
+  border-radius:12px;
+  background:rgba(255,255,255,.75);
+  border:1px solid rgba(99,102,241,.16);
+  color:#334155;
+  text-decoration:none;
+  font-weight:700;
+  cursor:pointer;
+}
+
+.nav-menu-btn,.theme-btn{
+  border:1px solid rgba(99,102,241,.18);
+  background:rgba(255,255,255,.78);
+  color:#334155;
+  min-height:42px;
+  padding:0 16px;
+  border-radius:12px;
+  font-weight:800;
+  cursor:pointer;
+}
+
+.nav-menu-btn:hover,.theme-btn:hover,.nav-a1:hover{
+  color:#4f46e5;
+  transform:translateY(-1px);
+}
+
+.menu-overlay{
+  position:fixed;
+  inset:0;
+  background:rgba(15,23,42,.38);
+  opacity:0;
+  pointer-events:none;
+  transition:.22s ease;
+  z-index:90;
+}
+
+.menu-overlay.show{
+  opacity:1;
+  pointer-events:auto;
+}
+
+.side-menu{
+  position:fixed;
+  top:0;
+  right:0;
+  width:min(360px,88vw);
+  height:100dvh;
+  padding:24px;
+  background:rgba(255,255,255,.96);
+  border-left:1px solid rgba(99,102,241,.16);
+  box-shadow:-24px 0 60px rgba(15,23,42,.18);
+  transform:translateX(105%);
+  transition:.25s ease;
+  z-index:100;
+  display:grid;
+  align-content:start;
+  gap:18px;
+}
+
+.side-menu.open{
+  transform:translateX(0);
+}
+
+.side-menu-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+
+.side-menu-head h3{
+  font-size:20px;
+}
+
+.menu-close{
+  width:40px;
+  height:40px;
+  border-radius:12px;
+  border:1px solid rgba(99,102,241,.18);
+  background:#fff;
+  cursor:pointer;
+  font-size:20px;
+}
+
+.side-menu-links{
+  display:grid;
+  gap:12px;
+}
+
+.side-menu-link{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  min-height:52px;
+  padding:0 14px;
+  border-radius:14px;
+  background:linear-gradient(135deg,#6366f1,#8b5cf6);
+  color:#fff;
+  text-decoration:none;
+  font-weight:800;
+  box-shadow:0 12px 26px rgba(99,102,241,.24);
+}
+
+.side-menu-link.secondary{
+  background:#f8fafc;
+  color:#334155;
+  border:1px solid #e5e7eb;
+  box-shadow:none;
+}
+
+body.dark .hero-badge,
+body.dark .card,
+body.dark .cta,
+body.dark .nav-a1,
+body.dark .nav-menu-btn,
+body.dark .theme-btn,
+body.dark .user-box{
+  background:rgba(15,23,42,.72);
+  border-color:rgba(148,163,184,.22);
+  color:#e5e7eb;
+}
+
+body.dark .hero p,
+body.dark .card p,
+body.dark .feature-list,
+body.dark .cta p,
+body.dark footer{
+  color:#cbd5e1;
+}
+
+body.dark .side-menu{
+  background:rgba(15,23,42,.98);
+  border-color:rgba(148,163,184,.22);
+}
+
+body.dark .menu-close,
+body.dark .side-menu-link.secondary{
+  background:#111827;
+  border-color:rgba(148,163,184,.22);
+  color:#e5e7eb;
+}
+
 .user-box{
   display:flex;
   align-items:center;
@@ -557,14 +711,14 @@ footer{
 }
 @media (max-width: 768px) {
     .nav-btn1 {
-        margin-right: -180px;
-        margin-top: -115px;
+        margin-right: 0;
+        margin-top: 0;
     }
 }
     @media (max-width: 768px) {
 .nav-a1 {
         margin-right: 0;
-        margin-top: -115px;
+        margin-top: 0;
 }
 }
 @media(max-width:768px){
@@ -584,6 +738,17 @@ footer{
   .user-avatar{
     width:32px;
     height:32px;
+    font-size:13px;
+  }
+
+  .nav-right{
+    justify-content:center;
+    flex-wrap:wrap;
+  }
+
+  .theme-btn,.nav-menu-btn,.nav-a1,.nav-btn1{
+    min-height:40px;
+    padding:0 12px;
     font-size:13px;
   }
 }
@@ -618,8 +783,8 @@ footer{
 <?php else: ?>
 
   <a href="login.php" class="nav-a1">Login</a>
-  <a href="subscription.php" class="nav-a1">Subscription</a>
-  <a href="#products" class="nav-btn1">Get Started</a>
+  <button class="theme-btn" type="button" id="themeToggle">Dark / Bright</button>
+  <button class="nav-menu-btn" type="button" id="menuToggle" aria-label="Open menu" aria-expanded="false">Menu</button>
 
 <?php endif; ?>
 
@@ -628,6 +793,21 @@ footer{
   </div>
 
 </nav>
+
+<div class="menu-overlay" id="menuOverlay" aria-hidden="true"></div>
+<aside class="side-menu" id="sideMenu" aria-label="Site menu">
+  <div class="side-menu-head">
+    <h3>Explore Vani</h3>
+    <button class="menu-close" type="button" id="menuClose" aria-label="Close menu">×</button>
+  </div>
+  <div class="side-menu-links">
+    <a class="side-menu-link" href="subscription.php">Subscription Plans <span>→</span></a>
+    <a class="side-menu-link secondary" href="#products">Products <span>→</span></a>
+    <a class="side-menu-link" href="#products">Get Started <span>→</span></a>
+    <a class="side-menu-link secondary" href="login.php">Login <span>→</span></a>
+    <a class="side-menu-link secondary" href="signup.php">Create Account <span>→</span></a>
+  </div>
+</aside>
 
 <!-- HERO -->
 <section class="hero">
@@ -753,6 +933,38 @@ footer{
 </footer>
 
 <script>
+
+const menuToggle = document.getElementById("menuToggle");
+const menuClose = document.getElementById("menuClose");
+const menuOverlay = document.getElementById("menuOverlay");
+const sideMenu = document.getElementById("sideMenu");
+const themeToggle = document.getElementById("themeToggle");
+
+function setMenu(open) {
+  sideMenu?.classList.toggle("open", open);
+  menuOverlay?.classList.toggle("show", open);
+  menuToggle?.setAttribute("aria-expanded", String(open));
+  document.body.style.overflow = open ? "hidden" : "";
+}
+
+function setTheme(mode) {
+  const dark = mode === "dark";
+  document.body.classList.toggle("dark", dark);
+  if (themeToggle) themeToggle.setAttribute("aria-pressed", String(dark));
+  localStorage.setItem("vani-index-theme", dark ? "dark" : "bright");
+}
+
+setTheme(localStorage.getItem("vani-index-theme") || "bright");
+
+menuToggle?.addEventListener("click", () => setMenu(true));
+menuClose?.addEventListener("click", () => setMenu(false));
+menuOverlay?.addEventListener("click", () => setMenu(false));
+document.addEventListener("keydown", event => {
+  if (event.key === "Escape") setMenu(false);
+});
+themeToggle?.addEventListener("click", () => {
+  setTheme(document.body.classList.contains("dark") ? "bright" : "dark");
+});
 
 // Scroll animation
 const cards = document.querySelectorAll('.card');

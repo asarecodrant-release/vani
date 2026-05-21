@@ -600,6 +600,7 @@ button{touch-action:manipulation}
 }
 .sidebar{
   position:sticky;top:0;height:100vh;padding:24px 18px;
+  display:flex;flex-direction:column;gap:0;overflow:hidden;
   background:rgba(255,255,255, 0.9);backdrop-filter:blur(18px);
   border-right:1px solid var(--line);
 }
@@ -607,13 +608,13 @@ body.dark .sidebar{background:rgba(15,23,42,.66)}
 .brand{display:flex;align-items:center;gap:12px;margin-bottom:26px}
 .brand img{width:58px;height:auto}
 .brand strong{font-size:20px;background:linear-gradient(90deg,var(--brand),var(--brand-2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.nav-tabs{display:grid;gap:8px}
+.nav-tabs{display:grid;gap:8px;overflow-y:auto;padding-right:4px;padding-bottom:12px;min-height:0}
 .tab-btn{
   border:0;background:transparent;color:var(--muted);padding:12px 14px;border-radius:12px;
   display:flex;align-items:center;gap:10px;text-align:left;cursor:pointer;font-weight:600;
 }
 .tab-btn:hover,.tab-btn.active{background:rgba(99,102,241,.11);color:var(--brand)}
-.sidebar-footer{position:absolute;left:18px;right:18px;bottom:20px;padding:14px;border:1px solid var(--line);border-radius:16px;background:var(--panel)}
+.sidebar-footer{margin-top:14px;padding:14px;border:1px solid var(--line);border-radius:16px;background:var(--panel);flex:0 0 auto}
 .sidebar-footer small{display:block;color:var(--muted);line-height:1.6}
 .main{min-width:0;width:100%;max-width:100vw;overflow-x:hidden}
 .topbar{
@@ -826,6 +827,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
     transform:translateX(-105%);
     transition:transform .25s ease;
     overflow-y:auto;
+    display:block;
   }
   body.nav-open .sidebar{transform:translateX(0)}
   .brand{margin-bottom:18px}
