@@ -16,11 +16,19 @@ create table if not exists public.chatbot_settings (
   api_key text,
   rate_limit integer not null default 100,
   notification_preference text default 'weekly_summary',
+  website_verification_enabled boolean not null default false,
+  allowed_domains_enabled boolean not null default false,
   allowed_domains text,
   verification_status text default 'Pending',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.chatbot_settings
+  add column if not exists website_verification_enabled boolean not null default false;
+
+alter table public.chatbot_settings
+  add column if not exists allowed_domains_enabled boolean not null default false;
 
 create table if not exists public.chatbot_conversations (
   id bigserial primary key,

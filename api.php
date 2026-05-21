@@ -53,6 +53,80 @@ function getJSON() {
     return json_decode($raw, true) ?? [];
 }
 
+function request_source_url(array $data = []): string {
+    $value = trim((string)($data['source_url'] ?? $data['current_url'] ?? $_GET['source_url'] ?? $_GET['current_url'] ?? ''));
+    if ($value !== '') {
+        return $value;
+    }
+    return trim((string)($_SERVER['HTTP_ORIGIN'] ?? $_SERVER['HTTP_REFERER'] ?? ''));
+}
+
+function host_from_value(string $value): string {
+    $value = strtolower(trim($value));
+    if ($value === '') {
+        return '';
+    }
+    if (!preg_match('{^https?://}i', $value)) {
+        $value = 'https://' . $value;
+    }
+    $host = parse_url($value, PHP_URL_HOST);
+    $host = strtolower((string)$host);
+    $host = preg_replace('/^www\./', '', $host);
+    return rtrim($host, '.');
+}
+
+function domain_list(string $domains): array {
+    $parts = preg_split('/[\s,]+/', $domains);
+    $clean = [];
+    foreach ($parts as $part) {
+        $host = host_from_value((string)$part);
+        if ($host !== '') {
+            $clean[$host] = true;
+        }
+    }
+    return array_keys($clean);
+}
+
+function host_matches_domain(string $host, string $domain): bool {
+    if ($host === '' || $domain === '') {
+        return false;
+    }
+    $suffix = '.' . $domain;
+    return $host === $domain || substr($host, -strlen($suffix)) === $suffix;
+}
+
+function chatbot_access_result(array $settings, array $signup, string $sourceUrl): array {
+    $host = host_from_value($sourceUrl);
+    $websiteVerificationEnabled = filter_var($settings['website_verification_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
+    $allowedDomainsEnabled = filter_var($settings['allowed_domains_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
+
+    if (!$websiteVerificationEnabled && !$allowedDomainsEnabled) {
+        return ["allowed" => true, "message" => ""];
+    }
+
+    if ($websiteVerificationEnabled) {
+        $websiteHost = host_from_value((string)($signup['website_name'] ?? ''));
+        if ($host === '' || $websiteHost === '' || !host_matches_domain($host, $websiteHost)) {
+            return ["allowed" => false, "message" => "This website is not verified for this chatbot."];
+        }
+    }
+
+    if ($allowedDomainsEnabled) {
+        $matchesAllowedDomain = false;
+        foreach (domain_list((string)($settings['allowed_domains'] ?? '')) as $domain) {
+            if (host_matches_domain($host, $domain)) {
+                $matchesAllowedDomain = true;
+                break;
+            }
+        }
+        if (!$matchesAllowedDomain) {
+            return ["allowed" => false, "message" => "This domain is not allowed for this chatbot."];
+        }
+    }
+
+    return ["allowed" => true, "message" => ""];
+}
+
 // ==========================
 // ==========================
 
@@ -445,14 +519,25 @@ if ($action === "chat") {
 
     $settings = supabase(
         "GET",
-        "chatbot_settings?select=is_active&customer_id=eq." . urlencode(trim($customer_id)) . "&limit=1"
+        "chatbot_settings?select=*&customer_id=eq." . urlencode(trim($customer_id)) . "&limit=1"
     );
 
-    $rawActive = $settings['data'][0]['is_active'] ?? true;
+    $settingsRow = $settings['data'][0] ?? [];
+    $rawActive = $settingsRow['is_active'] ?? true;
     $isActive = is_bool($rawActive) ? $rawActive : ((string)$rawActive !== 'false');
 
     if (!$isActive) {
         echo json_encode(["reply" => "Chatbot is currently turned off. Please contact customer support."]);
+        exit;
+    }
+
+    $signup = supabase(
+        "GET",
+        "chatbot_signups?select=website_name&customer_id=eq." . urlencode(trim($customer_id)) . "&limit=1"
+    );
+    $access = chatbot_access_result($settingsRow, $signup['data'][0] ?? [], request_source_url($data));
+    if (!$access['allowed']) {
+        echo json_encode(["reply" => $access['message'] ?: "This chatbot is not enabled for this website.", "status" => "blocked"]);
         exit;
     }
 
@@ -499,7 +584,8 @@ if ($action === "chat") {
             "bot_response" => $reply,
             "matched_faq_id" => $matchedQuestionId,
             "status" => $matchedQuestionId ? "answered" : "unanswered",
-            "is_answered" => (bool)$matchedQuestionId
+            "is_answered" => (bool)$matchedQuestionId,
+            "source_url" => request_source_url($data)
         ]]
     );
 
@@ -535,6 +621,8 @@ if ($action === "save_dashboard_settings") {
         "api_key",
         "rate_limit",
         "notification_preference",
+        "website_verification_enabled",
+        "allowed_domains_enabled",
         "allowed_domains",
         "verification_status"
     ];

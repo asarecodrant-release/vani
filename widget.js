@@ -182,10 +182,15 @@
   }
 
   async function boot() {
-    const cfg = await api("get_widget_config", "GET", null, `&customer_id=${encodeURIComponent(customerId)}`);
+    const cfg = await api(
+      "get_widget_config",
+      "GET",
+      null,
+      `&customer_id=${encodeURIComponent(customerId)}&current_url=${encodeURIComponent(window.location.href)}`
+    );
     config = cfg || {};
 
-    if (config.is_active === false) {
+    if (config.is_active === false || config.access_allowed === false) {
       return;
     }
 

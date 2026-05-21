@@ -263,6 +263,101 @@ function widget_jwt_payload(string $jwt): array {
     return is_array($data) ? $data : [];
 }
 
+function widget_request_source_url(array $data = []): string {
+    $value = trim((string)($data['source_url'] ?? $data['current_url'] ?? $_GET['source_url'] ?? $_GET['current_url'] ?? ''));
+    if ($value !== '') {
+        return $value;
+    }
+    return trim((string)($_SERVER['HTTP_ORIGIN'] ?? $_SERVER['HTTP_REFERER'] ?? ''));
+}
+
+function widget_host_from_value(string $value): string {
+    $value = strtolower(trim($value));
+    if ($value === '') {
+        return '';
+    }
+    if (!preg_match('{^https?://}i', $value)) {
+        $value = 'https://' . $value;
+    }
+    $host = parse_url($value, PHP_URL_HOST);
+    $host = strtolower((string)$host);
+    $host = preg_replace('/^www\./', '', $host);
+    return rtrim($host, '.');
+}
+
+function widget_domain_list(string $domains): array {
+    $parts = preg_split('/[\s,]+/', $domains);
+    $clean = [];
+    foreach ($parts as $part) {
+        $host = widget_host_from_value((string)$part);
+        if ($host !== '') {
+            $clean[$host] = true;
+        }
+    }
+    return array_keys($clean);
+}
+
+function widget_host_matches_domain(string $host, string $domain): bool {
+    if ($host === '' || $domain === '') {
+        return false;
+    }
+    $suffix = '.' . $domain;
+    return $host === $domain || substr($host, -strlen($suffix)) === $suffix;
+}
+
+function widget_access_result(array $settings, array $signup, string $sourceUrl): array {
+    $host = widget_host_from_value($sourceUrl);
+    $websiteVerificationEnabled = widget_bool($settings['website_verification_enabled'] ?? false);
+    $allowedDomainsEnabled = widget_bool($settings['allowed_domains_enabled'] ?? false);
+
+    if (!$websiteVerificationEnabled && !$allowedDomainsEnabled) {
+        return [
+            "allowed" => true,
+            "status" => $settings['verification_status'] ?? 'Disabled',
+            "host" => $host,
+            "message" => ""
+        ];
+    }
+
+    if ($websiteVerificationEnabled) {
+        $websiteHost = widget_host_from_value((string)($signup['website_name'] ?? ''));
+        if ($host === '' || $websiteHost === '' || !widget_host_matches_domain($host, $websiteHost)) {
+            return [
+                "allowed" => false,
+                "status" => "Failed",
+                "host" => $host,
+                "message" => "This website is not verified for this chatbot."
+            ];
+        }
+    }
+
+    if ($allowedDomainsEnabled) {
+        $domains = widget_domain_list((string)($settings['allowed_domains'] ?? ''));
+        $matchesAllowedDomain = false;
+        foreach ($domains as $domain) {
+            if (widget_host_matches_domain($host, $domain)) {
+                $matchesAllowedDomain = true;
+                break;
+            }
+        }
+        if (!$matchesAllowedDomain) {
+            return [
+                "allowed" => false,
+                "status" => $websiteVerificationEnabled ? "Verified" : ($settings['verification_status'] ?? 'Disabled'),
+                "host" => $host,
+                "message" => "This domain is not allowed for this chatbot."
+            ];
+        }
+    }
+
+    return [
+        "allowed" => true,
+        "status" => $websiteVerificationEnabled ? "Verified" : ($settings['verification_status'] ?? 'Disabled'),
+        "host" => $host,
+        "message" => ""
+    ];
+}
+
 if ($action === "get_widget_config" || $action === "get_theme") {
     $customerId = widget_customer_id();
     if (!$customerId) {
@@ -272,6 +367,14 @@ if ($action === "get_widget_config" || $action === "get_theme") {
     $settings = widget_get_settings($customerId);
     $signup = widget_get_signup($customerId);
     $leadSettings = widget_get_lead_settings($customerId);
+    $access = widget_access_result($settings, $signup, widget_request_source_url());
+    if (($settings['verification_status'] ?? '') !== $access['status']) {
+        supabase(
+            "PATCH",
+            "chatbot_settings?customer_id=eq." . urlencode($customerId),
+            ["verification_status" => $access['status']]
+        );
+    }
     $themeColor = $settings['theme_color'] ?? $signup['theme_color'] ?? '#6366f1';
     $botName = $settings['bot_name'] ?? $signup['website_name'] ?? 'Chat Support';
 
@@ -283,7 +386,13 @@ if ($action === "get_widget_config" || $action === "get_theme") {
         "avatar_url" => $settings['avatar_url'] ?? '',
         "position" => $settings['position'] ?? 'right',
         "language" => $settings['language'] ?? 'English',
-        "is_active" => widget_bool($settings['is_active'] ?? true, true),
+        "is_active" => widget_bool($settings['is_active'] ?? true, true) && $access['allowed'],
+        "website_verification_enabled" => widget_bool($settings['website_verification_enabled'] ?? false),
+        "allowed_domains_enabled" => widget_bool($settings['allowed_domains_enabled'] ?? false),
+        "allowed_domains" => $settings['allowed_domains'] ?? '',
+        "verification_status" => $access['status'],
+        "access_allowed" => $access['allowed'],
+        "access_message" => $access['message'],
         "lead_generation" => [
             "is_enabled" => widget_bool($leadSettings['is_enabled'] ?? false),
             "collect_location" => widget_bool($leadSettings['collect_location'] ?? false),
@@ -321,6 +430,15 @@ if ($action === "chat") {
             "success" => true,
             "reply" => "Chatbot is currently turned off. Please contact customer support.",
             "status" => "inactive"
+        ]);
+    }
+
+    $access = widget_access_result($settings, widget_get_signup($customerId), widget_request_source_url($data));
+    if (!$access['allowed']) {
+        widget_json_response([
+            "success" => true,
+            "reply" => $access['message'] ?: "This chatbot is not enabled for this website.",
+            "status" => "blocked"
         ]);
     }
 

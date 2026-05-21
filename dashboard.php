@@ -228,6 +228,11 @@ $position = first_value($settings, ['position'], 'right');
 $language = first_value($settings, ['language'], 'English');
 $rawActive = $settings['is_active'] ?? true;
 $isActive = is_bool($rawActive) ? $rawActive : ((string)$rawActive !== 'false');
+$websiteVerificationEnabled = filter_var($settings['website_verification_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
+$allowedDomainsEnabled = filter_var($settings['allowed_domains_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
+$allowedDomains = first_value($settings, ['allowed_domains'], '');
+$verificationStatus = first_value($settings, ['verification_status'], 'Pending');
+$websiteName = first_value($selectedBot, ['website_name'], '');
 $leadEnabled = filter_var($leadSettings['is_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
 $leadCollectLocation = filter_var($leadSettings['collect_location'] ?? false, FILTER_VALIDATE_BOOLEAN);
 $leadCollectEmail = filter_var($leadSettings['collect_email'] ?? false, FILTER_VALIDATE_BOOLEAN);
@@ -595,10 +600,14 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
       <button class="tab-btn" data-tab="setup">Chatbot Setup</button>
       <button class="tab-btn" data-tab="faqs">FAQ Management</button>
       <button class="tab-btn" data-tab="outside-faqs">Outside FAQs</button>
+      <!-- Conversations tab hidden for now; keep this code for later.
       <button class="tab-btn" data-tab="logs">Conversations</button>
+      -->
       <button class="tab-btn" data-tab="analytics">Analytics</button>
       <button class="tab-btn" data-tab="install">Integration</button>
+      <!-- Bot Settings tab hidden for now; keep this code for later.
       <button class="tab-btn" data-tab="bot-settings">Bot Settings</button>
+      -->
       <button class="tab-btn" data-tab="lead-generation">Lead Generation Setup</button>
       <button class="tab-btn" data-tab="premium">Premium</button>
       <button class="tab-btn" data-tab="profile">Profile</button>
@@ -608,7 +617,9 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
     <div class="sidebar-footer">
       <small>Current bot</small>
       <strong><?php echo h($botName); ?></strong>
+      <!-- Bot ID hidden for now; keep this code for later.
       <small>ID: <?php echo h($selectedBotId ?: 'No bot found'); ?></small>
+      -->
     </div>
   </aside>
 
@@ -693,7 +704,6 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
             <?php if ($chatbotImage): ?><img class="selected-bot-image" style="margin-top:10px" src="<?php echo h($chatbotImage); ?>" alt="Selected chatbot image"><?php endif; ?>
             <small>Used by the chatbot box.</small>
           </div>
-          <div class="panel metric"><span>Bot ID</span><strong style="font-size:15px;word-break:break-all"><?php echo h($selectedBotId ?: 'Not set'); ?></strong><small>“Each website may have multiple Bot IDs. Please select the appropriate one.”</small></div>
         </div>
 
         <div class="split">
@@ -723,11 +733,13 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
             <p>Install this bot on your website with one script tag.</p>
             <button class="pill-btn copy-btn" type="button" data-copy="<?php echo h($embedCode); ?>">Copy script</button>
           </div>
+          <!-- Settings shortcut hidden while Bot Settings tab is hidden; keep this code for later.
           <div class="panel action-card">
             <h3>Settings</h3>
             <p>Change status, domains, notifications, and data controls.</p>
             <button class="pill-btn" type="button" data-jump="bot-settings">Open settings</button>
           </div>
+          -->
         </div>
       </section>
 
@@ -871,6 +883,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
         </div>
       </section>
 
+      <!-- Conversations tab content hidden for now; keep this code for later.
       <section class="tab-panel" id="logs">
         <div class="panel">
           <div class="section-head"><h3>Conversations / Logs</h3><span class="tag"><?php echo h($conversationCount); ?> total</span></div>
@@ -898,6 +911,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
           </div>
         </div>
       </section>
+      -->
 
       <section class="tab-panel" id="analytics">
         <div class="split">
@@ -928,17 +942,55 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
       <section class="tab-panel" id="install">
         <div class="panel">
           <div class="section-head"><h3>Integration / Install</h3></div>
-          <div class="section-body">
-            <div class="embed-box"><code id="embedCode"><?php echo h($embedCode ?: 'Create or select a bot to generate the embed script.'); ?></code></div>
-            <div class="split" style="margin-top:16px">
-              <div class="notice"><strong>Website verification status:</strong><br><?php echo h(first_value($settings, ['verification_status'], 'Pending')); ?></div>
-              <div class="notice"><strong>Allowed domains:</strong><br><?php echo h(first_value($settings, ['allowed_domains'], 'Add domains in Bot Settings')); ?></div>
+          <div class="section-body form-grid">
+            <div class="field full">
+              <div class="inline-row" style="justify-content:space-between;gap:16px">
+                <div>
+                  <label>Website verification</label>
+                  <small class="input-help">When enabled, this bot only loads on the website connected with this bot.</small>
+                </div>
+                <label class="switch" title="Enable website verification">
+                  <input id="websiteVerificationToggle" type="checkbox" <?php echo $websiteVerificationEnabled ? 'checked' : ''; ?> aria-label="Enable website verification">
+                  <span class="switch-slider"></span>
+                </label>
+              </div>
+              <div class="notice" style="margin-top:12px">
+                <strong>Status:</strong> <span id="verificationStatusText"><?php echo h($verificationStatus); ?></span><br>
+                <strong>Bot website:</strong> <?php echo h($websiteName ?: 'Not set'); ?>
+              </div>
             </div>
-            <div class="panel-actions"><button class="pill-btn copy-btn" type="button" data-copy="<?php echo h($embedCode); ?>">Copy JS snippet</button></div>
+
+            <div class="field full">
+              <div class="inline-row" style="justify-content:space-between;gap:16px">
+                <div>
+                  <label>Allowed domains</label>
+                  <small class="input-help">When enabled, this bot only works on the domains listed below.</small>
+                </div>
+                <label class="switch" title="Enable allowed domains">
+                  <input id="allowedDomainsToggle" type="checkbox" <?php echo $allowedDomainsEnabled ? 'checked' : ''; ?> aria-label="Enable allowed domains">
+                  <span class="switch-slider"></span>
+                </label>
+              </div>
+              <textarea id="allowedDomainsInput" placeholder="example.com&#10;www.example.com"><?php echo h($allowedDomains); ?></textarea>
+              <small class="input-help">Add one domain per line. You can also separate domains with commas.</small>
+            </div>
+
+            <div class="panel-actions full">
+              <button class="pill-btn" type="button" id="saveIntegrationBtn">Save integration settings</button>
+            </div>
+
+            <div class="field full">
+              <label>Install snippet</label>
+              <div class="embed-box"><code id="embedCode"><?php echo h($embedCode ?: 'Create or select a bot to generate the embed script.'); ?></code></div>
+              <div class="panel-actions">
+                <button class="pill-btn copy-btn" type="button" data-copy="<?php echo h($embedCode); ?>">Copy JS snippet</button>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
+      <!-- Bot Settings tab content hidden for now; keep this code for later.
       <section class="tab-panel" id="bot-settings">
         <div class="panel">
           <div class="section-head"><h3>Bot Settings</h3></div>
@@ -953,6 +1005,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
           </div>
         </div>
       </section>
+      -->
 
       <section class="tab-panel" id="lead-generation">
         <div class="panel">
@@ -1746,6 +1799,35 @@ document.getElementById("saveSettingsBtn")?.addEventListener("click", () => {
   }).then(saved => {
     if (saved) setOverviewActiveUI(isActive);
   });
+});
+
+document.getElementById("saveIntegrationBtn")?.addEventListener("click", async event => {
+  const button = event.currentTarget;
+  const websiteVerificationEnabled = !!document.getElementById("websiteVerificationToggle")?.checked;
+  const allowedDomainsEnabled = !!document.getElementById("allowedDomainsToggle")?.checked;
+  const allowedDomains = document.getElementById("allowedDomainsInput")?.value.trim() || "";
+
+  if (allowedDomainsEnabled && !allowedDomains) {
+    showToast("Add at least one allowed domain");
+    document.getElementById("allowedDomainsInput")?.focus();
+    return;
+  }
+
+  button.disabled = true;
+  button.textContent = "Saving...";
+  const saved = await saveDashboardSettings({
+    website_verification_enabled: websiteVerificationEnabled,
+    allowed_domains_enabled: allowedDomainsEnabled,
+    allowed_domains: allowedDomains,
+    verification_status: websiteVerificationEnabled ? "Pending" : "Disabled"
+  });
+  button.disabled = false;
+  button.textContent = "Save integration settings";
+
+  if (saved) {
+    const statusText = document.getElementById("verificationStatusText");
+    if (statusText) statusText.textContent = websiteVerificationEnabled ? "Pending" : "Disabled";
+  }
 });
 
 function updateProfileAvatarPreview(value) {
