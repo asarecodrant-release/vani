@@ -250,8 +250,19 @@ function wallet_adjust_balance(string $email, string $customerId, int $amountPai
         "reference_id" => $referenceId,
         "metadata" => (object)$metadata
     ]]);
+    if ($txn['status'] < 200 || $txn['status'] >= 300) {
+        supabase("PATCH", "billing_accounts?email=eq." . urlencode($email), [
+            "wallet_balance_paise" => $balance
+        ]);
+        return [
+            "success" => false,
+            "charged" => false,
+            "message" => "Wallet transaction could not be recorded",
+            "debug" => $txn
+        ];
+    }
     return [
-        "success" => ($txn['status'] >= 200 && $txn['status'] < 300),
+        "success" => true,
         "charged" => true,
         "balance_after_paise" => $newBalance,
         "transaction" => $txn['data'][0] ?? null,
@@ -752,18 +763,52 @@ if ($action === "save_lead_generation_settings") {
     $existingSettings = $existingRows[0] ?? [];
     $wasWhatsappEnabled = filter_var($existingSettings['redirect_whatsapp'] ?? false, FILTER_VALIDATE_BOOLEAN);
     $whatsappBillingUpdate = [];
+    $walletActivity = null;
+    $whatsappStateChanged = ($redirect_whatsapp !== $wasWhatsappEnabled);
+    $now = time();
+    $whatsappToggleDay = (new DateTimeImmutable('now', new DateTimeZone('Asia/Kolkata')))->format('Y-m-d');
+    $existingToggleDay = trim((string)($existingSettings['whatsapp_redirect_toggle_date'] ?? ''));
+    $existingToggleCount = $existingToggleDay === $whatsappToggleDay ? (int)($existingSettings['whatsapp_redirect_toggle_count'] ?? 0) : 0;
+    $lockedUntil = trim((string)($existingSettings['whatsapp_redirect_locked_until'] ?? ''));
+    $lockedUntilTime = $lockedUntil !== '' ? strtotime($lockedUntil) : 0;
 
-    if ($redirect_whatsapp && !$wasWhatsappEnabled) {
+    if ($whatsappStateChanged && $lockedUntilTime && $now < $lockedUntilTime) {
+        echo json_encode([
+            "success" => false,
+            "whatsapp_redirect_locked" => true,
+            "whatsapp_redirect_locked_until" => gmdate('Y-m-d\TH:i:s\Z', $lockedUntilTime),
+            "message" => "WhatsApp redirection is locked for 24 hours because it has already been changed 3 times."
+        ]);
+        exit;
+    }
+
+    if ($whatsappStateChanged) {
+        $newToggleCount = $existingToggleCount + 1;
+        $whatsappBillingUpdate["whatsapp_redirect_toggle_date"] = $whatsappToggleDay;
+        $whatsappBillingUpdate["whatsapp_redirect_toggle_count"] = $newToggleCount;
+        if ($newToggleCount >= 3) {
+            $whatsappBillingUpdate["whatsapp_redirect_locked_until"] = gmdate('Y-m-d\TH:i:s\Z', $now + 24 * 3600);
+        } elseif ($lockedUntilTime && $now >= $lockedUntilTime) {
+            $whatsappBillingUpdate["whatsapp_redirect_locked_until"] = null;
+        }
+    }
+
+    if ($redirect_whatsapp) {
         $amountPaise = billing_wallet_charge_paise($activePlan, 'whatsapp_redirect_addon');
-        if ($amountPaise > 0) {
+        $lastChargedAt = trim((string)($existingSettings['whatsapp_redirect_charged_at'] ?? ''));
+        $lastRefundedAt = trim((string)($existingSettings['whatsapp_redirect_refunded_at'] ?? ''));
+        $periodEnd = trim((string)($existingSettings['whatsapp_redirect_period_end'] ?? ''));
+        $periodEndTime = $periodEnd !== '' ? strtotime($periodEnd) : 0;
+        $needsCharge = $amountPaise > 0 && ($lastChargedAt === '' || $lastRefundedAt !== '' || !$periodEndTime || time() >= $periodEndTime);
+        if ($needsCharge) {
             $charge = wallet_debit_usage(
                 $billingEmail,
                 $customer_id,
                 $amountPaise,
-                "WhatsApp Redirect add-on activation",
+                "WhatsApp Redirect monthly add-on",
                 "whatsapp_redirect_addon",
                 $customer_id,
-                ["plan_id" => $activePlan, "refund_window_minutes" => 60]
+                ["plan_id" => $activePlan, "billing_period_days" => 30, "refund_window_minutes" => 60]
             );
             if (empty($charge['success'])) {
                 echo json_encode([
@@ -777,10 +822,12 @@ if ($action === "save_lead_generation_settings") {
             $whatsappBillingUpdate = [
                 "whatsapp_redirect_charged_at" => $chargedAt,
                 "whatsapp_redirect_refund_deadline" => gmdate('Y-m-d\TH:i:s\Z', time() + 3600),
+                "whatsapp_redirect_period_end" => gmdate('Y-m-d\TH:i:s\Z', time() + 30 * 86400),
                 "whatsapp_redirect_charge_txn_id" => $charge['transaction']['id'] ?? null,
                 "whatsapp_redirect_charge_amount_paise" => $amountPaise,
                 "whatsapp_redirect_refunded_at" => null
             ];
+            $walletActivity = "whatsapp_redirect_debit";
         }
     } elseif (!$redirect_whatsapp && $wasWhatsappEnabled) {
         $chargedAt = trim((string)($existingSettings['whatsapp_redirect_charged_at'] ?? ''));
@@ -803,6 +850,7 @@ if ($action === "save_lead_generation_settings") {
             );
             if (!empty($refund['success'])) {
                 $whatsappBillingUpdate["whatsapp_redirect_refunded_at"] = gmdate('Y-m-d\TH:i:s\Z');
+                $walletActivity = "whatsapp_redirect_refund";
             }
         }
     }
@@ -837,7 +885,7 @@ if ($action === "save_lead_generation_settings") {
     }
 
     $saved = ($res['status'] >= 200 && $res['status'] < 300);
-    if (!$saved && $redirect_whatsapp && !$wasWhatsappEnabled && !empty($charge['success'] ?? false)) {
+    if (!$saved && $redirect_whatsapp && !empty($charge['success'] ?? false)) {
         wallet_credit_usage(
             $billingEmail,
             $customer_id,
@@ -851,11 +899,15 @@ if ($action === "save_lead_generation_settings") {
                 "reason" => "settings_save_failed"
             ]
         );
+        $walletActivity = "whatsapp_redirect_refund";
     }
 
     echo json_encode([
         "success" => $saved,
         "message" => $saved ? "Lead generation settings saved" : "Lead generation settings could not be saved",
+        "wallet_activity" => $walletActivity,
+        "whatsapp_redirect_locked" => !empty($whatsappBillingUpdate["whatsapp_redirect_locked_until"]),
+        "whatsapp_redirect_locked_until" => $whatsappBillingUpdate["whatsapp_redirect_locked_until"] ?? ($lockedUntilTime && time() < $lockedUntilTime ? gmdate('Y-m-d\TH:i:s\Z', $lockedUntilTime) : null),
         "debug" => $res
     ]);
     exit;

@@ -518,6 +518,15 @@ $leadRedirectWhatsapp = filter_var($leadSettings['redirect_whatsapp'] ?? false, 
 $leadVerifyMobileOtp = filter_var($leadSettings['verify_mobile_otp'] ?? false, FILTER_VALIDATE_BOOLEAN);
 $leadNotificationEmail = first_value($leadSettings, ['notification_email'], $email);
 $leadWhatsappNumber = first_value($leadSettings, ['whatsapp_mobile_number'], '');
+$nowTimestamp = time();
+$todayInIndia = (new DateTimeImmutable('now', new DateTimeZone('Asia/Kolkata')))->format('Y-m-d');
+$whatsappToggleDate = (string)($leadSettings['whatsapp_redirect_toggle_date'] ?? '');
+$whatsappToggleCount = $whatsappToggleDate === $todayInIndia ? (int)($leadSettings['whatsapp_redirect_toggle_count'] ?? 0) : 0;
+$whatsappLockedUntil = (string)($leadSettings['whatsapp_redirect_locked_until'] ?? '');
+$whatsappLockedUntilTime = $whatsappLockedUntil !== '' ? (strtotime($whatsappLockedUntil) ?: 0) : 0;
+$whatsappRedirectLocked = $whatsappLockedUntilTime > $nowTimestamp;
+$whatsappRedirectLockedOn = $leadRedirectWhatsapp && $whatsappRedirectLocked;
+$whatsappLockSecondsRemaining = $whatsappRedirectLocked ? max(0, $whatsappLockedUntilTime - $nowTimestamp) : 0;
 $embedCode = $selectedBotId ? '<script src="' . $widgetUrl . '" data-id="' . $selectedBotId . '"></script>' : '';
 $profileFirstName = first_value($profile, ['first_name'], '');
 $profileLastName = first_value($profile, ['last_name'], '');
@@ -1673,10 +1682,11 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                     <div>
                       <h4>Redirect to WhatsApp Business</h4>
                       <small>Send users to the customer's WhatsApp Business account after lead capture.</small>
+                      <small class="input-help <?php echo $whatsappRedirectLocked ? 'error' : ''; ?>">WhatsApp redirection can be turned ON or OFF only 3 times per day. <?php echo $whatsappRedirectLocked ? 'It will be activated again after ' : h((string)max(0, 3 - $whatsappToggleCount)) . ' changes left today.'; ?><span id="whatsappLockTimer" data-remaining-seconds="<?php echo h((string)$whatsappLockSecondsRemaining); ?>"></span></small>
                       <?php if (!$canUseWhatsappRedirect): ?><small class="input-help error">Growth plan or higher required.</small><?php endif; ?>
                     </div>
                     <label class="switch" title="Redirect to WhatsApp Business">
-                      <input id="whatsappLeadToggle" class="lead-toggle" type="checkbox" <?php echo $leadRedirectWhatsapp ? 'checked' : ''; ?> aria-label="Redirect to WhatsApp Business">
+                      <input id="whatsappLeadToggle" class="lead-toggle" type="checkbox" <?php echo $leadRedirectWhatsapp ? 'checked' : ''; ?> <?php echo $whatsappRedirectLockedOn ? 'disabled' : ''; ?> aria-label="Redirect to WhatsApp Business">
                       <span class="switch-slider"></span>
                     </label>
                   </div>
@@ -1705,19 +1715,12 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
       <section class="tab-panel" id="subscription">
         <div class="panel section-body">
           <span class="eyebrow">Subscription</span>
-          <h2 style="margin:8px 0 10px">Subscription + Wallet Billing</h2>
-          <p class="muted">Customers pay a monthly platform fee, then usage charges are deducted from wallet balance for OTPs, fresh leads, returning leads, WhatsApp redirects, and extra FAQs.</p>
+          <h2 style="margin:8px 0 10px">Subscription Plans</h2>
+          <p class="muted">Choose the monthly plan that fits your FAQ limit, lead verification, analytics, and automation needs.</p>
 
           <div class="metrics" style="margin-top:18px">
             <div class="panel metric"><span>Current plan</span><strong><?php echo h($activePlan['name']); ?></strong><small><?php echo h($faqCount); ?>/<?php echo $planFaqLimit === PHP_INT_MAX ? 'Unlimited' : h($planFaqLimit); ?> FAQs used.</small></div>
-            <div class="panel metric"><span>Wallet</span><strong><?php echo h(billing_rupees($billingWalletPaise)); ?></strong><small>Subscription payments are credited here.</small></div>
-            <div class="panel metric"><span>Billing model</span><strong>Hybrid</strong><small>Monthly subscription plus usage wallet.</small></div>
             <div class="panel metric"><span>Best default</span><strong>Growth</strong><small>Most local businesses will fit this tier.</small></div>
-          </div>
-
-          <div class="split" style="margin-top:18px">
-            <div class="notice"><strong>Monthly subscription:</strong><br>Fixed platform fee for dashboard access, FAQ limits, analytics, and plan features.</div>
-            <div class="notice"><strong>Wallet usage:</strong><br>Variable charges deduct automatically so heavy users pay more while small businesses can start cheaply.</div>
           </div>
 
           <div class="pricing-grid">
@@ -1764,13 +1767,6 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
               <div class="notice"><strong>Wallet charges:</strong><br>Negotiated custom rates based on lead volume, OTP volume, and integration needs.</div>
               <button class="pill-btn billing-plan-btn" type="button" data-plan-id="enterprise">Subscribe Enterprise</button>
               <small class="muted">Best for enterprises, large agencies, and franchise businesses.</small>
-            </div>
-
-            <div class="panel pricing-card">
-              <div class="pricing-head"><div><span class="eyebrow">Wallet Rules</span><h3>Usage Deductions</h3></div></div>
-              <div class="feature-list"><span>OTP verification charges are variable</span><span>Fresh leads cost more than returning leads</span><span>Repeat leads after 30 days can be reactivated</span><span>Extra FAQs can deduct from wallet when plan limit is crossed</span></div>
-              <button class="pill-btn" type="button" data-save-note="Wallet recharge">Recharge wallet</button>
-              <button class="ghost-btn" type="button" data-save-note="Plan upgrade">Upgrade plan</button>
             </div>
           </div>
         </div>
@@ -1836,9 +1832,15 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
           <div class="metrics" style="margin-top:18px">
             <div class="panel metric"><span>Wallet balance</span><strong><?php echo h(billing_rupees($billingWalletPaise)); ?></strong><small>Available for paid usage.</small></div>
             <div class="panel metric"><span>Current plan</span><strong><?php echo h($activePlan['name']); ?></strong><small>Subscription status: <?php echo h($billingAccount['subscription_status'] ?? 'free'); ?></small></div>
+            <div class="panel metric"><span>Billing model</span><strong>Hybrid</strong><small>Monthly subscription plus usage wallet.</small></div>
             <div class="panel metric"><span>Total credited</span><strong><?php echo h(billing_rupees($walletCreditPaise)); ?></strong><small>Money added to wallet.</small></div>
             <div class="panel metric"><span>Total deducted</span><strong><?php echo h(billing_rupees($walletDebitPaise)); ?></strong><small>Paid feature usage.</small></div>
             <div class="panel metric"><span>Transactions</span><strong><?php echo h(count($walletTransactionRows)); ?></strong><small>Latest wallet activity.</small></div>
+          </div>
+
+          <div class="split" style="margin-top:18px">
+            <div class="notice"><strong>Monthly subscription:</strong><br>Fixed platform fee for dashboard access, FAQ limits, analytics, and plan features.</div>
+            <div class="notice"><strong>Wallet usage:</strong><br>Usage charges deduct automatically for OTP verification, leads, WhatsApp redirects, and other paid services.</div>
           </div>
 
           <div class="table-wrap" style="margin-top:18px">
@@ -1896,6 +1898,8 @@ const leadWalletCharges = <?php echo json_encode([
   "reactivated_mobile_lead" => billing_wallet_charge_paise($activePlanId, "reactivated_mobile_lead"),
   "whatsapp_redirect_addon" => billing_wallet_charge_paise($activePlanId, "whatsapp_redirect_addon")
 ]); ?>;
+const whatsappRedirectLockedOn = <?php echo json_encode($whatsappRedirectLockedOn); ?>;
+const whatsappRedirectLocked = <?php echo json_encode($whatsappRedirectLocked); ?>;
 const analyticsReport = <?php echo json_encode([
   "bot_name" => $botName,
   "range_label" => $analyticsRangeLabel,
@@ -2328,6 +2332,11 @@ function syncOtpCollectionLocks() {
     leadCollectMobileToggle.disabled = !enabled || !!leadMobileOtpToggle?.checked;
     leadCollectMobileToggle.title = leadMobileOtpToggle?.checked ? "Turn off Mobile OTP before collecting mobile without OTP." : "";
   }
+  if (whatsappLeadToggle && whatsappRedirectLockedOn) {
+    whatsappLeadToggle.checked = true;
+    whatsappLeadToggle.disabled = true;
+    whatsappLeadToggle.title = "WhatsApp redirection is locked ON for today after 3 changes.";
+  }
 }
 
 leadGenerationEnabled?.addEventListener("change", () => {
@@ -2351,6 +2360,34 @@ function walletChargeText(key) {
 
 function paidServiceAlert(message) {
   alert(message);
+}
+
+function formatDuration(seconds) {
+  const total = Math.max(0, Number(seconds) || 0);
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const secs = total % 60;
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+}
+
+function startWhatsappLockTimer() {
+  const timer = document.getElementById("whatsappLockTimer");
+  if (!timer) return;
+  let remaining = Number(timer.dataset.remainingSeconds || 0);
+  if (remaining <= 0) {
+    timer.textContent = "";
+    return;
+  }
+  const render = () => {
+    timer.textContent = remaining > 0 ? formatDuration(remaining) : "00:00:00";
+    if (remaining <= 0) {
+      clearInterval(interval);
+      window.location.reload();
+    }
+    remaining -= 1;
+  };
+  const interval = setInterval(render, 1000);
+  render();
 }
 
 leadEmailOtpToggle?.addEventListener("change", () => {
@@ -2384,7 +2421,7 @@ whatsappLeadToggle?.addEventListener("change", () => {
   if (!requireLeadPaidFeature("whatsapp_redirect", whatsappLeadToggle, "WhatsApp Redirect requires an active paid plan")) return;
   if (whatsappLeadToggle.checked) {
     const charge = walletChargeText("whatsapp_redirect_addon");
-    paidServiceAlert(charge === "included" ? "WhatsApp redirection service is ON. This service is included in your current plan." : `WhatsApp redirection service is ON. ${charge} will be deducted from your wallet when you save. If you turn it off within 1 hour, the amount will be refunded to your wallet.`);
+    paidServiceAlert(charge === "included" ? "WhatsApp redirection service is ON. This service is included in your current plan." : `WhatsApp redirection service is ON. ${charge} will be deducted from your wallet when you save. This add-on is valid for 30 days. If you turn it off within 1 hour, the amount will be refunded to your wallet.`);
   }
   validateWhatsappLeadNumber(false);
 });
@@ -2435,7 +2472,19 @@ document.getElementById("saveLeadSetupBtn")?.addEventListener("click", async eve
   button.textContent = "Save lead setup";
 
   if (!data.success) {
+    if (data.whatsapp_redirect_locked && whatsappLeadToggle) {
+      whatsappLeadToggle.checked = true;
+      whatsappLeadToggle.disabled = true;
+      setTimeout(() => window.location.reload(), 900);
+    }
     showToast(data.message || "Lead generation settings could not be saved");
+    return;
+  }
+
+  if (data.wallet_activity || data.whatsapp_redirect_locked) {
+    if (data.wallet_activity) openTab("billing");
+    showToast(data.wallet_activity ? "Wallet transaction saved. Refreshing Billing tab..." : "WhatsApp redirection locked for 24 hours. Refreshing...");
+    setTimeout(() => window.location.reload(), 900);
     return;
   }
 
@@ -2443,6 +2492,7 @@ document.getElementById("saveLeadSetupBtn")?.addEventListener("click", async eve
 });
 
 updateLeadGenerationUI();
+startWhatsappLockTimer();
 
 document.querySelectorAll(".swatch").forEach(swatch => {
   swatch.addEventListener("click", () => {
