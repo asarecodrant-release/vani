@@ -45,6 +45,53 @@ function first_value(array $row, array $keys, string $fallback = ''): string {
     return $fallback;
 }
 
+function date_in_range(array $row, string $field, string $from, string $to): bool {
+    $date = substr((string)($row[$field] ?? ''), 0, 10);
+    if ($date === '') {
+        return false;
+    }
+    return $date >= $from && $date <= $to;
+}
+
+function analytics_url(string $range, string $selectedBotId, string $from = '', string $to = ''): string {
+    $params = ['analytics_range' => $range];
+    if ($selectedBotId !== '') {
+        $params['bot'] = $selectedBotId;
+    }
+    if ($range === 'custom') {
+        if ($from !== '') {
+            $params['date_from'] = $from;
+        }
+        if ($to !== '') {
+            $params['date_to'] = $to;
+        }
+    }
+    return 'dashboard.php?' . http_build_query($params) . '#analytics';
+}
+
+$allowedAnalyticsRanges = ['today', 'yesterday', '7_days', '30_days', 'custom'];
+$analyticsRange = in_array($_GET['analytics_range'] ?? '', $allowedAnalyticsRanges, true)
+    ? $_GET['analytics_range']
+    : '30_days';
+$analyticsToday = gmdate('Y-m-d');
+$analyticsYesterday = gmdate('Y-m-d', time() - 86400);
+$analyticsFrom = gmdate('Y-m-d', time() - (29 * 86400));
+$analyticsTo = $analyticsToday;
+
+if ($analyticsRange === 'today') {
+    $analyticsFrom = $analyticsToday;
+} elseif ($analyticsRange === 'yesterday') {
+    $analyticsFrom = $analyticsYesterday;
+    $analyticsTo = $analyticsYesterday;
+} elseif ($analyticsRange === '7_days') {
+    $analyticsFrom = gmdate('Y-m-d', time() - (6 * 86400));
+} elseif ($analyticsRange === 'custom') {
+    $customFrom = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['date_from'] ?? '') ? $_GET['date_from'] : $analyticsFrom;
+    $customTo = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['date_to'] ?? '') ? $_GET['date_to'] : $analyticsToday;
+    $analyticsFrom = min($customFrom, $customTo);
+    $analyticsTo = max($customFrom, $customTo);
+}
+
 $bots = safe_data(supabase(
     "GET",
     "chatbot_signups?select=*&email=eq." . urlencode($email) . "&order=created_at.desc"
@@ -123,6 +170,16 @@ $profileRows = safe_data(supabase(
     "GET",
     "customer_profiles?select=*&email=eq." . urlencode($email) . "&limit=1"
 ));
+
+$todayAllQueries = count(array_filter($conversationRows, fn($row) => date_in_range($row, 'created_at', $analyticsToday, $analyticsToday)));
+$yesterdayAllQueries = count(array_filter($conversationRows, fn($row) => date_in_range($row, 'created_at', $analyticsYesterday, $analyticsYesterday)));
+$last7AllQueries = count(array_filter($conversationRows, fn($row) => date_in_range($row, 'created_at', gmdate('Y-m-d', time() - (6 * 86400)), $analyticsToday)));
+$last30AllQueries = count(array_filter($conversationRows, fn($row) => date_in_range($row, 'created_at', gmdate('Y-m-d', time() - (29 * 86400)), $analyticsToday)));
+
+$conversationRows = array_values(array_filter($conversationRows, fn($row) => date_in_range($row, 'created_at', $analyticsFrom, $analyticsTo)));
+$usageRows = array_values(array_filter($usageRows, fn($row) => date_in_range($row, 'created_at', $analyticsFrom, $analyticsTo)));
+$leadRows = array_values(array_filter($leadRows, fn($row) => date_in_range($row, 'created_at', $analyticsFrom, $analyticsTo)));
+$sessionRows = array_values(array_filter($sessionRows, fn($row) => date_in_range($row, 'created_at', $analyticsFrom, $analyticsTo)));
 
 $settings = $settingsRows[0] ?? [];
 $leadSettings = $leadSettingsRows[0] ?? [];
@@ -444,6 +501,13 @@ $profileLastName = first_value($profile, ['last_name'], '');
 $displayName = trim($profileFirstName . ' ' . $profileLastName);
 $initialSource = $profileFirstName ?: $email;
 $initials = strtoupper(substr($initialSource, 0, 1));
+$analyticsRangeLabel = [
+    'today' => 'Today',
+    'yesterday' => 'Yesterday',
+    '7_days' => 'Last 7 days',
+    '30_days' => 'Last 30 days',
+    'custom' => 'Custom range'
+][$analyticsRange] ?? 'Last 30 days';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -639,7 +703,16 @@ tr.editing .faq-edit-btn{display:none}
 .analytics-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
 .analytics-grid.two{grid-template-columns:repeat(2,minmax(0,1fr))}
 .filter-bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-.filter-chip{border:1px solid var(--line);background:var(--panel-strong);color:var(--ink);border-radius:999px;padding:8px 12px;font-size:13px;font-weight:700}
+.filter-chip{border:1px solid var(--line);background:var(--panel-strong);color:var(--ink);border-radius:999px;padding:8px 12px;font-size:13px;font-weight:700;text-decoration:none}
+.filter-chip.active{background:linear-gradient(135deg,var(--brand),var(--brand-2));border-color:transparent;color:#fff}
+.analytics-filter-form{display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin-top:16px}
+.analytics-filter-form .field{min-width:150px}
+.analytics-filter-form .pill-btn{min-height:42px}
+.analytics-tabs{display:flex;gap:8px;flex-wrap:wrap}
+.analytics-tab-btn{border:1px solid var(--line);background:var(--panel-strong);color:var(--ink);border-radius:999px;padding:9px 13px;font-size:13px;font-weight:800;cursor:pointer}
+.analytics-tab-btn.active{background:linear-gradient(135deg,var(--brand),var(--brand-2));border-color:transparent;color:#fff}
+.analytics-subpanel{display:none;gap:18px}
+.analytics-subpanel.active{display:grid}
 .mini-chart{display:grid;gap:10px;margin-top:12px}
 .bar-row{display:grid;grid-template-columns:minmax(82px,.45fr) minmax(0,1fr) 44px;gap:10px;align-items:center;font-size:13px;color:var(--muted)}
 .bar-track{height:12px;border-radius:999px;background:rgba(148,163,184,.2);overflow:hidden}
@@ -1132,17 +1205,44 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
             <div>
               <span class="eyebrow">Analytics</span>
               <h3 style="margin-top:8px">Performance Dashboard</h3>
+              <p class="muted" style="margin-top:6px">Showing <?php echo h($analyticsRangeLabel); ?>: <?php echo h($analyticsFrom); ?> to <?php echo h($analyticsTo); ?></p>
             </div>
             <div class="filter-bar">
-              <span class="filter-chip">Today: <?php echo h($todayQueries); ?></span>
-              <span class="filter-chip">Yesterday: <?php echo h($yesterdayQueries); ?></span>
-              <span class="filter-chip">7 days: <?php echo h($last7Queries); ?></span>
-              <span class="filter-chip">30 days: <?php echo h($last30Queries); ?></span>
-              <span class="filter-chip">Custom range</span>
+              <a class="filter-chip <?php echo $analyticsRange === 'today' ? 'active' : ''; ?>" href="<?php echo h(analytics_url('today', $selectedBotId)); ?>">Today: <?php echo h($todayAllQueries); ?></a>
+              <a class="filter-chip <?php echo $analyticsRange === 'yesterday' ? 'active' : ''; ?>" href="<?php echo h(analytics_url('yesterday', $selectedBotId)); ?>">Yesterday: <?php echo h($yesterdayAllQueries); ?></a>
+              <a class="filter-chip <?php echo $analyticsRange === '7_days' ? 'active' : ''; ?>" href="<?php echo h(analytics_url('7_days', $selectedBotId)); ?>">7 days: <?php echo h($last7AllQueries); ?></a>
+              <a class="filter-chip <?php echo $analyticsRange === '30_days' ? 'active' : ''; ?>" href="<?php echo h(analytics_url('30_days', $selectedBotId)); ?>">30 days: <?php echo h($last30AllQueries); ?></a>
+              <a class="filter-chip <?php echo $analyticsRange === 'custom' ? 'active' : ''; ?>" href="<?php echo h(analytics_url('custom', $selectedBotId, $analyticsFrom, $analyticsTo)); ?>">Custom range</a>
             </div>
+          </div>
+          <form class="analytics-filter-form" method="get" action="dashboard.php">
+            <?php if ($selectedBotId): ?><input type="hidden" name="bot" value="<?php echo h($selectedBotId); ?>"><?php endif; ?>
+            <input type="hidden" name="analytics_range" value="custom">
+            <div class="field">
+              <label>From</label>
+              <input type="date" name="date_from" value="<?php echo h($analyticsFrom); ?>">
+            </div>
+            <div class="field">
+              <label>To</label>
+              <input type="date" name="date_to" value="<?php echo h($analyticsTo); ?>">
+            </div>
+            <button class="pill-btn" type="submit">Apply</button>
+          </form>
+        </div>
+
+        <div class="panel section-body">
+          <div class="analytics-tabs" role="tablist" aria-label="Analytics sections">
+            <button class="analytics-tab-btn active" type="button" data-analytics-tab="analytics-overview">Overview</button>
+            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-conversations">Conversations</button>
+            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-faq">FAQ Insights</button>
+            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-leads">Leads</button>
+            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-pages">Pages</button>
+            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-realtime">Real-Time</button>
+            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-reports">Reports</button>
           </div>
         </div>
 
+        <div class="analytics-subpanel active" id="analytics-overview">
         <div class="metrics">
           <div class="panel metric"><span>Total Conversations</span><strong><?php echo h($conversationCount); ?></strong><small>Tracked chat sessions/queries.</small></div>
           <div class="panel metric"><span>Total Messages</span><strong><?php echo h($totalMessages); ?></strong><small>User messages currently tracked.</small></div>
@@ -1157,7 +1257,9 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
           <div class="panel metric"><span>Returning Users</span><strong><?php echo h($returningUsersPercent); ?>%</strong><small><?php echo h($returningVisitorCount); ?> visitors returned.</small></div>
           <div class="panel metric"><span>Avg Conversation Duration</span><strong><?php echo h($avgConversationDuration); ?></strong><small>Based on widget session duration.</small></div>
         </div>
+        </div>
 
+        <div class="analytics-subpanel" id="analytics-conversations">
         <div class="analytics-grid two">
           <div class="panel section-body">
             <h3>Conversations Trend</h3>
@@ -1218,7 +1320,9 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
             </div>
           </div>
         </div>
+        </div>
 
+        <div class="analytics-subpanel" id="analytics-faq">
         <div class="analytics-grid two">
           <div class="panel">
             <div class="section-head"><h3>Most Asked Questions</h3><span class="tag"><?php echo h(count($topQuestionCounts)); ?> tracked</span></div>
@@ -1255,7 +1359,9 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
             </div>
           </div>
         </div>
+        </div>
 
+        <div class="analytics-subpanel" id="analytics-leads">
         <div class="analytics-grid two">
           <div class="panel section-body">
             <h3>Accuracy / Resolution</h3>
@@ -1283,7 +1389,9 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
             </div>
           </div>
         </div>
+        </div>
 
+        <div class="analytics-subpanel" id="analytics-pages">
         <div class="analytics-grid two">
           <div class="panel section-body">
             <h3>User Engagement</h3>
@@ -1310,11 +1418,19 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
             </div>
           </div>
         </div>
+        </div>
 
+        <div class="analytics-subpanel" id="analytics-realtime">
         <div class="analytics-grid">
           <div class="panel section-body"><h3>Real-Time Analytics</h3><p class="muted" style="margin-top:10px">Active users currently chatting: <strong><?php echo h($activeUsersNow); ?></strong></p><p class="muted">Current page: <strong><?php echo h($mostActivePage); ?></strong></p></div>
-          <div class="panel section-body"><h3>Export & Reports</h3><div class="report-actions" style="margin-top:12px"><button class="ghost-btn" type="button" data-save-note="CSV export">Export CSV</button><button class="ghost-btn" type="button" data-save-note="PDF export">Export PDF</button><button class="ghost-btn" type="button" data-save-note="Weekly email reports">Weekly report</button><button class="ghost-btn" type="button" data-save-note="Monthly summary reports">Monthly report</button></div></div>
+        </div>
+        </div>
+
+        <div class="analytics-subpanel" id="analytics-reports">
+        <div class="analytics-grid two">
+          <div class="panel section-body"><h3>Export & Reports</h3><div class="report-actions" style="margin-top:12px"><button class="ghost-btn" type="button" id="exportAnalyticsCsvBtn">Export CSV</button><button class="ghost-btn" type="button" id="downloadAnalyticsReportBtn">Download report</button><button class="ghost-btn" type="button" id="printAnalyticsReportBtn">Print / Save PDF</button><button class="ghost-btn" type="button" id="downloadWeeklyReportBtn">Weekly report</button><button class="ghost-btn" type="button" id="downloadMonthlyReportBtn">Monthly report</button></div></div>
           <div class="panel section-body"><h3>Notifications / Alerts</h3><div class="mini-chart"><div class="notice">Fallback rate: <?php echo h($fallbackRate); ?>%</div><div class="notice">Trending unanswered questions: <?php echo h($unansweredCount); ?></div><div class="notice">Lead conversion: <?php echo h($leadConversionRate); ?>%</div></div></div>
+        </div>
         </div>
       </section>
 
@@ -1677,6 +1793,48 @@ const drawerOverlay = document.getElementById("drawerOverlay");
 const accountToggleText = accountToggle?.textContent || "";
 let currentFaqCount = <?php echo json_encode($faqCount); ?>;
 const freeFaqLimit = <?php echo json_encode($freeFaqLimit); ?>;
+const analyticsReport = <?php echo json_encode([
+  "bot_name" => $botName,
+  "range_label" => $analyticsRangeLabel,
+  "date_from" => $analyticsFrom,
+  "date_to" => $analyticsTo,
+  "summary" => [
+    "total_conversations" => $conversationCount,
+    "total_messages" => $totalMessages,
+    "unique_visitors" => $uniqueVisitorCount,
+    "answered_queries_percent" => $accuracy,
+    "unanswered_queries_percent" => $unansweredPercent,
+    "avg_response_time_ms" => $avgResponseTimeMs,
+    "leads_collected" => $leadCount,
+    "otp_verified_leads" => $verifiedLeadCount,
+    "active_chatbots" => $activeChatbotCount,
+    "most_active_page" => $mostActivePage,
+    "returning_users_percent" => $returningUsersPercent,
+    "avg_conversation_duration" => $avgConversationDuration
+  ],
+  "daily_counts" => $dailyChartCounts,
+  "hour_counts" => $hourChartCounts,
+  "devices" => $deviceCounts,
+  "browsers" => $browserCounts,
+  "countries" => $countryCounts,
+  "cities" => $cityCounts,
+  "top_questions" => array_values(array_map(fn($item) => [
+    "question" => $item["question"] ?? "",
+    "count" => $item["count"] ?? 0,
+    "success_rate" => !empty($item["count"]) ? round((($item["answered"] ?? 0) / max(1, $item["count"])) * 100) : 0
+  ], array_slice($topQuestionCounts, 0, 25))),
+  "unanswered_questions" => array_values(array_map(fn($item) => [
+    "question" => $item["question"] ?? "",
+    "source_page" => $item["source_page"] ?? "Unknown page",
+    "date" => substr((string)($item["created_at"] ?? ""), 0, 10)
+  ], array_slice($outsideFaqQuestions, 0, 25))),
+  "source_pages" => array_values(array_map(fn($page) => [
+    "page" => $page["page"] ?? "",
+    "conversations" => $page["conversations"] ?? 0,
+    "leads" => $page["leads"] ?? 0,
+    "success_rate" => !empty($page["conversations"]) ? round((($page["answered"] ?? 0) / max(1, $page["conversations"])) * 100) : 0
+  ], array_slice($sourcePageStats, 0, 25)))
+], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE); ?>;
 
 function setDrawer(type, open) {
   const isNav = type === "nav";
@@ -1718,7 +1876,7 @@ function showToast(text) {
   setTimeout(() => toast.classList.remove("show"), 1800);
 }
 
-function openTab(id) {
+function openTab(id, updateHash = true) {
   tabs.forEach(tab => tab.classList.toggle("active", tab.dataset.tab === id));
   panels.forEach(panel => panel.classList.toggle("active", panel.id === id));
   document.querySelector(`.tab-btn[data-tab="${id}"]`)?.scrollIntoView({
@@ -1726,11 +1884,33 @@ function openTab(id) {
     inline: "nearest",
     behavior: "smooth"
   });
-  if (location.hash !== "#" + id) history.replaceState(null, "", "#" + id);
+  if (updateHash && location.hash !== "#" + id) history.replaceState(null, "", "#" + id);
   closeDrawers();
 }
 
 tabs.forEach(tab => tab.addEventListener("click", () => openTab(tab.dataset.tab)));
+
+function openAnalyticsTab(id, updateHash = true) {
+  const target = document.getElementById(id) ? id : "analytics-overview";
+  document.querySelectorAll(".analytics-tab-btn").forEach(tab => {
+    tab.classList.toggle("active", tab.dataset.analyticsTab === target);
+  });
+  document.querySelectorAll(".analytics-subpanel").forEach(panel => {
+    panel.classList.toggle("active", panel.id === target);
+  });
+  if (updateHash) history.replaceState(null, "", "#analytics/" + target.replace("analytics-", ""));
+}
+
+document.querySelectorAll(".analytics-tab-btn").forEach(tab => {
+  tab.addEventListener("click", () => openAnalyticsTab(tab.dataset.analyticsTab));
+});
+
+const analyticsHash = location.hash.startsWith("#analytics/") ? location.hash.split("/")[1] : "";
+if (analyticsHash) {
+  openTab("analytics", false);
+  openAnalyticsTab("analytics-" + analyticsHash, false);
+}
+
 document.querySelectorAll("[data-jump]").forEach(btn => {
   btn.addEventListener("click", event => {
     const target = btn.dataset.jump;
@@ -1752,6 +1932,115 @@ document.querySelectorAll(".copy-btn").forEach(btn => {
     await navigator.clipboard.writeText(text);
     showToast("Copied to clipboard");
   });
+});
+
+function reportFileBase() {
+  const bot = (analyticsReport.bot_name || "vani").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  return `${bot || "vani"}-analytics-${analyticsReport.date_from}-to-${analyticsReport.date_to}`;
+}
+
+function downloadBlob(filename, content, type) {
+  const blob = new Blob([content], {type});
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function csvValue(value) {
+  const text = String(value ?? "");
+  return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function rowsToCsv(rows) {
+  return rows.map(row => row.map(csvValue).join(",")).join("\n");
+}
+
+function analyticsCsv() {
+  const rows = [
+    ["Section", "Metric", "Value"],
+    ...Object.entries(analyticsReport.summary || {}).map(([key, value]) => ["Summary", key, value]),
+    [],
+    ["Daily Counts", "Date", "Conversations"],
+    ...Object.entries(analyticsReport.daily_counts || {}).map(([date, count]) => ["Daily Counts", date, count]),
+    [],
+    ["Hourly Counts", "Hour", "Queries"],
+    ...Object.entries(analyticsReport.hour_counts || {}).map(([hour, count]) => ["Hourly Counts", `${hour}:00`, count]),
+    [],
+    ["Devices", "Device", "Count"],
+    ...Object.entries(analyticsReport.devices || {}).map(([device, count]) => ["Devices", device, count]),
+    [],
+    ["Browsers", "Browser", "Count"],
+    ...Object.entries(analyticsReport.browsers || {}).map(([browser, count]) => ["Browsers", browser, count]),
+    [],
+    ["Countries", "Country", "Count"],
+    ...Object.entries(analyticsReport.countries || {}).map(([country, count]) => ["Countries", country, count]),
+    [],
+    ["Top Questions", "Question", "Count", "Success Rate"],
+    ...(analyticsReport.top_questions || []).map(item => ["Top Questions", item.question, item.count, `${item.success_rate}%`]),
+    [],
+    ["Unanswered Questions", "Question", "Source Page", "Date"],
+    ...(analyticsReport.unanswered_questions || []).map(item => ["Unanswered Questions", item.question, item.source_page, item.date]),
+    [],
+    ["Source Pages", "Page", "Conversations", "Leads", "Success Rate"],
+    ...(analyticsReport.source_pages || []).map(item => ["Source Pages", item.page, item.conversations, item.leads, `${item.success_rate}%`])
+  ];
+  return rowsToCsv(rows);
+}
+
+function analyticsReportHtml() {
+  const esc = value => String(value ?? "").replace(/[&<>"']/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[char]));
+  const summaryRows = Object.entries(analyticsReport.summary || {})
+    .map(([key, value]) => `<tr><th>${esc(key.replace(/_/g, " "))}</th><td>${esc(value)}</td></tr>`).join("");
+  const table = (title, headers, rows) => `
+    <h2>${esc(title)}</h2>
+    <table><thead><tr>${headers.map(header => `<th>${esc(header)}</th>`).join("")}</tr></thead>
+    <tbody>${rows.length ? rows.join("") : `<tr><td colspan="${headers.length}">No data</td></tr>`}</tbody></table>`;
+  return `<!doctype html>
+<html><head><meta charset="utf-8"><title>Vani Analytics Report</title>
+<style>body{font-family:Arial,sans-serif;margin:32px;color:#111827}h1{margin-bottom:4px}p{color:#4b5563}table{width:100%;border-collapse:collapse;margin:16px 0 28px}th,td{text-align:left;border:1px solid #e5e7eb;padding:9px 10px;font-size:13px}th{background:#f8fafc}.muted{color:#64748b}</style>
+</head><body>
+<h1>Vani Analytics Report</h1>
+<p>${esc(analyticsReport.bot_name)} | ${esc(analyticsReport.range_label)} | ${esc(analyticsReport.date_from)} to ${esc(analyticsReport.date_to)}</p>
+<h2>Summary</h2><table><tbody>${summaryRows}</tbody></table>
+${table("Top Questions", ["Question", "Count", "Success Rate"], (analyticsReport.top_questions || []).map(item => `<tr><td>${esc(item.question)}</td><td>${esc(item.count)}</td><td>${esc(item.success_rate)}%</td></tr>`))}
+${table("Unanswered Questions", ["Question", "Source Page", "Date"], (analyticsReport.unanswered_questions || []).map(item => `<tr><td>${esc(item.question)}</td><td>${esc(item.source_page)}</td><td>${esc(item.date)}</td></tr>`))}
+${table("Source Pages", ["Page", "Conversations", "Leads", "Success Rate"], (analyticsReport.source_pages || []).map(item => `<tr><td>${esc(item.page)}</td><td>${esc(item.conversations)}</td><td>${esc(item.leads)}</td><td>${esc(item.success_rate)}%</td></tr>`))}
+<p class="muted">Generated from the dashboard data currently loaded in your browser.</p>
+</body></html>`;
+}
+
+document.getElementById("exportAnalyticsCsvBtn")?.addEventListener("click", () => {
+  downloadBlob(`${reportFileBase()}.csv`, analyticsCsv(), "text/csv;charset=utf-8");
+  showToast("CSV report downloaded");
+});
+
+document.getElementById("downloadAnalyticsReportBtn")?.addEventListener("click", () => {
+  downloadBlob(`${reportFileBase()}.html`, analyticsReportHtml(), "text/html;charset=utf-8");
+  showToast("Report downloaded");
+});
+
+document.getElementById("downloadWeeklyReportBtn")?.addEventListener("click", () => {
+  downloadBlob(`${reportFileBase()}-weekly.html`, analyticsReportHtml(), "text/html;charset=utf-8");
+  showToast("Weekly report downloaded");
+});
+
+document.getElementById("downloadMonthlyReportBtn")?.addEventListener("click", () => {
+  downloadBlob(`${reportFileBase()}-monthly.html`, analyticsReportHtml(), "text/html;charset=utf-8");
+  showToast("Monthly report downloaded");
+});
+
+document.getElementById("printAnalyticsReportBtn")?.addEventListener("click", () => {
+  const reportWindow = window.open("", "_blank");
+  if (!reportWindow) return showToast("Allow popups to print the report");
+  reportWindow.document.write(analyticsReportHtml());
+  reportWindow.document.close();
+  reportWindow.focus();
+  reportWindow.print();
 });
 
 themeToggle.addEventListener("click", () => {
@@ -2278,7 +2567,7 @@ document.getElementById("saveProfileBtn")?.addEventListener("click", async () =>
 });
 
 const hash = location.hash.replace("#", "");
-if (hash && document.getElementById(hash)) openTab(hash);
+if (hash && !hash.includes("/") && document.getElementById(hash)) openTab(hash);
 </script>
 </body>
 </html>
