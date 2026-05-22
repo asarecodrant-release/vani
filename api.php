@@ -195,6 +195,81 @@ function billing_account_for_email(string $email): array {
     ];
 }
 
+function billing_legacy_account_has_value(array $account): bool {
+    $plan = (string)($account['current_plan'] ?? 'free');
+    $status = (string)($account['subscription_status'] ?? 'free');
+    return $plan !== 'free'
+        || $status !== 'free'
+        || (int)($account['wallet_balance_paise'] ?? 0) > 0
+        || trim((string)($account['saved_payment_method_reference'] ?? '')) !== ''
+        || trim((string)($account['saved_payment_method_customer_id'] ?? '')) !== '';
+}
+
+function billing_adopt_legacy_email_account(string $customerId, string $email, array $customerAccount = []): array {
+    if ($customerId === '' || $email === '') {
+        return $customerAccount;
+    }
+    $legacyRows = safe_rows(supabase(
+        "GET",
+        "billing_accounts?select=*&email=eq." . urlencode($email) . "&customer_id=is.null&order=created_at.desc&limit=5"
+    ));
+    $legacy = [];
+    foreach ($legacyRows as $row) {
+        if (billing_legacy_account_has_value($row)) {
+            $legacy = $row;
+            break;
+        }
+    }
+    if (empty($legacy)) {
+        return $customerAccount;
+    }
+
+    $copyFields = [
+        "wallet_balance_paise",
+        "current_plan",
+        "subscription_status",
+        "auto_recharge_enabled",
+        "auto_recharge_threshold_paise",
+        "auto_recharge_amount_paise",
+        "saved_payment_method_status",
+        "saved_payment_method_reference",
+        "saved_payment_method_customer_id",
+        "saved_payment_method_contact",
+        "last_auto_recharge_attempt_at",
+        "current_period_start",
+        "current_period_end"
+    ];
+
+    if (empty($customerAccount)) {
+        $claim = supabase("PATCH", "billing_accounts?id=eq." . urlencode((string)$legacy['id']), [
+            "customer_id" => $customerId
+        ]);
+        if ($claim['status'] >= 200 && $claim['status'] < 300 && !empty($claim['data'][0])) {
+            $customerAccount = $claim['data'][0];
+        }
+    } elseif (!billing_legacy_account_has_value($customerAccount)) {
+        $payload = ["email" => $email];
+        foreach ($copyFields as $field) {
+            if (array_key_exists($field, $legacy)) {
+                $payload[$field] = $legacy[$field];
+            }
+        }
+        $copy = supabase("PATCH", "billing_accounts?customer_id=eq." . urlencode($customerId), $payload);
+        if ($copy['status'] >= 200 && $copy['status'] < 300 && !empty($copy['data'][0])) {
+            $customerAccount = $copy['data'][0];
+        }
+    }
+
+    supabase("PATCH", "wallet_transactions?email=eq." . urlencode($email) . "&customer_id=is.null", [
+        "customer_id" => $customerId
+    ]);
+    supabase("PATCH", "billing_orders?email=eq." . urlencode($email) . "&customer_id=is.null", [
+        "customer_id" => $customerId
+    ]);
+
+    return $customerAccount;
+}
+
 function billing_account_for_customer(string $customerId): array {
     $customerId = trim($customerId);
     if ($customerId === '') {
@@ -205,6 +280,10 @@ function billing_account_for_customer(string $customerId): array {
         "billing_accounts?select=*&customer_id=eq." . urlencode($customerId) . "&limit=1"
     ));
     if (!empty($rows[0])) {
+        $email = trim((string)($rows[0]['email'] ?? ''));
+        if (!billing_legacy_account_has_value($rows[0]) && $email !== '') {
+            $rows[0] = billing_adopt_legacy_email_account($customerId, $email, $rows[0]);
+        }
         $before = $rows[0];
         enforce_billing_free_transition($rows[0]);
         $status = (string)($before['subscription_status'] ?? 'free');
@@ -222,6 +301,10 @@ function billing_account_for_customer(string $customerId): array {
     $email = billing_email_for_customer($customerId);
     if ($email === '') {
         return [];
+    }
+    $adopted = billing_adopt_legacy_email_account($customerId, $email);
+    if (!empty($adopted)) {
+        return $adopted;
     }
     $res = supabase("POST", "billing_accounts", [[
         "customer_id" => $customerId,

@@ -119,6 +119,8 @@
     <a class="site-side-menu-link primary" href="index.php">Home <span>→</span></a>
     <a class="site-side-menu-link" href="subscription.php">Subscription Plans <span>→</span></a>
     <a class="site-side-menu-link" href="terms.php">Terms & Conditions <span>→</span></a>
+    <a class="site-side-menu-link" href="privacy-policy.php">Privacy Policy <span>→</span></a>
+    <a class="site-side-menu-link" href="cancellation-refund-policy.php">Cancellation & Refund <span>→</span></a>
     <a class="site-side-menu-link" href="contact.php">Contact <span>→</span></a>
     <?php if (function_exists('is_authenticated_user') && is_authenticated_user()): ?>
       <a class="site-side-menu-link" href="dashboard.php">Dashboard <span>→</span></a>

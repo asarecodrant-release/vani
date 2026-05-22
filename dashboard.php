@@ -71,6 +71,74 @@ function dashboard_disable_paid_service_toggles(array $bots, string $reason): vo
     }
 }
 
+function dashboard_billing_account_has_value(array $account): bool {
+    return (string)($account['current_plan'] ?? 'free') !== 'free'
+        || (string)($account['subscription_status'] ?? 'free') !== 'free'
+        || (int)($account['wallet_balance_paise'] ?? 0) > 0
+        || trim((string)($account['saved_payment_method_reference'] ?? '')) !== ''
+        || trim((string)($account['saved_payment_method_customer_id'] ?? '')) !== '';
+}
+
+function dashboard_adopt_legacy_billing_account(string $customerId, string $email, array $customerAccount = []): array {
+    if ($customerId === '' || $email === '') {
+        return $customerAccount;
+    }
+    $legacyRows = safe_data(supabase(
+        "GET",
+        "billing_accounts?select=*&email=eq." . urlencode($email) . "&customer_id=is.null&order=created_at.desc&limit=5"
+    ));
+    $legacy = [];
+    foreach ($legacyRows as $row) {
+        if (dashboard_billing_account_has_value($row)) {
+            $legacy = $row;
+            break;
+        }
+    }
+    if (empty($legacy)) {
+        return $customerAccount;
+    }
+    if (empty($customerAccount)) {
+        $claim = supabase("PATCH", "billing_accounts?id=eq." . urlencode((string)$legacy['id']), [
+            "customer_id" => $customerId
+        ]);
+        if ($claim['status'] >= 200 && $claim['status'] < 300 && !empty($claim['data'][0])) {
+            $customerAccount = $claim['data'][0];
+        }
+    } elseif (!dashboard_billing_account_has_value($customerAccount)) {
+        $payload = ["email" => $email];
+        foreach ([
+            "wallet_balance_paise",
+            "current_plan",
+            "subscription_status",
+            "auto_recharge_enabled",
+            "auto_recharge_threshold_paise",
+            "auto_recharge_amount_paise",
+            "saved_payment_method_status",
+            "saved_payment_method_reference",
+            "saved_payment_method_customer_id",
+            "saved_payment_method_contact",
+            "last_auto_recharge_attempt_at",
+            "current_period_start",
+            "current_period_end"
+        ] as $field) {
+            if (array_key_exists($field, $legacy)) {
+                $payload[$field] = $legacy[$field];
+            }
+        }
+        $copy = supabase("PATCH", "billing_accounts?customer_id=eq." . urlencode($customerId), $payload);
+        if ($copy['status'] >= 200 && $copy['status'] < 300 && !empty($copy['data'][0])) {
+            $customerAccount = $copy['data'][0];
+        }
+    }
+    supabase("PATCH", "wallet_transactions?email=eq." . urlencode($email) . "&customer_id=is.null", [
+        "customer_id" => $customerId
+    ]);
+    supabase("PATCH", "billing_orders?email=eq." . urlencode($email) . "&customer_id=is.null", [
+        "customer_id" => $customerId
+    ]);
+    return $customerAccount;
+}
+
 function date_in_range(array $row, string $field, string $from, string $to): bool {
     $date = substr((string)($row[$field] ?? ''), 0, 10);
     if ($date === '') {
@@ -203,6 +271,16 @@ $billingAccountRows = $selectedBotId
         "billing_accounts?select=*&customer_id=eq." . urlencode($selectedBotId) . "&limit=1"
     ))
     : [];
+
+if ($selectedBotId) {
+    $existingBillingAccount = $billingAccountRows[0] ?? [];
+    if (empty($existingBillingAccount) || !dashboard_billing_account_has_value($existingBillingAccount)) {
+        $adoptedBillingAccount = dashboard_adopt_legacy_billing_account($selectedBotId, $email, $existingBillingAccount);
+        if (!empty($adoptedBillingAccount)) {
+            $billingAccountRows = [$adoptedBillingAccount];
+        }
+    }
+}
 
 $walletTransactionRows = $selectedBotId
     ? safe_data(supabase(

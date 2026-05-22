@@ -969,6 +969,8 @@ body.dark .side-menu-link.secondary{
     <a class="side-menu-link" href="subscription.php">Subscription Plans <span>→</span></a>
     <a class="side-menu-link secondary" href="#products">Products <span>→</span></a>
     <a class="side-menu-link secondary" href="terms.php">Terms & Conditions <span>→</span></a>
+    <a class="side-menu-link secondary" href="privacy-policy.php">Privacy Policy <span>→</span></a>
+    <a class="side-menu-link secondary" href="cancellation-refund-policy.php">Cancellation & Refund <span>→</span></a>
     <a class="side-menu-link secondary" href="contact.php">Contact <span>→</span></a>
     <?php if(is_authenticated_user()): ?>
       <a class="side-menu-link secondary" href="dashboard.php">Dashboard <span>→</span></a>
