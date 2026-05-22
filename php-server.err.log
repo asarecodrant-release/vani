@@ -5,3 +5,93 @@
 [Sat May 23 01:39:25 2026] 127.0.0.1:61451 Closing
 [Sat May 23 01:39:25 2026] 127.0.0.1:61450 [401]: GET /api.php?action=customer_api_leads
 [Sat May 23 01:39:25 2026] 127.0.0.1:61450 Closing
+[Sat May 23 02:32:11 2026] 127.0.0.1:65195 Accepted
+[Sat May 23 02:32:11 2026] 127.0.0.1:65195 [302]: GET /dashboard.php
+[Sat May 23 02:32:11 2026] 127.0.0.1:65195 Closing
+[Sat May 23 02:32:11 2026] 127.0.0.1:65196 Accepted
+[Sat May 23 02:32:11 2026] 127.0.0.1:65196 [200]: GET /login.php
+[Sat May 23 02:32:11 2026] 127.0.0.1:65196 Closing
+[Sat May 23 02:36:32 2026] 127.0.0.1:51842 Accepted
+[Sat May 23 02:36:32 2026] 127.0.0.1:51842 [302]: GET /dashboard.php
+[Sat May 23 02:36:32 2026] 127.0.0.1:51842 Closing
+[Sat May 23 02:36:32 2026] 127.0.0.1:51844 Accepted
+[Sat May 23 02:36:32 2026] 127.0.0.1:51844 [200]: GET /login.php
+[Sat May 23 02:36:32 2026] 127.0.0.1:51844 Closing
+[Sat May 23 02:43:26 2026] 127.0.0.1:56604 Accepted
+[Sat May 23 02:43:26 2026] 127.0.0.1:56604 [302]: GET /dashboard.php
+[Sat May 23 02:43:26 2026] 127.0.0.1:56604 Closing
+[Sat May 23 02:43:26 2026] 127.0.0.1:56605 Accepted
+[Sat May 23 02:43:26 2026] 127.0.0.1:56605 [200]: GET /login.php
+[Sat May 23 02:43:26 2026] 127.0.0.1:56605 Closing
+[Sat May 23 03:00:18 2026] 127.0.0.1:52436 Accepted
+[Sat May 23 03:00:18 2026] 127.0.0.1:52436 [302]: GET /dashboard.php
+[Sat May 23 03:00:18 2026] 127.0.0.1:52436 Closing
+[Sat May 23 03:00:18 2026] 127.0.0.1:52437 Accepted
+[Sat May 23 03:00:18 2026] 127.0.0.1:52437 [200]: GET /login.php
+[Sat May 23 03:00:18 2026] 127.0.0.1:52437 Closing
+[Sat May 23 03:07:20 2026] 127.0.0.1:57268 Accepted
+[Sat May 23 03:07:20 2026] 127.0.0.1:57268 [302]: GET /dashboard.php
+[Sat May 23 03:07:20 2026] 127.0.0.1:57268 Closing
+[Sat May 23 03:07:20 2026] 127.0.0.1:57269 Accepted
+[Sat May 23 03:07:20 2026] 127.0.0.1:57269 [200]: GET /login.php
+[Sat May 23 03:07:20 2026] 127.0.0.1:57269 Closing
+[Sat May 23 03:24:05 2026] 127.0.0.1:52420 Accepted
+[Sat May 23 03:24:05 2026] 127.0.0.1:52420 [302]: GET /dashboard.php
+[Sat May 23 03:24:05 2026] 127.0.0.1:52420 Closing
+[Sat May 23 03:24:05 2026] 127.0.0.1:52421 Accepted
+[Sat May 23 03:24:05 2026] 127.0.0.1:52421 [200]: GET /login.php
+[Sat May 23 03:24:05 2026] 127.0.0.1:52421 Closing
+[Sat May 23 03:36:50 2026] 127.0.0.1:61160 Accepted
+[Sat May 23 03:36:50 2026] 127.0.0.1:61160 [302]: GET /dashboard.php
+[Sat May 23 03:36:50 2026] 127.0.0.1:61160 Closing
+[Sat May 23 03:36:50 2026] 127.0.0.1:61161 Accepted
+[Sat May 23 03:36:50 2026] 127.0.0.1:61161 [200]: GET /login.php
+[Sat May 23 03:36:50 2026] 127.0.0.1:61161 Closing
+[Sat May 23 03:39:52 2026] 127.0.0.1:63232 Accepted
+[Sat May 23 03:39:52 2026] 127.0.0.1:63232 [302]: GET /dashboard.php
+[Sat May 23 03:39:52 2026] 127.0.0.1:63232 Closing
+[Sat May 23 03:39:52 2026] 127.0.0.1:63233 Accepted
+[Sat May 23 03:39:52 2026] 127.0.0.1:63233 [200]: GET /login.php
+[Sat May 23 03:39:52 2026] 127.0.0.1:63233 Closing
+[Sat May 23 03:49:39 2026] 127.0.0.1:53628 Accepted
+[Sat May 23 03:49:39 2026] 127.0.0.1:53629 Accepted
+[Sat May 23 03:49:39 2026] 127.0.0.1:53628 [200]: GET /widget.js
+[Sat May 23 03:49:39 2026] 127.0.0.1:53629 [404]: GET /widget_api.php?action=health
+[Sat May 23 03:49:39 2026] 127.0.0.1:53629 Closing
+[Sat May 23 03:49:39 2026] 127.0.0.1:53628 Closing
+[Sat May 23 03:57:26 2026] 127.0.0.1:59115 Accepted
+[Sat May 23 03:57:26 2026] 127.0.0.1:59115 [200]: GET /index.php
+[Sat May 23 03:57:26 2026] 127.0.0.1:59115 Closing
+[Sat May 23 03:57:27 2026] 127.0.0.1:59117 Accepted
+[Sat May 23 03:57:27 2026] 127.0.0.1:59117 [200]: GET /subscription.php
+[Sat May 23 03:57:27 2026] 127.0.0.1:59117 Closing
+[Sat May 23 03:57:27 2026] 127.0.0.1:59118 Accepted
+[Sat May 23 03:57:27 2026] 127.0.0.1:59118 [302]: GET /dashboard.php
+[Sat May 23 03:57:27 2026] 127.0.0.1:59118 Closing
+[Sat May 23 03:57:27 2026] 127.0.0.1:59119 Accepted
+[Sat May 23 03:57:27 2026] 127.0.0.1:59119 [200]: GET /login.php
+[Sat May 23 03:57:27 2026] 127.0.0.1:59119 Closing
+[Sat May 23 03:57:27 2026] 127.0.0.1:59122 Accepted
+[Sat May 23 03:57:27 2026] 127.0.0.1:59122 [200]: GET /widget.js
+[Sat May 23 03:57:27 2026] 127.0.0.1:59122 Closing
+[Sat May 23 04:08:37 2026] 127.0.0.1:50446 Accepted
+[Sat May 23 04:08:37 2026] 127.0.0.1:50447 Accepted
+[Sat May 23 04:08:37 2026] 127.0.0.1:50446 [302]: GET /dashboard.php
+[Sat May 23 04:08:37 2026] 127.0.0.1:50446 Closing
+[Sat May 23 04:08:37 2026] 127.0.0.1:50447 [200]: GET /widget.js
+[Sat May 23 04:08:37 2026] 127.0.0.1:50447 Closing
+[Sat May 23 04:08:37 2026] 127.0.0.1:50448 Accepted
+[Sat May 23 04:08:37 2026] 127.0.0.1:50448 [200]: GET /login.php
+[Sat May 23 04:08:37 2026] 127.0.0.1:50448 Closing
+[Sat May 23 04:28:24 2026] 127.0.0.1:64730 Accepted
+[Sat May 23 04:28:24 2026] 127.0.0.1:64730 [200]: GET /faq-setup.php
+[Sat May 23 04:28:24 2026] 127.0.0.1:64730 Closing
+[Sat May 23 04:28:24 2026] 127.0.0.1:64731 Accepted
+[Sat May 23 04:28:24 2026] 127.0.0.1:64731 [200]: GET /theme-selection.php
+[Sat May 23 04:28:24 2026] 127.0.0.1:64731 Closing
+[Sat May 23 04:28:24 2026] 127.0.0.1:64733 Accepted
+[Sat May 23 04:28:24 2026] 127.0.0.1:64733 [200]: GET /complete-setup.php
+[Sat May 23 04:28:24 2026] 127.0.0.1:64733 Closing
+[Sat May 23 04:28:24 2026] 127.0.0.1:64736 Accepted
+[Sat May 23 04:28:24 2026] 127.0.0.1:64736 [200]: GET /freebot.php
+[Sat May 23 04:28:24 2026] 127.0.0.1:64736 Closing

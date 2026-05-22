@@ -31,11 +31,16 @@ body{min-height:100vh;background:linear-gradient(135deg,#667eea,#764ba2);display
 .spinner{width:45px;height:45px;border:4px solid rgba(255,255,255,0.3);border-top:4px solid white;border-radius:50%;animation:spin 1s linear infinite;margin-bottom:15px;}
 @keyframes spin{0%{transform:rotate(0deg);}100%{transform:rotate(360deg);}}
 </style>
+<link rel="stylesheet" href="css/setup-theme.css">
 </head>
 
 <body>
 
 <?php include 'navbar.php'; ?>
+<button type="button" class="setup-theme-toggle" id="setupThemeToggle">
+  <span class="setup-theme-swatch" aria-hidden="true"></span>
+  <span data-theme-label>Dark theme</span>
+</button>
 
 <div class="container">
 
@@ -176,8 +181,6 @@ async function saveFAQs() {
       data = { success: true }; // assume success if DB already saved
     }
 
-    console.log("API Response:", data);
-
     // 🔥 ACCEPT SUCCESS EVEN IF FLAG MISSING
     if (data.success === false) {
       overlay.style.display = "none";
@@ -218,6 +221,7 @@ function showError(t) {
 loadPreloadedFAQs();
 
 </script>
+<script src="setup-theme.js"></script>
 
 </body>
 </html>

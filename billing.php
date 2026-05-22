@@ -10,6 +10,7 @@ function billing_plans(): array {
                 'email_otp' => false,
                 'mobile_otp' => false,
                 'whatsapp_redirect' => false,
+                'human_handoff' => false,
                 'export_reports' => false,
                 'partial_analytics' => false,
                 'advanced_analytics' => false
@@ -24,6 +25,7 @@ function billing_plans(): array {
                 'mobile_otp' => true,
                 'whatsapp_redirect' => true,
                 'webhook_support' => true,
+                'human_handoff' => false,
                 'export_reports' => false,
                 'partial_analytics' => false,
                 'advanced_analytics' => false
@@ -38,6 +40,7 @@ function billing_plans(): array {
                 'mobile_otp' => true,
                 'whatsapp_redirect' => true,
                 'webhook_support' => true,
+                'human_handoff' => true,
                 'export_reports' => false,
                 'partial_analytics' => true,
                 'advanced_analytics' => false
@@ -56,6 +59,7 @@ function billing_plans(): array {
                 'advanced_analytics' => true,
                 'api_access' => true,
                 'webhook_support' => true,
+                'human_handoff' => true,
                 'combined_widget' => true,
                 'allowed_domains' => true
             ]
@@ -81,20 +85,52 @@ function billing_faq_limit(string $planId): int {
     return (int)(billing_plan($planId)['faq_limit'] ?? 25);
 }
 
+function billing_auto_recharge_rule(string $planId): array {
+    $rules = [
+        'starter' => [
+            'threshold_paise' => 5000,
+            'amount_paise' => 19900
+        ],
+        'growth' => [
+            'threshold_paise' => 10000,
+            'amount_paise' => 49900
+        ],
+        'business' => [
+            'threshold_paise' => 20000,
+            'amount_paise' => 99900
+        ]
+    ];
+    return $rules[$planId] ?? [
+        'threshold_paise' => 0,
+        'amount_paise' => 0
+    ];
+}
+
 function billing_active_plan_from_account(array $account): string {
     $planId = (string)($account['current_plan'] ?? 'free');
     if ($planId === 'automation' || $planId === 'enterprise') {
         $planId = 'business';
     }
     $status = (string)($account['subscription_status'] ?? 'free');
+    $walletBalance = (int)($account['wallet_balance_paise'] ?? 0);
     $periodEnd = (string)($account['current_period_end'] ?? '');
-    if ($planId === 'free' || $status !== 'active') {
+    if ($planId === 'free') {
+        return 'free';
+    }
+    if ($status === 'cancelled') {
+        return $walletBalance > 0 && in_array($planId, billing_plan_ids(), true) ? $planId : 'free';
+    }
+    if ($status !== 'active') {
         return 'free';
     }
     if ($periodEnd !== '' && strtotime($periodEnd) < time()) {
         return 'free';
     }
     return in_array($planId, billing_plan_ids(), true) ? $planId : 'free';
+}
+
+function billing_plan_is_free_effective(array $account): bool {
+    return billing_active_plan_from_account($account) === 'free';
 }
 
 function billing_rupees(int $paise): string {

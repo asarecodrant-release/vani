@@ -48,6 +48,29 @@ function first_value(array $row, array $keys, string $fallback = ''): string {
     return $fallback;
 }
 
+function dashboard_disable_paid_service_toggles(array $bots, string $reason): void {
+    foreach ($bots as $bot) {
+        $customerId = trim((string)($bot['customer_id'] ?? ''));
+        if ($customerId === '') {
+            continue;
+        }
+        supabase("PATCH", "lead_generation_settings?customer_id=eq." . urlencode($customerId), [
+            "verify_email_otp" => false,
+            "verify_mobile_otp" => false,
+            "redirect_whatsapp" => false,
+            "service_tier" => "free",
+            "whatsapp_redirect_stopped_at" => gmdate('Y-m-d\TH:i:s\Z'),
+            "whatsapp_redirect_stopped_reason" => $reason
+        ]);
+        supabase("PATCH", "chatbot_settings?customer_id=eq." . urlencode($customerId), [
+            "handoff_enabled" => false,
+            "allowed_domains_enabled" => false,
+            "webhook_url" => null,
+            "webhook_secret" => null
+        ]);
+    }
+}
+
 function date_in_range(array $row, string $field, string $from, string $to): bool {
     $date = substr((string)($row[$field] ?? ''), 0, 10);
     if ($date === '') {
@@ -212,9 +235,36 @@ $settings = $settingsRows[0] ?? [];
 $leadSettings = $leadSettingsRows[0] ?? [];
 $profile = $profileRows[0] ?? [];
 $billingAccount = $billingAccountRows[0] ?? [];
+$billingStatus = (string)($billingAccount['subscription_status'] ?? 'free');
+$billingPeriodEnd = (string)($billingAccount['current_period_end'] ?? '');
+$billingWalletRaw = (int)($billingAccount['wallet_balance_paise'] ?? 0);
+if (
+    ($billingStatus === 'cancelled' && $billingWalletRaw <= 0) ||
+    ($billingStatus === 'active' && $billingPeriodEnd !== '' && strtotime($billingPeriodEnd) < time())
+) {
+    $transitionReason = $billingStatus === 'cancelled' ? 'wallet_empty' : 'plan_expired';
+    supabase("PATCH", "billing_accounts?email=eq." . urlencode($email), [
+        "current_plan" => "free",
+        "subscription_status" => "free",
+        "auto_recharge_enabled" => false,
+        "saved_payment_method_status" => "failed",
+        "saved_payment_method_reference" => null
+    ]);
+    dashboard_disable_paid_service_toggles($bots, $transitionReason);
+    $billingAccountRows = safe_data(supabase("GET", "billing_accounts?select=*&email=eq." . urlencode($email) . "&limit=1"));
+    $billingAccount = $billingAccountRows[0] ?? $billingAccount;
+    if ($selectedBotId) {
+        $settingsRows = safe_data(supabase("GET", "chatbot_settings?select=*&customer_id=eq." . urlencode($selectedBotId) . "&limit=1"));
+        $leadSettingsRows = safe_data(supabase("GET", "lead_generation_settings?select=*&customer_id=eq." . urlencode($selectedBotId) . "&limit=1"));
+        $settings = $settingsRows[0] ?? [];
+        $leadSettings = $leadSettingsRows[0] ?? [];
+    }
+}
 $activePlanId = billing_active_plan_from_account($billingAccount);
 $activePlan = billing_plan($activePlanId);
 $billingWalletPaise = (int)($billingAccount['wallet_balance_paise'] ?? 0);
+$subscriptionStatus = (string)($billingAccount['subscription_status'] ?? 'free');
+$isCancelledWalletAccess = $subscriptionStatus === 'cancelled' && $activePlanId !== 'free' && $billingWalletPaise > 0;
 $planFaqLimit = billing_faq_limit($activePlanId);
 $canUseAdvancedAnalytics = billing_feature_enabled($activePlanId, 'advanced_analytics');
 $canUsePartialAnalytics = billing_feature_enabled($activePlanId, 'partial_analytics') || $canUseAdvancedAnalytics;
@@ -224,11 +274,27 @@ $canUseMobileOtp = billing_feature_enabled($activePlanId, 'mobile_otp');
 $canUseWhatsappRedirect = billing_feature_enabled($activePlanId, 'whatsapp_redirect');
 $canUseBusinessApi = billing_feature_enabled($activePlanId, 'api_access');
 $canUseWebhook = billing_feature_enabled($activePlanId, 'webhook_support');
+$canUseHumanHandoff = billing_feature_enabled($activePlanId, 'human_handoff');
 $canUseAllowedDomains = billing_feature_enabled($activePlanId, 'allowed_domains');
+$autoRechargeRule = billing_auto_recharge_rule($activePlanId);
+$autoRechargeThresholdPaise = (int)($billingAccount['auto_recharge_threshold_paise'] ?? 0) ?: (int)$autoRechargeRule['threshold_paise'];
+$autoRechargeAmountPaise = (int)($billingAccount['auto_recharge_amount_paise'] ?? 0) ?: (int)$autoRechargeRule['amount_paise'];
+$autoRechargeEnabled = filter_var($billingAccount['auto_recharge_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
+$savedPaymentMethodStatus = (string)($billingAccount['saved_payment_method_status'] ?? 'missing');
+$savedPaymentCustomerId = (string)($billingAccount['saved_payment_method_customer_id'] ?? '');
+$savedPaymentContact = (string)($billingAccount['saved_payment_method_contact'] ?? '');
+$savedPaymentMethodReference = (string)($billingAccount['saved_payment_method_reference'] ?? '');
 $walletCreditPaise = array_sum(array_map(fn($row) => ($row['transaction_type'] ?? '') === 'credit' ? (int)($row['amount_paise'] ?? 0) : 0, $walletTransactionRows));
 $walletDebitPaise = array_sum(array_map(fn($row) => ($row['transaction_type'] ?? '') === 'debit' ? (int)($row['amount_paise'] ?? 0) : 0, $walletTransactionRows));
 $faqCount = count($faqs);
 $freeFaqLimit = $planFaqLimit === PHP_INT_MAX ? 999999 : $planFaqLimit;
+$displayFaqLimit = $planFaqLimit === PHP_INT_MAX ? $faqCount : $planFaqLimit;
+$faqActiveIds = [];
+foreach (array_slice(array_values(array_reverse($faqs)), 0, $displayFaqLimit) as $activeFaqRow) {
+    $faqActiveIds[(string)($activeFaqRow['id'] ?? '')] = true;
+}
+$frozenFaqCount = $planFaqLimit === PHP_INT_MAX ? 0 : max(0, $faqCount - $planFaqLimit);
+$faqFreezeActive = $frozenFaqCount > 0;
 $conversationCount = count($conversationRows);
 $today = gmdate('Y-m-d');
 $todayQueries = 0;
@@ -526,6 +592,8 @@ $isActive = is_bool($rawActive) ? $rawActive : ((string)$rawActive !== 'false');
 $websiteVerificationEnabled = filter_var($settings['website_verification_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
 $allowedDomainsEnabled = filter_var($settings['allowed_domains_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
 $allowedDomains = first_value($settings, ['allowed_domains'], '');
+$handoffEnabled = filter_var($settings['handoff_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
+$handoffEmail = first_value($settings, ['handoff_email'], $email);
 $verificationStatus = first_value($settings, ['verification_status'], 'Pending');
 $websiteName = first_value($selectedBot, ['website_name'], '');
 $leadEnabled = filter_var($leadSettings['is_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
@@ -547,10 +615,20 @@ $whatsappLockedUntilTime = $whatsappLockedUntil !== '' ? (strtotime($whatsappLoc
 $whatsappRedirectLocked = $whatsappLockedUntilTime > $nowTimestamp;
 $whatsappRedirectLockedOn = $leadRedirectWhatsapp && $whatsappRedirectLocked;
 $whatsappLockSecondsRemaining = $whatsappRedirectLocked ? max(0, $whatsappLockedUntilTime - $nowTimestamp) : 0;
+$whatsappChargePaise = billing_wallet_charge_paise($activePlanId, 'whatsapp_redirect_addon');
+$whatsappWalletCanEnable = $billingWalletPaise >= $whatsappChargePaise;
+$whatsappStoppedReason = (string)($leadSettings['whatsapp_redirect_stopped_reason'] ?? '');
+$whatsappFailedChargePaise = (int)($leadSettings['whatsapp_redirect_failed_charge_amount_paise'] ?? 0);
 $embedCode = $selectedBotId ? '<script src="' . $widgetUrl . '" data-id="' . $selectedBotId . '"></script>' : '';
 $profileFirstName = first_value($profile, ['first_name'], '');
 $profileLastName = first_value($profile, ['last_name'], '');
 $displayName = trim($profileFirstName . ' ' . $profileLastName);
+$razorpayCustomerName = $displayName ?: $email;
+$profileContactValue = preg_replace('/[^\d+]/', '', (string)($profile['country_code'] ?? '+91') . (string)($profile['mobile_number'] ?? ''));
+if ($profileContactValue !== '' && $profileContactValue[0] !== '+') {
+    $profileContactValue = '+91' . ltrim($profileContactValue, '0');
+}
+$razorpayCustomerContact = $savedPaymentContact ?: $profileContactValue;
 $initialSource = $profileFirstName ?: $email;
 $initials = strtoupper(substr($initialSource, 0, 1));
 $analyticsRangeLabel = [
@@ -1154,6 +1232,12 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
         <div class="panel">
           <div class="section-head"><h3>FAQ Management</h3><span class="tag"><?php echo h($faqCount); ?>/<?php echo h($freeFaqLimit); ?> FAQs</span></div>
           <div class="section-body">
+            <?php if ($faqFreezeActive): ?>
+              <div class="notice" style="margin-bottom:16px">
+                <strong><?php echo h($activePlan['name']); ?> FAQ limit active:</strong><br>
+                Your first <?php echo h($displayFaqLimit); ?> FAQs are active. <?php echo h($frozenFaqCount); ?> extra FAQs are frozen and saved here. Starter unfreezes 100, Growth unfreezes 300, and Business unfreezes all FAQs.
+              </div>
+            <?php endif; ?>
             <form id="faqForm" class="form-grid">
               <input type="hidden" id="faqCustomerId" value="<?php echo h($selectedBotId); ?>">
               <div class="field"><label>Question</label><input id="faqQuestion" placeholder="What do you want customers to ask?"></div>
@@ -1171,9 +1255,10 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                 <thead><tr><th>Question</th><th>Answer</th><th>Category</th><th>Actions</th></tr></thead>
                 <tbody>
                   <?php foreach ($faqs as $faq): ?>
-                    <tr data-faq-id="<?php echo h($faq['id'] ?? ''); ?>">
+                    <?php $faqFrozen = $faqFreezeActive && empty($faqActiveIds[(string)($faq['id'] ?? '')]); ?>
+                    <tr data-faq-id="<?php echo h($faq['id'] ?? ''); ?>" <?php echo $faqFrozen ? 'data-frozen="true"' : ''; ?>>
                       <td>
-                        <span class="faq-display"><?php echo h($faq['question'] ?? ''); ?></span>
+                        <span class="faq-display"><?php echo h($faq['question'] ?? ''); ?> <?php if ($faqFrozen): ?><span class="tag bad">Frozen</span><?php endif; ?></span>
                         <textarea class="faq-edit-field faq-question-input" aria-label="FAQ question"><?php echo h($faq['question'] ?? ''); ?></textarea>
                       </td>
                       <td>
@@ -1211,6 +1296,27 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
             <span class="tag bad"><?php echo h($unansweredCount); ?> unanswered</span>
           </div>
           <div class="section-body">
+            <div class="notice" style="margin-bottom:16px">
+              <div class="inline-row" style="justify-content:space-between;gap:16px">
+                <div>
+                  <strong>Human handoff / ticket creation</strong><br>
+                  <span class="muted">When the bot cannot answer, create a support ticket and email the question to your team.</span>
+                  <?php if (!$canUseHumanHandoff): ?><br><small class="input-help error">Growth or Business plan required.</small><?php endif; ?>
+                </div>
+                <label class="switch" title="Enable human handoff">
+                  <input id="humanHandoffToggle" type="checkbox" <?php echo $handoffEnabled && $canUseHumanHandoff ? 'checked' : ''; ?> aria-label="Enable human handoff">
+                  <span class="switch-slider"></span>
+                </label>
+              </div>
+              <div class="field" style="margin-top:12px">
+                <label>Support email</label>
+                <div class="inline-row">
+                  <input id="humanHandoffEmailInput" type="email" value="<?php echo h($handoffEmail); ?>" placeholder="<?php echo h($email); ?>" <?php echo $canUseHumanHandoff ? '' : 'disabled'; ?>>
+                  <button class="pill-btn" type="button" id="saveHumanHandoffBtn" <?php echo $canUseHumanHandoff ? '' : 'disabled'; ?>>Save handoff</button>
+                </div>
+                <small class="input-help">Tickets are created only for unanswered chatbot questions and only while this switch is ON.</small>
+              </div>
+            </div>
             <?php if (empty($outsideFaqQuestions)): ?>
               <p class="empty">No outside-FAQ questions yet.</p>
             <?php else: ?>
@@ -1864,10 +1970,11 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                       <h4>Redirect to WhatsApp Business</h4>
                       <small>Send users to the customer's WhatsApp Business account after lead capture.</small>
                       <small class="input-help <?php echo $whatsappRedirectLocked ? 'error' : ''; ?>">WhatsApp redirection can be turned ON or OFF only 3 times per day. <?php echo $whatsappRedirectLocked ? 'It will be activated again after ' : h((string)max(0, 3 - $whatsappToggleCount)) . ' changes left today.'; ?><span id="whatsappLockTimer" data-remaining-seconds="<?php echo h((string)$whatsappLockSecondsRemaining); ?>"></span></small>
+                      <small class="input-help <?php echo !$whatsappWalletCanEnable || $whatsappStoppedReason === 'insufficient_wallet_balance' ? 'error' : ''; ?>">WhatsApp Redirect costs ₹99 for 30 days. <?php echo !$whatsappWalletCanEnable ? 'Wallet balance must be at least ₹99 to turn this ON.' : 'Renewal deducts ₹99 every 30 days while ON.'; ?> <?php if ($whatsappStoppedReason === 'insufficient_wallet_balance'): ?>Last renewal charge was ₹0 and the service was turned OFF due to insufficient wallet balance.<?php endif; ?></small>
                       <?php if (!$canUseWhatsappRedirect): ?><small class="input-help error">Active paid plan required.</small><?php endif; ?>
                     </div>
                     <label class="switch" title="Redirect to WhatsApp Business">
-                      <input id="whatsappLeadToggle" class="lead-toggle" type="checkbox" <?php echo $leadRedirectWhatsapp ? 'checked' : ''; ?> <?php echo $whatsappRedirectLockedOn ? 'disabled' : ''; ?> aria-label="Redirect to WhatsApp Business">
+                      <input id="whatsappLeadToggle" class="lead-toggle" type="checkbox" <?php echo $leadRedirectWhatsapp ? 'checked' : ''; ?> <?php echo ($whatsappRedirectLockedOn || (!$leadRedirectWhatsapp && !$whatsappWalletCanEnable)) ? 'disabled' : ''; ?> aria-label="Redirect to WhatsApp Business">
                       <span class="switch-slider"></span>
                     </label>
                   </div>
@@ -1879,12 +1986,6 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                     </div>
                     <small class="input-help" id="whatsappLeadHelp">Use country code and digits only, for example +919876543210.</small>
                   </div>
-                  <button class="ghost-btn" type="button" data-save-note="WhatsApp Business integration">No WhatsApp Business account?</button>
-                </div>
-
-                <div class="notice">
-                  <strong>Backend pending:</strong><br>
-                  WhatsApp redirect can be connected when that integration is ready.
                 </div>
               </div>
             </div>
@@ -1903,15 +2004,30 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
             <div class="panel metric"><span>Best default</span><strong>Growth</strong><small>Most local businesses will fit this tier.</small></div>
           </div>
 
+          <div class="notice" style="margin-top:18px">
+            <strong>Mandatory automatic payment setup</strong><br>
+            Every paid plan starts with Razorpay recurring authorization. The first payment adds the plan amount to your wallet and saves the approved token for future automatic wallet recharges.
+            <div class="form-grid" style="margin-top:14px">
+              <div class="field">
+                <label for="subscriptionAutoPayNameInput">Customer name</label>
+                <input id="subscriptionAutoPayNameInput" value="<?php echo h($razorpayCustomerName); ?>" autocomplete="name">
+              </div>
+              <div class="field">
+                <label for="subscriptionAutoPayContactInput">Mobile number with country code</label>
+                <input id="subscriptionAutoPayContactInput" value="<?php echo h($razorpayCustomerContact); ?>" placeholder="+919876543210" autocomplete="tel">
+              </div>
+            </div>
+          </div>
+
           <div class="pricing-grid">
             <div class="panel pricing-card <?php echo $activePlanId === 'starter' ? 'current-plan' : ''; ?>">
               <div class="pricing-head"><div><span class="eyebrow">Starter</span><h3>Starter Plan</h3></div><span class="tag">Small</span></div>
               <?php if ($activePlanId === 'starter'): ?><div class="current-plan-note">Current plan</div><?php endif; ?>
               <div class="price">₹199<small>/month</small></div>
-              <div class="feature-list"><span>100 FAQ answers for small websites</span><span>Email and Mobile OTP verification for real leads</span><span>WhatsApp Redirect add-on billed at ₹99 / 30 days</span><span>Webhook support</span></div>
+              <div class="feature-list"><span>100 FAQ answers for small websites</span><span>Email and Mobile OTP verification for real leads</span><span>WhatsApp Redirect add-on billed at ₹99 / 30 days</span><span>Webhook support</span><span>Auto wallet recharge: below ₹50, recharge ₹199</span></div>
               <div class="wallet-table"><table><thead><tr><th>Wallet action</th><th>Charge</th></tr></thead><tbody><tr><td>Fresh Email OTP Lead</td><td>₹6</td></tr><tr><td>Repeat Email OTP Verification</td><td>₹2</td></tr><tr><td>Fresh Mobile OTP Lead</td><td>₹12</td></tr><tr><td>Repeat Mobile OTP Verification</td><td>₹3</td></tr><tr><td>WhatsApp Redirect</td><td>Add-on ₹99, refundable if cancelled within 1 hour</td></tr></tbody></table></div>
               <small class="muted">Validity of Fresh Email and Mobile OTP Leads is 30 days from last user verification.</small>
-              <button class="pill-btn billing-plan-btn" type="button" data-plan-id="starter">Subscribe Starter</button>
+              <button class="pill-btn billing-plan-btn" type="button" data-plan-id="starter">Start Auto Payment</button>
               <small class="muted">Best for portfolios, coaches, and small businesses.</small>
             </div>
 
@@ -1919,10 +2035,10 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
               <div class="pricing-head"><div><span class="eyebrow">Growth</span><h3>Growth Plan</h3></div><span class="tag good">Popular</span></div>
               <?php if ($activePlanId === 'growth'): ?><div class="current-plan-note">Current plan</div><?php endif; ?>
               <div class="price">₹499<small>/month</small></div>
-              <div class="feature-list"><span>300 FAQ answers for growing local businesses</span><span>Email and Mobile OTP verification for real leads</span><span>WhatsApp Redirect add-on billed at ₹99 / 30 days</span><span>Webhook support</span><span>Partial Analytics dashboard for tracking captured contacts</span><span>Better wallet rates than Starter on email and mobile leads</span><span>Analytics access: Overview, Conversations, FAQ Insights, Leads</span></div>
+              <div class="feature-list"><span>300 FAQ answers for growing local businesses</span><span>Email and Mobile OTP verification for real leads</span><span>WhatsApp Redirect add-on billed at ₹99 / 30 days</span><span>Webhook support</span><span>Auto wallet recharge: below ₹100, recharge ₹499</span><span>Partial Analytics dashboard for tracking captured contacts</span><span>Better wallet rates than Starter on email and mobile leads</span><span>Analytics access: Overview, Conversations, FAQ Insights, Leads</span></div>
               <div class="wallet-table"><table><thead><tr><th>Wallet action</th><th>Charge</th></tr></thead><tbody><tr><td>Fresh Email OTP Lead</td><td>₹5</td></tr><tr><td>Repeat Email OTP Verification</td><td>₹1</td></tr><tr><td>Fresh Mobile OTP Lead</td><td>₹10</td></tr><tr><td>Repeat Mobile OTP Verification</td><td>₹2</td></tr><tr><td>WhatsApp Redirect</td><td>Add-on ₹99, refundable if cancelled within 1 hour</td></tr></tbody></table></div>
               <small class="muted">Validity of Fresh Email and Mobile OTP Leads is 30 days from last user verification.</small>
-              <button class="pill-btn billing-plan-btn" type="button" data-plan-id="growth">Subscribe Growth</button>
+              <button class="pill-btn billing-plan-btn" type="button" data-plan-id="growth">Start Auto Payment</button>
               <small class="muted">Best for local businesses, agencies, and service providers.</small>
             </div>
 
@@ -1930,13 +2046,32 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
               <div class="pricing-head"><div><span class="eyebrow">Business</span><h3>Business Plan</h3></div><span class="tag">Scale</span></div>
               <?php if ($activePlanId === 'business'): ?><div class="current-plan-note">Current plan</div><?php endif; ?>
               <div class="price">₹999<small>/month</small></div>
-              <div class="feature-list"><span>Unlimited FAQ capacity for larger businesses</span><span>Email and Mobile combined OTP verification for real leads</span><span>WhatsApp Redirect add-on billed at ₹99 / 30 days</span><span>Webhook support</span><span>Complete Analytics dashboard for tracking captured contacts</span><span>Access for API Integration, Migrate or save data in your database via API</span><span>Advanced Analytics: Overview, Conversations, FAQ Insights, Leads, Pages, Real-Time, Reports Download</span><span>Chat can run only allowed domains</span></div>
+              <div class="feature-list"><span>Unlimited FAQ capacity for larger businesses</span><span>Email and Mobile combined OTP verification for real leads</span><span>WhatsApp Redirect add-on billed at ₹99 / 30 days</span><span>Webhook support</span><span>Auto wallet recharge: below ₹200, recharge ₹999</span><span>Complete Analytics dashboard for tracking captured contacts</span><span>Access for API Integration, Migrate or save data in your database via API</span><span>Advanced Analytics: Overview, Conversations, FAQ Insights, Leads, Pages, Real-Time, Reports Download</span><span>Chat can run only allowed domains</span></div>
               <div class="wallet-table"><table><thead><tr><th>Wallet action</th><th>Charge</th></tr></thead><tbody><tr><td>Fresh Email OTP Lead</td><td>₹5</td></tr><tr><td>Repeat Email OTP Verification</td><td>₹1</td></tr><tr><td>Fresh Mobile OTP Lead</td><td>₹10</td></tr><tr><td>Repeat Mobile OTP Verification</td><td>₹2</td></tr><tr><td>WhatsApp Redirect</td><td>Add-on ₹99, refundable if cancelled within 1 hour</td></tr></tbody></table></div>
               <small class="muted">Validity of Fresh Email and Mobile OTP Leads is 30 days from last user verification.</small>
-              <button class="pill-btn billing-plan-btn" type="button" data-plan-id="business">Subscribe Business</button>
+              <button class="pill-btn billing-plan-btn" type="button" data-plan-id="business">Start Auto Payment</button>
               <small class="muted">Best for real estate, education institutes, marketing agencies, SaaS businesses, and larger teams.</small>
             </div>
 
+          </div>
+
+          <div class="notice" style="margin-top:18px">
+            <div class="section-head" style="padding:0;align-items:flex-start">
+              <div>
+                <strong>Stop automatic payment</strong><br>
+                <span class="muted">Unsubscribe from future auto payments. Remaining wallet balance stays usable on your current plan until it reaches zero.</span>
+              </div>
+              <span class="tag <?php echo $activePlanId === 'free' ? 'bad' : 'good'; ?>" id="subscriptionServiceStatusTag"><?php echo h($isCancelledWalletAccess ? 'Wallet Active' : ($activePlanId === 'free' ? 'Free' : 'Active')); ?></span>
+            </div>
+            <p class="muted" style="margin-top:12px">
+              Associated plan: <?php echo h($activePlan['name']); ?>. Wallet balance: <?php echo h(billing_rupees($billingWalletPaise)); ?>. Auto payment status: <?php echo h($isCancelledWalletAccess ? 'Stopped' : ucfirst($savedPaymentMethodStatus)); ?>.
+              <?php if ($isCancelledWalletAccess): ?>You will continue on <?php echo h($activePlan['name']); ?> until the wallet reaches zero, then the account will move to Free service.<?php endif; ?>
+            </p>
+            <div class="panel-actions">
+              <button class="danger-btn" type="button" id="cancelSubscriptionBtn" <?php echo $activePlanId === 'free' || $isCancelledWalletAccess ? 'disabled' : ''; ?>>
+                <?php echo h($isCancelledWalletAccess ? 'Auto Payment Stopped' : ($activePlanId === 'free' ? 'Free Service Active' : 'Unsubscribe Auto Payment')); ?>
+              </button>
+            </div>
           </div>
         </div>
       </section>
@@ -2005,7 +2140,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
 
           <div class="metrics" style="margin-top:18px">
             <div class="panel metric"><span>Wallet balance</span><strong><?php echo h(billing_rupees($billingWalletPaise)); ?></strong><small>Available for paid usage.</small></div>
-            <div class="panel metric"><span>Current plan</span><strong><?php echo h($activePlan['name']); ?></strong><small>Subscription status: <?php echo h($billingAccount['subscription_status'] ?? 'free'); ?></small></div>
+            <div class="panel metric"><span>Current plan</span><strong><?php echo h($activePlan['name']); ?></strong><small>Subscription status: <?php echo h($isCancelledWalletAccess ? 'cancelled, wallet access active' : $subscriptionStatus); ?></small></div>
             <div class="panel metric"><span>Billing model</span><strong>Hybrid</strong><small>Monthly subscription plus usage wallet.</small></div>
             <div class="panel metric"><span>Total credited</span><strong><?php echo h(billing_rupees($walletCreditPaise)); ?></strong><small>Money added to wallet.</small></div>
             <div class="panel metric"><span>Total deducted</span><strong><?php echo h(billing_rupees($walletDebitPaise)); ?></strong><small>Paid feature usage.</small></div>
@@ -2015,6 +2150,41 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
           <div class="split" style="margin-top:18px">
             <div class="notice"><strong>Monthly subscription:</strong><br>Fixed platform fee for dashboard access, FAQ limits, analytics, and plan features.</div>
             <div class="notice"><strong>Wallet usage:</strong><br>Usage charges deduct automatically for OTP verification, leads, WhatsApp redirects, and other paid services.</div>
+          </div>
+          <div class="notice" style="margin-top:18px">
+            <strong>Auto wallet recharge:</strong><br>
+            <?php if ($activePlanId === 'free'): ?>
+              Auto recharge starts after a paid plan is active.
+            <?php else: ?>
+              <?php echo h($activePlan['name']); ?> rule: when wallet balance is below <?php echo h(billing_rupees($autoRechargeThresholdPaise)); ?>, recharge <?php echo h(billing_rupees($autoRechargeAmountPaise)); ?> automatically.
+              Status: <?php echo h($autoRechargeEnabled ? 'Enabled' : 'Disabled'); ?>.
+              Saved payment method: <?php echo h(ucfirst($savedPaymentMethodStatus)); ?>.
+              <?php if ($savedPaymentMethodStatus !== 'active'): ?>Mandatory auto charging is not ready until a Razorpay recurring token/mandate is saved. Paid wallet deductions will fail if the balance is insufficient.<?php endif; ?>
+            <?php endif; ?>
+          </div>
+          <?php if ($whatsappStoppedReason === 'insufficient_wallet_balance'): ?>
+            <div class="notice" style="margin-top:18px">
+              <strong>WhatsApp Redirect stopped:</strong><br>
+              Renewal charge shown as <?php echo h(billing_rupees(0)); ?> because wallet balance was below <?php echo h(billing_rupees($whatsappFailedChargePaise ?: $whatsappChargePaise)); ?>. WhatsApp redirection is OFF until you recharge wallet and turn it ON again.
+            </div>
+          <?php endif; ?>
+
+          <div class="notice" style="margin-top:18px">
+            <div class="section-head" style="padding:0;align-items:flex-start">
+              <div>
+                <strong>Automatic payment authorization</strong><br>
+                Customer ID: <?php echo h($savedPaymentCustomerId ?: 'Not created'); ?>.
+                Contact: <?php echo h($savedPaymentContact ?: 'Not linked'); ?>.<br>
+                Token status:
+                <span id="autoRechargeMandateStatusText"><?php echo h(ucfirst($savedPaymentMethodStatus)); ?></span>.
+                Token:
+                <span id="autoRechargeTokenText"><?php echo h($savedPaymentMethodReference ? substr($savedPaymentMethodReference, 0, 10) . '...' : 'Not authorized'); ?></span>.
+              </div>
+              <span class="tag <?php echo $savedPaymentMethodStatus === 'active' ? 'good' : 'bad'; ?>" id="autoRechargeMandateStatusTag"><?php echo h($savedPaymentMethodStatus === 'active' ? 'Ready' : 'Authorize'); ?></span>
+            </div>
+            <p class="muted" style="margin-top:12px">
+              This authorization is now mandatory during plan purchase. Choose Starter, Growth, or Business from the Subscription tab to approve automatic payment and activate the plan.
+            </p>
           </div>
 
           <div class="table-wrap" style="margin-top:18px">
@@ -2066,6 +2236,7 @@ const leadPaidFeatures = <?php echo json_encode([
 const businessFeatures = <?php echo json_encode([
   "api_access" => $canUseBusinessApi,
   "webhook_support" => $canUseWebhook,
+  "human_handoff" => $canUseHumanHandoff,
   "allowed_domains" => $canUseAllowedDomains
 ]); ?>;
 const leadWalletCharges = <?php echo json_encode([
@@ -2079,6 +2250,8 @@ const leadWalletCharges = <?php echo json_encode([
 ]); ?>;
 const whatsappRedirectLockedOn = <?php echo json_encode($whatsappRedirectLockedOn); ?>;
 const whatsappRedirectLocked = <?php echo json_encode($whatsappRedirectLocked); ?>;
+const walletBalancePaise = <?php echo json_encode($billingWalletPaise); ?>;
+const whatsappRedirectChargePaise = <?php echo json_encode($whatsappChargePaise); ?>;
 const analyticsReport = <?php echo json_encode([
   "bot_name" => $botName,
   "range_label" => $analyticsRangeLabel,
@@ -2195,6 +2368,8 @@ function bindBillingRefresh() {
       if (!freshBilling || !currentBilling) throw new Error("Billing tab not found");
       currentBilling.innerHTML = freshBilling.innerHTML;
       bindBillingRefresh();
+      bindRazorpayCustomerSetup();
+      bindAutoRechargeMandate();
       showToast("Billing refreshed");
     } catch (error) {
       button.disabled = false;
@@ -2204,7 +2379,133 @@ function bindBillingRefresh() {
   });
 }
 
+function bindRazorpayCustomerSetup() {
+  document.getElementById("createRazorpayCustomerBtn")?.addEventListener("click", async event => {
+    const button = event.currentTarget;
+    if (button.disabled) return;
+    const nameInput = document.getElementById("razorpayCustomerNameInput");
+    const contactInput = document.getElementById("razorpayCustomerContactInput");
+    const name = nameInput?.value.trim() || "";
+    const contact = contactInput?.value.trim() || "";
+    if (name.length < 3) return showToast("Enter customer name");
+    if (!contact) return showToast("Enter mobile number with country code");
+    const originalText = button.textContent;
+    button.disabled = true;
+    button.textContent = "Creating...";
+    try {
+      const response = await fetch("/api.php?action=create_razorpay_customer", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({name, contact})
+      });
+      const data = await response.json();
+      if (!data.success) {
+        button.disabled = false;
+        button.textContent = originalText;
+        return showToast(data.message || "Razorpay customer could not be created");
+      }
+      document.getElementById("razorpayCustomerIdText").textContent = data.razorpay_customer_id || "Linked";
+      document.getElementById("razorpayCustomerContactText").textContent = data.contact || contact;
+      const tag = document.getElementById("razorpayCustomerStatusTag");
+      if (tag) {
+        tag.textContent = "Linked";
+        tag.classList.remove("bad");
+        tag.classList.add("good");
+      }
+      if (nameInput) nameInput.disabled = true;
+      if (contactInput) contactInput.disabled = true;
+      button.textContent = "Customer Linked";
+      showToast("Razorpay customer linked");
+    } catch (error) {
+      button.disabled = false;
+      button.textContent = originalText;
+      showToast("Razorpay customer could not be created");
+    }
+  });
+}
+
+function bindAutoRechargeMandate() {
+  document.getElementById("authorizeAutoRechargeBtn")?.addEventListener("click", async event => {
+    const button = event.currentTarget;
+    if (button.disabled) return;
+    if (!selectedCustomerId) return showToast("Select or create a bot first");
+    if (!window.Razorpay) return showToast("Razorpay checkout could not be loaded");
+    const originalText = button.textContent;
+    button.disabled = true;
+    button.textContent = "Creating mandate...";
+    try {
+      const orderResponse = await fetch("/api.php?action=create_auto_recharge_mandate_order", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({customer_id: selectedCustomerId})
+      });
+      const orderData = await orderResponse.json().catch(() => ({}));
+      if (!orderData.success) {
+        button.disabled = false;
+        button.textContent = originalText;
+        if (orderData.requires_customer) document.getElementById("createRazorpayCustomerBtn")?.focus();
+        return showToast(orderData.message || "Mandate order could not be created");
+      }
+      button.disabled = false;
+      button.textContent = originalText;
+      const checkout = new Razorpay({
+        key: orderData.key_id,
+        amount: orderData.order.amount,
+        currency: orderData.order.currency || "INR",
+        name: "Vani AI",
+        description: `${orderData.plan.name} auto wallet recharge mandate`,
+        order_id: orderData.order.id,
+        customer_id: orderData.razorpay_customer_id,
+        recurring: true,
+        remember_customer: true,
+        method: {card: true, netbanking: false, wallet: false, upi: false},
+        prefill: {
+          email: billingEmail,
+          contact: orderData.contact || ""
+        },
+        readonly: {email: true},
+        theme: {color: "#6366f1"},
+        handler: async response => {
+          showToast("Verifying mandate...");
+          const verifyResponse = await fetch("/api.php?action=verify_auto_recharge_mandate", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify(response)
+          });
+          const verifyData = await verifyResponse.json().catch(() => ({}));
+          if (!verifyData.success) {
+            showToast(verifyData.message || "Mandate verification failed");
+            return;
+          }
+          document.getElementById("autoRechargeMandateStatusText").textContent = "Active";
+          document.getElementById("autoRechargeTokenText").textContent = verifyData.token_id ? `${verifyData.token_id.slice(0, 10)}...` : "Saved";
+          const tag = document.getElementById("autoRechargeMandateStatusTag");
+          if (tag) {
+            tag.textContent = "Ready";
+            tag.classList.remove("bad");
+            tag.classList.add("good");
+          }
+          button.disabled = true;
+          button.textContent = "Auto Recharge Ready";
+          showToast(verifyData.wallet_credited ? "Mandate active and wallet credited" : "Mandate active");
+          setTimeout(() => location.reload(), 900);
+        }
+      });
+      checkout.on("payment.failed", response => {
+        showToast(response.error?.description || "Mandate authorization failed");
+      });
+      checkout.open();
+    } catch (error) {
+      button.disabled = false;
+      button.textContent = originalText;
+      showToast("Mandate setup could not be started");
+    }
+  });
+}
+
 bindBillingRefresh();
+bindRazorpayCustomerSetup();
+bindAutoRechargeMandate();
 
 function openAnalyticsTab(id, updateHash = true) {
   let target = document.getElementById(id) ? id : "analytics-overview";
@@ -2381,21 +2682,38 @@ async function startPlanCheckout(planId, button) {
     showToast("Razorpay checkout could not be loaded");
     return;
   }
+  const autoPayName = document.getElementById("subscriptionAutoPayNameInput")?.value.trim() || "";
+  const autoPayContact = document.getElementById("subscriptionAutoPayContactInput")?.value.trim() || "";
+  if (autoPayName.length < 3) {
+    showToast("Enter customer name for automatic payment");
+    document.getElementById("subscriptionAutoPayNameInput")?.focus();
+    return;
+  }
+  if (!autoPayContact) {
+    showToast("Enter mobile number with country code");
+    document.getElementById("subscriptionAutoPayContactInput")?.focus();
+    return;
+  }
   const originalText = button.textContent;
   button.disabled = true;
-  button.textContent = "Creating order...";
+  button.textContent = "Creating auto payment...";
 
-  const orderResponse = await fetch("/api.php?action=create_razorpay_order", {
+  const orderResponse = await fetch("/api.php?action=create_auto_recharge_mandate_order", {
     method: "POST",
     headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({plan_id: planId, customer_id: selectedCustomerId})
+    body: JSON.stringify({
+      plan_id: planId,
+      customer_id: selectedCustomerId,
+      name: autoPayName,
+      contact: autoPayContact
+    })
   });
   const orderData = await orderResponse.json().catch(() => ({}));
   button.disabled = false;
   button.textContent = originalText;
 
   if (!orderData.success) {
-    showToast(orderData.message || "Payment order could not be created");
+    showToast(orderData.message || "Automatic payment could not be started");
     return;
   }
 
@@ -2404,34 +2722,77 @@ async function startPlanCheckout(planId, button) {
     amount: orderData.order.amount,
     currency: orderData.order.currency || "INR",
     name: "Vani AI",
-    description: `${orderData.plan.name} monthly subscription`,
+    description: `${orderData.plan.name} mandatory auto payment`,
     order_id: orderData.order.id,
-    prefill: {email: billingEmail},
+    customer_id: orderData.razorpay_customer_id,
+    recurring: true,
+    remember_customer: true,
+    method: {card: true, netbanking: false, wallet: false, upi: false},
+    prefill: {
+      name: autoPayName,
+      email: billingEmail,
+      contact: orderData.contact || autoPayContact
+    },
+    readonly: {email: true},
     theme: {color: "#6366f1"},
     handler: async response => {
-      showToast("Verifying payment...");
-      const verifyResponse = await fetch("/api.php?action=verify_razorpay_payment", {
+      showToast("Verifying automatic payment...");
+      const verifyResponse = await fetch("/api.php?action=verify_auto_recharge_mandate", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify(response)
       });
       const verifyData = await verifyResponse.json().catch(() => ({}));
       if (!verifyData.success) {
-        showToast(verifyData.message || "Payment verification failed");
+        showToast(verifyData.message || "Automatic payment verification failed");
         return;
       }
-      showToast("Subscription activated");
+      showToast("Plan activated with automatic payment");
       setTimeout(() => location.reload(), 900);
     }
   });
   checkout.on("payment.failed", response => {
-    showToast(response.error?.description || "Payment failed");
+    showToast(response.error?.description || "Automatic payment authorization failed");
   });
   checkout.open();
 }
 
 document.querySelectorAll(".billing-plan-btn").forEach(button => {
   button.addEventListener("click", () => startPlanCheckout(button.dataset.planId, button));
+});
+
+document.getElementById("cancelSubscriptionBtn")?.addEventListener("click", async event => {
+  const button = event.currentTarget;
+  if (button.disabled) return;
+  const confirmed = confirm("Stop automatic payment now? Your remaining wallet balance will continue working on the current plan until it reaches zero, then the account will move to Free service.");
+  if (!confirmed) return;
+  const originalText = button.textContent;
+  button.disabled = true;
+  button.textContent = "Stopping service...";
+  try {
+    const response = await fetch("/api.php?action=cancel_chatbot_subscription", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({customer_id: selectedCustomerId || ""})
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!data.success) {
+      button.disabled = false;
+      button.textContent = originalText;
+      showToast(data.message || "Subscription could not be cancelled");
+      return;
+    }
+    document.getElementById("subscriptionServiceStatusTag").textContent = "Wallet Active";
+    document.getElementById("subscriptionServiceStatusTag").classList.add("good");
+    document.getElementById("subscriptionServiceStatusTag").classList.remove("bad");
+    button.textContent = "Auto Payment Stopped";
+    showToast("Auto payment stopped");
+    setTimeout(() => location.reload(), 900);
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = originalText;
+    showToast("Subscription could not be cancelled");
+  }
 });
 
 themeToggle.addEventListener("click", () => {
@@ -2469,10 +2830,6 @@ function formatLastActivityForBrowser() {
 }
 
 formatLastActivityForBrowser();
-
-document.querySelectorAll("[data-save-note]").forEach(btn => {
-  btn.addEventListener("click", () => showToast(btn.dataset.saveNote + " UI is ready. Connect save API next."));
-});
 
 const leadGenerationEnabled = document.getElementById("leadGenerationEnabled");
 const leadServiceOptions = document.getElementById("leadServiceOptions");
@@ -2629,8 +2986,14 @@ whatsappLeadNumber?.addEventListener("blur", () => validateWhatsappLeadNumber(fa
 whatsappLeadToggle?.addEventListener("change", () => {
   if (!requireLeadPaidFeature("whatsapp_redirect", whatsappLeadToggle, "WhatsApp Redirect requires an active paid plan")) return;
   if (whatsappLeadToggle.checked) {
+    if (walletBalancePaise < whatsappRedirectChargePaise) {
+      whatsappLeadToggle.checked = false;
+      showToast("Wallet balance must be at least ₹99 to turn ON WhatsApp Redirect");
+      openTab("billing");
+      return;
+    }
     const charge = walletChargeText("whatsapp_redirect_addon");
-    paidServiceAlert(charge === "included" ? "WhatsApp redirection service is ON. This service is included in your current plan and will be saved automatically." : `WhatsApp redirection service is ON. ${charge} will be deducted from your wallet automatically after this change is saved. This add-on is valid for 30 days. If you turn it off within 1 hour, the amount will be refunded to your wallet.`);
+    paidServiceAlert(charge === "included" ? "WhatsApp redirection service is ON. This service is included in your current plan and will be saved automatically." : `WhatsApp redirection service is ON. ${charge} will be deducted from your wallet after this change is saved. This add-on is valid for 30 days and renews every 30 days only if wallet balance is at least ₹99. If you turn it off within 1 hour, the amount will be refunded to your wallet.`);
   }
   validateWhatsappLeadNumber(false);
 });
@@ -2665,6 +3028,12 @@ async function saveLeadSetup({button = null, live = false} = {}) {
   if (leadEmailOtpToggle?.checked && !requireLeadPaidFeature("email_otp", leadEmailOtpToggle, "Email OTP requires an active subscription")) return;
   if (leadMobileOtpToggle?.checked && !requireLeadPaidFeature("mobile_otp", leadMobileOtpToggle, "Mobile OTP requires an active paid plan")) return;
   if (whatsappLeadToggle?.checked && !requireLeadPaidFeature("whatsapp_redirect", whatsappLeadToggle, "WhatsApp Redirect requires an active paid plan")) return;
+  if (whatsappLeadToggle?.checked && walletBalancePaise < whatsappRedirectChargePaise) {
+    whatsappLeadToggle.checked = false;
+    showToast("Wallet balance must be at least ₹99 to turn ON WhatsApp Redirect");
+    openTab("billing");
+    return;
+  }
   if (leadGenerationEnabled?.checked && whatsappLeadToggle?.checked && !validateWhatsappLeadNumber(true)) {
     whatsappLeadNumber?.focus();
     return;
@@ -3032,6 +3401,47 @@ document.getElementById("saveIntegrationBtn")?.addEventListener("click", async e
     const statusText = document.getElementById("verificationStatusText");
     if (statusText) statusText.textContent = websiteVerificationEnabled ? "Pending" : "Disabled";
   }
+});
+
+function validateHumanHandoffEmail(showMessage = false) {
+  const input = document.getElementById("humanHandoffEmailInput");
+  const value = input?.value.trim() || "";
+  const valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+  if (!valid && showMessage) showToast("Enter a valid support email");
+  return valid;
+}
+
+async function saveHumanHandoffSettings({live = false} = {}) {
+  const toggle = document.getElementById("humanHandoffToggle");
+  const emailInput = document.getElementById("humanHandoffEmailInput");
+  if (!toggle || !emailInput) return;
+  if (toggle.checked && !businessFeatures.human_handoff) {
+    toggle.checked = false;
+    alert("You need Growth or Business plan to ON this functionality");
+    openTab("subscription");
+    return;
+  }
+  if (toggle.checked && !validateHumanHandoffEmail(true)) {
+    emailInput.focus();
+    return;
+  }
+  const saved = await saveDashboardSettings({
+    handoff_enabled: !!toggle.checked,
+    handoff_email: emailInput.value.trim()
+  });
+  if (saved && live) {
+    showToast(toggle.checked ? "Human handoff enabled" : "Human handoff disabled");
+  }
+}
+
+document.getElementById("humanHandoffToggle")?.addEventListener("change", () => {
+  saveHumanHandoffSettings({live: true});
+});
+
+document.getElementById("humanHandoffEmailInput")?.addEventListener("blur", () => validateHumanHandoffEmail(false));
+
+document.getElementById("saveHumanHandoffBtn")?.addEventListener("click", () => {
+  saveHumanHandoffSettings();
 });
 
 document.getElementById("saveWebhookBtn")?.addEventListener("click", async event => {

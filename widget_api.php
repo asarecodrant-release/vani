@@ -50,12 +50,229 @@ function widget_billing_plan_for_customer(string $customerId): string {
         "GET",
         "billing_accounts?select=*&email=eq." . urlencode($email) . "&limit=1"
     ));
-    return billing_active_plan_from_account($rows[0] ?? []);
+    $account = $rows[0] ?? [];
+    $status = (string)($account['subscription_status'] ?? 'free');
+    $periodEnd = (string)($account['current_period_end'] ?? '');
+    $walletBalance = (int)($account['wallet_balance_paise'] ?? 0);
+    if (($status === 'cancelled' && $walletBalance <= 0) || ($status === 'active' && $periodEnd !== '' && strtotime($periodEnd) < time())) {
+        widget_downgrade_account_to_free($email, $status === 'cancelled' ? 'wallet_empty' : 'plan_expired');
+        $account["current_plan"] = "free";
+        $account["subscription_status"] = "free";
+    }
+    return billing_active_plan_from_account($account);
+}
+
+function widget_faq_active_query_suffix(string $customerId, string $order = "id.asc"): string {
+    $signup = widget_get_signup($customerId);
+    $email = trim((string)($signup['email'] ?? ''));
+    $account = [];
+    if ($email !== '') {
+        $rows = widget_safe_rows(supabase(
+            "GET",
+            "billing_accounts?select=*&email=eq." . urlencode($email) . "&limit=1"
+        ));
+        $account = $rows[0] ?? [];
+    }
+    if ((string)($account['subscription_status'] ?? '') === 'cancelled' && (int)($account['wallet_balance_paise'] ?? 0) <= 0 && $email !== '') {
+        widget_downgrade_account_to_free($email, 'wallet_empty');
+        $account["current_plan"] = "free";
+        $account["subscription_status"] = "free";
+    }
+    $limit = billing_faq_limit(billing_active_plan_from_account($account));
+    $suffix = "&order=" . rawurlencode($order);
+    if ($limit !== PHP_INT_MAX) {
+        $suffix .= "&limit=" . max(0, $limit);
+    }
+    return $suffix;
 }
 
 function widget_billing_email_for_customer(string $customerId): string {
     $signup = widget_get_signup($customerId);
     return trim((string)($signup['email'] ?? ''));
+}
+
+function widget_customer_ids_for_billing_email(string $email): array {
+    if ($email === '') {
+        return [];
+    }
+    $rows = widget_safe_rows(supabase(
+        "GET",
+        "chatbot_signups?select=customer_id&email=eq." . urlencode($email)
+    ));
+    return array_values(array_filter(array_map(fn($row) => trim((string)($row['customer_id'] ?? '')), $rows)));
+}
+
+function widget_disable_paid_service_toggles_for_email(string $email, string $reason = 'free_plan'): void {
+    foreach (widget_customer_ids_for_billing_email($email) as $customerId) {
+        supabase("PATCH", "lead_generation_settings?customer_id=eq." . urlencode($customerId), [
+            "verify_email_otp" => false,
+            "verify_mobile_otp" => false,
+            "redirect_whatsapp" => false,
+            "service_tier" => "free",
+            "whatsapp_redirect_stopped_at" => gmdate('Y-m-d\TH:i:s\Z'),
+            "whatsapp_redirect_stopped_reason" => $reason
+        ]);
+        supabase("PATCH", "chatbot_settings?customer_id=eq." . urlencode($customerId), [
+            "handoff_enabled" => false,
+            "allowed_domains_enabled" => false,
+            "webhook_url" => null,
+            "webhook_secret" => null
+        ]);
+    }
+}
+
+function widget_downgrade_account_to_free(string $email, string $reason = 'wallet_empty'): void {
+    if ($email === '') {
+        return;
+    }
+    supabase("PATCH", "billing_accounts?email=eq." . urlencode($email), [
+        "current_plan" => "free",
+        "subscription_status" => "free",
+        "auto_recharge_enabled" => false,
+        "saved_payment_method_status" => "failed",
+        "saved_payment_method_reference" => null
+    ]);
+    widget_disable_paid_service_toggles_for_email($email, $reason);
+}
+
+function widget_mark_auto_payment_failed_keep_wallet_access(string $email, array $account, string $reason = 'auto_payment_failed'): void {
+    if ($email === '') {
+        return;
+    }
+    if ((int)($account['wallet_balance_paise'] ?? 0) <= 0) {
+        widget_downgrade_account_to_free($email, $reason);
+        return;
+    }
+    supabase("PATCH", "billing_accounts?email=eq." . urlencode($email), [
+        "subscription_status" => "cancelled",
+        "auto_recharge_enabled" => false,
+        "saved_payment_method_status" => "failed",
+        "saved_payment_method_reference" => null
+    ]);
+}
+
+function widget_razorpay_request(string $method, string $endpoint, array $payload = []): array {
+    $keyId = $_ENV['RAZORPAY_KEY_ID'] ?? getenv('RAZORPAY_KEY_ID') ?: '';
+    $keySecret = $_ENV['RAZORPAY_KEY_SECRET'] ?? getenv('RAZORPAY_KEY_SECRET') ?: '';
+    if ($keyId === '' || $keySecret === '') {
+        return ["status" => 500, "data" => [], "raw" => "Razorpay credentials missing"];
+    }
+    $options = [
+        "http" => [
+            "method" => $method,
+            "header" => implode("\r\n", [
+                "Content-Type: application/json",
+                "Authorization: Basic " . base64_encode($keyId . ":" . $keySecret)
+            ]),
+            "ignore_errors" => true
+        ]
+    ];
+    if (!empty($payload)) {
+        $options["http"]["content"] = json_encode($payload);
+    }
+    $raw = file_get_contents("https://api.razorpay.com/v1/" . ltrim($endpoint, "/"), false, stream_context_create($options));
+    $status = 0;
+    if (isset($http_response_header[0])) {
+        preg_match('{HTTP/\S*\s(\d{3})}', $http_response_header[0], $match);
+        $status = intval($match[1] ?? 0);
+    }
+    return ["status" => $status, "data" => json_decode((string)$raw, true), "raw" => $raw];
+}
+
+function widget_auto_recharge_wallet(string $email, string $customerId, array $account, string $planId): array {
+    $rule = billing_auto_recharge_rule($planId);
+    $amountPaise = (int)($account['auto_recharge_amount_paise'] ?? 0) ?: (int)$rule['amount_paise'];
+    $thresholdPaise = (int)($account['auto_recharge_threshold_paise'] ?? 0) ?: (int)$rule['threshold_paise'];
+    $enabled = filter_var($account['auto_recharge_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
+    $token = trim((string)($account['saved_payment_method_reference'] ?? ''));
+    $razorpayCustomerId = trim((string)($account['saved_payment_method_customer_id'] ?? ''));
+    $contact = trim((string)($account['saved_payment_method_contact'] ?? ''));
+    $methodStatus = (string)($account['saved_payment_method_status'] ?? 'missing');
+
+    if (!$enabled || $amountPaise <= 0) {
+        return ["success" => false, "message" => "Auto recharge is not enabled"];
+    }
+    if ($methodStatus !== 'active' || $token === '' || $razorpayCustomerId === '') {
+        return ["success" => false, "requires_payment_method" => true, "message" => "No active Razorpay recurring payment method is available"];
+    }
+
+    $receipt = substr("auto_" . $planId . "_" . time() . "_" . bin2hex(random_bytes(3)), 0, 40);
+    $order = widget_razorpay_request("POST", "orders", [
+        "amount" => $amountPaise,
+        "currency" => "INR",
+        "payment_capture" => true,
+        "receipt" => $receipt,
+        "notes" => ["email" => $email, "customer_id" => $customerId, "plan_id" => $planId, "order_type" => "wallet_auto_recharge"]
+    ]);
+    if ($order['status'] < 200 || $order['status'] >= 300 || empty($order['data']['id'])) {
+        return ["success" => false, "message" => "Auto recharge order could not be created", "debug" => $order];
+    }
+
+    supabase("POST", "billing_orders", [[
+        "email" => $email,
+        "customer_id" => $customerId ?: null,
+        "plan_id" => $planId,
+        "order_type" => "wallet",
+        "amount_paise" => $amountPaise,
+        "currency" => "INR",
+        "status" => "created",
+        "razorpay_order_id" => $order['data']['id'],
+        "receipt" => $receipt,
+        "metadata" => (object)["auto_recharge" => true]
+    ]]);
+
+    $payment = widget_razorpay_request("POST", "payments/create/recurring", [
+        "email" => $email,
+        "contact" => $contact,
+        "amount" => $amountPaise,
+        "currency" => "INR",
+        "order_id" => $order['data']['id'],
+        "customer_id" => $razorpayCustomerId,
+        "token" => $token,
+        "recurring" => true,
+        "description" => "Vani wallet auto recharge",
+        "notes" => ["email" => $email, "customer_id" => $customerId, "plan_id" => $planId]
+    ]);
+    $paymentId = (string)($payment['data']['razorpay_payment_id'] ?? $payment['data']['id'] ?? '');
+    $paymentStatus = (string)($payment['data']['status'] ?? '');
+    if ($payment['status'] < 200 || $payment['status'] >= 300 || $paymentId === '') {
+        supabase("PATCH", "billing_orders?razorpay_order_id=eq." . urlencode((string)$order['data']['id']), ["status" => "failed"]);
+        widget_mark_auto_payment_failed_keep_wallet_access($email, $account, 'auto_payment_failed');
+        return ["success" => false, "message" => "Auto recharge payment failed", "debug" => $payment];
+    }
+    if (!in_array($paymentStatus, ['captured', 'authorized'], true)) {
+        supabase("PATCH", "billing_orders?razorpay_order_id=eq." . urlencode((string)$order['data']['id']), [
+            "razorpay_payment_id" => $paymentId,
+            "metadata" => (object)["auto_recharge" => true, "payment_status" => $paymentStatus]
+        ]);
+        widget_mark_auto_payment_failed_keep_wallet_access($email, $account, 'auto_payment_pending_or_failed');
+        return ["success" => false, "pending" => true, "message" => "Auto recharge payment is pending", "payment_status" => $paymentStatus];
+    }
+
+    $rows = widget_safe_rows(supabase("GET", "billing_accounts?select=*&email=eq." . urlencode($email) . "&limit=1"));
+    $newBalance = (int)(($rows[0] ?? [])['wallet_balance_paise'] ?? 0) + $amountPaise;
+    supabase("PATCH", "billing_accounts?email=eq." . urlencode($email), [
+        "wallet_balance_paise" => $newBalance,
+        "saved_payment_method_status" => "active"
+    ]);
+    supabase("POST", "wallet_transactions", [[
+        "email" => $email,
+        "customer_id" => $customerId ?: null,
+        "transaction_type" => "credit",
+        "amount_paise" => $amountPaise,
+        "balance_after_paise" => $newBalance,
+        "description" => "Auto wallet recharge: " . billing_plan($planId)['name'],
+        "reference_type" => "razorpay_auto_recharge",
+        "reference_id" => $paymentId,
+        "metadata" => (object)["plan_id" => $planId, "threshold_paise" => $thresholdPaise]
+    ]]);
+    supabase("PATCH", "billing_orders?razorpay_order_id=eq." . urlencode((string)$order['data']['id']), [
+        "status" => "paid",
+        "razorpay_payment_id" => $paymentId,
+        "paid_at" => gmdate('Y-m-d\TH:i:s\Z')
+    ]);
+
+    return ["success" => true, "amount_paise" => $amountPaise, "balance_after_paise" => $newBalance, "payment_id" => $paymentId];
 }
 
 function widget_debit_wallet(string $email, string $customerId, int $amountPaise, string $description, string $referenceType, string $referenceId, array $metadata = []): array {
@@ -69,7 +286,35 @@ function widget_debit_wallet(string $email, string $customerId, int $amountPaise
     $account = $rows[0] ?? [];
     $balance = (int)($account['wallet_balance_paise'] ?? 0);
     if ($balance < $amountPaise) {
-        return ["success" => false, "charged" => false, "message" => "Insufficient wallet balance"];
+        $planId = billing_active_plan_from_account($account);
+        $rule = billing_auto_recharge_rule($planId);
+        $autoRecharge = [
+            "enabled" => filter_var($account['auto_recharge_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN),
+            "threshold_paise" => (int)($account['auto_recharge_threshold_paise'] ?? 0) ?: (int)$rule['threshold_paise'],
+            "amount_paise" => (int)($account['auto_recharge_amount_paise'] ?? 0) ?: (int)$rule['amount_paise'],
+            "payment_method_status" => (string)($account['saved_payment_method_status'] ?? 'missing')
+        ];
+        supabase("PATCH", "billing_accounts?email=eq." . urlencode($email), [
+            "last_auto_recharge_attempt_at" => gmdate('Y-m-d\TH:i:s\Z')
+        ]);
+        $recharge = widget_auto_recharge_wallet($email, $customerId, $account, $planId);
+        if (!empty($recharge['success'])) {
+            $rows = widget_safe_rows(supabase("GET", "billing_accounts?select=*&email=eq." . urlencode($email) . "&limit=1"));
+            $balance = (int)(($rows[0] ?? [])['wallet_balance_paise'] ?? 0);
+        } else {
+            widget_mark_auto_payment_failed_keep_wallet_access($email, $account, 'auto_payment_failed');
+            return [
+                "success" => false,
+                "charged" => false,
+                "auto_recharge" => $autoRecharge,
+                "auto_recharge_result" => $recharge,
+                "requires_payment_method" => !empty($recharge['requires_payment_method']) || empty($autoRecharge['enabled']) || $autoRecharge['payment_method_status'] !== 'active',
+                "message" => $recharge['message'] ?? "Insufficient wallet balance"
+            ];
+        }
+        if ($balance < $amountPaise) {
+            return ["success" => false, "charged" => false, "auto_recharge" => $autoRecharge, "auto_recharge_result" => $recharge, "message" => "Insufficient wallet balance after auto recharge"];
+        }
     }
     $newBalance = $balance - $amountPaise;
     supabase("PATCH", "billing_accounts?email=eq." . urlencode($email), [
@@ -86,7 +331,136 @@ function widget_debit_wallet(string $email, string $customerId, int $amountPaise
         "reference_id" => $referenceId,
         "metadata" => (object)$metadata
     ]]);
+    if ($newBalance <= 0 && (string)($account['subscription_status'] ?? '') === 'cancelled') {
+        widget_downgrade_account_to_free($email, 'wallet_empty');
+    }
     return ["success" => true, "charged" => true, "balance_after_paise" => $newBalance];
+}
+
+function widget_debit_wallet_without_auto_recharge(string $email, string $customerId, int $amountPaise, string $description, string $referenceType, string $referenceId, array $metadata = []): array {
+    if ($email === '' || $amountPaise <= 0) {
+        return ["success" => true, "charged" => false, "message" => "No charge required"];
+    }
+    $rows = widget_safe_rows(supabase(
+        "GET",
+        "billing_accounts?select=*&email=eq." . urlencode($email) . "&limit=1"
+    ));
+    $account = $rows[0] ?? [];
+    $balance = (int)($account['wallet_balance_paise'] ?? 0);
+    if ($balance < $amountPaise) {
+        return ["success" => false, "charged" => false, "balance_paise" => $balance, "required_paise" => $amountPaise, "message" => "Insufficient wallet balance"];
+    }
+    $newBalance = $balance - $amountPaise;
+    supabase("PATCH", "billing_accounts?email=eq." . urlencode($email), [
+        "wallet_balance_paise" => $newBalance
+    ]);
+    $txn = supabase("POST", "wallet_transactions", [[
+        "email" => $email,
+        "customer_id" => $customerId ?: null,
+        "transaction_type" => "debit",
+        "amount_paise" => $amountPaise,
+        "balance_after_paise" => $newBalance,
+        "description" => $description,
+        "reference_type" => $referenceType,
+        "reference_id" => $referenceId,
+        "metadata" => (object)$metadata
+    ]]);
+    if ($txn['status'] < 200 || $txn['status'] >= 300) {
+        supabase("PATCH", "billing_accounts?email=eq." . urlencode($email), [
+            "wallet_balance_paise" => $balance
+        ]);
+        return ["success" => false, "charged" => false, "message" => "Wallet transaction could not be recorded", "debug" => $txn];
+    }
+    if ($newBalance <= 0 && (string)($account['subscription_status'] ?? '') === 'cancelled') {
+        widget_downgrade_account_to_free($email, 'wallet_empty');
+    }
+    return ["success" => true, "charged" => true, "balance_after_paise" => $newBalance, "transaction" => $txn['data'][0] ?? null];
+}
+
+function widget_record_zero_debit(string $email, string $customerId, string $description, string $referenceType, string $referenceId, array $metadata = []): void {
+    if ($email === '') {
+        return;
+    }
+    $rows = widget_safe_rows(supabase(
+        "GET",
+        "billing_accounts?select=wallet_balance_paise&email=eq." . urlencode($email) . "&limit=1"
+    ));
+    supabase("POST", "wallet_transactions", [[
+        "email" => $email,
+        "customer_id" => $customerId ?: null,
+        "transaction_type" => "debit",
+        "amount_paise" => 0,
+        "balance_after_paise" => (int)(($rows[0] ?? [])['wallet_balance_paise'] ?? 0),
+        "description" => $description,
+        "reference_type" => $referenceType,
+        "reference_id" => $referenceId,
+        "metadata" => (object)$metadata
+    ]]);
+}
+
+function widget_send_whatsapp_redirect_stopped_email(string $toEmail, string $websiteName = ''): void {
+    if (!filter_var($toEmail, FILTER_VALIDATE_EMAIL)) {
+        return;
+    }
+    require_once __DIR__ . '/email.php';
+    $siteText = $websiteName !== '' ? " of " . htmlspecialchars($websiteName, ENT_QUOTES, 'UTF-8') : "";
+    $html = "<p>Your WhatsApp redirection service from chatbot" . $siteText . " is stopped due to insufficient wallet balance.</p>"
+        . "<p>Please recharge your wallet to turn WhatsApp redirection ON again.</p>";
+    sendBrevoEmail($toEmail, "WhatsApp redirection stopped due to insufficient wallet balance", $html);
+}
+
+function widget_renew_whatsapp_redirect_if_due(string $customerId, array $leadSettings, string $billingEmail, string $activePlan, array $signup): array {
+    if (!widget_bool($leadSettings['redirect_whatsapp'] ?? false) || !billing_feature_enabled($activePlan, 'whatsapp_redirect')) {
+        return $leadSettings;
+    }
+    $amountPaise = billing_wallet_charge_paise($activePlan, 'whatsapp_redirect_addon');
+    $periodEnd = trim((string)($leadSettings['whatsapp_redirect_period_end'] ?? ''));
+    $periodEndTime = $periodEnd !== '' ? strtotime($periodEnd) : 0;
+    if ($amountPaise <= 0 || ($periodEndTime && time() < $periodEndTime)) {
+        return $leadSettings;
+    }
+    $charge = widget_debit_wallet_without_auto_recharge(
+        $billingEmail,
+        $customerId,
+        $amountPaise,
+        "WhatsApp Redirect 30-day renewal",
+        "whatsapp_redirect_addon",
+        $customerId,
+        ["plan_id" => $activePlan, "billing_period_days" => 30, "renewal" => true]
+    );
+    if (!empty($charge['success'])) {
+        $chargedAt = gmdate('Y-m-d\TH:i:s\Z');
+        $updates = [
+            "whatsapp_redirect_charged_at" => $chargedAt,
+            "whatsapp_redirect_refund_deadline" => gmdate('Y-m-d\TH:i:s\Z', time() + 3600),
+            "whatsapp_redirect_period_end" => gmdate('Y-m-d\TH:i:s\Z', time() + 30 * 86400),
+            "whatsapp_redirect_charge_txn_id" => $charge['transaction']['id'] ?? null,
+            "whatsapp_redirect_charge_amount_paise" => $amountPaise,
+            "whatsapp_redirect_refunded_at" => null,
+            "whatsapp_redirect_stopped_at" => null,
+            "whatsapp_redirect_stopped_reason" => null,
+            "whatsapp_redirect_failed_charge_amount_paise" => null
+        ];
+        supabase("PATCH", "lead_generation_settings?customer_id=eq." . urlencode($customerId), $updates);
+        return array_merge($leadSettings, $updates);
+    }
+    $updates = [
+        "redirect_whatsapp" => false,
+        "whatsapp_redirect_stopped_at" => gmdate('Y-m-d\TH:i:s\Z'),
+        "whatsapp_redirect_stopped_reason" => "insufficient_wallet_balance",
+        "whatsapp_redirect_failed_charge_amount_paise" => $amountPaise
+    ];
+    supabase("PATCH", "lead_generation_settings?customer_id=eq." . urlencode($customerId), $updates);
+    widget_record_zero_debit(
+        $billingEmail,
+        $customerId,
+        "WhatsApp Redirect renewal skipped: ₹0 charged because wallet balance was insufficient. Service turned OFF.",
+        "whatsapp_redirect_addon_failed",
+        $customerId,
+        ["required_paise" => $amountPaise, "reason" => "insufficient_wallet_balance"]
+    );
+    widget_send_whatsapp_redirect_stopped_email($billingEmail, (string)($signup['website_name'] ?? ''));
+    return array_merge($leadSettings, $updates);
 }
 
 function widget_last_verification_time(array $lead, string $metadataKey): int {
@@ -305,6 +679,49 @@ function widget_notify_lead_by_email(string $customerId, array $lead, string $ev
     }
 
     return $sent;
+}
+
+function widget_create_handoff_ticket_if_enabled(string $customerId, array $settings, string $question, string $botResponse, string $sourceUrl = '', string $userId = '', ?int $conversationId = null): void {
+    $activePlan = widget_billing_plan_for_customer($customerId);
+    if (!billing_feature_enabled($activePlan, 'human_handoff') || !widget_bool($settings['handoff_enabled'] ?? false)) {
+        return;
+    }
+    $notificationEmail = trim((string)($settings['handoff_email'] ?? ''));
+    if (!filter_var($notificationEmail, FILTER_VALIDATE_EMAIL)) {
+        return;
+    }
+
+    $ticketRes = supabase("POST", "support_tickets", [[
+        "customer_id" => $customerId,
+        "conversation_id" => $conversationId,
+        "user_id" => $userId !== '' ? $userId : null,
+        "user_question" => $question,
+        "bot_response" => $botResponse,
+        "source_url" => $sourceUrl !== '' ? $sourceUrl : null,
+        "status" => "open",
+        "notification_email" => $notificationEmail,
+        "email_sent" => false,
+        "metadata" => (object)["created_by" => "widget_human_handoff"]
+    ]]);
+    $ticketId = $ticketRes['data'][0]['id'] ?? null;
+
+    require_once __DIR__ . '/email.php';
+    $subject = "New unanswered chatbot question";
+    $html = "<p>The chatbot could not answer this question and created a support ticket.</p>"
+        . "<p><strong>Question:</strong><br>" . htmlspecialchars($question, ENT_QUOTES, 'UTF-8') . "</p>"
+        . "<p><strong>Bot response:</strong><br>" . htmlspecialchars($botResponse, ENT_QUOTES, 'UTF-8') . "</p>";
+    if ($sourceUrl !== '') {
+        $html .= "<p><strong>Source:</strong> " . htmlspecialchars($sourceUrl, ENT_QUOTES, 'UTF-8') . "</p>";
+    }
+    if ($ticketId) {
+        $html .= "<p><strong>Ticket ID:</strong> " . htmlspecialchars((string)$ticketId, ENT_QUOTES, 'UTF-8') . "</p>";
+    }
+    $sent = sendBrevoEmail($notificationEmail, $subject, $html);
+    if ($sent && $ticketId) {
+        supabase("PATCH", "support_tickets?id=eq." . urlencode((string)$ticketId), [
+            "email_sent" => true
+        ]);
+    }
 }
 
 function widget_msg91_verify_access_token(string $accessToken): array {
@@ -624,6 +1041,7 @@ if ($action === "get_widget_config" || $action === "get_theme") {
     $signup = widget_get_signup($customerId);
     $leadSettings = widget_get_lead_settings($customerId);
     $activePlan = widget_billing_plan_for_customer($customerId);
+    $leadSettings = widget_renew_whatsapp_redirect_if_due($customerId, $leadSettings, (string)($signup['email'] ?? ''), $activePlan, $signup);
     $access = widget_access_result($settings, $signup, widget_request_source_url(), billing_feature_enabled($activePlan, 'allowed_domains'));
     if (($settings['verification_status'] ?? '') !== $access['status']) {
         supabase(
@@ -682,6 +1100,7 @@ if ($action === "chat") {
     $requestStartedAt = microtime(true);
     $customerId = widget_customer_id($data);
     $message = trim((string)($data['message'] ?? ''));
+    $selectedFaqId = (int)($data['faq_id'] ?? $data['question_id'] ?? 0);
     $userId = trim((string)($data['user_id'] ?? ''));
     $sourceUrl = trim((string)($data['source_url'] ?? ''));
 
@@ -698,7 +1117,8 @@ if ($action === "chat") {
         ]);
     }
 
-    $access = widget_access_result($settings, widget_get_signup($customerId), widget_request_source_url($data));
+    $activePlan = widget_billing_plan_for_customer($customerId);
+    $access = widget_access_result($settings, widget_get_signup($customerId), widget_request_source_url($data), billing_feature_enabled($activePlan, 'allowed_domains'));
     if (!$access['allowed']) {
         widget_json_response([
             "success" => true,
@@ -709,24 +1129,44 @@ if ($action === "chat") {
 
     $faqs = widget_safe_rows(supabase(
         "GET",
-        "faq_questions?select=id,question,answer&customer_id=eq." . urlencode($customerId)
+        "faq_questions?select=id,question,answer&customer_id=eq." . urlencode($customerId) . widget_faq_active_query_suffix($customerId)
     ));
 
-    $input = strtolower($message);
     $reply = null;
     $matchedFaqId = null;
 
-    foreach ($faqs as $faq) {
-        $question = strtolower(trim((string)($faq['question'] ?? '')));
-        if (!$question) {
-            continue;
+    if ($selectedFaqId > 0) {
+        $selectedRows = widget_safe_rows(supabase(
+            "GET",
+            "faq_questions?select=id,question,answer&customer_id=eq." . urlencode($customerId) . "&id=eq." . urlencode((string)$selectedFaqId) . "&limit=1"
+        ));
+        if (!empty($selectedRows[0])) {
+            $activeRows = widget_safe_rows(supabase(
+                "GET",
+                "faq_questions?select=id&customer_id=eq." . urlencode($customerId) . widget_faq_active_query_suffix($customerId)
+            ));
+            $activeIds = array_flip(array_map(fn($row) => (string)($row['id'] ?? ''), $activeRows));
+            if (isset($activeIds[(string)$selectedRows[0]['id']])) {
+                $reply = (string)($selectedRows[0]['answer'] ?? '');
+                $matchedFaqId = $selectedRows[0]['id'] ?? null;
+            }
         }
+    }
 
-        similar_text($input, $question, $percent);
-        if (strpos($input, $question) !== false || strpos($question, $input) !== false || $percent > 55) {
-            $reply = (string)($faq['answer'] ?? '');
-            $matchedFaqId = $faq['id'] ?? null;
-            break;
+    $input = strtolower($message);
+    if ($reply === null || $reply === '') {
+        foreach ($faqs as $faq) {
+            $question = strtolower(trim((string)($faq['question'] ?? '')));
+            if (!$question) {
+                continue;
+            }
+
+            similar_text($input, $question, $percent);
+            if ($input === $question || strpos($input, $question) !== false || strpos($question, $input) !== false || $percent > 70) {
+                $reply = (string)($faq['answer'] ?? '');
+                $matchedFaqId = $faq['id'] ?? null;
+                break;
+            }
         }
     }
 
@@ -749,6 +1189,7 @@ if ($action === "chat") {
     $conversationPayload["response_time_ms"] = (int)round((microtime(true) - $requestStartedAt) * 1000);
 
     $conversationRes = supabase("POST", "chatbot_conversations", [$conversationPayload]);
+    $conversationId = isset($conversationRes['data'][0]['id']) ? (int)$conversationRes['data'][0]['id'] : null;
     if ($conversationRes['status'] >= 400) {
         unset(
             $conversationPayload["session_id"],
@@ -766,7 +1207,12 @@ if ($action === "chat") {
             $conversationPayload["screen_height"],
             $conversationPayload["response_time_ms"]
         );
-        supabase("POST", "chatbot_conversations", [$conversationPayload]);
+        $fallbackConversationRes = supabase("POST", "chatbot_conversations", [$conversationPayload]);
+        $conversationId = isset($fallbackConversationRes['data'][0]['id']) ? (int)$fallbackConversationRes['data'][0]['id'] : $conversationId;
+    }
+
+    if (!$answered) {
+        widget_create_handoff_ticket_if_enabled($customerId, $settings, $message, $reply, $sourceUrl, $userId, $conversationId);
     }
 
     if (!empty($data['session_id'])) {
@@ -809,7 +1255,7 @@ if ($action === "get_top_faqs") {
     if (empty($topIds)) {
         $res = supabase(
             "GET",
-            "faq_questions?select=id,question&customer_id=eq." . urlencode($customerId) . "&limit=5"
+            "faq_questions?select=id,question&customer_id=eq." . urlencode($customerId) . widget_faq_active_query_suffix($customerId) . "&limit=5"
         );
         widget_json_response(["success" => true, "data" => widget_safe_rows($res)]);
     }
@@ -820,6 +1266,12 @@ if ($action === "get_top_faqs") {
     );
 
     $questions = widget_safe_rows($res);
+    $activeRows = widget_safe_rows(supabase(
+        "GET",
+        "faq_questions?select=id&customer_id=eq." . urlencode($customerId) . widget_faq_active_query_suffix($customerId)
+    ));
+    $activeIds = array_flip(array_map(fn($row) => (string)($row['id'] ?? ''), $activeRows));
+    $questions = array_values(array_filter($questions, fn($row) => isset($activeIds[(string)($row['id'] ?? '')])));
     usort($questions, fn($a, $b) => ($counts[$b['id']] ?? 0) <=> ($counts[$a['id']] ?? 0));
     widget_json_response(["success" => true, "data" => $questions]);
 }
@@ -1114,6 +1566,7 @@ if ($action === "search_faqs") {
     if ($q !== '') {
         $query .= "&question=ilike.*" . urlencode($q) . "*";
     }
+    $query .= widget_faq_active_query_suffix($customerId);
 
     $res = supabase("GET", $query);
     widget_json_response(["success" => true, "data" => widget_safe_rows($res)]);

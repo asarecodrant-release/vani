@@ -109,9 +109,15 @@ button:hover {
 }
 
 </style>
+<link rel="stylesheet" href="css/setup-theme.css">
 </head>
 
 <body>
+
+<button type="button" class="setup-theme-toggle" id="setupThemeToggle">
+  <span class="setup-theme-swatch" aria-hidden="true"></span>
+  <span data-theme-label>Dark theme</span>
+</button>
 
 <div class="container">
   <div class="card">
@@ -120,7 +126,7 @@ button:hover {
 
     <form id="signupForm">
 
-      <input type="text" id="websiteName" placeholder="🌐 Website Name" required>
+      <input type="text" id="websiteName" placeholder="Website domain (e.g. example.com)" inputmode="url" autocomplete="url" required>
 
       <input type="email" id="email" placeholder="📧 Email Address" required>
 
@@ -170,6 +176,39 @@ button:hover {
 <script>
 const API = "/api.php";
 
+function normalizeWebsiteDomain(value) {
+  let input = value.trim().toLowerCase();
+  if (!input) {
+    return "";
+  }
+  if (!/^https?:\/\//i.test(input)) {
+    input = `https://${input}`;
+  }
+  try {
+    const url = new URL(input);
+    const host = url.hostname.replace(/^www\./i, "").replace(/\.$/, "");
+    const labels = host.split(".");
+    const validLabels = labels.every((label) =>
+      label.length > 0 &&
+      label.length <= 63 &&
+      /^[a-z0-9-]+$/i.test(label) &&
+      !label.startsWith("-") &&
+      !label.endsWith("-")
+    );
+    if (
+      host.length > 253 ||
+      labels.length < 2 ||
+      !/^[a-z]{2,63}$/i.test(labels[labels.length - 1]) ||
+      !validLabels
+    ) {
+      return "";
+    }
+    return host;
+  } catch (err) {
+    return "";
+  }
+}
+
 document.addEventListener("DOMContentLoaded", () => {
 
   const form = document.getElementById("signupForm");
@@ -186,7 +225,8 @@ document.addEventListener("DOMContentLoaded", () => {
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
 
-    const website = document.getElementById("websiteName").value.trim();
+    const websiteInput = document.getElementById("websiteName");
+    const website = normalizeWebsiteDomain(websiteInput.value);
     const email = document.getElementById("email").value.trim();
 
     let business = businessType.value;
@@ -194,10 +234,18 @@ document.addEventListener("DOMContentLoaded", () => {
       business = otherInput.value.trim();
     }
 
-    if (!website || !email || !business) {
+    if (!email || !business) {
       alert("Please fill all fields");
       return;
     }
+
+    if (!website) {
+      websiteInput.focus();
+      alert("Please enter a valid website domain, like example.com or example.co.in.");
+      return;
+    }
+
+    websiteInput.value = website;
 
     try {
       // CREATE CUSTOMER ID
@@ -223,8 +271,10 @@ document.addEventListener("DOMContentLoaded", () => {
       });
 
       const data = await res.json();
-      console.log(data);
-
+      if (data.error) {
+        alert(data.message || data.error);
+        return;
+      }
       // REDIRECT
       window.location.href = "theme-selection.html";
 
@@ -236,6 +286,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 });
 </script>
+<script src="setup-theme.js"></script>
 
 </body>
 </html>

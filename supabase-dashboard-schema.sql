@@ -21,6 +21,8 @@ create table if not exists public.chatbot_settings (
   allowed_domains text,
   webhook_url text,
   webhook_secret text,
+  handoff_enabled boolean not null default false,
+  handoff_email text,
   verification_status text default 'Pending',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -37,6 +39,12 @@ alter table public.chatbot_settings
 
 alter table public.chatbot_settings
   add column if not exists webhook_secret text;
+
+alter table public.chatbot_settings
+  add column if not exists handoff_enabled boolean not null default false;
+
+alter table public.chatbot_settings
+  add column if not exists handoff_email text;
 
 create table if not exists public.chatbot_conversations (
   id bigserial primary key,
@@ -149,6 +157,9 @@ create table if not exists public.lead_generation_settings (
   whatsapp_redirect_charge_txn_id bigint,
   whatsapp_redirect_charge_amount_paise integer,
   whatsapp_redirect_refunded_at timestamptz,
+  whatsapp_redirect_stopped_at timestamptz,
+  whatsapp_redirect_stopped_reason text,
+  whatsapp_redirect_failed_charge_amount_paise integer,
   whatsapp_redirect_toggle_date date,
   whatsapp_redirect_toggle_count integer not null default 0,
   whatsapp_redirect_locked_until timestamptz,
@@ -184,6 +195,15 @@ alter table public.lead_generation_settings
 
 alter table public.lead_generation_settings
   add column if not exists whatsapp_redirect_refunded_at timestamptz;
+
+alter table public.lead_generation_settings
+  add column if not exists whatsapp_redirect_stopped_at timestamptz;
+
+alter table public.lead_generation_settings
+  add column if not exists whatsapp_redirect_stopped_reason text;
+
+alter table public.lead_generation_settings
+  add column if not exists whatsapp_redirect_failed_charge_amount_paise integer;
 
 alter table public.lead_generation_settings
   add column if not exists whatsapp_redirect_toggle_date date;
@@ -222,18 +242,50 @@ create table if not exists public.billing_accounts (
   wallet_balance_paise integer not null default 0,
   current_plan text not null default 'free',
   subscription_status text not null default 'free' check (subscription_status in ('free', 'active', 'expired', 'cancelled')),
+  auto_recharge_enabled boolean not null default false,
+  auto_recharge_threshold_paise integer not null default 0,
+  auto_recharge_amount_paise integer not null default 0,
+  saved_payment_method_status text not null default 'missing' check (saved_payment_method_status in ('missing', 'active', 'failed', 'revoked')),
+  saved_payment_method_reference text,
+  saved_payment_method_customer_id text,
+  saved_payment_method_contact text,
+  last_auto_recharge_attempt_at timestamptz,
   current_period_start timestamptz,
   current_period_end timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
+alter table public.billing_accounts
+  add column if not exists auto_recharge_enabled boolean not null default false;
+
+alter table public.billing_accounts
+  add column if not exists auto_recharge_threshold_paise integer not null default 0;
+
+alter table public.billing_accounts
+  add column if not exists auto_recharge_amount_paise integer not null default 0;
+
+alter table public.billing_accounts
+  add column if not exists saved_payment_method_status text not null default 'missing';
+
+alter table public.billing_accounts
+  add column if not exists saved_payment_method_reference text;
+
+alter table public.billing_accounts
+  add column if not exists saved_payment_method_customer_id text;
+
+alter table public.billing_accounts
+  add column if not exists saved_payment_method_contact text;
+
+alter table public.billing_accounts
+  add column if not exists last_auto_recharge_attempt_at timestamptz;
+
 create table if not exists public.billing_orders (
   id bigserial primary key,
   email text not null,
   customer_id uuid references public.chatbot_signups(customer_id) on delete set null,
   plan_id text not null,
-  order_type text not null default 'subscription' check (order_type in ('subscription', 'wallet')),
+  order_type text not null default 'subscription' check (order_type in ('subscription', 'wallet', 'mandate')),
   amount_paise integer not null,
   currency text not null default 'INR',
   status text not null default 'created' check (status in ('created', 'paid', 'failed')),
@@ -245,6 +297,13 @@ create table if not exists public.billing_orders (
   created_at timestamptz not null default now(),
   paid_at timestamptz
 );
+
+alter table public.billing_orders
+  drop constraint if exists billing_orders_order_type_check;
+
+alter table public.billing_orders
+  add constraint billing_orders_order_type_check
+  check (order_type in ('subscription', 'wallet', 'mandate'));
 
 create table if not exists public.wallet_transactions (
   id bigserial primary key,
@@ -283,6 +342,22 @@ create table if not exists public.customer_api_usage_logs (
   origin text,
   status_code integer,
   created_at timestamptz not null default now()
+);
+
+create table if not exists public.support_tickets (
+  id bigserial primary key,
+  customer_id uuid not null references public.chatbot_signups(customer_id) on delete cascade,
+  conversation_id bigint references public.chatbot_conversations(id) on delete set null,
+  user_id text,
+  user_question text not null,
+  bot_response text,
+  source_url text,
+  status text not null default 'open' check (status in ('open', 'closed')),
+  notification_email text,
+  email_sent boolean not null default false,
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  closed_at timestamptz
 );
 
 alter table public.faq_questions
@@ -341,6 +416,9 @@ create index if not exists idx_customer_api_keys_prefix
 create index if not exists idx_customer_api_usage_customer_created_at
   on public.customer_api_usage_logs(customer_id, created_at desc);
 
+create index if not exists idx_support_tickets_customer_created_at
+  on public.support_tickets(customer_id, created_at desc);
+
 create index if not exists idx_billing_orders_email_created_at
   on public.billing_orders(email, created_at desc);
 
@@ -398,6 +476,7 @@ alter table public.billing_orders enable row level security;
 alter table public.wallet_transactions enable row level security;
 alter table public.customer_api_keys enable row level security;
 alter table public.customer_api_usage_logs enable row level security;
+alter table public.support_tickets enable row level security;
 
 drop policy if exists "dashboard settings readable" on public.chatbot_settings;
 create policy "dashboard settings readable"
@@ -624,6 +703,28 @@ for insert
 to anon, authenticated
 with check (true);
 
+drop policy if exists "support tickets readable" on public.support_tickets;
+create policy "support tickets readable"
+on public.support_tickets
+for select
+to anon, authenticated
+using (true);
+
+drop policy if exists "support tickets insertable" on public.support_tickets;
+create policy "support tickets insertable"
+on public.support_tickets
+for insert
+to anon, authenticated
+with check (true);
+
+drop policy if exists "support tickets updatable" on public.support_tickets;
+create policy "support tickets updatable"
+on public.support_tickets
+for update
+to anon, authenticated
+using (true)
+with check (true);
+
 drop policy if exists "customers password reset from dashboard" on public.customers;
 create policy "customers password reset from dashboard"
 on public.customers
@@ -673,6 +774,7 @@ grant select, insert, update, delete on public.billing_orders to anon, authentic
 grant select, insert on public.wallet_transactions to anon, authenticated;
 grant select, insert, update on public.customer_api_keys to anon, authenticated;
 grant select, insert on public.customer_api_usage_logs to anon, authenticated;
+grant select, insert, update on public.support_tickets to anon, authenticated;
 grant update(password) on public.customers to anon, authenticated;
 grant usage, select on sequence public.chatbot_settings_id_seq to anon, authenticated;
 grant usage, select on sequence public.chatbot_conversations_id_seq to anon, authenticated;
@@ -685,3 +787,4 @@ grant usage, select on sequence public.billing_orders_id_seq to anon, authentica
 grant usage, select on sequence public.wallet_transactions_id_seq to anon, authenticated;
 grant usage, select on sequence public.customer_api_keys_id_seq to anon, authenticated;
 grant usage, select on sequence public.customer_api_usage_logs_id_seq to anon, authenticated;
+grant usage, select on sequence public.support_tickets_id_seq to anon, authenticated;

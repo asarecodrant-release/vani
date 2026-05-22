@@ -1,15 +1,10 @@
 <?php
+require_once __DIR__ . '/session-auth.php';
 
-ini_set('display_errors', 1);
-error_reporting(E_ALL);
+if (!is_authenticated_user()) {
+    http_response_code(404);
+    exit;
+}
 
-require "email.php";
-
-$result = sendWelcomeEmail(
-    "sushrut.asare@gmail.com",
-    "TEST123",
-    "Local Mail Test",
-    "Password@123"
-);
-
-var_dump($result);
+http_response_code(404);
+exit;

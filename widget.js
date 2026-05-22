@@ -269,6 +269,7 @@
       option.onclick = async () => {
         input.value = item.question;
         await trackUsage(item.id);
+        input.dataset.selectedFaqId = item.id || "";
         window.sendMessage();
       };
       suggestionsBox.appendChild(option);
@@ -1289,7 +1290,6 @@
             source_url: window.location.href,
             verification_quality: verifyEmailOtp || verifyMobileOtp ? 'poor' : 'poor'
           });
-          console.log('create_lead response:', saveRes);
           if (saveRes && saveRes.success) {
             leadState.locationSaved = true;
             leadState.leadId = saveRes.lead?.id || leadState.leadId;
@@ -1483,6 +1483,7 @@
     window.sendMessage = async function sendMessage() {
       const message = input.value.trim();
       if (!message) return;
+      const selectedFaqId = input.dataset.selectedFaqId || "";
 
       const leadCfg = (config.lead_generation || {});
       const leadState = loadLeadState(customerId);
@@ -1497,6 +1498,7 @@
       // proceed with normal chat
       addMessage(messages, message, "user");
       input.value = "";
+      delete input.dataset.selectedFaqId;
       suggestionsBox.innerHTML = "";
       sessionChatStartedAt = sessionChatStartedAt || new Date().toISOString();
       sessionMessageCount++;
@@ -1505,6 +1507,7 @@
       const response = await api("chat", "POST", {
         customer_id: customerId,
         message,
+        faq_id: selectedFaqId,
         user_id: userId,
         session_id: sessionId,
         source_url: window.location.href,
@@ -1539,6 +1542,7 @@
 
     input.addEventListener("focus", loadTop);
     input.addEventListener("input", () => {
+      delete input.dataset.selectedFaqId;
       clearTimeout(debounce);
       debounce = setTimeout(() => searchFaqs(input.value.trim()), 180);
     });

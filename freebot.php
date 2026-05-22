@@ -162,11 +162,16 @@ button:hover {
 }
   
 </style>
+<link rel="stylesheet" href="css/setup-theme.css">
 </head>
 
 <body>
 
 <?php include 'navbar.php'; ?>
+<button type="button" class="setup-theme-toggle" id="setupThemeToggle">
+  <span class="setup-theme-swatch" aria-hidden="true"></span>
+  <span data-theme-label>Dark theme</span>
+</button>
 <div class="page-wrapper">
 <div class="container">
 <div class="card">
@@ -178,7 +183,9 @@ button:hover {
   <input 
     type="text" 
     id="websiteName" 
-    placeholder="🌐 Enter your website name (e.g. MyShop)"
+    placeholder="Enter your website domain (e.g. example.com)"
+    inputmode="url"
+    autocomplete="url"
     required
   >
 
@@ -249,6 +256,39 @@ button:hover {
 
 const API = "/api.php";
 
+function normalizeWebsiteDomain(value) {
+  let input = value.trim().toLowerCase();
+  if (!input) {
+    return "";
+  }
+  if (!/^https?:\/\//i.test(input)) {
+    input = `https://${input}`;
+  }
+  try {
+    const url = new URL(input);
+    const host = url.hostname.replace(/^www\./i, "").replace(/\.$/, "");
+    const labels = host.split(".");
+    const validLabels = labels.every((label) =>
+      label.length > 0 &&
+      label.length <= 63 &&
+      /^[a-z0-9-]+$/i.test(label) &&
+      !label.startsWith("-") &&
+      !label.endsWith("-")
+    );
+    if (
+      host.length > 253 ||
+      labels.length < 2 ||
+      !/^[a-z]{2,63}$/i.test(labels[labels.length - 1]) ||
+      !validLabels
+    ) {
+      return "";
+    }
+    return host;
+  } catch (err) {
+    return "";
+  }
+}
+
 document.addEventListener("DOMContentLoaded", () => {
 
   const businessType = document.getElementById("businessType");
@@ -285,8 +325,8 @@ document.getElementById("signupForm")
   btn.disabled = true;
   btn.innerText = "Processing...";
 
-  const website =
-    document.getElementById("websiteName").value.trim();
+  const websiteInput = document.getElementById("websiteName");
+  const website = normalizeWebsiteDomain(websiteInput.value);
 
   const email =
     document.getElementById("email").value.trim();
@@ -309,6 +349,17 @@ document.getElementById("signupForm")
     return;
   }
 
+  if (!website) {
+    overlay.style.display = "none";
+    btn.disabled = false;
+    btn.innerText = "Continue ->";
+    websiteInput.focus();
+    alert("Please enter a valid website domain, like example.com or example.co.in.");
+    return;
+  }
+
+  websiteInput.value = website;
+
   try {
 
     const signupRes = await fetch(`${API}?action=signup`, {
@@ -321,6 +372,14 @@ document.getElementById("signupForm")
         business_type: business
       })
     });
+    const signupData = await signupRes.json();
+    if (signupData.error) {
+      overlay.style.display = "none";
+      btn.disabled = false;
+      btn.innerText = "Continue ->";
+      alert(signupData.message || signupData.error);
+      return;
+    }
 
     const accRes = await fetch(`${API}?action=create_account`, {
       method: "POST",
@@ -361,5 +420,6 @@ document.getElementById("signupForm")
 });
 
 </script>
+<script src="setup-theme.js"></script>
 </body>
 </html>

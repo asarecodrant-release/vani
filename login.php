@@ -624,11 +624,6 @@ function handleCredentialResponse(
         const text =
             await res.text();
 
-        console.log(
-            "RAW RESPONSE:",
-            text
-        );
-
         try {
 
             return JSON.parse(text);
@@ -645,11 +640,6 @@ function handleCredentialResponse(
     })
 
     .then(data => {
-
-        console.log(
-            "GOOGLE LOGIN:",
-            data
-        );
 
         if (data.success) {
 

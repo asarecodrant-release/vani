@@ -81,11 +81,16 @@ code{
   cursor:pointer;
 }
 </style>
+<link rel="stylesheet" href="css/setup-theme.css">
 </head>
 
 <body>
 
 <?php include 'navbar.php'; ?>
+<button type="button" class="setup-theme-toggle" id="setupThemeToggle">
+  <span class="setup-theme-swatch" aria-hidden="true"></span>
+  <span data-theme-label>Dark theme</span>
+</button>
 
 <div class="container">
 
@@ -141,6 +146,7 @@ function copyCode() {
 }
     
 </script>
+<script src="setup-theme.js"></script>
 
 </body>
 </html>
