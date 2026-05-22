@@ -14,6 +14,8 @@ $selectedBotId = trim($_GET['bot'] ?? '');
 $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
 $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
 $widgetUrl = $scheme . '://' . $host . rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? ''), '/\\') . '/widget.js';
+$customerApiBaseUrl = $scheme . '://' . $host . rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? ''), '/\\') . '/api.php?action=';
+$customerApiUrl = $customerApiBaseUrl . 'customer_api_ping';
 $botImages = glob(__DIR__ . '/images/botimg_*') ?: [];
 $botImages = array_values(array_filter($botImages, 'is_file'));
 natcasesort($botImages);
@@ -182,6 +184,20 @@ $walletTransactionRows = safe_data(supabase(
     "wallet_transactions?select=*&email=eq." . urlencode($email) . "&order=created_at.desc&limit=100"
 ));
 
+$apiKeyRows = $selectedBotId
+    ? safe_data(supabase(
+        "GET",
+        "customer_api_keys?select=*&customer_id=eq." . urlencode($selectedBotId) . "&order=created_at.desc"
+    ))
+    : [];
+
+$apiUsageRows = $selectedBotId
+    ? safe_data(supabase(
+        "GET",
+        "customer_api_usage_logs?select=*&customer_id=eq." . urlencode($selectedBotId) . "&order=created_at.desc&limit=50"
+    ))
+    : [];
+
 $todayAllQueries = count(array_filter($conversationRows, fn($row) => date_in_range($row, 'created_at', $analyticsToday, $analyticsToday)));
 $yesterdayAllQueries = count(array_filter($conversationRows, fn($row) => date_in_range($row, 'created_at', $analyticsYesterday, $analyticsYesterday)));
 $last7AllQueries = count(array_filter($conversationRows, fn($row) => date_in_range($row, 'created_at', gmdate('Y-m-d', time() - (6 * 86400)), $analyticsToday)));
@@ -207,6 +223,7 @@ $canUseEmailOtp = billing_feature_enabled($activePlanId, 'email_otp');
 $canUseMobileOtp = billing_feature_enabled($activePlanId, 'mobile_otp');
 $canUseWhatsappRedirect = billing_feature_enabled($activePlanId, 'whatsapp_redirect');
 $canUseBusinessApi = billing_feature_enabled($activePlanId, 'api_access');
+$canUseWebhook = billing_feature_enabled($activePlanId, 'webhook_support');
 $canUseAllowedDomains = billing_feature_enabled($activePlanId, 'allowed_domains');
 $walletCreditPaise = array_sum(array_map(fn($row) => ($row['transaction_type'] ?? '') === 'credit' ? (int)($row['amount_paise'] ?? 0) : 0, $walletTransactionRows));
 $walletDebitPaise = array_sum(array_map(fn($row) => ($row['transaction_type'] ?? '') === 'debit' ? (int)($row['amount_paise'] ?? 0) : 0, $walletTransactionRows));
@@ -736,6 +753,16 @@ tr.editing .faq-edit-btn{display:none}
 .split{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;min-width:0}
 .empty{padding:28px;text-align:center;color:var(--muted)}
 .notice{padding:14px 16px;border-radius:14px;background:rgba(99,102,241,.1);border:1px solid rgba(99,102,241,.18);color:var(--ink);line-height:1.6}
+.security-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.security-card{border:1px solid var(--line);border-radius:18px;background:rgba(255,255,255,.42);padding:16px;display:grid;gap:12px;min-width:0}
+body.dark .security-card{background:rgba(15,23,42,.44)}
+.security-card h4{font-size:15px}
+.security-card .muted{font-size:13px}
+.api-key-reveal{display:none;margin-top:10px}
+.api-key-reveal.active{display:block}
+.api-key-code{font-size:12px}
+.status-dot{width:9px;height:9px;border-radius:50%;display:inline-block;background:#22c55e;margin-right:7px}
+.status-dot.off{background:#ef4444}
 .critical-save-note{margin-top:14px;padding:13px 15px;border-radius:12px;border:1px solid rgba(220,38,38,.35);background:rgba(254,226,226,.75);color:#b91c1c;font-size:17px;font-weight:800;line-height:1.45}
 body.dark .critical-save-note{background:rgba(127,29,29,.22);border-color:rgba(248,113,113,.38);color:#fecaca}
 .analytics-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
@@ -889,7 +916,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
   .section-head{align-items:flex-start;flex-direction:column;padding:16px 16px 0}
   .section-body{padding:16px}
   .overview-hero h2{font-size:28px}
-  .metrics,.quick-actions,.form-grid,.outside-faq-grid,.lead-grid,.analytics-grid,.analytics-grid.two,.funnel,.pricing-grid{grid-template-columns:1fr}
+  .metrics,.quick-actions,.form-grid,.outside-faq-grid,.lead-grid,.analytics-grid,.analytics-grid.two,.funnel,.pricing-grid,.security-grid{grid-template-columns:1fr}
   .panel-actions{justify-content:stretch}
   .panel-actions .pill-btn,.panel-actions .ghost-btn,.panel-actions .danger-btn{width:100%}
   .user-menu{justify-content:space-between}
@@ -1537,6 +1564,144 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
             </div>
 
             <div class="field full">
+              <div class="section-head" style="padding:0">
+                <div>
+                  <h3>Customer API Security</h3>
+                  <p class="muted">Create customer-safe API keys, restrict where they can be used, and rotate them without exposing admin secrets.</p>
+                </div>
+                <span class="tag <?php echo $canUseBusinessApi ? 'good' : 'bad'; ?>"><?php echo $canUseBusinessApi ? 'Business API enabled' : 'Business API required'; ?></span>
+              </div>
+              <?php if (!$canUseBusinessApi): ?>
+                <div class="notice"><strong>Business plan required:</strong><br>API keys can be created after upgrading to Business. Webhooks are still available on paid plans.</div>
+              <?php endif; ?>
+
+              <div class="security-grid">
+                <div class="security-card">
+                  <h4>API integration guide</h4>
+                  <p class="muted">Step-by-step reference for API keys, endpoints, filters, sample requests, webhooks, errors, and security.</p>
+                  <?php if ($canUseBusinessApi): ?>
+                    <a class="pill-btn" href="api_integration.php">Open API guide</a>
+                  <?php else: ?>
+                    <button class="pill-btn" type="button" disabled>Business plan required</button>
+                  <?php endif; ?>
+                </div>
+
+                <div class="security-card">
+                  <h4>Create API key</h4>
+                  <p class="muted">The full key is shown once. Only a hash is stored after creation.</p>
+                  <div class="field">
+                    <label>Key label</label>
+                    <input id="apiKeyNameInput" value="Production key" maxlength="80" <?php echo $canUseBusinessApi ? '' : 'disabled'; ?>>
+                  </div>
+                  <div class="field">
+                    <label>Daily rate limit</label>
+                    <input id="apiKeyRateLimitInput" type="number" min="1" max="100000" value="<?php echo h(first_value($settings, ['rate_limit'], '1000')); ?>" <?php echo $canUseBusinessApi ? '' : 'disabled'; ?>>
+                  </div>
+                  <div class="field">
+                    <label>Allowed server IPs</label>
+                    <textarea id="apiKeyAllowedIpsInput" placeholder="203.0.113.10&#10;198.51.100.24" <?php echo $canUseBusinessApi ? '' : 'disabled'; ?>></textarea>
+                    <small class="input-help">Optional. Add one IP per line or separate with commas.</small>
+                  </div>
+                  <div class="field">
+                    <label>Allowed origins</label>
+                    <textarea id="apiKeyAllowedOriginsInput" placeholder="https://example.com&#10;https://app.example.com" <?php echo $canUseBusinessApi ? '' : 'disabled'; ?>></textarea>
+                    <small class="input-help">Optional. Use this when calls come from a browser app.</small>
+                  </div>
+                  <button class="pill-btn" type="button" id="createApiKeyBtn" <?php echo $canUseBusinessApi ? '' : 'disabled'; ?>>Create API key</button>
+                  <div class="api-key-reveal" id="newApiKeyReveal">
+                    <small class="input-help">Copy this now. It will not be shown again.</small>
+                    <code class="api-key-code" id="newApiKeyCode"></code>
+                    <button class="ghost-btn copy-btn" type="button" id="copyNewApiKeyBtn" data-copy="">Copy API key</button>
+                  </div>
+                </div>
+
+                <div class="security-card">
+                  <h4>Webhook destination</h4>
+                  <p class="muted">Send verified leads and important events to your customer's system.</p>
+                  <?php if (!$canUseWebhook): ?><small class="input-help error">Active paid plan required.</small><?php endif; ?>
+                  <div class="field">
+                    <label>Webhook URL</label>
+                    <input id="webhookUrlInput" value="<?php echo h(first_value($settings, ['webhook_url'], '')); ?>" placeholder="https://example.com/webhooks/vani" <?php echo $canUseWebhook ? '' : 'disabled'; ?>>
+                  </div>
+                  <div class="field">
+                    <label>Webhook secret</label>
+                    <input id="webhookSecretInput" value="<?php echo h(first_value($settings, ['webhook_secret'], '')); ?>" placeholder="Optional signing secret" <?php echo $canUseWebhook ? '' : 'disabled'; ?>>
+                    <small class="input-help">Use this to verify webhook signatures on your server.</small>
+                  </div>
+                  <button class="pill-btn" type="button" id="saveWebhookBtn" <?php echo $canUseWebhook ? '' : 'disabled'; ?>>Save webhook</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="field full">
+              <div class="section-head" style="padding:0">
+                <div>
+                  <h3>API Keys</h3>
+                  <p class="muted">Rotate keys regularly and revoke keys that are no longer in use.</p>
+                </div>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead><tr><th>Name</th><th>Prefix</th><th>Rate limit</th><th>Last used</th><th>Status</th><th>Action</th></tr></thead>
+                  <tbody id="apiKeysTableBody">
+                    <?php if (empty($apiKeyRows)): ?><tr><td colspan="6" class="empty">No API keys created yet.</td></tr><?php endif; ?>
+                    <?php foreach ($apiKeyRows as $keyRow): ?>
+                      <?php $revoked = !empty($keyRow['revoked_at']); ?>
+                      <tr data-api-key-id="<?php echo h($keyRow['id'] ?? ''); ?>">
+                        <td><?php echo h($keyRow['name'] ?? 'API key'); ?></td>
+                        <td><code class="api-key-code"><?php echo h(($keyRow['key_prefix'] ?? '') . '...'); ?></code></td>
+                        <td><?php echo h($keyRow['rate_limit_per_day'] ?? ''); ?>/day</td>
+                        <td><?php echo h($keyRow['last_used_at'] ?? 'Never'); ?></td>
+                        <td><span class="tag <?php echo $revoked ? 'bad' : 'good'; ?>"><span class="status-dot <?php echo $revoked ? 'off' : ''; ?>"></span><?php echo $revoked ? 'Revoked' : 'Active'; ?></span></td>
+                        <td><?php if (!$revoked): ?><button class="danger-btn revoke-api-key-btn" type="button">Revoke</button><?php else: ?><span class="muted">No action</span><?php endif; ?></td>
+                      </tr>
+                    <?php endforeach; ?>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="field full">
+              <div class="security-grid">
+                <div class="security-card">
+                  <h4>Customer API example</h4>
+                  <code class="api-key-code">curl -H "Authorization: Bearer CUSTOMER_API_KEY" "<?php echo h($customerApiUrl); ?>"</code>
+                </div>
+                <div class="security-card">
+                  <h4>Read-only data endpoints</h4>
+                  <div class="mini-chart">
+                    <?php foreach ([
+                      'customer_api_leads' => 'Leads',
+                      'customer_api_conversations' => 'Conversations',
+                      'customer_api_faqs' => 'FAQs',
+                      'customer_api_wallet' => 'Wallet data',
+                      'customer_api_profile' => 'Profile data',
+                      'customer_api_analytics' => 'Analytics'
+                    ] as $endpoint => $label): ?>
+                      <div class="inline-row" style="justify-content:space-between;border-bottom:1px solid var(--line);padding:8px 0">
+                        <span><?php echo h($label); ?></span>
+                        <code class="api-key-code"><?php echo h($customerApiBaseUrl . $endpoint); ?></code>
+                      </div>
+                    <?php endforeach; ?>
+                  </div>
+                  <small class="input-help">Use limit, offset, date_from, and date_to where supported.</small>
+                </div>
+                <div class="security-card">
+                  <h4>Recent API usage</h4>
+                  <div class="mini-chart" id="apiUsageList">
+                    <?php if (empty($apiUsageRows)): ?><p class="empty">No API usage logged yet.</p><?php endif; ?>
+                    <?php foreach (array_slice($apiUsageRows, 0, 6) as $usageRow): ?>
+                      <div class="inline-row" style="justify-content:space-between;border-bottom:1px solid var(--line);padding:8px 0">
+                        <span><?php echo h(($usageRow['endpoint'] ?? 'API') . ' - ' . ($usageRow['status_code'] ?? '')); ?></span>
+                        <small class="muted"><?php echo h($usageRow['created_at'] ?? ''); ?></small>
+                      </div>
+                    <?php endforeach; ?>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="field full">
               <label>Install snippet</label>
               <div class="embed-box"><code id="embedCode"><?php echo h($embedCode ?: 'Create or select a bot to generate the embed script.'); ?></code></div>
               <div class="panel-actions">
@@ -1900,6 +2065,7 @@ const leadPaidFeatures = <?php echo json_encode([
 ]); ?>;
 const businessFeatures = <?php echo json_encode([
   "api_access" => $canUseBusinessApi,
+  "webhook_support" => $canUseWebhook,
   "allowed_domains" => $canUseAllowedDomains
 ]); ?>;
 const leadWalletCharges = <?php echo json_encode([
@@ -1994,6 +2160,10 @@ function showToast(text) {
   toast.textContent = text;
   toast.classList.add("show");
   setTimeout(() => toast.classList.remove("show"), 1800);
+}
+
+function htmlEscape(value) {
+  return String(value ?? "").replace(/[&<>"']/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[char]));
 }
 
 function openTab(id, updateHash = true) {
@@ -2862,6 +3032,127 @@ document.getElementById("saveIntegrationBtn")?.addEventListener("click", async e
     const statusText = document.getElementById("verificationStatusText");
     if (statusText) statusText.textContent = websiteVerificationEnabled ? "Pending" : "Disabled";
   }
+});
+
+document.getElementById("saveWebhookBtn")?.addEventListener("click", async event => {
+  if (!businessFeatures.webhook_support) {
+    showToast("Webhook support requires an active paid plan");
+    return;
+  }
+  const button = event.currentTarget;
+  const webhookUrl = document.getElementById("webhookUrlInput")?.value.trim() || "";
+  const webhookSecret = document.getElementById("webhookSecretInput")?.value.trim() || "";
+  if (webhookUrl && !/^https:\/\/[^\s]+$/i.test(webhookUrl)) {
+    showToast("Webhook URL must start with https://");
+    document.getElementById("webhookUrlInput")?.focus();
+    return;
+  }
+  button.disabled = true;
+  button.textContent = "Saving...";
+  await saveDashboardSettings({
+    webhook_url: webhookUrl,
+    webhook_secret: webhookSecret
+  });
+  button.disabled = false;
+  button.textContent = "Save webhook";
+});
+
+function apiKeyRowsHtml(keys) {
+  if (!keys.length) {
+    return `<tr><td colspan="6" class="empty">No API keys created yet.</td></tr>`;
+  }
+  return keys.map(key => {
+    const revoked = !!key.revoked_at;
+    return `<tr data-api-key-id="${htmlEscape(key.id || "")}">
+      <td>${htmlEscape(key.name || "API key")}</td>
+      <td><code class="api-key-code">${htmlEscape((key.key_prefix || "") + "...")}</code></td>
+      <td>${htmlEscape(key.rate_limit_per_day || "")}/day</td>
+      <td>${htmlEscape(key.last_used_at || "Never")}</td>
+      <td><span class="tag ${revoked ? "bad" : "good"}"><span class="status-dot ${revoked ? "off" : ""}"></span>${revoked ? "Revoked" : "Active"}</span></td>
+      <td>${revoked ? `<span class="muted">No action</span>` : `<button class="danger-btn revoke-api-key-btn" type="button">Revoke</button>`}</td>
+    </tr>`;
+  }).join("");
+}
+
+function renderApiKeys(keys) {
+  const body = document.getElementById("apiKeysTableBody");
+  if (!body) return;
+  body.innerHTML = apiKeyRowsHtml(keys || []);
+}
+
+async function refreshApiKeys() {
+  const customerId = document.getElementById("settingsCustomerId")?.value || "";
+  if (!customerId) return;
+  const response = await fetch(`/api.php?action=list_customer_api_keys&customer_id=${encodeURIComponent(customerId)}`);
+  const data = await response.json().catch(() => ({}));
+  if (data.success) renderApiKeys(data.keys || []);
+}
+
+document.getElementById("createApiKeyBtn")?.addEventListener("click", async event => {
+  if (!businessFeatures.api_access) {
+    showToast("API access requires Business plan");
+    return;
+  }
+  const customerId = document.getElementById("settingsCustomerId")?.value || "";
+  if (!customerId) return showToast("Select a bot first");
+  const button = event.currentTarget;
+  button.disabled = true;
+  button.textContent = "Creating...";
+  const payload = {
+    customer_id: customerId,
+    name: document.getElementById("apiKeyNameInput")?.value.trim() || "API key",
+    rate_limit_per_day: Number(document.getElementById("apiKeyRateLimitInput")?.value || 1000),
+    allowed_ips: document.getElementById("apiKeyAllowedIpsInput")?.value.trim() || "",
+    allowed_origins: document.getElementById("apiKeyAllowedOriginsInput")?.value.trim() || ""
+  };
+  const response = await fetch("/api.php?action=create_customer_api_key", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(payload)
+  });
+  const data = await response.json().catch(() => ({}));
+  button.disabled = false;
+  button.textContent = "Create API key";
+  if (!data.success) {
+    showToast(data.message || "API key could not be created");
+    return;
+  }
+  const reveal = document.getElementById("newApiKeyReveal");
+  const code = document.getElementById("newApiKeyCode");
+  const copyBtn = document.getElementById("copyNewApiKeyBtn");
+  if (reveal && code && copyBtn) {
+    reveal.classList.add("active");
+    code.textContent = data.api_key || "";
+    copyBtn.dataset.copy = data.api_key || "";
+  }
+  renderApiKeys(data.keys || []);
+  showToast("API key created");
+});
+
+document.getElementById("apiKeysTableBody")?.addEventListener("click", async event => {
+  const button = event.target.closest(".revoke-api-key-btn");
+  if (!button) return;
+  const row = button.closest("tr");
+  const keyId = row?.dataset.apiKeyId || "";
+  const customerId = document.getElementById("settingsCustomerId")?.value || "";
+  if (!keyId || !customerId) return;
+  if (!confirm("Revoke this API key? Existing integrations using it will stop working.")) return;
+  button.disabled = true;
+  button.textContent = "Revoking...";
+  const response = await fetch("/api.php?action=revoke_customer_api_key", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({customer_id: customerId, key_id: keyId})
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!data.success) {
+    button.disabled = false;
+    button.textContent = "Revoke";
+    showToast(data.message || "API key could not be revoked");
+    return;
+  }
+  renderApiKeys(data.keys || []);
+  showToast("API key revoked");
 });
 
 function updateProfileAvatarPreview(value) {

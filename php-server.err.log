@@ -1,19 +1,7 @@
-[Wed May 20 16:11:01 2026] PHP 8.2.12 Development Server (http://127.0.0.1:8000) started
-[Wed May 20 16:11:48 2026] 127.0.0.1:58038 Accepted
-[Wed May 20 16:11:48 2026] 127.0.0.1:58038 [200]: GET /
-[Wed May 20 16:11:48 2026] 127.0.0.1:58038 Closing
-[Wed May 20 16:11:48 2026] 127.0.0.1:58039 Accepted
-[Wed May 20 16:11:48 2026] 127.0.0.1:58040 Accepted
-[Wed May 20 16:11:48 2026] 127.0.0.1:58040 [200]: GET /images/logo.png
-[Wed May 20 16:11:48 2026] 127.0.0.1:58040 Closing
-[Wed May 20 16:11:48 2026] 127.0.0.1:58039 [404]: GET /favicon.ico - No such file or directory
-[Wed May 20 16:11:48 2026] 127.0.0.1:58039 Closing
-[Wed May 20 16:11:52 2026] 127.0.0.1:58045 Accepted
-[Wed May 20 16:11:52 2026] 127.0.0.1:58045 [200]: GET /login.php
-[Wed May 20 16:11:52 2026] 127.0.0.1:58045 Closing
-[Wed May 20 16:11:52 2026] 127.0.0.1:58046 Accepted
-[Wed May 20 16:11:52 2026] 127.0.0.1:58047 Accepted
-[Wed May 20 16:11:52 2026] 127.0.0.1:58046 [200]: GET /images/logo.png
-[Wed May 20 16:11:52 2026] 127.0.0.1:58046 Closing
-[Wed May 20 16:12:03 2026] 127.0.0.1:58047 Closed without sending a request; it was probably just an unused speculative preconnection
-[Wed May 20 16:12:03 2026] 127.0.0.1:58047 Closing
+[Sat May 23 01:29:51 2026] PHP 8.2.12 Development Server (http://127.0.0.1:8000) started
+[Sat May 23 01:39:25 2026] 127.0.0.1:61450 Accepted
+[Sat May 23 01:39:25 2026] 127.0.0.1:61451 Accepted
+[Sat May 23 01:39:25 2026] 127.0.0.1:61451 [401]: GET /api.php?action=customer_api_analytics
+[Sat May 23 01:39:25 2026] 127.0.0.1:61451 Closing
+[Sat May 23 01:39:25 2026] 127.0.0.1:61450 [401]: GET /api.php?action=customer_api_leads
+[Sat May 23 01:39:25 2026] 127.0.0.1:61450 Closing

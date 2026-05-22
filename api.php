@@ -167,6 +167,313 @@ function billing_email_for_customer(string $customerId): string {
     return trim((string)($rows[0]['email'] ?? ''));
 }
 
+function authenticated_customer_access(string $customerId): bool {
+    if (!is_authenticated_user() || $customerId === '') {
+        return false;
+    }
+    return strcasecmp(billing_email_for_customer($customerId), authenticated_email()) === 0;
+}
+
+function customer_api_key_rows(string $customerId): array {
+    return safe_rows(supabase(
+        "GET",
+        "customer_api_keys?select=id,name,key_prefix,allowed_ips,allowed_origins,rate_limit_per_day,last_used_at,revoked_at,created_at&customer_id=eq." . urlencode($customerId) . "&order=created_at.desc"
+    ));
+}
+
+function split_access_list(string $value): array {
+    $parts = preg_split('/[\s,]+/', trim($value));
+    $clean = [];
+    foreach ($parts as $part) {
+        $part = trim((string)$part);
+        if ($part !== '') {
+            $clean[$part] = true;
+        }
+    }
+    return array_keys($clean);
+}
+
+function request_api_key(): string {
+    $header = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '';
+    if (preg_match('/Bearer\s+(.+)/i', $header, $match)) {
+        return trim($match[1]);
+    }
+    return trim((string)($_SERVER['HTTP_X_API_KEY'] ?? $_GET['api_key'] ?? ''));
+}
+
+function request_ip_address(): string {
+    $value = trim((string)($_SERVER['HTTP_CF_CONNECTING_IP'] ?? $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? ''));
+    return trim(explode(',', $value)[0] ?? $value);
+}
+
+function request_origin_value(): string {
+    $value = trim((string)($_SERVER['HTTP_ORIGIN'] ?? $_SERVER['HTTP_REFERER'] ?? ''));
+    if ($value === '') {
+        return '';
+    }
+    $scheme = parse_url($value, PHP_URL_SCHEME);
+    $host = parse_url($value, PHP_URL_HOST);
+    $port = parse_url($value, PHP_URL_PORT);
+    if ($scheme && $host) {
+        return strtolower($scheme . '://' . $host . ($port ? ':' . $port : ''));
+    }
+    return $value;
+}
+
+function log_customer_api_usage(string $customerId, ?int $apiKeyId, string $endpoint, int $statusCode): void {
+    supabase("POST", "customer_api_usage_logs", [[
+        "customer_id" => $customerId,
+        "api_key_id" => $apiKeyId,
+        "endpoint" => $endpoint,
+        "ip_address" => substr(request_ip_address(), 0, 120),
+        "origin" => substr(request_origin_value(), 0, 500),
+        "status_code" => $statusCode
+    ]]);
+}
+
+function validate_customer_api_request(string $endpoint): array {
+    $apiKey = request_api_key();
+    if ($apiKey === '' || !preg_match('/^vani_live_([a-f0-9]{12})_[a-f0-9]{48}$/', $apiKey, $match)) {
+        return ["success" => false, "status" => 401, "message" => "Missing or invalid API key"];
+    }
+
+    $keyPrefix = $match[1];
+    $rows = safe_rows(supabase(
+        "GET",
+        "customer_api_keys?select=*&key_prefix=eq." . urlencode($keyPrefix) . "&limit=1"
+    ));
+    $row = $rows[0] ?? [];
+    $customerId = (string)($row['customer_id'] ?? '');
+    $keyId = isset($row['id']) ? (int)$row['id'] : null;
+
+    if (empty($row) || !empty($row['revoked_at']) || !password_verify($apiKey, (string)($row['key_hash'] ?? ''))) {
+        if ($customerId !== '') {
+            log_customer_api_usage($customerId, $keyId, $endpoint, 401);
+        }
+        return ["success" => false, "status" => 401, "message" => "Invalid or revoked API key"];
+    }
+
+    $billingEmail = billing_email_for_customer($customerId);
+    $activePlan = $billingEmail ? billing_active_plan_for_email($billingEmail) : 'free';
+    if (!billing_feature_enabled($activePlan, 'api_access')) {
+        log_customer_api_usage($customerId, $keyId, $endpoint, 403);
+        return ["success" => false, "status" => 403, "message" => "API access requires Business plan"];
+    }
+
+    $allowedIps = split_access_list((string)($row['allowed_ips'] ?? ''));
+    $requestIp = request_ip_address();
+    if (!empty($allowedIps) && !in_array($requestIp, $allowedIps, true)) {
+        log_customer_api_usage($customerId, $keyId, $endpoint, 403);
+        return ["success" => false, "status" => 403, "message" => "This IP address is not allowed"];
+    }
+
+    $allowedOrigins = split_access_list((string)($row['allowed_origins'] ?? ''));
+    $origin = request_origin_value();
+    if (!empty($allowedOrigins) && !in_array($origin, $allowedOrigins, true)) {
+        log_customer_api_usage($customerId, $keyId, $endpoint, 403);
+        return ["success" => false, "status" => 403, "message" => "This origin is not allowed"];
+    }
+
+    $rateLimit = max(1, (int)($row['rate_limit_per_day'] ?? 1000));
+    $since = gmdate('Y-m-d\TH:i:s\Z', time() - 86400);
+    $usageRows = safe_rows(supabase(
+        "GET",
+        "customer_api_usage_logs?select=id&api_key_id=eq." . urlencode((string)$keyId) . "&created_at=gte." . urlencode($since) . "&limit=" . urlencode((string)($rateLimit + 1))
+    ));
+    if (count($usageRows) >= $rateLimit) {
+        log_customer_api_usage($customerId, $keyId, $endpoint, 429);
+        return ["success" => false, "status" => 429, "message" => "Daily API rate limit reached"];
+    }
+
+    supabase("PATCH", "customer_api_keys?id=eq." . urlencode((string)$keyId), [
+        "last_used_at" => gmdate('Y-m-d\TH:i:s\Z')
+    ]);
+    log_customer_api_usage($customerId, $keyId, $endpoint, 200);
+    return ["success" => true, "status" => 200, "customer_id" => $customerId, "api_key_id" => $keyId, "active_plan" => $activePlan];
+}
+
+function customer_api_limit(int $default = 100, int $max = 500): int {
+    $limit = (int)($_GET['limit'] ?? $default);
+    return max(1, min($max, $limit));
+}
+
+function customer_api_offset(): int {
+    return max(0, (int)($_GET['offset'] ?? 0));
+}
+
+function customer_api_date_filters(string $field = 'created_at'): string {
+    $filters = '';
+    $from = trim((string)($_GET['date_from'] ?? ''));
+    $to = trim((string)($_GET['date_to'] ?? ''));
+    if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $from)) {
+        $filters .= '&' . $field . '=gte.' . urlencode($from . 'T00:00:00Z');
+    }
+    if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $to)) {
+        $filters .= '&' . $field . '=lte.' . urlencode($to . 'T23:59:59Z');
+    }
+    return $filters;
+}
+
+function customer_api_rows(string $endpoint, int $defaultLimit = 100, int $maxLimit = 500): array {
+    $limit = customer_api_limit($defaultLimit, $maxLimit);
+    $offset = customer_api_offset();
+    $separator = str_contains($endpoint, '?') ? '&' : '?';
+    return safe_rows(supabase(
+        "GET",
+        $endpoint . $separator . "limit=" . urlencode((string)$limit) . "&offset=" . urlencode((string)$offset)
+    ));
+}
+
+function customer_api_json(array $validation, string $resource, array $payload = []): void {
+    http_response_code((int)$validation['status']);
+    if (empty($validation['success'])) {
+        echo json_encode(["success" => false, "resource" => $resource, "message" => $validation['message'] ?? "API request failed"]);
+        exit;
+    }
+    echo json_encode(array_merge([
+        "success" => true,
+        "resource" => $resource,
+        "customer_id" => $validation['customer_id'],
+        "active_plan" => $validation['active_plan']
+    ], $payload), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+function count_rows(array $rows, callable $callback): int {
+    return count(array_filter($rows, $callback));
+}
+
+function customer_api_analytics_payload(string $customerId): array {
+    $dateFilters = customer_api_date_filters('created_at');
+    $conversations = safe_rows(supabase(
+        "GET",
+        "chatbot_conversations?select=id,user_question,bot_response,matched_faq_id,status,is_answered,user_id,session_id,source_url,device_type,browser_name,country_name,city,response_time_ms,created_at&customer_id=eq." . urlencode($customerId) . $dateFilters . "&order=created_at.desc&limit=1000"
+    ));
+    $leads = safe_rows(supabase(
+        "GET",
+        "lead_generation_leads?select=id,email,phone_number,source_url,email_otp_verified,mobile_otp_verified,verification_quality,created_at&customer_id=eq." . urlencode($customerId) . $dateFilters . "&order=created_at.desc&limit=1000"
+    ));
+    $sessions = safe_rows(supabase(
+        "GET",
+        "chatbot_sessions?select=id,user_id,session_id,current_page,source_url,device_type,browser_name,country_name,city,duration_seconds,message_count,last_seen_at,ended_at,created_at&customer_id=eq." . urlencode($customerId) . $dateFilters . "&order=created_at.desc&limit=1000"
+    ));
+
+    $dailyCounts = [];
+    $sourcePages = [];
+    $devices = [];
+    $browsers = [];
+    $countries = [];
+    $uniqueUsers = [];
+    $responseTimes = [];
+    $topQuestions = [];
+    $answeredCount = 0;
+    $unansweredCount = 0;
+
+    foreach ($conversations as $row) {
+        $created = (string)($row['created_at'] ?? '');
+        if ($created !== '') {
+            $day = substr($created, 0, 10);
+            $dailyCounts[$day] = ($dailyCounts[$day] ?? 0) + 1;
+        }
+        $answered = strtolower((string)($row['status'] ?? '')) === 'answered' || !empty($row['is_answered']);
+        $answered ? $answeredCount++ : $unansweredCount++;
+        $sourceUrl = trim((string)($row['source_url'] ?? ''));
+        $sourceLabel = $sourceUrl !== '' ? (parse_url($sourceUrl, PHP_URL_PATH) ?: $sourceUrl) : 'Unknown page';
+        if (!isset($sourcePages[$sourceLabel])) {
+            $sourcePages[$sourceLabel] = ["page" => $sourceLabel, "conversations" => 0, "leads" => 0, "answered" => 0];
+        }
+        $sourcePages[$sourceLabel]['conversations']++;
+        if ($answered) {
+            $sourcePages[$sourceLabel]['answered']++;
+        }
+        $question = trim((string)($row['user_question'] ?? ''));
+        if ($question !== '') {
+            $key = strtolower($question);
+            $topQuestions[$key] = [
+                "question" => $question,
+                "count" => ($topQuestions[$key]['count'] ?? 0) + 1,
+                "answered" => ($topQuestions[$key]['answered'] ?? 0) + ($answered ? 1 : 0)
+            ];
+        }
+        $device = trim((string)($row['device_type'] ?? ''));
+        if ($device !== '') {
+            $devices[$device] = ($devices[$device] ?? 0) + 1;
+        }
+        $browser = trim((string)($row['browser_name'] ?? ''));
+        if ($browser !== '') {
+            $browsers[$browser] = ($browsers[$browser] ?? 0) + 1;
+        }
+        $country = trim((string)($row['country_name'] ?? ''));
+        if ($country !== '') {
+            $countries[$country] = ($countries[$country] ?? 0) + 1;
+        }
+        $userId = trim((string)($row['user_id'] ?? ''));
+        if ($userId !== '') {
+            $uniqueUsers[$userId] = true;
+        }
+        $responseTime = (int)($row['response_time_ms'] ?? 0);
+        if ($responseTime > 0) {
+            $responseTimes[] = $responseTime;
+        }
+    }
+
+    foreach ($leads as $lead) {
+        $sourceUrl = trim((string)($lead['source_url'] ?? ''));
+        $sourceLabel = $sourceUrl !== '' ? (parse_url($sourceUrl, PHP_URL_PATH) ?: $sourceUrl) : 'Unknown page';
+        if (!isset($sourcePages[$sourceLabel])) {
+            $sourcePages[$sourceLabel] = ["page" => $sourceLabel, "conversations" => 0, "leads" => 0, "answered" => 0];
+        }
+        $sourcePages[$sourceLabel]['leads']++;
+    }
+
+    foreach ($sessions as $session) {
+        $userId = trim((string)($session['user_id'] ?? ''));
+        if ($userId !== '') {
+            $uniqueUsers[$userId] = true;
+        }
+    }
+
+    uasort($topQuestions, fn($a, $b) => $b['count'] <=> $a['count']);
+    uasort($sourcePages, fn($a, $b) => $b['conversations'] <=> $a['conversations']);
+    ksort($dailyCounts);
+    arsort($devices);
+    arsort($browsers);
+    arsort($countries);
+
+    $conversationCount = count($conversations);
+    $leadCount = count($leads);
+    $verifiedLeadCount = count_rows($leads, fn($lead) => !empty($lead['email_otp_verified']) || !empty($lead['mobile_otp_verified']) || (string)($lead['verification_quality'] ?? '') === 'real');
+
+    return [
+        "summary" => [
+            "conversations" => $conversationCount,
+            "answered" => $answeredCount,
+            "unanswered" => $unansweredCount,
+            "answer_rate_percent" => $conversationCount ? round(($answeredCount / max(1, $conversationCount)) * 100) : 0,
+            "leads" => $leadCount,
+            "verified_leads" => $verifiedLeadCount,
+            "lead_conversion_percent" => $conversationCount ? round(($leadCount / max(1, $conversationCount)) * 100) : 0,
+            "unique_users" => count($uniqueUsers),
+            "avg_response_time_ms" => !empty($responseTimes) ? round(array_sum($responseTimes) / count($responseTimes)) : 0
+        ],
+        "daily_counts" => $dailyCounts,
+        "devices" => $devices,
+        "browsers" => $browsers,
+        "countries" => $countries,
+        "top_questions" => array_values(array_slice(array_map(fn($item) => [
+            "question" => $item['question'],
+            "count" => $item['count'],
+            "success_rate_percent" => $item['count'] ? round((($item['answered'] ?? 0) / max(1, $item['count'])) * 100) : 0
+        ], $topQuestions), 0, 25)),
+        "source_pages" => array_values(array_slice(array_map(fn($page) => [
+            "page" => $page['page'],
+            "conversations" => $page['conversations'],
+            "leads" => $page['leads'],
+            "success_rate_percent" => $page['conversations'] ? round(($page['answered'] / max(1, $page['conversations'])) * 100) : 0
+        ], $sourcePages), 0, 25))
+    ];
+}
+
 function razorpay_credentials(): array {
     return [
         $_ENV['RAZORPAY_KEY_ID'] ?? getenv('RAZORPAY_KEY_ID') ?: '',
@@ -280,6 +587,183 @@ function wallet_credit_usage(string $email, string $customerId, int $amountPaise
 
 // ==========================
 // ==========================
+
+if ($action === "list_customer_api_keys") {
+    $customerId = trim((string)($_GET['customer_id'] ?? ''));
+    if (!authenticated_customer_access($customerId)) {
+        echo json_encode(["success" => false, "message" => "Access denied"]);
+        exit;
+    }
+    echo json_encode(["success" => true, "keys" => customer_api_key_rows($customerId)]);
+    exit;
+}
+
+if ($action === "create_customer_api_key") {
+    $data = getJSON();
+    $customerId = trim((string)($data['customer_id'] ?? ''));
+    if (!authenticated_customer_access($customerId)) {
+        echo json_encode(["success" => false, "message" => "Access denied"]);
+        exit;
+    }
+    $activePlan = billing_active_plan_for_email(authenticated_email());
+    if (!billing_feature_enabled($activePlan, 'api_access')) {
+        echo json_encode(["success" => false, "requires_business" => true, "message" => "API access requires Business plan"]);
+        exit;
+    }
+
+    $name = trim((string)($data['name'] ?? 'API key'));
+    $name = $name !== '' ? substr($name, 0, 80) : 'API key';
+    $rateLimit = max(1, min(100000, (int)($data['rate_limit_per_day'] ?? 1000)));
+    $allowedIps = implode("\n", split_access_list((string)($data['allowed_ips'] ?? '')));
+    $allowedOrigins = implode("\n", split_access_list((string)($data['allowed_origins'] ?? '')));
+    $keyPrefix = bin2hex(random_bytes(6));
+    $apiKey = "vani_live_" . $keyPrefix . "_" . bin2hex(random_bytes(24));
+
+    $res = supabase("POST", "customer_api_keys", [[
+        "customer_id" => $customerId,
+        "name" => $name,
+        "key_prefix" => $keyPrefix,
+        "key_hash" => password_hash($apiKey, PASSWORD_DEFAULT),
+        "allowed_ips" => $allowedIps !== '' ? $allowedIps : null,
+        "allowed_origins" => $allowedOrigins !== '' ? $allowedOrigins : null,
+        "rate_limit_per_day" => $rateLimit
+    ]]);
+    if ($res['status'] < 200 || $res['status'] >= 300) {
+        echo json_encode(["success" => false, "message" => "API key could not be created", "debug" => $res]);
+        exit;
+    }
+    echo json_encode(["success" => true, "api_key" => $apiKey, "keys" => customer_api_key_rows($customerId)]);
+    exit;
+}
+
+if ($action === "revoke_customer_api_key") {
+    $data = getJSON();
+    $customerId = trim((string)($data['customer_id'] ?? ''));
+    $keyId = trim((string)($data['key_id'] ?? ''));
+    if (!authenticated_customer_access($customerId) || $keyId === '') {
+        echo json_encode(["success" => false, "message" => "Access denied"]);
+        exit;
+    }
+    $res = supabase(
+        "PATCH",
+        "customer_api_keys?id=eq." . urlencode($keyId) . "&customer_id=eq." . urlencode($customerId),
+        ["revoked_at" => gmdate('Y-m-d\TH:i:s\Z')]
+    );
+    if ($res['status'] < 200 || $res['status'] >= 300) {
+        echo json_encode(["success" => false, "message" => "API key could not be revoked", "debug" => $res]);
+        exit;
+    }
+    echo json_encode(["success" => true, "keys" => customer_api_key_rows($customerId)]);
+    exit;
+}
+
+if ($action === "customer_api_ping") {
+    $validation = validate_customer_api_request("customer_api_ping");
+    http_response_code((int)$validation['status']);
+    echo json_encode($validation['success']
+        ? ["success" => true, "message" => "API key is valid", "customer_id" => $validation['customer_id'], "active_plan" => $validation['active_plan']]
+        : ["success" => false, "message" => $validation['message']]
+    );
+    exit;
+}
+
+if ($action === "customer_api_leads") {
+    $validation = validate_customer_api_request("customer_api_leads");
+    if (empty($validation['success'])) {
+        customer_api_json($validation, "leads");
+    }
+    $customerId = (string)$validation['customer_id'];
+    $rows = customer_api_rows(
+        "lead_generation_leads?select=id,user_id,conversation_id,name,email,phone_number,location_text,latitude,longitude,source_url,whatsapp_redirected,email_otp_verified,mobile_otp_verified,notification_email_sent,verification_quality,metadata,created_at&customer_id=eq." . urlencode($customerId) . customer_api_date_filters('created_at') . "&order=created_at.desc"
+    );
+    customer_api_json($validation, "leads", ["count" => count($rows), "data" => $rows]);
+}
+
+if ($action === "customer_api_conversations") {
+    $validation = validate_customer_api_request("customer_api_conversations");
+    if (empty($validation['success'])) {
+        customer_api_json($validation, "conversations");
+    }
+    $customerId = (string)$validation['customer_id'];
+    $rows = customer_api_rows(
+        "chatbot_conversations?select=id,user_question,bot_response,matched_faq_id,status,is_answered,user_id,session_id,source_url,referrer_url,device_type,browser_name,browser_version,os_name,country_code,country_name,city,timezone,locale,screen_width,screen_height,response_time_ms,created_at&customer_id=eq." . urlencode($customerId) . customer_api_date_filters('created_at') . "&order=created_at.desc"
+    );
+    customer_api_json($validation, "conversations", ["count" => count($rows), "data" => $rows]);
+}
+
+if ($action === "customer_api_faqs") {
+    $validation = validate_customer_api_request("customer_api_faqs");
+    if (empty($validation['success'])) {
+        customer_api_json($validation, "faqs");
+    }
+    $customerId = (string)$validation['customer_id'];
+    $rows = customer_api_rows(
+        "faq_questions?select=id,question,answer,category,created_at&customer_id=eq." . urlencode($customerId) . "&order=id.desc",
+        100,
+        1000
+    );
+    customer_api_json($validation, "faqs", ["count" => count($rows), "data" => $rows]);
+}
+
+if ($action === "customer_api_wallet") {
+    $validation = validate_customer_api_request("customer_api_wallet");
+    if (empty($validation['success'])) {
+        customer_api_json($validation, "wallet");
+    }
+    $customerId = (string)$validation['customer_id'];
+    $billingEmail = billing_email_for_customer($customerId);
+    $account = billing_account_for_email($billingEmail);
+    $transactions = customer_api_rows(
+        "wallet_transactions?select=id,transaction_type,amount_paise,balance_after_paise,description,reference_type,reference_id,metadata,created_at&email=eq." . urlencode($billingEmail) . customer_api_date_filters('created_at') . "&order=created_at.desc"
+    );
+    customer_api_json($validation, "wallet", [
+        "account" => [
+            "email" => $billingEmail,
+            "wallet_balance_paise" => (int)($account['wallet_balance_paise'] ?? 0),
+            "wallet_balance_rupees" => (($account['wallet_balance_paise'] ?? 0) / 100),
+            "current_plan" => $account['current_plan'] ?? 'free',
+            "subscription_status" => $account['subscription_status'] ?? 'free',
+            "current_period_start" => $account['current_period_start'] ?? null,
+            "current_period_end" => $account['current_period_end'] ?? null
+        ],
+        "transaction_count" => count($transactions),
+        "transactions" => $transactions
+    ]);
+}
+
+if ($action === "customer_api_profile") {
+    $validation = validate_customer_api_request("customer_api_profile");
+    if (empty($validation['success'])) {
+        customer_api_json($validation, "profile");
+    }
+    $customerId = (string)$validation['customer_id'];
+    $billingEmail = billing_email_for_customer($customerId);
+    $profile = safe_rows(supabase(
+        "GET",
+        "customer_profiles?select=email,first_name,last_name,avatar_url,country_code,mobile_number,address_line1,address_line2,city,state_region,country,postal_code,location_notes,created_at,updated_at&email=eq." . urlencode($billingEmail) . "&limit=1"
+    ));
+    $signup = safe_rows(supabase(
+        "GET",
+        "chatbot_signups?select=customer_id,email,website_name,business_type,theme_color,created_at&customer_id=eq." . urlencode($customerId) . "&limit=1"
+    ));
+    $settings = safe_rows(supabase(
+        "GET",
+        "chatbot_settings?select=bot_name,welcome_message,theme_color,position,avatar_url,language,is_active,website_verification_enabled,allowed_domains_enabled,allowed_domains,webhook_url,verification_status,created_at,updated_at&customer_id=eq." . urlencode($customerId) . "&limit=1"
+    ));
+    customer_api_json($validation, "profile", [
+        "profile" => $profile[0] ?? null,
+        "bot" => $signup[0] ?? null,
+        "settings" => $settings[0] ?? null
+    ]);
+}
+
+if ($action === "customer_api_analytics") {
+    $validation = validate_customer_api_request("customer_api_analytics");
+    if (empty($validation['success'])) {
+        customer_api_json($validation, "analytics");
+    }
+    customer_api_json($validation, "analytics", customer_api_analytics_payload((string)$validation['customer_id']));
+}
 
 if ($action === "billing_plans") {
     if (!is_authenticated_user()) {
@@ -1031,6 +1515,12 @@ if ($action === "save_dashboard_settings") {
             $data['allowed_domains_enabled'] = false;
         }
     }
+    if (!billing_feature_enabled($activePlan, 'webhook_support')) {
+        unset($data['webhook_url'], $data['webhook_secret']);
+    } elseif (!empty($data['webhook_url']) && !preg_match('{^https://\S+$}i', (string)$data['webhook_url'])) {
+        echo json_encode(["success" => false, "message" => "Webhook URL must start with https://"]);
+        exit;
+    }
 
     $allowed = [
         "bot_name",
@@ -1046,6 +1536,8 @@ if ($action === "save_dashboard_settings") {
         "website_verification_enabled",
         "allowed_domains_enabled",
         "allowed_domains",
+        "webhook_url",
+        "webhook_secret",
         "verification_status"
     ];
 

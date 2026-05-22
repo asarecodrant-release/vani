@@ -19,6 +19,8 @@ create table if not exists public.chatbot_settings (
   website_verification_enabled boolean not null default false,
   allowed_domains_enabled boolean not null default false,
   allowed_domains text,
+  webhook_url text,
+  webhook_secret text,
   verification_status text default 'Pending',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -29,6 +31,12 @@ alter table public.chatbot_settings
 
 alter table public.chatbot_settings
   add column if not exists allowed_domains_enabled boolean not null default false;
+
+alter table public.chatbot_settings
+  add column if not exists webhook_url text;
+
+alter table public.chatbot_settings
+  add column if not exists webhook_secret text;
 
 create table if not exists public.chatbot_conversations (
   id bigserial primary key,
@@ -252,6 +260,31 @@ create table if not exists public.wallet_transactions (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.customer_api_keys (
+  id bigserial primary key,
+  customer_id uuid not null references public.chatbot_signups(customer_id) on delete cascade,
+  name text not null default 'API key',
+  key_prefix text not null unique,
+  key_hash text not null,
+  allowed_ips text,
+  allowed_origins text,
+  rate_limit_per_day integer not null default 1000,
+  last_used_at timestamptz,
+  revoked_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.customer_api_usage_logs (
+  id bigserial primary key,
+  customer_id uuid not null references public.chatbot_signups(customer_id) on delete cascade,
+  api_key_id bigint references public.customer_api_keys(id) on delete set null,
+  endpoint text,
+  ip_address text,
+  origin text,
+  status_code integer,
+  created_at timestamptz not null default now()
+);
+
 alter table public.faq_questions
   add column if not exists category text default 'General';
 
@@ -298,6 +331,15 @@ create index if not exists idx_lead_generation_leads_phone_number
 
 create index if not exists idx_billing_accounts_email
   on public.billing_accounts(email);
+
+create index if not exists idx_customer_api_keys_customer_id
+  on public.customer_api_keys(customer_id);
+
+create index if not exists idx_customer_api_keys_prefix
+  on public.customer_api_keys(key_prefix);
+
+create index if not exists idx_customer_api_usage_customer_created_at
+  on public.customer_api_usage_logs(customer_id, created_at desc);
 
 create index if not exists idx_billing_orders_email_created_at
   on public.billing_orders(email, created_at desc);
@@ -354,6 +396,8 @@ alter table public.lead_generation_leads enable row level security;
 alter table public.billing_accounts enable row level security;
 alter table public.billing_orders enable row level security;
 alter table public.wallet_transactions enable row level security;
+alter table public.customer_api_keys enable row level security;
+alter table public.customer_api_usage_logs enable row level security;
 
 drop policy if exists "dashboard settings readable" on public.chatbot_settings;
 create policy "dashboard settings readable"
@@ -544,6 +588,42 @@ for insert
 to anon, authenticated
 with check (true);
 
+drop policy if exists "customer api keys readable" on public.customer_api_keys;
+create policy "customer api keys readable"
+on public.customer_api_keys
+for select
+to anon, authenticated
+using (true);
+
+drop policy if exists "customer api keys insertable" on public.customer_api_keys;
+create policy "customer api keys insertable"
+on public.customer_api_keys
+for insert
+to anon, authenticated
+with check (true);
+
+drop policy if exists "customer api keys updatable" on public.customer_api_keys;
+create policy "customer api keys updatable"
+on public.customer_api_keys
+for update
+to anon, authenticated
+using (true)
+with check (true);
+
+drop policy if exists "customer api usage readable" on public.customer_api_usage_logs;
+create policy "customer api usage readable"
+on public.customer_api_usage_logs
+for select
+to anon, authenticated
+using (true);
+
+drop policy if exists "customer api usage insertable" on public.customer_api_usage_logs;
+create policy "customer api usage insertable"
+on public.customer_api_usage_logs
+for insert
+to anon, authenticated
+with check (true);
+
 drop policy if exists "customers password reset from dashboard" on public.customers;
 create policy "customers password reset from dashboard"
 on public.customers
@@ -591,6 +671,8 @@ grant select, insert, update, delete on public.lead_generation_leads to anon, au
 grant select, insert, update, delete on public.billing_accounts to anon, authenticated;
 grant select, insert, update, delete on public.billing_orders to anon, authenticated;
 grant select, insert on public.wallet_transactions to anon, authenticated;
+grant select, insert, update on public.customer_api_keys to anon, authenticated;
+grant select, insert on public.customer_api_usage_logs to anon, authenticated;
 grant update(password) on public.customers to anon, authenticated;
 grant usage, select on sequence public.chatbot_settings_id_seq to anon, authenticated;
 grant usage, select on sequence public.chatbot_conversations_id_seq to anon, authenticated;
@@ -601,3 +683,5 @@ grant usage, select on sequence public.lead_generation_leads_id_seq to anon, aut
 grant usage, select on sequence public.billing_accounts_id_seq to anon, authenticated;
 grant usage, select on sequence public.billing_orders_id_seq to anon, authenticated;
 grant usage, select on sequence public.wallet_transactions_id_seq to anon, authenticated;
+grant usage, select on sequence public.customer_api_keys_id_seq to anon, authenticated;
+grant usage, select on sequence public.customer_api_usage_logs_id_seq to anon, authenticated;
