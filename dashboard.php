@@ -608,7 +608,6 @@ body.dark .sidebar{background:rgba(15,23,42,.66)}
 .brand{display:flex;align-items:center;gap:12px;position:relative;margin-bottom:26px;padding:7px 10px 9px 6px;border-radius:16px;background:linear-gradient(135deg,rgba(79,70,229,.12),rgba(236,72,153,.1));border:1px solid rgba(129,140,248,.16)}
 .brand img{width:58px;height:auto;filter:drop-shadow(0 0 18px rgba(99,102,241,.65)) drop-shadow(0 0 24px rgba(236,72,153,.24))}
 .brand strong{font-size:20px;background:linear-gradient(90deg,#ffffff,#c4b5fd 48%,#f9a8d4);-webkit-background-clip:text;-webkit-text-fill-color:transparent;filter:drop-shadow(0 0 14px rgba(129,140,248,.28))}
-.brand:after{content:"";position:absolute;left:72px;right:12px;bottom:7px;height:2px;border-radius:999px;background:linear-gradient(90deg,var(--brand),var(--brand-2));opacity:.9}
 .nav-tabs{display:grid;gap:8px;overflow-y:auto;padding-right:4px;padding-bottom:12px;min-height:0}
 .tab-btn{
   border:0;background:transparent;color:var(--muted);padding:12px 14px;border-radius:12px;
@@ -765,7 +764,7 @@ body.dark .funnel-step{background:rgba(15,23,42,.38)}
 .report-actions{display:flex;gap:10px;flex-wrap:wrap}
 .pricing-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:16px;margin-top:18px;align-items:stretch}
 .pricing-card{grid-column:span 2;padding:16px;display:grid;gap:12px;align-content:start}
-.pricing-card.featured{grid-column:span 3;padding:22px;border-color:rgba(34,197,94,.55);box-shadow:0 18px 42px rgba(34,197,94,.16);transform:scale(1.02);z-index:1}
+.pricing-card.featured{grid-column:span 2;padding:22px;border-color:rgba(34,197,94,.55);box-shadow:0 18px 42px rgba(34,197,94,.16);transform:scale(1.02);z-index:1}
 .pricing-card.current-plan{border-color:rgba(99,102,241,.7);box-shadow:0 14px 34px rgba(99,102,241,.16)}
 .current-plan-note{padding:9px 11px;border-radius:10px;background:rgba(99,102,241,.12);color:#4f46e5;font-size:13px;font-weight:800}
 .pricing-card.featured .price{font-size:36px}
@@ -1754,31 +1753,12 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
               <div class="pricing-head"><div><span class="eyebrow">Business</span><h3>Business Plan</h3></div><span class="tag">Scale</span></div>
               <?php if ($activePlanId === 'business'): ?><div class="current-plan-note">Current plan</div><?php endif; ?>
               <div class="price">₹999<small>/month</small></div>
-              <div class="feature-list"><span>1000 FAQ answers for high-intent traffic</span><span>Email + Mobile combined verification</span><span>Advanced analytics and CSV export</span><span>Built for teams that review lead quality regularly</span><span>WhatsApp Redirect add-on billed at ₹99 / 30 days</span></div>
-              <div class="wallet-table"><table><thead><tr><th>Wallet action</th><th>Charge</th></tr></thead><tbody><tr><td>Fresh Combined Lead</td><td>₹10</td></tr><tr><td>Repeat Combined Lead</td><td>₹3</td></tr><tr><td>Re-activated Lead after 30 days</td><td>₹10</td></tr><tr><td>WhatsApp Redirect</td><td>Add-on ₹99, refundable within 1 hour</td></tr></tbody></table></div>
-              <button class="pill-btn billing-plan-btn" type="button" data-plan-id="business">Subscribe Business</button>
-              <small class="muted">Best for real estate, education institutes, and marketing agencies.</small>
-            </div>
-
-            <div class="panel pricing-card <?php echo $activePlanId === 'automation' ? 'current-plan' : ''; ?>">
-              <div class="pricing-head"><div><span class="eyebrow">Automation</span><h3>Pro Automation Plan</h3></div><span class="tag">Advanced</span></div>
-              <?php if ($activePlanId === 'automation'): ?><div class="current-plan-note">Current plan</div><?php endif; ?>
-              <div class="price">₹2499<small>/month</small></div>
-              <div class="feature-list"><span>Unlimited FAQ capacity for large catalogs</span><span>AI chatbot with API access</span><span>Automation workflows and webhook support</span><span>Lower wallet rates for high lead volume</span><span>WhatsApp Redirect add-on billed at ₹99 / 30 days</span></div>
+              <div class="feature-list"><span>Unlimited FAQ capacity for larger businesses</span><span>Email + Mobile combined verification</span><span>Advanced analytics, CSV export, and downloadable reports</span><span>AI chatbot API access, automation workflows, and webhook support</span><span>Custom branding, CRM integration, and dedicated support</span><span>WhatsApp Redirect add-on billed at ₹99 / 30 days</span></div>
               <div class="wallet-table"><table><thead><tr><th>Wallet action</th><th>Charge</th></tr></thead><tbody><tr><td>Fresh Email Lead</td><td>₹3</td></tr><tr><td>Fresh Mobile Lead</td><td>₹6</td></tr><tr><td>Fresh Combined Lead</td><td>₹8</td></tr><tr><td>Repeat Leads</td><td>₹1-₹2</td></tr><tr><td>WhatsApp Redirect</td><td>Add-on ₹99, refundable within 1 hour</td></tr></tbody></table></div>
-              <button class="pill-btn billing-plan-btn" type="button" data-plan-id="automation">Subscribe Pro Automation</button>
-              <small class="muted">Best for SaaS businesses, automation agencies, and lead generation companies.</small>
+              <button class="pill-btn billing-plan-btn" type="button" data-plan-id="business">Subscribe Business</button>
+              <small class="muted">Best for real estate, education institutes, marketing agencies, SaaS businesses, and larger teams.</small>
             </div>
 
-            <div class="panel pricing-card <?php echo $activePlanId === 'enterprise' ? 'current-plan' : ''; ?>">
-              <div class="pricing-head"><div><span class="eyebrow">Enterprise</span><h3>Enterprise Plan</h3></div><span class="tag">Custom</span></div>
-              <?php if ($activePlanId === 'enterprise'): ?><div class="current-plan-note">Current plan</div><?php endif; ?>
-              <div class="price">₹4999+<small>/month</small></div>
-              <div class="feature-list"><span>White-label platform and custom branding</span><span>Dedicated support and onboarding</span><span>Custom API, CRM integration, and multi-user access</span><span>Volume pricing for OTP and lead usage</span><span>WhatsApp Redirect add-on billed at ₹99 / 30 days</span></div>
-              <div class="notice"><strong>Wallet charges:</strong><br>Negotiated custom rates based on lead volume, OTP volume, and integration needs. WhatsApp redirection remains ₹99 per 30 days.</div>
-              <button class="pill-btn billing-plan-btn" type="button" data-plan-id="enterprise">Subscribe Enterprise</button>
-              <small class="muted">Best for enterprises, large agencies, and franchise businesses.</small>
-            </div>
           </div>
         </div>
       </section>

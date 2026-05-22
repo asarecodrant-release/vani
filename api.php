@@ -1089,7 +1089,6 @@ if ($action === "save_dashboard_settings") {
     exit;
 }
 
-
 // ==========================
 // SAVE CUSTOMER PROFILE
 // ==========================

@@ -110,18 +110,6 @@ nav{
   filter:drop-shadow(0 0 14px rgba(129,140,248,.28));
 }
 
-.logo-dark:after{
-  content:"";
-  position:absolute;
-  left:68px;
-  right:12px;
-  bottom:7px;
-  height:2px;
-  border-radius:999px;
-  background:linear-gradient(90deg,#6366f1,#ec4899);
-  opacity:.9;
-}
-
 body.dark .logo-light{
   display:none;
 }

@@ -41,37 +41,19 @@ function billing_plans(): array {
         'business' => [
             'name' => 'Business',
             'price_paise' => 99900,
-            'faq_limit' => 1000,
-            'features' => [
-                'email_otp' => true,
-                'mobile_otp' => true,
-                'whatsapp_redirect' => true,
-                'export_reports' => true,
-                'advanced_analytics' => true
-            ]
-        ],
-        'automation' => [
-            'name' => 'Pro Automation',
-            'price_paise' => 249900,
             'faq_limit' => PHP_INT_MAX,
             'features' => [
                 'email_otp' => true,
                 'mobile_otp' => true,
                 'whatsapp_redirect' => true,
                 'export_reports' => true,
-                'advanced_analytics' => true
-            ]
-        ],
-        'enterprise' => [
-            'name' => 'Enterprise',
-            'price_paise' => 499900,
-            'faq_limit' => PHP_INT_MAX,
-            'features' => [
-                'email_otp' => true,
-                'mobile_otp' => true,
-                'whatsapp_redirect' => true,
-                'export_reports' => true,
-                'advanced_analytics' => true
+                'advanced_analytics' => true,
+                'api_access' => true,
+                'automation_workflows' => true,
+                'webhook_support' => true,
+                'custom_branding' => true,
+                'crm_integration' => true,
+                'dedicated_support' => true
             ]
         ]
     ];
@@ -97,6 +79,9 @@ function billing_faq_limit(string $planId): int {
 
 function billing_active_plan_from_account(array $account): string {
     $planId = (string)($account['current_plan'] ?? 'free');
+    if ($planId === 'automation' || $planId === 'enterprise') {
+        $planId = 'business';
+    }
     $status = (string)($account['subscription_status'] ?? 'free');
     $periodEnd = (string)($account['current_period_end'] ?? '');
     if ($planId === 'free' || $status !== 'active') {
@@ -130,19 +115,16 @@ function billing_wallet_charge_paise(string $planId, string $chargeKey): int {
             'whatsapp_redirect_addon' => 9900
         ],
         'business' => [
-            'fresh_combined_lead' => 1000,
-            'repeat_combined_lead' => 300,
-            'reactivated_combined_lead' => 1000,
-            'whatsapp_redirect_addon' => 9900
-        ],
-        'automation' => [
             'fresh_email_lead' => 300,
+            'repeat_email_lead' => 100,
+            'reactivated_email_lead' => 300,
             'fresh_mobile_lead' => 600,
-            'fresh_combined_lead' => 800,
+            'repeat_mobile_lead' => 200,
+            'reactivated_mobile_lead' => 600,
             'repeat_lead' => 100,
-            'whatsapp_redirect_addon' => 9900
-        ],
-        'enterprise' => [
+            'fresh_combined_lead' => 800,
+            'repeat_combined_lead' => 200,
+            'reactivated_combined_lead' => 800,
             'whatsapp_redirect_addon' => 9900
         ]
     ];

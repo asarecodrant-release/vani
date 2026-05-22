@@ -83,7 +83,6 @@ nav{padding:18px 0}
 .brand{display:inline-flex;align-items:center;gap:12px;position:relative;text-decoration:none;color:#f8fafc;font-weight:800;font-size:23px;padding:7px 10px 9px 6px;border-radius:16px;background:linear-gradient(135deg,rgba(99,102,241,.12),rgba(236,72,153,.1));border:1px solid rgba(129,140,248,.18)}
 .brand img{width:54px;height:54px;object-fit:contain;filter:drop-shadow(0 0 18px rgba(99,102,241,.7)) drop-shadow(0 0 24px rgba(236,72,153,.28))}
 .brand span{background:linear-gradient(90deg,#ffffff,#c4b5fd 48%,#f9a8d4);-webkit-background-clip:text;-webkit-text-fill-color:transparent;filter:drop-shadow(0 0 14px rgba(129,140,248,.28))}
-.brand:after{content:"";position:absolute;left:68px;right:12px;bottom:7px;height:2px;border-radius:999px;background:linear-gradient(90deg,#6366f1,#ec4899);opacity:.9}
 .nav-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:flex-end}
 .nav-link{color:#cbd5e1;text-decoration:none;font-weight:700;border:1px solid rgba(129,140,248,.24);padding:11px 15px;border-radius:12px;background:rgba(15,23,42,.72)}
 .hero{padding:52px 0 28px}
@@ -132,8 +131,6 @@ footer{padding:24px 0 40px;color:#94a3b8;text-align:center;font-size:14px}
   <div class="container nav-inner">
     <a class="brand" href="index.php"><img src="images/logo_img.png" alt="Vani AI"><span>VANI AI</span></a>
     <div class="nav-actions">
-      <a class="nav-link" href="index.php">Home</a>
-      <a class="nav-link" href="terms.php">Terms</a>
       <button class="site-menu-trigger" type="button" aria-label="Open menu" aria-expanded="false">
         <span></span>
         <span></span>

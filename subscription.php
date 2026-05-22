@@ -25,7 +25,6 @@ nav{padding:16px 0}
 .logo{display:inline-flex;align-items:center;gap:12px;position:relative;text-decoration:none;color:#f8fafc;font-size:23px;font-weight:800;white-space:nowrap;padding:7px 10px 9px 6px;border-radius:16px;background:linear-gradient(135deg,rgba(99,102,241,.12),rgba(236,72,153,.1));border:1px solid rgba(129,140,248,.18)}
 .logo img{width:54px;height:54px;object-fit:contain;filter:drop-shadow(0 0 18px rgba(99,102,241,.7)) drop-shadow(0 0 24px rgba(236,72,153,.28))}
 .logo span{background:linear-gradient(90deg,#ffffff,#c4b5fd 48%,#f9a8d4);-webkit-background-clip:text;-webkit-text-fill-color:transparent;filter:drop-shadow(0 0 14px rgba(129,140,248,.28))}
-.logo:after{content:"";position:absolute;left:68px;right:12px;bottom:7px;height:2px;border-radius:999px;background:linear-gradient(90deg,#6366f1,#ec4899);opacity:.9}
 .nav-actions{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
 .nav-link,.nav-btn{display:inline-flex;align-items:center;justify-content:center;text-decoration:none;border-radius:12px;height:42px;padding:0 16px;font-weight:700}
 .nav-link{color:#e5e7eb;background:rgba(15,23,42,.72);border:1px solid rgba(129,140,248,.24)}
@@ -36,7 +35,7 @@ h1{font-size:48px;line-height:1.12;max-width:840px;margin:0 auto}
 .hero p{max-width:780px;margin:18px auto 0;color:#cbd5e1;font-size:18px;line-height:1.7}
 .pricing-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:16px;margin:34px 0 42px;align-items:stretch}
 .card{grid-column:span 2;background:linear-gradient(145deg,rgba(15,23,42,.88),rgba(30,41,59,.7));border:1px solid rgba(129,140,248,.24);border-radius:18px;padding:18px;display:grid;gap:14px;box-shadow:0 22px 55px rgba(0,0,0,.32),inset 0 1px 0 rgba(255,255,255,.04)}
-.card.featured{grid-column:span 3;padding:24px;border-color:rgba(34,197,94,.5);box-shadow:0 24px 70px rgba(34,197,94,.18);transform:scale(1.02)}
+.card.featured{grid-column:span 2;padding:24px;border-color:rgba(34,197,94,.5);box-shadow:0 24px 70px rgba(34,197,94,.18);transform:scale(1.02)}
 .head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
 .tag{font-size:12px;font-weight:800;border-radius:999px;padding:6px 9px;background:rgba(99,102,241,.16);color:#c4b5fd}
 .tag.good{background:rgba(34,197,94,.16);color:#86efac}
@@ -66,7 +65,6 @@ td:last-child,th:last-child{text-align:right;font-weight:800}
         <span></span>
         <span></span>
       </button>
-      <a class="nav-btn" href="signup.php">Get Started</a>
     </div>
   </div>
 </nav>
@@ -100,25 +98,9 @@ td:last-child,th:last-child{text-align:right;font-weight:800}
     <article class="card">
       <div class="head"><div><span class="eyebrow">Business</span><h2>Business Plan</h2></div><span class="tag">Scale</span></div>
       <div class="price">₹999<small>/month</small></div>
-      <div class="features"><span>1000 FAQ answers</span><span>Email + Mobile combined verification</span><span>Advanced analytics</span><span>CSV export</span><span>WhatsApp add-on at ₹99 / 30 days</span></div>
-      <table><tr><th>Wallet action</th><th>Charge</th></tr><tr><td>Fresh Combined Lead</td><td>₹10</td></tr><tr><td>Repeat Combined Lead</td><td>₹3</td></tr><tr><td>Re-activated after 30 days</td><td>₹10</td></tr></table>
-      <div class="actions"><a class="nav-btn" href="signup.php">Choose Business</a></div>
-    </article>
-
-    <article class="card">
-      <div class="head"><div><span class="eyebrow">Automation</span><h2>Pro Automation</h2></div><span class="tag">Advanced</span></div>
-      <div class="price">₹2499<small>/month</small></div>
-      <div class="features"><span>Unlimited FAQ capacity</span><span>AI chatbot with API access</span><span>Automation workflows</span><span>Webhook support</span><span>WhatsApp add-on at ₹99 / 30 days</span></div>
+      <div class="features"><span>Unlimited FAQ capacity</span><span>Email + Mobile combined verification</span><span>Advanced analytics and CSV export</span><span>AI chatbot API access, automation workflows, and webhooks</span><span>Custom branding, CRM integration, and dedicated support</span><span>WhatsApp add-on at ₹99 / 30 days</span></div>
       <table><tr><th>Wallet action</th><th>Charge</th></tr><tr><td>Fresh Email Lead</td><td>₹3</td></tr><tr><td>Fresh Mobile Lead</td><td>₹6</td></tr><tr><td>Fresh Combined Lead</td><td>₹8</td></tr><tr><td>Repeat Leads</td><td>₹1-₹2</td></tr></table>
-      <div class="actions"><a class="nav-btn" href="signup.php">Choose Automation</a></div>
-    </article>
-
-    <article class="card">
-      <div class="head"><div><span class="eyebrow">Enterprise</span><h2>Enterprise Plan</h2></div><span class="tag">Custom</span></div>
-      <div class="price">₹4999+<small>/month</small></div>
-      <div class="features"><span>White-label platform</span><span>Custom branding</span><span>Dedicated support</span><span>CRM integration</span><span>WhatsApp add-on at ₹99 / 30 days</span></div>
-      <div class="note">Wallet and OTP rates can be negotiated for large lead volume. WhatsApp redirection remains billed monthly at ₹99 per 30 days.</div>
-      <div class="actions"><a class="nav-btn" href="signup.php">Talk to Sales</a></div>
+      <div class="actions"><a class="nav-btn" href="signup.php">Choose Business</a></div>
     </article>
   </section>
 </main>
