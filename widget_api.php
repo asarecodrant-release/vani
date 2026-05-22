@@ -89,6 +89,15 @@ function widget_debit_wallet(string $email, string $customerId, int $amountPaise
     return ["success" => true, "charged" => true, "balance_after_paise" => $newBalance];
 }
 
+function widget_last_verification_time(array $lead, string $metadataKey): int {
+    $meta = is_array($lead['metadata'] ?? null) ? $lead['metadata'] : [];
+    $verifiedAt = strtotime((string)($meta[$metadataKey] ?? '')) ?: 0;
+    if ($verifiedAt) {
+        return $verifiedAt;
+    }
+    return strtotime((string)($lead['created_at'] ?? '')) ?: 0;
+}
+
 function widget_charge_email_otp_lead(string $customerId, array $lead): array {
     $meta = is_array($lead['metadata'] ?? null) ? $lead['metadata'] : [];
     if (!empty($meta['wallet_email_otp_charged_at'])) {
@@ -106,8 +115,8 @@ function widget_charge_email_otp_lead(string $customerId, array $lead): array {
     $chargeKey = 'fresh_email_lead';
     if (!empty($olderVerified)) {
         $last = end($olderVerified);
-        $lastCreated = strtotime((string)($last['created_at'] ?? '')) ?: 0;
-        $chargeKey = ($lastCreated && (time() - $lastCreated) > 30 * 86400) ? 'reactivated_email_lead' : 'repeat_email_lead';
+        $lastVerified = widget_last_verification_time($last, 'wallet_email_otp_charged_at');
+        $chargeKey = ($lastVerified && (time() - $lastVerified) > 30 * 86400) ? 'reactivated_email_lead' : 'repeat_email_lead';
     }
     $amountPaise = billing_wallet_charge_paise($planId, $chargeKey);
     $charge = widget_debit_wallet($email, $customerId, $amountPaise, "Email OTP verification - " . str_replace('_', ' ', $chargeKey), "lead_email_otp", $leadId, [
@@ -148,8 +157,8 @@ function widget_charge_mobile_otp_lead(string $customerId, array $lead): array {
     $chargeKey = 'fresh_mobile_lead';
     if (!empty($olderVerified)) {
         $last = end($olderVerified);
-        $lastCreated = strtotime((string)($last['created_at'] ?? '')) ?: 0;
-        $chargeKey = ($lastCreated && (time() - $lastCreated) > 30 * 86400) ? 'reactivated_mobile_lead' : 'repeat_mobile_lead';
+        $lastVerified = widget_last_verification_time($last, 'wallet_mobile_otp_charged_at');
+        $chargeKey = ($lastVerified && (time() - $lastVerified) > 30 * 86400) ? 'reactivated_mobile_lead' : 'repeat_mobile_lead';
     }
     $amountPaise = billing_wallet_charge_paise($planId, $chargeKey);
     $charge = widget_debit_wallet($email, $customerId, $amountPaise, "Mobile OTP verification - " . str_replace('_', ' ', $chargeKey), "lead_mobile_otp", $leadId, [
@@ -436,10 +445,10 @@ function widget_host_matches_domain(string $host, string $domain): bool {
     return $host === $domain || substr($host, -strlen($suffix)) === $suffix;
 }
 
-function widget_access_result(array $settings, array $signup, string $sourceUrl): array {
+function widget_access_result(array $settings, array $signup, string $sourceUrl, bool $allowedDomainsAvailable = true): array {
     $host = widget_host_from_value($sourceUrl);
     $websiteVerificationEnabled = widget_bool($settings['website_verification_enabled'] ?? false);
-    $allowedDomainsEnabled = widget_bool($settings['allowed_domains_enabled'] ?? false);
+    $allowedDomainsEnabled = $allowedDomainsAvailable && widget_bool($settings['allowed_domains_enabled'] ?? false);
 
     if (!$websiteVerificationEnabled && !$allowedDomainsEnabled) {
         return [
@@ -615,7 +624,7 @@ if ($action === "get_widget_config" || $action === "get_theme") {
     $signup = widget_get_signup($customerId);
     $leadSettings = widget_get_lead_settings($customerId);
     $activePlan = widget_billing_plan_for_customer($customerId);
-    $access = widget_access_result($settings, $signup, widget_request_source_url());
+    $access = widget_access_result($settings, $signup, widget_request_source_url(), billing_feature_enabled($activePlan, 'allowed_domains'));
     if (($settings['verification_status'] ?? '') !== $access['status']) {
         supabase(
             "PATCH",
@@ -639,10 +648,11 @@ if ($action === "get_widget_config" || $action === "get_theme") {
             "active_plan" => $activePlan,
             "email_otp" => billing_feature_enabled($activePlan, 'email_otp'),
             "mobile_otp" => billing_feature_enabled($activePlan, 'mobile_otp'),
-            "whatsapp_redirect" => billing_feature_enabled($activePlan, 'whatsapp_redirect')
+            "whatsapp_redirect" => billing_feature_enabled($activePlan, 'whatsapp_redirect'),
+            "allowed_domains" => billing_feature_enabled($activePlan, 'allowed_domains')
         ],
         "website_verification_enabled" => widget_bool($settings['website_verification_enabled'] ?? false),
-        "allowed_domains_enabled" => widget_bool($settings['allowed_domains_enabled'] ?? false),
+        "allowed_domains_enabled" => widget_bool($settings['allowed_domains_enabled'] ?? false) && billing_feature_enabled($activePlan, 'allowed_domains'),
         "allowed_domains" => $settings['allowed_domains'] ?? '',
         "verification_status" => $access['status'],
         "access_allowed" => $access['allowed'],

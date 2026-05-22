@@ -201,10 +201,13 @@ $activePlan = billing_plan($activePlanId);
 $billingWalletPaise = (int)($billingAccount['wallet_balance_paise'] ?? 0);
 $planFaqLimit = billing_faq_limit($activePlanId);
 $canUseAdvancedAnalytics = billing_feature_enabled($activePlanId, 'advanced_analytics');
+$canUsePartialAnalytics = billing_feature_enabled($activePlanId, 'partial_analytics') || $canUseAdvancedAnalytics;
 $canExportReports = billing_feature_enabled($activePlanId, 'export_reports');
 $canUseEmailOtp = billing_feature_enabled($activePlanId, 'email_otp');
 $canUseMobileOtp = billing_feature_enabled($activePlanId, 'mobile_otp');
 $canUseWhatsappRedirect = billing_feature_enabled($activePlanId, 'whatsapp_redirect');
+$canUseBusinessApi = billing_feature_enabled($activePlanId, 'api_access');
+$canUseAllowedDomains = billing_feature_enabled($activePlanId, 'allowed_domains');
 $walletCreditPaise = array_sum(array_map(fn($row) => ($row['transaction_type'] ?? '') === 'credit' ? (int)($row['amount_paise'] ?? 0) : 0, $walletTransactionRows));
 $walletDebitPaise = array_sum(array_map(fn($row) => ($row['transaction_type'] ?? '') === 'debit' ? (int)($row['amount_paise'] ?? 0) : 0, $walletTransactionRows));
 $faqCount = count($faqs);
@@ -1284,16 +1287,21 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
 
         <div class="panel section-body">
           <div class="analytics-tabs" role="tablist" aria-label="Analytics sections">
-            <button class="analytics-tab-btn active" type="button" data-analytics-tab="analytics-overview">Overview</button>
-            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-conversations" <?php echo $canUseAdvancedAnalytics ? '' : 'data-premium-lock="Business subscription required"'; ?>>Conversations</button>
-            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-faq" <?php echo $canUseAdvancedAnalytics ? '' : 'data-premium-lock="Business subscription required"'; ?>>FAQ Insights</button>
-            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-leads" <?php echo $canUseAdvancedAnalytics ? '' : 'data-premium-lock="Business subscription required"'; ?>>Leads</button>
+            <button class="analytics-tab-btn active" type="button" data-analytics-tab="analytics-overview" <?php echo $canUsePartialAnalytics ? '' : 'data-premium-lock="Growth subscription required"'; ?>>Overview</button>
+            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-conversations" <?php echo $canUsePartialAnalytics ? '' : 'data-premium-lock="Growth subscription required"'; ?>>Conversations</button>
+            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-faq" <?php echo $canUsePartialAnalytics ? '' : 'data-premium-lock="Growth subscription required"'; ?>>FAQ Insights</button>
+            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-leads" <?php echo $canUsePartialAnalytics ? '' : 'data-premium-lock="Growth subscription required"'; ?>>Leads</button>
             <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-pages" <?php echo $canUseAdvancedAnalytics ? '' : 'data-premium-lock="Business subscription required"'; ?>>Pages</button>
             <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-realtime" <?php echo $canUseAdvancedAnalytics ? '' : 'data-premium-lock="Business subscription required"'; ?>>Real-Time</button>
             <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-reports" <?php echo $canExportReports ? '' : 'data-premium-lock="Business subscription required"'; ?>>Reports</button>
           </div>
         </div>
 
+        <?php if (!$canUsePartialAnalytics): ?>
+        <div class="panel section-body">
+          <div class="notice"><strong>Growth subscription required:</strong><br>Analytics access starts on Growth. Upgrade to view Overview, Conversations, FAQ Insights, and Leads.</div>
+        </div>
+        <?php else: ?>
         <div class="analytics-subpanel active" id="analytics-overview">
         <div class="metrics">
           <div class="panel metric"><span>Total Conversations</span><strong><?php echo h($conversationCount); ?></strong><small>Tracked chat sessions/queries.</small></div>
@@ -1484,6 +1492,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
           <div class="panel section-body"><h3>Notifications / Alerts</h3><div class="mini-chart"><div class="notice">Fallback rate: <?php echo h($fallbackRate); ?>%</div><div class="notice">Trending unanswered questions: <?php echo h($unansweredCount); ?></div><div class="notice">Lead conversion: <?php echo h($leadConversionRate); ?>%</div></div></div>
         </div>
         </div>
+        <?php endif; ?>
       </section>
 
       <section class="tab-panel" id="install">
@@ -1512,13 +1521,14 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                 <div>
                   <label>Allowed domains</label>
                   <small class="input-help">When enabled, this bot only works on the domains listed below.</small>
+                  <?php if (!$canUseAllowedDomains): ?><small class="input-help error">Business plan required.</small><?php endif; ?>
                 </div>
                 <label class="switch" title="Enable allowed domains">
-                  <input id="allowedDomainsToggle" type="checkbox" <?php echo $allowedDomainsEnabled ? 'checked' : ''; ?> aria-label="Enable allowed domains">
+                  <input id="allowedDomainsToggle" type="checkbox" <?php echo $allowedDomainsEnabled && $canUseAllowedDomains ? 'checked' : ''; ?> <?php echo $canUseAllowedDomains ? '' : 'disabled'; ?> aria-label="Enable allowed domains">
                   <span class="switch-slider"></span>
                 </label>
               </div>
-              <textarea id="allowedDomainsInput" placeholder="example.com&#10;www.example.com"><?php echo h($allowedDomains); ?></textarea>
+              <textarea id="allowedDomainsInput" placeholder="example.com&#10;www.example.com" <?php echo $canUseAllowedDomains ? '' : 'disabled'; ?>><?php echo h($allowedDomains); ?></textarea>
               <small class="input-help">Add one domain per line. You can also separate domains with commas.</small>
             </div>
 
@@ -1674,7 +1684,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                     <div>
                       <h4>Mobile OTP verification</h4>
                       <small>Verify the lead with an OTP sent to the user's mobile number.</small>
-                      <?php if (!$canUseMobileOtp): ?><small class="input-help error">Growth plan or higher required.</small><?php endif; ?>
+                      <?php if (!$canUseMobileOtp): ?><small class="input-help error">Active paid plan required.</small><?php endif; ?>
                     </div>
                     <label class="switch" title="Mobile OTP verification">
                       <input id="leadMobileOtpToggle" class="lead-toggle" type="checkbox" <?php echo $leadVerifyMobileOtp ? 'checked' : ''; ?> aria-label="Mobile OTP verification">
@@ -1689,7 +1699,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                       <h4>Redirect to WhatsApp Business</h4>
                       <small>Send users to the customer's WhatsApp Business account after lead capture.</small>
                       <small class="input-help <?php echo $whatsappRedirectLocked ? 'error' : ''; ?>">WhatsApp redirection can be turned ON or OFF only 3 times per day. <?php echo $whatsappRedirectLocked ? 'It will be activated again after ' : h((string)max(0, 3 - $whatsappToggleCount)) . ' changes left today.'; ?><span id="whatsappLockTimer" data-remaining-seconds="<?php echo h((string)$whatsappLockSecondsRemaining); ?>"></span></small>
-                      <?php if (!$canUseWhatsappRedirect): ?><small class="input-help error">Growth plan or higher required.</small><?php endif; ?>
+                      <?php if (!$canUseWhatsappRedirect): ?><small class="input-help error">Active paid plan required.</small><?php endif; ?>
                     </div>
                     <label class="switch" title="Redirect to WhatsApp Business">
                       <input id="whatsappLeadToggle" class="lead-toggle" type="checkbox" <?php echo $leadRedirectWhatsapp ? 'checked' : ''; ?> <?php echo $whatsappRedirectLockedOn ? 'disabled' : ''; ?> aria-label="Redirect to WhatsApp Business">
@@ -1721,7 +1731,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
         <div class="panel section-body">
           <span class="eyebrow">Subscription</span>
           <h2 style="margin:8px 0 10px">Subscription Plans</h2>
-          <p class="muted">Choose the monthly plan that fits your FAQ limit, lead verification, analytics, and automation needs.</p>
+          <p class="muted">Choose the monthly plan that fits your FAQ limit, lead verification, analytics, and integration needs.</p>
 
           <div class="metrics" style="margin-top:18px">
             <div class="panel metric"><span>Current plan</span><strong><?php echo h($activePlan['name']); ?></strong><small><?php echo h($faqCount); ?>/<?php echo $planFaqLimit === PHP_INT_MAX ? 'Unlimited' : h($planFaqLimit); ?> FAQs used.</small></div>
@@ -1733,8 +1743,9 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
               <div class="pricing-head"><div><span class="eyebrow">Starter</span><h3>Starter Plan</h3></div><span class="tag">Small</span></div>
               <?php if ($activePlanId === 'starter'): ?><div class="current-plan-note">Current plan</div><?php endif; ?>
               <div class="price">₹199<small>/month</small></div>
-              <div class="feature-list"><span>100 FAQ answers for small websites</span><span>Email OTP verification for real leads</span><span>Mobile OTP service with wallet usage billing</span><span>WhatsApp Redirect add-on billed at ₹99 / 30 days</span><span>Wallet recharge enabled for paid usage</span></div>
-              <div class="wallet-table"><table><thead><tr><th>Wallet action</th><th>Charge</th></tr></thead><tbody><tr><td>Fresh Email Lead</td><td>₹5</td></tr><tr><td>Repeat Email Lead</td><td>₹1</td></tr><tr><td>Email Lead after 30 days</td><td>₹5</td></tr><tr><td>Fresh Mobile OTP Lead</td><td>₹10</td></tr><tr><td>Repeat Mobile OTP</td><td>₹2</td></tr><tr><td>Mobile Lead after 30 days</td><td>₹10</td></tr><tr><td>WhatsApp Redirect</td><td>Add-on ₹99, refundable within 1 hour</td></tr></tbody></table></div>
+              <div class="feature-list"><span>100 FAQ answers for small websites</span><span>Email and Mobile OTP verification for real leads</span><span>WhatsApp Redirect add-on billed at ₹99 / 30 days</span></div>
+              <div class="wallet-table"><table><thead><tr><th>Wallet action</th><th>Charge</th></tr></thead><tbody><tr><td>Fresh Email OTP Lead</td><td>₹6</td></tr><tr><td>Repeat Email OTP Verification</td><td>₹2</td></tr><tr><td>Fresh Mobile OTP Lead</td><td>₹12</td></tr><tr><td>Repeat Mobile OTP Verification</td><td>₹3</td></tr><tr><td>WhatsApp Redirect</td><td>Add-on ₹99, refundable within 1 hour</td></tr></tbody></table></div>
+              <small class="muted">Validity of Fresh Email and Mobile OTP Leads is 30 days from last user verification.</small>
               <button class="pill-btn billing-plan-btn" type="button" data-plan-id="starter">Subscribe Starter</button>
               <small class="muted">Best for portfolios, coaches, and small businesses.</small>
             </div>
@@ -1743,8 +1754,9 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
               <div class="pricing-head"><div><span class="eyebrow">Growth</span><h3>Growth Plan</h3></div><span class="tag good">Popular</span></div>
               <?php if ($activePlanId === 'growth'): ?><div class="current-plan-note">Current plan</div><?php endif; ?>
               <div class="price">₹499<small>/month</small></div>
-              <div class="feature-list"><span>300 FAQ answers for growing local businesses</span><span>Email and Mobile OTP lead verification</span><span>Lead dashboard for tracking captured contacts</span><span>Better wallet rates than Starter on email and mobile leads</span><span>WhatsApp Redirect add-on billed at ₹99 / 30 days</span></div>
-              <div class="wallet-table"><table><thead><tr><th>Wallet action</th><th>Charge</th></tr></thead><tbody><tr><td>Fresh Email Lead</td><td>₹4</td></tr><tr><td>Repeat Email Lead</td><td>₹1</td></tr><tr><td>Fresh Mobile Lead</td><td>₹8</td></tr><tr><td>Repeat Mobile Lead</td><td>₹2</td></tr><tr><td>WhatsApp Redirect</td><td>Add-on ₹99, refundable within 1 hour</td></tr></tbody></table></div>
+              <div class="feature-list"><span>300 FAQ answers for growing local businesses</span><span>Email and Mobile OTP verification for real leads</span><span>WhatsApp Redirect add-on billed at ₹99 / 30 days</span><span>Partial Analytics dashboard for tracking captured contacts</span><span>Better wallet rates than Starter on email and mobile leads</span><span>Analytics access: Overview, Conversations, FAQ Insights, Leads</span></div>
+              <div class="wallet-table"><table><thead><tr><th>Wallet action</th><th>Charge</th></tr></thead><tbody><tr><td>Fresh Email OTP Lead</td><td>₹5</td></tr><tr><td>Repeat Email OTP Verification</td><td>₹1</td></tr><tr><td>Fresh Mobile OTP Lead</td><td>₹10</td></tr><tr><td>Repeat Mobile OTP Verification</td><td>₹2</td></tr><tr><td>WhatsApp Redirect</td><td>Add-on ₹99, refundable within 1 hour</td></tr></tbody></table></div>
+              <small class="muted">Validity of Fresh Email and Mobile OTP Leads is 30 days from last user verification.</small>
               <button class="pill-btn billing-plan-btn" type="button" data-plan-id="growth">Subscribe Growth</button>
               <small class="muted">Best for local businesses, agencies, and service providers.</small>
             </div>
@@ -1753,8 +1765,9 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
               <div class="pricing-head"><div><span class="eyebrow">Business</span><h3>Business Plan</h3></div><span class="tag">Scale</span></div>
               <?php if ($activePlanId === 'business'): ?><div class="current-plan-note">Current plan</div><?php endif; ?>
               <div class="price">₹999<small>/month</small></div>
-              <div class="feature-list"><span>Unlimited FAQ capacity for larger businesses</span><span>Email + Mobile combined verification</span><span>Advanced analytics, CSV export, and downloadable reports</span><span>AI chatbot API access, automation workflows, and webhook support</span><span>Custom branding, CRM integration, and dedicated support</span><span>WhatsApp Redirect add-on billed at ₹99 / 30 days</span></div>
-              <div class="wallet-table"><table><thead><tr><th>Wallet action</th><th>Charge</th></tr></thead><tbody><tr><td>Fresh Email Lead</td><td>₹3</td></tr><tr><td>Fresh Mobile Lead</td><td>₹6</td></tr><tr><td>Fresh Combined Lead</td><td>₹8</td></tr><tr><td>Repeat Leads</td><td>₹1-₹2</td></tr><tr><td>WhatsApp Redirect</td><td>Add-on ₹99, refundable within 1 hour</td></tr></tbody></table></div>
+              <div class="feature-list"><span>Unlimited FAQ capacity for larger businesses</span><span>Email and Mobile OTP verification for real leads</span><span>Email and Mobile combined widget</span><span>WhatsApp Redirect add-on billed at ₹99 / 30 days</span><span>Complete Analytics dashboard for tracking captured contacts</span><span>Access for API Integration and webhook support</span><span>Advanced Analytics: Overview, Conversations, FAQ Insights, Leads, Pages, Real-Time, Reports Download</span><span>Migrate or save data in your database via API</span><span>Chat can run only allowed domains</span></div>
+              <div class="wallet-table"><table><thead><tr><th>Wallet action</th><th>Charge</th></tr></thead><tbody><tr><td>Fresh Email OTP Lead</td><td>₹5</td></tr><tr><td>Repeat Email OTP Verification</td><td>₹1</td></tr><tr><td>Fresh Mobile OTP Lead</td><td>₹10</td></tr><tr><td>Repeat Mobile OTP Verification</td><td>₹2</td></tr><tr><td>WhatsApp Redirect</td><td>Add-on ₹99, refundable within 1 hour</td></tr></tbody></table></div>
+              <small class="muted">Validity of Fresh Email and Mobile OTP Leads is 30 days from last user verification.</small>
               <button class="pill-btn billing-plan-btn" type="button" data-plan-id="business">Subscribe Business</button>
               <small class="muted">Best for real estate, education institutes, marketing agencies, SaaS businesses, and larger teams.</small>
             </div>
@@ -1884,6 +1897,10 @@ const leadPaidFeatures = <?php echo json_encode([
   "email_otp" => $canUseEmailOtp,
   "mobile_otp" => $canUseMobileOtp,
   "whatsapp_redirect" => $canUseWhatsappRedirect
+]); ?>;
+const businessFeatures = <?php echo json_encode([
+  "api_access" => $canUseBusinessApi,
+  "allowed_domains" => $canUseAllowedDomains
 ]); ?>;
 const leadWalletCharges = <?php echo json_encode([
   "fresh_email_lead" => billing_wallet_charge_paise($activePlanId, "fresh_email_lead"),
@@ -2821,7 +2838,7 @@ document.getElementById("saveSettingsBtn")?.addEventListener("click", () => {
 document.getElementById("saveIntegrationBtn")?.addEventListener("click", async event => {
   const button = event.currentTarget;
   const websiteVerificationEnabled = !!document.getElementById("websiteVerificationToggle")?.checked;
-  const allowedDomainsEnabled = !!document.getElementById("allowedDomainsToggle")?.checked;
+  const allowedDomainsEnabled = businessFeatures.allowed_domains && !!document.getElementById("allowedDomainsToggle")?.checked;
   const allowedDomains = document.getElementById("allowedDomainsInput")?.value.trim() || "";
 
   if (allowedDomainsEnabled && !allowedDomains) {

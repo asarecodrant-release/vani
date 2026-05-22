@@ -1087,7 +1087,7 @@ body.dark .side-menu-link.secondary{
       No credit card required • Setup in minutes
     </p>
 
-    <a href="signup.php">
+    <a href="freebot.php">
       <button>
         Get Started Free
       </button>

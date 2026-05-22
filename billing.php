@@ -11,6 +11,7 @@ function billing_plans(): array {
                 'mobile_otp' => false,
                 'whatsapp_redirect' => false,
                 'export_reports' => false,
+                'partial_analytics' => false,
                 'advanced_analytics' => false
             ]
         ],
@@ -23,6 +24,7 @@ function billing_plans(): array {
                 'mobile_otp' => true,
                 'whatsapp_redirect' => true,
                 'export_reports' => false,
+                'partial_analytics' => false,
                 'advanced_analytics' => false
             ]
         ],
@@ -35,6 +37,7 @@ function billing_plans(): array {
                 'mobile_otp' => true,
                 'whatsapp_redirect' => true,
                 'export_reports' => false,
+                'partial_analytics' => true,
                 'advanced_analytics' => false
             ]
         ],
@@ -47,13 +50,12 @@ function billing_plans(): array {
                 'mobile_otp' => true,
                 'whatsapp_redirect' => true,
                 'export_reports' => true,
+                'partial_analytics' => true,
                 'advanced_analytics' => true,
                 'api_access' => true,
-                'automation_workflows' => true,
                 'webhook_support' => true,
-                'custom_branding' => true,
-                'crm_integration' => true,
-                'dedicated_support' => true
+                'combined_widget' => true,
+                'allowed_domains' => true
             ]
         ]
     ];
@@ -99,6 +101,15 @@ function billing_rupees(int $paise): string {
 function billing_wallet_charge_paise(string $planId, string $chargeKey): int {
     $charges = [
         'starter' => [
+            'fresh_email_lead' => 600,
+            'repeat_email_lead' => 200,
+            'reactivated_email_lead' => 600,
+            'fresh_mobile_lead' => 1200,
+            'repeat_mobile_lead' => 300,
+            'reactivated_mobile_lead' => 1200,
+            'whatsapp_redirect_addon' => 9900
+        ],
+        'growth' => [
             'fresh_email_lead' => 500,
             'repeat_email_lead' => 100,
             'reactivated_email_lead' => 500,
@@ -107,24 +118,17 @@ function billing_wallet_charge_paise(string $planId, string $chargeKey): int {
             'reactivated_mobile_lead' => 1000,
             'whatsapp_redirect_addon' => 9900
         ],
-        'growth' => [
-            'fresh_email_lead' => 400,
-            'repeat_email_lead' => 100,
-            'fresh_mobile_lead' => 800,
-            'repeat_mobile_lead' => 200,
-            'whatsapp_redirect_addon' => 9900
-        ],
         'business' => [
-            'fresh_email_lead' => 300,
+            'fresh_email_lead' => 500,
             'repeat_email_lead' => 100,
-            'reactivated_email_lead' => 300,
-            'fresh_mobile_lead' => 600,
+            'reactivated_email_lead' => 500,
+            'fresh_mobile_lead' => 1000,
             'repeat_mobile_lead' => 200,
-            'reactivated_mobile_lead' => 600,
+            'reactivated_mobile_lead' => 1000,
             'repeat_lead' => 100,
-            'fresh_combined_lead' => 800,
-            'repeat_combined_lead' => 200,
-            'reactivated_combined_lead' => 800,
+            'fresh_combined_lead' => 1500,
+            'repeat_combined_lead' => 300,
+            'reactivated_combined_lead' => 1500,
             'whatsapp_redirect_addon' => 9900
         ]
     ];

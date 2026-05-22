@@ -75,31 +75,34 @@ td:last-child,th:last-child{text-align:right;font-weight:800}
   <section class="hero">
     <span class="eyebrow">Subscription Plans</span>
     <h1>Start small, verify real leads, and scale your chatbot as demand grows.</h1>
-    <p>Each monthly plan includes dashboard access and FAQ capacity. Wallet charges apply for OTP verification, paid lead usage, and WhatsApp redirection. WhatsApp redirection is ₹99 per 30 days on every plan.</p>
+    <p>Each monthly plan includes FAQ capacity and paid lead verification. Wallet charges apply for OTP verification and WhatsApp redirection. WhatsApp redirection is ₹99 per 30 days on every plan.</p>
   </section>
 
   <section class="pricing-grid">
     <article class="card">
       <div class="head"><div><span class="eyebrow">Starter</span><h2>Starter Plan</h2></div><span class="tag">Small</span></div>
       <div class="price">₹199<small>/month</small></div>
-      <div class="features"><span>100 FAQ answers</span><span>Email OTP verification</span><span>Mobile OTP service</span><span>Wallet recharge for paid usage</span><span>WhatsApp add-on at ₹99 / 30 days</span></div>
-      <table><tr><th>Wallet action</th><th>Charge</th></tr><tr><td>Fresh Email Lead</td><td>₹5</td></tr><tr><td>Repeat Email Lead</td><td>₹1</td></tr><tr><td>Fresh Mobile OTP Lead</td><td>₹10</td></tr><tr><td>Repeat Mobile OTP</td><td>₹2</td></tr></table>
+      <div class="features"><span>100 FAQ answers for small websites</span><span>Email and Mobile OTP verification for real leads</span><span>WhatsApp Redirect add-on billed at ₹99 / 30 days</span></div>
+      <table><tr><th>Wallet action</th><th>Charge</th></tr><tr><td>Fresh Email OTP Lead</td><td>₹6</td></tr><tr><td>Repeat Email OTP Verification</td><td>₹2</td></tr><tr><td>Fresh Mobile OTP Lead</td><td>₹12</td></tr><tr><td>Repeat Mobile OTP Verification</td><td>₹3</td></tr><tr><td>WhatsApp Redirect</td><td>Add-on ₹99, refundable within 1 hour</td></tr></table>
+      <div class="note">Validity of Fresh Email and Mobile OTP Leads is 30 days from last user verification.</div>
       <div class="actions"><a class="nav-btn" href="signup.php">Choose Starter</a></div>
     </article>
 
     <article class="card featured">
       <div class="head"><div><span class="eyebrow">Growth</span><h2>Growth Plan</h2></div><span class="tag good">Popular</span></div>
       <div class="price">₹499<small>/month</small></div>
-      <div class="features"><span>300 FAQ answers</span><span>Email and Mobile OTP verification</span><span>Lead dashboard for captured contacts</span><span>Better wallet rates for regular lead flow</span><span>WhatsApp add-on at ₹99 / 30 days</span></div>
-      <table><tr><th>Wallet action</th><th>Charge</th></tr><tr><td>Fresh Email Lead</td><td>₹4</td></tr><tr><td>Repeat Email Lead</td><td>₹1</td></tr><tr><td>Fresh Mobile Lead</td><td>₹8</td></tr><tr><td>Repeat Mobile Lead</td><td>₹2</td></tr></table>
+      <div class="features"><span>300 FAQ answers for growing local businesses</span><span>Email and Mobile OTP verification for real leads</span><span>WhatsApp Redirect add-on billed at ₹99 / 30 days</span><span>Partial Analytics dashboard for tracking captured contacts</span><span>Better wallet rates than Starter on email and mobile leads</span><span>Analytics access: Overview, Conversations, FAQ Insights, Leads</span></div>
+      <table><tr><th>Wallet action</th><th>Charge</th></tr><tr><td>Fresh Email OTP Lead</td><td>₹5</td></tr><tr><td>Repeat Email OTP Verification</td><td>₹1</td></tr><tr><td>Fresh Mobile OTP Lead</td><td>₹10</td></tr><tr><td>Repeat Mobile OTP Verification</td><td>₹2</td></tr><tr><td>WhatsApp Redirect</td><td>Add-on ₹99, refundable within 1 hour</td></tr></table>
+      <div class="note">Validity of Fresh Email and Mobile OTP Leads is 30 days from last user verification.</div>
       <div class="actions"><a class="nav-btn" href="signup.php">Choose Growth</a></div>
     </article>
 
     <article class="card">
       <div class="head"><div><span class="eyebrow">Business</span><h2>Business Plan</h2></div><span class="tag">Scale</span></div>
       <div class="price">₹999<small>/month</small></div>
-      <div class="features"><span>Unlimited FAQ capacity</span><span>Email + Mobile combined verification</span><span>Advanced analytics and CSV export</span><span>AI chatbot API access, automation workflows, and webhooks</span><span>Custom branding, CRM integration, and dedicated support</span><span>WhatsApp add-on at ₹99 / 30 days</span></div>
-      <table><tr><th>Wallet action</th><th>Charge</th></tr><tr><td>Fresh Email Lead</td><td>₹3</td></tr><tr><td>Fresh Mobile Lead</td><td>₹6</td></tr><tr><td>Fresh Combined Lead</td><td>₹8</td></tr><tr><td>Repeat Leads</td><td>₹1-₹2</td></tr></table>
+      <div class="features"><span>Unlimited FAQ capacity for larger businesses</span><span>Email and Mobile OTP verification for real leads</span><span>Email and Mobile combined widget</span><span>WhatsApp Redirect add-on billed at ₹99 / 30 days</span><span>Complete Analytics dashboard for tracking captured contacts</span><span>Access for API Integration and webhook support</span><span>Advanced Analytics: Overview, Conversations, FAQ Insights, Leads, Pages, Real-Time, Reports Download</span><span>Migrate or save data in your database via API</span><span>Chat can run only allowed domains</span></div>
+      <table><tr><th>Wallet action</th><th>Charge</th></tr><tr><td>Fresh Email OTP Lead</td><td>₹5</td></tr><tr><td>Repeat Email OTP Verification</td><td>₹1</td></tr><tr><td>Fresh Mobile OTP Lead</td><td>₹10</td></tr><tr><td>Repeat Mobile OTP Verification</td><td>₹2</td></tr><tr><td>WhatsApp Redirect</td><td>Add-on ₹99, refundable within 1 hour</td></tr></table>
+      <div class="note">Validity of Fresh Email and Mobile OTP Leads is 30 days from last user verification.</div>
       <div class="actions"><a class="nav-btn" href="signup.php">Choose Business</a></div>
     </article>
   </section>

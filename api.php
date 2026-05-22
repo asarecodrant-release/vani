@@ -96,10 +96,10 @@ function host_matches_domain(string $host, string $domain): bool {
     return $host === $domain || substr($host, -strlen($suffix)) === $suffix;
 }
 
-function chatbot_access_result(array $settings, array $signup, string $sourceUrl): array {
+function chatbot_access_result(array $settings, array $signup, string $sourceUrl, bool $allowedDomainsAvailable = true): array {
     $host = host_from_value($sourceUrl);
     $websiteVerificationEnabled = filter_var($settings['website_verification_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
-    $allowedDomainsEnabled = filter_var($settings['allowed_domains_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
+    $allowedDomainsEnabled = $allowedDomainsAvailable && filter_var($settings['allowed_domains_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
 
     if (!$websiteVerificationEnabled && !$allowedDomainsEnabled) {
         return ["allowed" => true, "message" => ""];
@@ -947,7 +947,9 @@ if ($action === "chat") {
         "GET",
         "chatbot_signups?select=website_name&customer_id=eq." . urlencode(trim($customer_id)) . "&limit=1"
     );
-    $access = chatbot_access_result($settingsRow, $signup['data'][0] ?? [], request_source_url($data));
+    $billingEmail = billing_email_for_customer(trim($customer_id));
+    $activePlan = $billingEmail ? billing_active_plan_for_email($billingEmail) : 'free';
+    $access = chatbot_access_result($settingsRow, $signup['data'][0] ?? [], request_source_url($data), billing_feature_enabled($activePlan, 'allowed_domains'));
     if (!$access['allowed']) {
         echo json_encode(["reply" => $access['message'] ?: "This chatbot is not enabled for this website.", "status" => "blocked"]);
         exit;
@@ -1020,6 +1022,14 @@ if ($action === "save_dashboard_settings") {
             "message" => "Missing customer_id"
         ]);
         exit;
+    }
+
+    $billingEmail = is_authenticated_user() ? authenticated_email() : billing_email_for_customer($customer_id);
+    $activePlan = $billingEmail ? billing_active_plan_for_email($billingEmail) : 'free';
+    if (!billing_feature_enabled($activePlan, 'allowed_domains')) {
+        if (array_key_exists('allowed_domains_enabled', $data)) {
+            $data['allowed_domains_enabled'] = false;
+        }
     }
 
     $allowed = [
