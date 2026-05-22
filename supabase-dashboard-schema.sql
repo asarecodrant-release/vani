@@ -238,7 +238,8 @@ create table if not exists public.lead_generation_leads (
 
 create table if not exists public.billing_accounts (
   id bigserial primary key,
-  email text not null unique,
+  customer_id uuid unique references public.chatbot_signups(customer_id) on delete cascade,
+  email text not null,
   wallet_balance_paise integer not null default 0,
   current_plan text not null default 'free',
   subscription_status text not null default 'free' check (subscription_status in ('free', 'active', 'expired', 'cancelled')),
@@ -279,6 +280,16 @@ alter table public.billing_accounts
 
 alter table public.billing_accounts
   add column if not exists last_auto_recharge_attempt_at timestamptz;
+
+alter table public.billing_accounts
+  add column if not exists customer_id uuid references public.chatbot_signups(customer_id) on delete cascade;
+
+alter table public.billing_accounts
+  drop constraint if exists billing_accounts_email_key;
+
+create unique index if not exists billing_accounts_customer_id_key
+  on public.billing_accounts(customer_id)
+  where customer_id is not null;
 
 create table if not exists public.billing_orders (
   id bigserial primary key,
@@ -407,6 +418,9 @@ create index if not exists idx_lead_generation_leads_phone_number
 create index if not exists idx_billing_accounts_email
   on public.billing_accounts(email);
 
+create index if not exists idx_billing_accounts_customer_id
+  on public.billing_accounts(customer_id);
+
 create index if not exists idx_customer_api_keys_customer_id
   on public.customer_api_keys(customer_id);
 
@@ -422,8 +436,14 @@ create index if not exists idx_support_tickets_customer_created_at
 create index if not exists idx_billing_orders_email_created_at
   on public.billing_orders(email, created_at desc);
 
+create index if not exists idx_billing_orders_customer_created_at
+  on public.billing_orders(customer_id, created_at desc);
+
 create index if not exists idx_wallet_transactions_email_created_at
   on public.wallet_transactions(email, created_at desc);
+
+create index if not exists idx_wallet_transactions_customer_created_at
+  on public.wallet_transactions(customer_id, created_at desc);
 
 create or replace function public.set_updated_at()
 returns trigger

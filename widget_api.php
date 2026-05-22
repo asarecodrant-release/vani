@@ -41,21 +41,12 @@ function widget_get_signup(string $customerId): array {
 }
 
 function widget_billing_plan_for_customer(string $customerId): string {
-    $signup = widget_get_signup($customerId);
-    $email = trim((string)($signup['email'] ?? ''));
-    if ($email === '') {
-        return 'free';
-    }
-    $rows = widget_safe_rows(supabase(
-        "GET",
-        "billing_accounts?select=*&email=eq." . urlencode($email) . "&limit=1"
-    ));
-    $account = $rows[0] ?? [];
+    $account = widget_billing_account_for_customer($customerId);
     $status = (string)($account['subscription_status'] ?? 'free');
     $periodEnd = (string)($account['current_period_end'] ?? '');
     $walletBalance = (int)($account['wallet_balance_paise'] ?? 0);
     if (($status === 'cancelled' && $walletBalance <= 0) || ($status === 'active' && $periodEnd !== '' && strtotime($periodEnd) < time())) {
-        widget_downgrade_account_to_free($email, $status === 'cancelled' ? 'wallet_empty' : 'plan_expired');
+        widget_downgrade_account_to_free($customerId, $status === 'cancelled' ? 'wallet_empty' : 'plan_expired');
         $account["current_plan"] = "free";
         $account["subscription_status"] = "free";
     }
@@ -63,18 +54,9 @@ function widget_billing_plan_for_customer(string $customerId): string {
 }
 
 function widget_faq_active_query_suffix(string $customerId, string $order = "id.asc"): string {
-    $signup = widget_get_signup($customerId);
-    $email = trim((string)($signup['email'] ?? ''));
-    $account = [];
-    if ($email !== '') {
-        $rows = widget_safe_rows(supabase(
-            "GET",
-            "billing_accounts?select=*&email=eq." . urlencode($email) . "&limit=1"
-        ));
-        $account = $rows[0] ?? [];
-    }
-    if ((string)($account['subscription_status'] ?? '') === 'cancelled' && (int)($account['wallet_balance_paise'] ?? 0) <= 0 && $email !== '') {
-        widget_downgrade_account_to_free($email, 'wallet_empty');
+    $account = widget_billing_account_for_customer($customerId);
+    if ((string)($account['subscription_status'] ?? '') === 'cancelled' && (int)($account['wallet_balance_paise'] ?? 0) <= 0 && $customerId !== '') {
+        widget_downgrade_account_to_free($customerId, 'wallet_empty');
         $account["current_plan"] = "free";
         $account["subscription_status"] = "free";
     }
@@ -89,6 +71,42 @@ function widget_faq_active_query_suffix(string $customerId, string $order = "id.
 function widget_billing_email_for_customer(string $customerId): string {
     $signup = widget_get_signup($customerId);
     return trim((string)($signup['email'] ?? ''));
+}
+
+function widget_billing_account_for_customer(string $customerId): array {
+    $customerId = trim($customerId);
+    if ($customerId === '') {
+        return [];
+    }
+    $rows = widget_safe_rows(supabase(
+        "GET",
+        "billing_accounts?select=*&customer_id=eq." . urlencode($customerId) . "&limit=1"
+    ));
+    if (!empty($rows[0])) {
+        return $rows[0];
+    }
+    $email = widget_billing_email_for_customer($customerId);
+    if ($email === '') {
+        return [];
+    }
+    $res = supabase("POST", "billing_accounts", [[
+        "customer_id" => $customerId,
+        "email" => $email,
+        "wallet_balance_paise" => 0,
+        "current_plan" => "free",
+        "subscription_status" => "free"
+    ]]);
+    return $res['data'][0] ?? [
+        "customer_id" => $customerId,
+        "email" => $email,
+        "wallet_balance_paise" => 0,
+        "current_plan" => "free",
+        "subscription_status" => "free"
+    ];
+}
+
+function widget_billing_account_filter(string $customerId, string $email = ''): string {
+    return $customerId !== '' ? "customer_id=eq." . urlencode($customerId) : "email=eq." . urlencode($email);
 }
 
 function widget_customer_ids_for_billing_email(string $email): array {
@@ -121,29 +139,43 @@ function widget_disable_paid_service_toggles_for_email(string $email, string $re
     }
 }
 
-function widget_downgrade_account_to_free(string $email, string $reason = 'wallet_empty'): void {
-    if ($email === '') {
+function widget_downgrade_account_to_free(string $customerId, string $reason = 'wallet_empty'): void {
+    if ($customerId === '') {
         return;
     }
-    supabase("PATCH", "billing_accounts?email=eq." . urlencode($email), [
+    supabase("PATCH", "billing_accounts?customer_id=eq." . urlencode($customerId), [
         "current_plan" => "free",
         "subscription_status" => "free",
         "auto_recharge_enabled" => false,
         "saved_payment_method_status" => "failed",
         "saved_payment_method_reference" => null
     ]);
-    widget_disable_paid_service_toggles_for_email($email, $reason);
+    supabase("PATCH", "lead_generation_settings?customer_id=eq." . urlencode($customerId), [
+        "verify_email_otp" => false,
+        "verify_mobile_otp" => false,
+        "redirect_whatsapp" => false,
+        "service_tier" => "free",
+        "whatsapp_redirect_stopped_at" => gmdate('Y-m-d\TH:i:s\Z'),
+        "whatsapp_redirect_stopped_reason" => $reason
+    ]);
+    supabase("PATCH", "chatbot_settings?customer_id=eq." . urlencode($customerId), [
+        "handoff_enabled" => false,
+        "allowed_domains_enabled" => false,
+        "webhook_url" => null,
+        "webhook_secret" => null
+    ]);
 }
 
 function widget_mark_auto_payment_failed_keep_wallet_access(string $email, array $account, string $reason = 'auto_payment_failed'): void {
-    if ($email === '') {
+    $customerId = trim((string)($account['customer_id'] ?? ''));
+    if ($email === '' && $customerId === '') {
         return;
     }
     if ((int)($account['wallet_balance_paise'] ?? 0) <= 0) {
-        widget_downgrade_account_to_free($email, $reason);
+        widget_downgrade_account_to_free($customerId, $reason);
         return;
     }
-    supabase("PATCH", "billing_accounts?email=eq." . urlencode($email), [
+    supabase("PATCH", "billing_accounts?" . widget_billing_account_filter($customerId, $email), [
         "subscription_status" => "cancelled",
         "auto_recharge_enabled" => false,
         "saved_payment_method_status" => "failed",
@@ -249,9 +281,9 @@ function widget_auto_recharge_wallet(string $email, string $customerId, array $a
         return ["success" => false, "pending" => true, "message" => "Auto recharge payment is pending", "payment_status" => $paymentStatus];
     }
 
-    $rows = widget_safe_rows(supabase("GET", "billing_accounts?select=*&email=eq." . urlencode($email) . "&limit=1"));
+    $rows = widget_safe_rows(supabase("GET", "billing_accounts?select=*&customer_id=eq." . urlencode($customerId) . "&limit=1"));
     $newBalance = (int)(($rows[0] ?? [])['wallet_balance_paise'] ?? 0) + $amountPaise;
-    supabase("PATCH", "billing_accounts?email=eq." . urlencode($email), [
+    supabase("PATCH", "billing_accounts?customer_id=eq." . urlencode($customerId), [
         "wallet_balance_paise" => $newBalance,
         "saved_payment_method_status" => "active"
     ]);
@@ -279,11 +311,7 @@ function widget_debit_wallet(string $email, string $customerId, int $amountPaise
     if ($email === '' || $amountPaise <= 0) {
         return ["success" => true, "charged" => false, "message" => "No charge required"];
     }
-    $rows = widget_safe_rows(supabase(
-        "GET",
-        "billing_accounts?select=*&email=eq." . urlencode($email) . "&limit=1"
-    ));
-    $account = $rows[0] ?? [];
+    $account = widget_billing_account_for_customer($customerId);
     $balance = (int)($account['wallet_balance_paise'] ?? 0);
     if ($balance < $amountPaise) {
         $planId = billing_active_plan_from_account($account);
@@ -294,13 +322,13 @@ function widget_debit_wallet(string $email, string $customerId, int $amountPaise
             "amount_paise" => (int)($account['auto_recharge_amount_paise'] ?? 0) ?: (int)$rule['amount_paise'],
             "payment_method_status" => (string)($account['saved_payment_method_status'] ?? 'missing')
         ];
-        supabase("PATCH", "billing_accounts?email=eq." . urlencode($email), [
+        supabase("PATCH", "billing_accounts?customer_id=eq." . urlencode($customerId), [
             "last_auto_recharge_attempt_at" => gmdate('Y-m-d\TH:i:s\Z')
         ]);
         $recharge = widget_auto_recharge_wallet($email, $customerId, $account, $planId);
         if (!empty($recharge['success'])) {
-            $rows = widget_safe_rows(supabase("GET", "billing_accounts?select=*&email=eq." . urlencode($email) . "&limit=1"));
-            $balance = (int)(($rows[0] ?? [])['wallet_balance_paise'] ?? 0);
+            $account = widget_billing_account_for_customer($customerId);
+            $balance = (int)($account['wallet_balance_paise'] ?? 0);
         } else {
             widget_mark_auto_payment_failed_keep_wallet_access($email, $account, 'auto_payment_failed');
             return [
@@ -317,7 +345,7 @@ function widget_debit_wallet(string $email, string $customerId, int $amountPaise
         }
     }
     $newBalance = $balance - $amountPaise;
-    supabase("PATCH", "billing_accounts?email=eq." . urlencode($email), [
+    supabase("PATCH", "billing_accounts?customer_id=eq." . urlencode($customerId), [
         "wallet_balance_paise" => $newBalance
     ]);
     supabase("POST", "wallet_transactions", [[
@@ -332,7 +360,7 @@ function widget_debit_wallet(string $email, string $customerId, int $amountPaise
         "metadata" => (object)$metadata
     ]]);
     if ($newBalance <= 0 && (string)($account['subscription_status'] ?? '') === 'cancelled') {
-        widget_downgrade_account_to_free($email, 'wallet_empty');
+        widget_downgrade_account_to_free($customerId, 'wallet_empty');
     }
     return ["success" => true, "charged" => true, "balance_after_paise" => $newBalance];
 }
@@ -341,17 +369,13 @@ function widget_debit_wallet_without_auto_recharge(string $email, string $custom
     if ($email === '' || $amountPaise <= 0) {
         return ["success" => true, "charged" => false, "message" => "No charge required"];
     }
-    $rows = widget_safe_rows(supabase(
-        "GET",
-        "billing_accounts?select=*&email=eq." . urlencode($email) . "&limit=1"
-    ));
-    $account = $rows[0] ?? [];
+    $account = widget_billing_account_for_customer($customerId);
     $balance = (int)($account['wallet_balance_paise'] ?? 0);
     if ($balance < $amountPaise) {
         return ["success" => false, "charged" => false, "balance_paise" => $balance, "required_paise" => $amountPaise, "message" => "Insufficient wallet balance"];
     }
     $newBalance = $balance - $amountPaise;
-    supabase("PATCH", "billing_accounts?email=eq." . urlencode($email), [
+    supabase("PATCH", "billing_accounts?customer_id=eq." . urlencode($customerId), [
         "wallet_balance_paise" => $newBalance
     ]);
     $txn = supabase("POST", "wallet_transactions", [[
@@ -366,13 +390,13 @@ function widget_debit_wallet_without_auto_recharge(string $email, string $custom
         "metadata" => (object)$metadata
     ]]);
     if ($txn['status'] < 200 || $txn['status'] >= 300) {
-        supabase("PATCH", "billing_accounts?email=eq." . urlencode($email), [
+        supabase("PATCH", "billing_accounts?customer_id=eq." . urlencode($customerId), [
             "wallet_balance_paise" => $balance
         ]);
         return ["success" => false, "charged" => false, "message" => "Wallet transaction could not be recorded", "debug" => $txn];
     }
     if ($newBalance <= 0 && (string)($account['subscription_status'] ?? '') === 'cancelled') {
-        widget_downgrade_account_to_free($email, 'wallet_empty');
+        widget_downgrade_account_to_free($customerId, 'wallet_empty');
     }
     return ["success" => true, "charged" => true, "balance_after_paise" => $newBalance, "transaction" => $txn['data'][0] ?? null];
 }
@@ -383,7 +407,7 @@ function widget_record_zero_debit(string $email, string $customerId, string $des
     }
     $rows = widget_safe_rows(supabase(
         "GET",
-        "billing_accounts?select=wallet_balance_paise&email=eq." . urlencode($email) . "&limit=1"
+        "billing_accounts?select=wallet_balance_paise&customer_id=eq." . urlencode($customerId) . "&limit=1"
     ));
     supabase("POST", "wallet_transactions", [[
         "email" => $email,

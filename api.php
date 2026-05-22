@@ -149,10 +149,22 @@ function safe_rows(array $response): array {
     return is_array($data) ? $data : [];
 }
 
+function is_uuid_value(string $value): bool {
+    return (bool)preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $value);
+}
+
+function billing_account_filter(string $customerId = '', string $email = ''): string {
+    $customerId = trim($customerId);
+    if ($customerId !== '') {
+        return "customer_id=eq." . urlencode($customerId);
+    }
+    return "email=eq." . urlencode($email);
+}
+
 function billing_account_for_email(string $email): array {
     $rows = safe_rows(supabase(
         "GET",
-        "billing_accounts?select=*&email=eq." . urlencode($email) . "&limit=1"
+        "billing_accounts?select=*&email=eq." . urlencode($email) . "&order=created_at.desc&limit=1"
     ));
     if (!empty($rows[0])) {
         $before = $rows[0];
@@ -183,6 +195,50 @@ function billing_account_for_email(string $email): array {
     ];
 }
 
+function billing_account_for_customer(string $customerId): array {
+    $customerId = trim($customerId);
+    if ($customerId === '') {
+        return [];
+    }
+    $rows = safe_rows(supabase(
+        "GET",
+        "billing_accounts?select=*&customer_id=eq." . urlencode($customerId) . "&limit=1"
+    ));
+    if (!empty($rows[0])) {
+        $before = $rows[0];
+        enforce_billing_free_transition($rows[0]);
+        $status = (string)($before['subscription_status'] ?? 'free');
+        $periodEnd = (string)($before['current_period_end'] ?? '');
+        $walletBalance = (int)($before['wallet_balance_paise'] ?? 0);
+        if (($status === 'cancelled' && $walletBalance <= 0) || ($status === 'active' && $periodEnd !== '' && strtotime($periodEnd) < time())) {
+            $freshRows = safe_rows(supabase(
+                "GET",
+                "billing_accounts?select=*&customer_id=eq." . urlencode($customerId) . "&limit=1"
+            ));
+            return $freshRows[0] ?? $before;
+        }
+        return $before;
+    }
+    $email = billing_email_for_customer($customerId);
+    if ($email === '') {
+        return [];
+    }
+    $res = supabase("POST", "billing_accounts", [[
+        "customer_id" => $customerId,
+        "email" => $email,
+        "wallet_balance_paise" => 0,
+        "current_plan" => "free",
+        "subscription_status" => "free"
+    ]]);
+    return $res['data'][0] ?? [
+        "customer_id" => $customerId,
+        "email" => $email,
+        "wallet_balance_paise" => 0,
+        "current_plan" => "free",
+        "subscription_status" => "free"
+    ];
+}
+
 function customer_ids_for_billing_email(string $email): array {
     if ($email === '') {
         return [];
@@ -192,6 +248,26 @@ function customer_ids_for_billing_email(string $email): array {
         "chatbot_signups?select=customer_id&email=eq." . urlencode($email)
     ));
     return array_values(array_filter(array_map(fn($row) => trim((string)($row['customer_id'] ?? '')), $rows)));
+}
+
+function disable_paid_service_toggles_for_customer(string $customerId, string $reason = 'free_plan'): void {
+    if ($customerId === '') {
+        return;
+    }
+    supabase("PATCH", "lead_generation_settings?customer_id=eq." . urlencode($customerId), [
+        "verify_email_otp" => false,
+        "verify_mobile_otp" => false,
+        "redirect_whatsapp" => false,
+        "service_tier" => "free",
+        "whatsapp_redirect_stopped_at" => gmdate('Y-m-d\TH:i:s\Z'),
+        "whatsapp_redirect_stopped_reason" => $reason
+    ]);
+    supabase("PATCH", "chatbot_settings?customer_id=eq." . urlencode($customerId), [
+        "handoff_enabled" => false,
+        "allowed_domains_enabled" => false,
+        "webhook_url" => null,
+        "webhook_secret" => null
+    ]);
 }
 
 function disable_paid_service_toggles_for_email(string $email, string $reason = 'free_plan'): void {
@@ -213,30 +289,36 @@ function disable_paid_service_toggles_for_email(string $email, string $reason = 
     }
 }
 
-function downgrade_billing_account_to_free(string $email, string $reason = 'wallet_empty'): void {
-    if ($email === '') {
+function downgrade_billing_account_to_free(string $customerIdOrEmail, string $reason = 'wallet_empty'): void {
+    if ($customerIdOrEmail === '') {
         return;
     }
-    supabase("PATCH", "billing_accounts?email=eq." . urlencode($email), [
+    $isCustomerId = is_uuid_value($customerIdOrEmail);
+    supabase("PATCH", "billing_accounts?" . ($isCustomerId ? "customer_id=eq." : "email=eq.") . urlencode($customerIdOrEmail), [
         "current_plan" => "free",
         "subscription_status" => "free",
         "auto_recharge_enabled" => false,
         "saved_payment_method_status" => "failed",
         "saved_payment_method_reference" => null
     ]);
-    disable_paid_service_toggles_for_email($email, $reason);
+    if ($isCustomerId) {
+        disable_paid_service_toggles_for_customer($customerIdOrEmail, $reason);
+    } else {
+        disable_paid_service_toggles_for_email($customerIdOrEmail, $reason);
+    }
 }
 
 function mark_auto_payment_failed_keep_wallet_access(string $email, array $account, string $reason = 'auto_payment_failed'): void {
-    if ($email === '') {
+    $customerId = trim((string)($account['customer_id'] ?? ''));
+    if ($email === '' && $customerId === '') {
         return;
     }
     $walletBalance = (int)($account['wallet_balance_paise'] ?? 0);
     if ($walletBalance <= 0) {
-        downgrade_billing_account_to_free($email, $reason);
+        downgrade_billing_account_to_free($customerId ?: $email, $reason);
         return;
     }
-    supabase("PATCH", "billing_accounts?email=eq." . urlencode($email), [
+    supabase("PATCH", "billing_accounts?" . billing_account_filter($customerId, $email), [
         "subscription_status" => "cancelled",
         "auto_recharge_enabled" => false,
         "saved_payment_method_status" => "failed",
@@ -246,18 +328,19 @@ function mark_auto_payment_failed_keep_wallet_access(string $email, array $accou
 
 function enforce_billing_free_transition(array $account): void {
     $email = trim((string)($account['email'] ?? ''));
-    if ($email === '') {
+    $customerId = trim((string)($account['customer_id'] ?? ''));
+    if ($email === '' && $customerId === '') {
         return;
     }
     $status = (string)($account['subscription_status'] ?? 'free');
     $periodEnd = (string)($account['current_period_end'] ?? '');
     $walletBalance = (int)($account['wallet_balance_paise'] ?? 0);
     if ($status === 'cancelled' && $walletBalance <= 0) {
-        downgrade_billing_account_to_free($email, 'wallet_empty');
+        downgrade_billing_account_to_free($customerId ?: $email, 'wallet_empty');
         return;
     }
     if ($status === 'active' && $periodEnd !== '' && strtotime($periodEnd) < time()) {
-        downgrade_billing_account_to_free($email, 'plan_expired');
+        downgrade_billing_account_to_free($customerId ?: $email, 'plan_expired');
     }
 }
 
@@ -265,18 +348,14 @@ function billing_active_plan_for_email(string $email): string {
     return billing_active_plan_from_account(billing_account_for_email($email));
 }
 
-function billing_account_for_customer(string $customerId): array {
-    $email = billing_email_for_customer($customerId);
-    return $email !== '' ? billing_account_for_email($email) : [];
-}
-
 function enforce_free_when_wallet_empty_for_account(array $account): void {
     $email = trim((string)($account['email'] ?? ''));
-    if ($email === '') {
+    $customerId = trim((string)($account['customer_id'] ?? ''));
+    if ($email === '' && $customerId === '') {
         return;
     }
     if ((string)($account['subscription_status'] ?? '') === 'cancelled' && (int)($account['wallet_balance_paise'] ?? 0) <= 0) {
-        supabase("PATCH", "billing_accounts?email=eq." . urlencode($email), [
+        supabase("PATCH", "billing_accounts?" . billing_account_filter($customerId, $email), [
             "current_plan" => "free",
             "subscription_status" => "free",
             "auto_recharge_enabled" => false
@@ -393,8 +472,7 @@ function validate_customer_api_request(string $endpoint): array {
         return ["success" => false, "status" => 401, "message" => "Invalid or revoked API key"];
     }
 
-    $billingEmail = billing_email_for_customer($customerId);
-    $activePlan = $billingEmail ? billing_active_plan_for_email($billingEmail) : 'free';
+    $activePlan = billing_active_plan_from_account(billing_account_for_customer($customerId));
     if (!billing_feature_enabled($activePlan, 'api_access')) {
         log_customer_api_usage($customerId, $keyId, $endpoint, 403);
         return ["success" => false, "status" => 403, "message" => "API access requires Business plan"];
@@ -758,14 +836,14 @@ function razorpay_auto_recharge_wallet(string $email, string $customerId, array 
             "status" => "failed",
             "metadata" => (object)["auto_recharge" => true, "payment_response" => $payment['data'] ?? []]
         ]);
-        supabase("PATCH", "billing_accounts?email=eq." . urlencode($email), [
+        supabase("PATCH", "billing_accounts?" . billing_account_filter($customerId, $email), [
             "subscription_status" => ((int)($account['wallet_balance_paise'] ?? 0) > 0 ? "cancelled" : "free"),
             "auto_recharge_enabled" => false,
             "saved_payment_method_status" => "failed",
             "saved_payment_method_reference" => null
         ]);
         if ((int)($account['wallet_balance_paise'] ?? 0) <= 0) {
-            downgrade_billing_account_to_free($email, 'auto_payment_failed');
+            downgrade_billing_account_to_free($customerId ?: $email, 'auto_payment_failed');
         }
         return ["success" => false, "message" => "Auto recharge payment failed", "debug" => $payment];
     }
@@ -779,9 +857,9 @@ function razorpay_auto_recharge_wallet(string $email, string $customerId, array 
         return ["success" => false, "pending" => true, "message" => "Auto recharge payment is pending", "payment_status" => $paymentStatus];
     }
 
-    $accountAfterOrder = billing_account_for_email($email);
+    $accountAfterOrder = $customerId !== '' ? billing_account_for_customer($customerId) : billing_account_for_email($email);
     $newBalance = (int)($accountAfterOrder['wallet_balance_paise'] ?? 0) + $amountPaise;
-    supabase("PATCH", "billing_accounts?email=eq." . urlencode($email), [
+    supabase("PATCH", "billing_accounts?" . billing_account_filter($customerId, $email), [
         "wallet_balance_paise" => $newBalance,
         "saved_payment_method_status" => "active"
     ]);
@@ -806,12 +884,12 @@ function razorpay_auto_recharge_wallet(string $email, string $customerId, array 
 }
 
 function wallet_credit_subscription(string $email, string $customerId, string $planId, int $amountPaise, string $paymentId): void {
-    $account = billing_account_for_email($email);
+    $account = $customerId !== '' ? billing_account_for_customer($customerId) : billing_account_for_email($email);
     $balance = (int)($account['wallet_balance_paise'] ?? 0) + $amountPaise;
     $periodStart = gmdate('Y-m-d\TH:i:s\Z');
     $periodEnd = gmdate('Y-m-d\TH:i:s\Z', strtotime('+30 days'));
     $autoRechargeRule = billing_auto_recharge_rule($planId);
-    supabase("PATCH", "billing_accounts?email=eq." . urlencode($email), [
+    supabase("PATCH", "billing_accounts?" . billing_account_filter($customerId, $email), [
         "wallet_balance_paise" => $balance,
         "current_plan" => $planId,
         "subscription_status" => "active",
@@ -852,17 +930,17 @@ function wallet_adjust_balance(string $email, string $customerId, int $amountPai
     if ($email === '' || $amountPaise <= 0) {
         return ["success" => true, "charged" => false, "message" => "No wallet adjustment required"];
     }
-    $account = billing_account_for_email($email);
+    $account = $customerId !== '' ? billing_account_for_customer($customerId) : billing_account_for_email($email);
     $balance = (int)($account['wallet_balance_paise'] ?? 0);
     if ($transactionType === 'debit' && $balance < $amountPaise) {
         $planId = billing_active_plan_from_account($account);
         $autoRecharge = wallet_auto_recharge_context($account, $planId);
-        supabase("PATCH", "billing_accounts?email=eq." . urlencode($email), [
+        supabase("PATCH", "billing_accounts?" . billing_account_filter($customerId, $email), [
             "last_auto_recharge_attempt_at" => gmdate('Y-m-d\TH:i:s\Z')
         ]);
         $recharge = razorpay_auto_recharge_wallet($email, $customerId, $account, $planId);
         if (!empty($recharge['success'])) {
-            $account = billing_account_for_email($email);
+            $account = $customerId !== '' ? billing_account_for_customer($customerId) : billing_account_for_email($email);
             $balance = (int)($account['wallet_balance_paise'] ?? 0);
         } else {
             mark_auto_payment_failed_keep_wallet_access($email, $account, 'auto_payment_failed');
@@ -880,7 +958,7 @@ function wallet_adjust_balance(string $email, string $customerId, int $amountPai
         }
     }
     $newBalance = $transactionType === 'credit' ? $balance + $amountPaise : $balance - $amountPaise;
-    supabase("PATCH", "billing_accounts?email=eq." . urlencode($email), [
+    supabase("PATCH", "billing_accounts?" . billing_account_filter($customerId, $email), [
         "wallet_balance_paise" => $newBalance
     ]);
     $txn = supabase("POST", "wallet_transactions", [[
@@ -895,7 +973,7 @@ function wallet_adjust_balance(string $email, string $customerId, int $amountPai
         "metadata" => (object)$metadata
     ]]);
     if ($txn['status'] < 200 || $txn['status'] >= 300) {
-        supabase("PATCH", "billing_accounts?email=eq." . urlencode($email), [
+        supabase("PATCH", "billing_accounts?" . billing_account_filter($customerId, $email), [
             "wallet_balance_paise" => $balance
         ]);
         return [
@@ -906,7 +984,7 @@ function wallet_adjust_balance(string $email, string $customerId, int $amountPai
         ];
     }
     if ($transactionType === 'debit' && $newBalance <= 0 && (string)($account['subscription_status'] ?? '') === 'cancelled') {
-        downgrade_billing_account_to_free($email, 'wallet_empty');
+        downgrade_billing_account_to_free($customerId ?: $email, 'wallet_empty');
     }
     return [
         "success" => true,
@@ -929,7 +1007,7 @@ function wallet_debit_without_auto_recharge(string $email, string $customerId, i
     if ($email === '' || $amountPaise <= 0) {
         return ["success" => true, "charged" => false, "message" => "No wallet charge required"];
     }
-    $account = billing_account_for_email($email);
+    $account = $customerId !== '' ? billing_account_for_customer($customerId) : billing_account_for_email($email);
     $balance = (int)($account['wallet_balance_paise'] ?? 0);
     if ($balance < $amountPaise) {
         return [
@@ -941,7 +1019,7 @@ function wallet_debit_without_auto_recharge(string $email, string $customerId, i
         ];
     }
     $newBalance = $balance - $amountPaise;
-    supabase("PATCH", "billing_accounts?email=eq." . urlencode($email), [
+    supabase("PATCH", "billing_accounts?" . billing_account_filter($customerId, $email), [
         "wallet_balance_paise" => $newBalance
     ]);
     $txn = supabase("POST", "wallet_transactions", [[
@@ -956,13 +1034,13 @@ function wallet_debit_without_auto_recharge(string $email, string $customerId, i
         "metadata" => (object)$metadata
     ]]);
     if ($txn['status'] < 200 || $txn['status'] >= 300) {
-        supabase("PATCH", "billing_accounts?email=eq." . urlencode($email), [
+        supabase("PATCH", "billing_accounts?" . billing_account_filter($customerId, $email), [
             "wallet_balance_paise" => $balance
         ]);
         return ["success" => false, "charged" => false, "message" => "Wallet transaction could not be recorded", "debug" => $txn];
     }
     if ($newBalance <= 0 && (string)($account['subscription_status'] ?? '') === 'cancelled') {
-        downgrade_billing_account_to_free($email, 'wallet_empty');
+        downgrade_billing_account_to_free($customerId ?: $email, 'wallet_empty');
     }
     return [
         "success" => true,
@@ -977,7 +1055,7 @@ function wallet_record_zero_debit(string $email, string $customerId, string $des
     if ($email === '') {
         return;
     }
-    $account = billing_account_for_email($email);
+    $account = $customerId !== '' ? billing_account_for_customer($customerId) : billing_account_for_email($email);
     supabase("POST", "wallet_transactions", [[
         "email" => $email,
         "customer_id" => $customerId ?: null,
@@ -1094,7 +1172,7 @@ function ensure_razorpay_customer_for_account(string $email, array $account, str
     }
 
     $razorpayCustomerId = (string)$customer['data']['id'];
-    $update = supabase("PATCH", "billing_accounts?email=eq." . urlencode($email), [
+    $update = supabase("PATCH", "billing_accounts?" . billing_account_filter((string)($account['customer_id'] ?? ''), $email), [
         "saved_payment_method_customer_id" => $razorpayCustomerId,
         "saved_payment_method_contact" => $customerContact,
         "saved_payment_method_status" => (string)($account['saved_payment_method_status'] ?? 'missing') ?: "missing"
@@ -1131,12 +1209,12 @@ if ($action === "list_customer_api_keys") {
 
 if ($action === "create_customer_api_key") {
     $data = getJSON();
-    $customerId = trim((string)($data['customer_id'] ?? ''));
+    $customerId = trim((string)($data['customer_id'] ?? $_GET['customer_id'] ?? ''));
     if (!authenticated_customer_access($customerId)) {
         echo json_encode(["success" => false, "message" => "Access denied"]);
         exit;
     }
-    $activePlan = billing_active_plan_for_email(authenticated_email());
+    $activePlan = billing_active_plan_from_account(billing_account_for_customer($customerId));
     if (!billing_feature_enabled($activePlan, 'api_access')) {
         echo json_encode(["success" => false, "requires_business" => true, "message" => "API access requires Business plan"]);
         exit;
@@ -1169,7 +1247,7 @@ if ($action === "create_customer_api_key") {
 
 if ($action === "revoke_customer_api_key") {
     $data = getJSON();
-    $customerId = trim((string)($data['customer_id'] ?? ''));
+    $customerId = trim((string)($data['customer_id'] ?? $_GET['customer_id'] ?? ''));
     $keyId = trim((string)($data['key_id'] ?? ''));
     if (!authenticated_customer_access($customerId) || $keyId === '') {
         echo json_encode(["success" => false, "message" => "Access denied"]);
@@ -1243,9 +1321,9 @@ if ($action === "customer_api_wallet") {
     }
     $customerId = (string)$validation['customer_id'];
     $billingEmail = billing_email_for_customer($customerId);
-    $account = billing_account_for_email($billingEmail);
+    $account = billing_account_for_customer($customerId);
     $transactions = customer_api_rows(
-        "wallet_transactions?select=id,transaction_type,amount_paise,balance_after_paise,description,reference_type,reference_id,metadata,created_at&email=eq." . urlencode($billingEmail) . customer_api_date_filters('created_at') . "&order=created_at.desc"
+        "wallet_transactions?select=id,transaction_type,amount_paise,balance_after_paise,description,reference_type,reference_id,metadata,created_at&customer_id=eq." . urlencode($customerId) . customer_api_date_filters('created_at') . "&order=created_at.desc"
     );
     customer_api_json($validation, "wallet", [
         "account" => [
@@ -1301,8 +1379,13 @@ if ($action === "billing_plans") {
         echo json_encode(["success" => false, "message" => "Login required"]);
         exit;
     }
-    $email = authenticated_email();
-    $account = billing_account_for_email($email);
+    $data = getJSON();
+    $customerId = trim((string)($data['customer_id'] ?? $_GET['customer_id'] ?? ''));
+    if (!authenticated_customer_access($customerId)) {
+        echo json_encode(["success" => false, "message" => "Access denied"]);
+        exit;
+    }
+    $account = billing_account_for_customer($customerId);
     [$keyId] = razorpay_credentials();
     echo json_encode([
         "success" => true,
@@ -1322,7 +1405,12 @@ if ($action === "create_razorpay_customer") {
 
     $data = getJSON();
     $email = authenticated_email();
-    $account = billing_account_for_email($email);
+    $customerId = trim((string)($data['customer_id'] ?? ''));
+    if (!authenticated_customer_access($customerId)) {
+        echo json_encode(["success" => false, "message" => "Access denied"]);
+        exit;
+    }
+    $account = billing_account_for_customer($customerId);
     $customer = ensure_razorpay_customer_for_account(
         $email,
         $account,
@@ -1354,7 +1442,11 @@ if ($action === "create_auto_recharge_mandate_order") {
     $customerId = trim((string)($data['customer_id'] ?? ''));
     $requestedPlanId = trim((string)($data['plan_id'] ?? ''));
     $email = authenticated_email();
-    $account = billing_account_for_email($email);
+    if (!authenticated_customer_access($customerId)) {
+        echo json_encode(["success" => false, "message" => "Access denied"]);
+        exit;
+    }
+    $account = billing_account_for_customer($customerId);
     $planId = $requestedPlanId !== '' ? $requestedPlanId : billing_active_plan_from_account($account);
     if (!in_array($planId, billing_plan_ids(), true) || $planId === 'free') {
         echo json_encode(["success" => false, "message" => "Select Starter, Growth, or Business plan"]);
@@ -1374,7 +1466,7 @@ if ($action === "create_auto_recharge_mandate_order") {
         echo json_encode($customer);
         exit;
     }
-    $account = billing_account_for_email($email);
+    $account = billing_account_for_customer($customerId);
     $razorpayCustomerId = (string)$customer['razorpay_customer_id'];
 
     $autoRechargeRule = billing_auto_recharge_rule($planId);
@@ -1503,7 +1595,8 @@ if ($action === "verify_auto_recharge_mandate") {
     }
 
     $email = authenticated_email();
-    $account = billing_account_for_email($email);
+    $customerId = trim((string)($order['customer_id'] ?? ''));
+    $account = $customerId !== '' ? billing_account_for_customer($customerId) : billing_account_for_email($email);
     $amountPaise = (int)$order['amount_paise'];
     $planId = (string)$order['plan_id'];
     $autoRechargeRule = billing_auto_recharge_rule($planId);
@@ -1528,7 +1621,7 @@ if ($action === "verify_auto_recharge_mandate") {
         $credited = true;
     }
 
-    supabase("PATCH", "billing_accounts?email=eq." . urlencode($email), [
+    supabase("PATCH", "billing_accounts?" . billing_account_filter($customerId, $email), [
         "wallet_balance_paise" => $balanceAfter,
         "current_plan" => $planId,
         "subscription_status" => "active",
@@ -1561,7 +1654,7 @@ if ($action === "verify_auto_recharge_mandate") {
         "message" => "Auto recharge mandate authorized",
         "token_id" => $tokenId,
         "wallet_credited" => $credited,
-        "account" => billing_account_for_email($email)
+        "account" => $customerId !== '' ? billing_account_for_customer($customerId) : billing_account_for_email($email)
     ]);
     exit;
 }
@@ -1580,7 +1673,7 @@ if ($action === "cancel_chatbot_subscription") {
         exit;
     }
 
-    $account = billing_account_for_email($email);
+    $account = billing_account_for_customer($customerId);
     $activePlan = billing_active_plan_from_account($account);
     if ((string)($account['subscription_status'] ?? 'free') === 'cancelled') {
         echo json_encode(["success" => true, "message" => "Auto payment is already stopped. Remaining wallet balance can still be used.", "account" => $account]);
@@ -1593,7 +1686,7 @@ if ($action === "cancel_chatbot_subscription") {
 
     $now = gmdate('Y-m-d\TH:i:s\Z');
     $walletBalance = (int)($account['wallet_balance_paise'] ?? 0);
-    $billingUpdate = supabase("PATCH", "billing_accounts?email=eq." . urlencode($email), [
+    $billingUpdate = supabase("PATCH", "billing_accounts?" . billing_account_filter($customerId, $email), [
         "current_plan" => $walletBalance > 0 ? $activePlan : "free",
         "subscription_status" => $walletBalance > 0 ? "cancelled" : "free",
         "auto_recharge_enabled" => false,
@@ -1611,7 +1704,7 @@ if ($action === "cancel_chatbot_subscription") {
         "message" => $walletBalance > 0
             ? "Auto payment stopped. Remaining wallet balance can still be used on the current plan until it reaches zero."
             : "Auto payment stopped. Wallet is empty, so the account is now on Free service.",
-        "account" => billing_account_for_email($email)
+        "account" => billing_account_for_customer($customerId)
     ]);
     exit;
 }
@@ -1879,8 +1972,7 @@ if ($action === "add_faq") {
     );
 
     $existingCount = is_array($existingFaqs['data'] ?? null) ? count($existingFaqs['data']) : 0;
-    $billingEmail = is_authenticated_user() ? authenticated_email() : billing_email_for_customer($customer_id);
-    $activePlan = $billingEmail ? billing_active_plan_for_email($billingEmail) : 'free';
+    $activePlan = billing_active_plan_from_account(billing_account_for_customer($customer_id));
     $faqLimit = billing_faq_limit($activePlan);
 
     $rows = [];
@@ -2058,7 +2150,7 @@ if ($action === "save_lead_generation_settings") {
         $collect_mobile = false;
     }
     $billingEmail = is_authenticated_user() ? authenticated_email() : billing_email_for_customer($customer_id);
-    $activePlan = $billingEmail ? billing_active_plan_for_email($billingEmail) : 'free';
+    $activePlan = billing_active_plan_from_account(billing_account_for_customer($customer_id));
 
     if ($verify_email_otp && !billing_feature_enabled($activePlan, 'email_otp')) {
         echo json_encode(["success" => false, "requires_premium" => true, "message" => "Email OTP requires a premium plan."]);
@@ -2137,7 +2229,7 @@ if ($action === "save_lead_generation_settings") {
         $periodEndTime = $periodEnd !== '' ? strtotime($periodEnd) : 0;
         $needsCharge = $amountPaise > 0 && ($lastChargedAt === '' || $lastRefundedAt !== '' || !$periodEndTime || time() >= $periodEndTime);
         if ($needsCharge) {
-            $billingAccount = billing_account_for_email($billingEmail);
+            $billingAccount = billing_account_for_customer($customer_id);
             if ((int)($billingAccount['wallet_balance_paise'] ?? 0) < $amountPaise) {
                 if ($wasWhatsappEnabled) {
                     stop_whatsapp_redirect_for_insufficient_balance($customer_id, $billingEmail, $amountPaise);
@@ -2324,8 +2416,7 @@ if ($action === "chat") {
         "GET",
         "chatbot_signups?select=website_name&customer_id=eq." . urlencode(trim($customer_id)) . "&limit=1"
     );
-    $billingEmail = billing_email_for_customer(trim($customer_id));
-    $activePlan = $billingEmail ? billing_active_plan_for_email($billingEmail) : 'free';
+    $activePlan = billing_active_plan_from_account(billing_account_for_customer(trim($customer_id)));
     $access = chatbot_access_result($settingsRow, $signup['data'][0] ?? [], request_source_url($data), billing_feature_enabled($activePlan, 'allowed_domains'));
     if (!$access['allowed']) {
         echo json_encode(["reply" => $access['message'] ?: "This chatbot is not enabled for this website.", "status" => "blocked"]);
@@ -2435,8 +2526,7 @@ if ($action === "save_dashboard_settings") {
         exit;
     }
 
-    $billingEmail = is_authenticated_user() ? authenticated_email() : billing_email_for_customer($customer_id);
-    $activePlan = $billingEmail ? billing_active_plan_for_email($billingEmail) : 'free';
+    $activePlan = billing_active_plan_from_account(billing_account_for_customer($customer_id));
     if (!billing_feature_enabled($activePlan, 'allowed_domains')) {
         if (array_key_exists('allowed_domains_enabled', $data)) {
             $data['allowed_domains_enabled'] = false;

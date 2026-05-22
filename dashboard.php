@@ -197,15 +197,19 @@ $profileRows = safe_data(supabase(
     "customer_profiles?select=*&email=eq." . urlencode($email) . "&limit=1"
 ));
 
-$billingAccountRows = safe_data(supabase(
-    "GET",
-    "billing_accounts?select=*&email=eq." . urlencode($email) . "&limit=1"
-));
+$billingAccountRows = $selectedBotId
+    ? safe_data(supabase(
+        "GET",
+        "billing_accounts?select=*&customer_id=eq." . urlencode($selectedBotId) . "&limit=1"
+    ))
+    : [];
 
-$walletTransactionRows = safe_data(supabase(
-    "GET",
-    "wallet_transactions?select=*&email=eq." . urlencode($email) . "&order=created_at.desc&limit=100"
-));
+$walletTransactionRows = $selectedBotId
+    ? safe_data(supabase(
+        "GET",
+        "wallet_transactions?select=*&customer_id=eq." . urlencode($selectedBotId) . "&order=created_at.desc&limit=100"
+    ))
+    : [];
 
 $apiKeyRows = $selectedBotId
     ? safe_data(supabase(
@@ -243,15 +247,15 @@ if (
     ($billingStatus === 'active' && $billingPeriodEnd !== '' && strtotime($billingPeriodEnd) < time())
 ) {
     $transitionReason = $billingStatus === 'cancelled' ? 'wallet_empty' : 'plan_expired';
-    supabase("PATCH", "billing_accounts?email=eq." . urlencode($email), [
+    supabase("PATCH", "billing_accounts?customer_id=eq." . urlencode($selectedBotId), [
         "current_plan" => "free",
         "subscription_status" => "free",
         "auto_recharge_enabled" => false,
         "saved_payment_method_status" => "failed",
         "saved_payment_method_reference" => null
     ]);
-    dashboard_disable_paid_service_toggles($bots, $transitionReason);
-    $billingAccountRows = safe_data(supabase("GET", "billing_accounts?select=*&email=eq." . urlencode($email) . "&limit=1"));
+    dashboard_disable_paid_service_toggles($selectedBot ? [$selectedBot] : [], $transitionReason);
+    $billingAccountRows = safe_data(supabase("GET", "billing_accounts?select=*&customer_id=eq." . urlencode($selectedBotId) . "&limit=1"));
     $billingAccount = $billingAccountRows[0] ?? $billingAccount;
     if ($selectedBotId) {
         $settingsRows = safe_data(supabase("GET", "chatbot_settings?select=*&customer_id=eq." . urlencode($selectedBotId) . "&limit=1"));
@@ -2387,6 +2391,7 @@ function bindRazorpayCustomerSetup() {
     const contactInput = document.getElementById("razorpayCustomerContactInput");
     const name = nameInput?.value.trim() || "";
     const contact = contactInput?.value.trim() || "";
+    if (!selectedCustomerId) return showToast("Select or create a bot first");
     if (name.length < 3) return showToast("Enter customer name");
     if (!contact) return showToast("Enter mobile number with country code");
     const originalText = button.textContent;
@@ -2396,7 +2401,7 @@ function bindRazorpayCustomerSetup() {
       const response = await fetch("/api.php?action=create_razorpay_customer", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({name, contact})
+        body: JSON.stringify({customer_id: selectedCustomerId, name, contact})
       });
       const data = await response.json();
       if (!data.success) {
