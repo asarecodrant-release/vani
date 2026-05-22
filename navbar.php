@@ -59,17 +59,30 @@ nav .container{
   display:flex;
   align-items:center;
   flex-shrink:0;
+  text-decoration:none;
+  gap:10px;
 }
 
 .logo img{
-  height:70px;
-  width:auto;
+  height:52px;
+  width:52px;
   object-fit:contain;
   transition:0.3s ease;
+  filter:drop-shadow(0 0 16px rgba(99,102,241,.38));
 }
 
 .logo img:hover{
   transform:scale(1.05);
+}
+
+.logo span{
+  color:#111827;
+  font-size:21px;
+  font-weight:800;
+  background:linear-gradient(90deg,#4f46e5,#ec4899);
+  -webkit-background-clip:text;
+  -webkit-text-fill-color:transparent;
+  filter:drop-shadow(0 0 12px rgba(99,102,241,.18));
 }
 
 /* =========================
@@ -112,6 +125,13 @@ nav .container{
 .nav-link:hover{
   color:#6366f1;
   background:#f1f5f9;
+}
+
+nav .site-menu-trigger{
+  background:#fff;
+  color:#334155;
+  border-color:rgba(99,102,241,.16);
+  box-shadow:none;
 }
 
 /* =========================
@@ -180,7 +200,14 @@ nav .container{
 ========================= */
 @media(max-width:992px){
   .logo img{
-    height:60px;
+    width:46px;
+    height:46px;
+  }
+
+  .nav-link,
+  .nav-btn,
+  .user-box{
+    display:none;
   }
 }
 
@@ -191,21 +218,12 @@ nav .container{
   }
 
   .logo img{
-    height:80px;
+    width:46px;
+    height:46px;
   }
 
-  .user-box span{
-    display:none;
-  }
-
-  .nav-link{
-    font-size:14px;
-    padding:0 10px;
-  }
-
-  .nav-btn{
-    font-size:13px;
-    padding:0 12px;
+  .nav-right{
+    margin-left:auto;
   }
 }
 
@@ -223,7 +241,8 @@ nav .container{
 }
 
 .navbar-home .logo img{
-  height:78px;
+  width:54px;
+  height:54px;
 }
 
 .navbar-home .nav-right,
@@ -242,7 +261,8 @@ nav .container{
 /* mobile fix for index */
 @media(max-width:768px){
   .navbar-home .logo img{
-    height:60px;
+    width:46px;
+    height:46px;
   }
 
   .navbar-home .nav-link,
@@ -264,9 +284,10 @@ nav .container{
   <div class="container nav-inner">
 
     <!-- LOGO -->
-    <div class="logo">
-      <img src="images/logo.png" alt="Vani AI Logo">
-    </div>
+    <a class="logo" href="index.php" aria-label="Vani AI home">
+      <img src="images/logo_img.png" alt="Vani AI Logo">
+      <span>VANI AI</span>
+    </a>
 
     <!-- RIGHT SIDE -->
     <div class="nav-right">
@@ -284,12 +305,24 @@ nav .container{
 
           <a href="logout.php" class="nav-btn">Logout</a>
         </div>
+        <a href="index.php" class="nav-link">Home</a>
+        <button class="site-menu-trigger" type="button" aria-label="Open menu" aria-expanded="false">
+          <span></span>
+          <span></span>
+          <span></span>
+        </button>
 
       <?php else: ?>
 
         <div class="nav-actions">
 
+          <a href="index.php" class="nav-link">Home</a>
           <a href="login.php" class="nav-link">Login</a>
+          <button class="site-menu-trigger" type="button" aria-label="Open menu" aria-expanded="false">
+            <span></span>
+            <span></span>
+            <span></span>
+          </button>
 
           <?php if($currentPage == "index.php"): ?>
             <a href="#products" class="nav-btn">Get Started</a>
@@ -303,3 +336,5 @@ nav .container{
 
   </div>
 </nav>
+
+<?php include_once __DIR__ . '/site-menu.php'; ?>

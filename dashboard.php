@@ -605,9 +605,10 @@ button{touch-action:manipulation}
   border-right:1px solid var(--line);
 }
 body.dark .sidebar{background:rgba(15,23,42,.66)}
-.brand{display:flex;align-items:center;gap:12px;margin-bottom:26px}
-.brand img{width:58px;height:auto}
-.brand strong{font-size:20px;background:linear-gradient(90deg,var(--brand),var(--brand-2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.brand{display:flex;align-items:center;gap:12px;position:relative;margin-bottom:26px;padding:7px 10px 9px 6px;border-radius:16px;background:linear-gradient(135deg,rgba(79,70,229,.12),rgba(236,72,153,.1));border:1px solid rgba(129,140,248,.16)}
+.brand img{width:58px;height:auto;filter:drop-shadow(0 0 18px rgba(99,102,241,.65)) drop-shadow(0 0 24px rgba(236,72,153,.24))}
+.brand strong{font-size:20px;background:linear-gradient(90deg,#ffffff,#c4b5fd 48%,#f9a8d4);-webkit-background-clip:text;-webkit-text-fill-color:transparent;filter:drop-shadow(0 0 14px rgba(129,140,248,.28))}
+.brand:after{content:"";position:absolute;left:72px;right:12px;bottom:7px;height:2px;border-radius:999px;background:linear-gradient(90deg,var(--brand),var(--brand-2));opacity:.9}
 .nav-tabs{display:grid;gap:8px;overflow-y:auto;padding-right:4px;padding-bottom:12px;min-height:0}
 .tab-btn{
   border:0;background:transparent;color:var(--muted);padding:12px 14px;border-radius:12px;
@@ -928,9 +929,9 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
 <div class="dashboard-shell">
   <div class="drawer-overlay" id="drawerOverlay" aria-hidden="true"></div>
   <aside class="sidebar">
-    <a class="brand" href="dashboard.php">
+    <a class="brand" href="index.php">
       <img src="images/logo_img.png" alt="Vani AI">
-      <strong>Vani AI</strong>
+      <strong>VANI AI</strong>
     </a>
     <div class="nav-tabs" role="tablist">
       <button class="tab-btn active" data-tab="overview">Dashboard</button>
@@ -972,6 +973,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
       <button class="mobile-toggle" id="accountToggle" type="button" aria-label="Open account menu" aria-expanded="false">⋯</button>
       <div class="top-actions">
         <button class="ghost-btn" id="themeToggle" type="button">Dark</button>
+        <a class="ghost-btn" href="index.php">Home</a>
         <a class="ghost-btn" href="#profile" data-jump="profile">Profile</a>
         <a class="pill-btn" href="index.php">Create New bot</a>
         <div class="user-menu">

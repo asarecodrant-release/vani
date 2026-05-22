@@ -140,12 +140,9 @@ body{
   min-height:100vh;
 
   background:
-    linear-gradient(
-      135deg,
-      #eef2ff,
-      #f5f3ff,
-      #fdf2f8
-    );
+    radial-gradient(circle at top left,rgba(99,102,241,.35),transparent 34%),
+    radial-gradient(circle at 88% 8%,rgba(236,72,153,.24),transparent 30%),
+    linear-gradient(135deg,#020617 0%,#08111f 48%,#111827 100%);
 
   display:flex;
   align-items:center;
@@ -161,8 +158,8 @@ body{
 .bg-circle{
   position:absolute;
   border-radius:50%;
-  filter:blur(90px);
-  opacity:0.45;
+  filter:blur(100px);
+  opacity:0.3;
   z-index:1;
 }
 
@@ -192,28 +189,67 @@ body{
 .card{
 
   background:
-    rgba(255,255,255,0.78);
+    linear-gradient(145deg,rgba(15,23,42,.9),rgba(30,41,59,.72));
 
   backdrop-filter:blur(20px);
 
   border:
-    1px solid rgba(255,255,255,0.5);
+    1px solid rgba(129,140,248,.24);
 
   border-radius:28px;
 
   padding:42px 34px;
 
   box-shadow:
-    0 12px 45px rgba(0,0,0,0.08);
+    0 24px 72px rgba(0,0,0,.36),
+    inset 0 1px 0 rgba(255,255,255,.05);
 }
 
 .logo{
-  text-align:center;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:12px;
+  position:relative;
   margin-bottom:18px;
+  text-decoration:none;
+  color:#f8fafc;
+  font-size:24px;
+  font-weight:800;
+  letter-spacing:0;
+  padding:7px 10px 9px 6px;
+  border-radius:16px;
+  background:linear-gradient(135deg,rgba(99,102,241,.12),rgba(236,72,153,.1));
+  border:1px solid rgba(129,140,248,.18);
+  width:max-content;
+  margin-left:auto;
+  margin-right:auto;
 }
 
 .logo img{
-  height:68px;
+  width:58px;
+  height:58px;
+  object-fit:contain;
+  filter:drop-shadow(0 0 18px rgba(99,102,241,.7)) drop-shadow(0 0 24px rgba(236,72,153,.28));
+}
+
+.logo span{
+  background:linear-gradient(90deg,#ffffff,#c4b5fd 48%,#f9a8d4);
+  -webkit-background-clip:text;
+  -webkit-text-fill-color:transparent;
+  filter:drop-shadow(0 0 14px rgba(129,140,248,.28));
+}
+
+.logo:after{
+  content:"";
+  position:absolute;
+  left:72px;
+  right:12px;
+  bottom:7px;
+  height:2px;
+  border-radius:999px;
+  background:linear-gradient(90deg,#6366f1,#ec4899);
+  opacity:.9;
 }
 
 h1{
@@ -239,7 +275,7 @@ h1{
 
   text-align:center;
 
-  color:#64748b;
+  color:#cbd5e1;
 
   font-size:15px;
 
@@ -262,7 +298,7 @@ h1{
 
   font-weight:600;
 
-  color:#334155;
+  color:#e5e7eb;
 }
 
 .input-group input{
@@ -273,9 +309,10 @@ h1{
 
   border-radius:14px;
 
-  border:1px solid #e2e8f0;
+  border:1px solid rgba(148,163,184,.24);
 
-  background:white;
+  background:rgba(2,6,23,.52);
+  color:#f8fafc;
 
   outline:none;
 
@@ -284,11 +321,11 @@ h1{
 
 .input-group input:focus{
 
-  border-color:#6366f1;
+  border-color:#a78bfa;
 
   box-shadow:
     0 0 0 4px
-    rgba(99,102,241,0.12);
+    rgba(167,139,250,.14);
 }
 
 .login-btn{
@@ -337,14 +374,14 @@ h1{
 
   text-align:center;
 
-  color:#64748b;
+  color:#cbd5e1;
 
   font-size:14px;
 }
 
 .footer a{
 
-  color:#6366f1;
+  color:#c4b5fd;
 
   text-decoration:none;
 
@@ -353,9 +390,10 @@ h1{
 
 .error{
 
-  background:#fee2e2;
+  background:rgba(239,68,68,.12);
 
-  color:#b91c1c;
+  color:#fecaca;
+  border:1px solid rgba(239,68,68,.3);
 
   padding:14px;
 
@@ -366,11 +404,64 @@ h1{
   font-size:14px;
 }
 
+.page-actions{
+  position:fixed;
+  top:18px;
+  right:18px;
+  display:flex;
+  align-items:center;
+  gap:10px;
+  z-index:50;
+}
+
+.home-link{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-height:42px;
+  padding:0 15px;
+  border-radius:12px;
+  background:rgba(15,23,42,.72);
+  border:1px solid rgba(129,140,248,.24);
+  color:#e5e7eb;
+  text-decoration:none;
+  font-weight:700;
+  box-shadow:0 12px 28px rgba(15,23,42,.08);
+}
+
+.page-actions .site-menu-trigger{
+  background:rgba(15,23,42,.72);
+  color:#e5e7eb;
+  border-color:rgba(129,140,248,.24);
+}
+
+@media(max-width:900px){
+  .home-link{
+    display:none;
+  }
+
+  .page-actions{
+    top:14px;
+    right:14px;
+  }
+}
+
 </style>
 
 </head>
 
 <body>
+
+<div class="page-actions">
+  <a class="home-link" href="index.php">Home</a>
+  <button class="site-menu-trigger" type="button" aria-label="Open menu" aria-expanded="false">
+    <span></span>
+    <span></span>
+    <span></span>
+  </button>
+</div>
+
+<?php include_once __DIR__ . '/site-menu.php'; ?>
 
 <div class="bg-circle bg1"></div>
 <div class="bg-circle bg2"></div>
@@ -379,14 +470,15 @@ h1{
 
 <div class="card">
 
-<div class="logo">
+<a class="logo" href="index.php" aria-label="Vani AI home">
 
 <img
-src="images/logo.png"
+src="images/logo_img.png"
 alt="Vani AI"
 >
+<span>VANI AI</span>
 
-</div>
+</a>
 
 <h1>Welcome Back</h1>
 

@@ -32,8 +32,11 @@ body{
 }
 
 body.dark{
-  background:linear-gradient(135deg,#020617,#111827,#312e81);
-  color:#e5e7eb;
+  background:
+    radial-gradient(circle at top left,rgba(99,102,241,.34),transparent 34%),
+    radial-gradient(circle at 85% 10%,rgba(236,72,153,.24),transparent 28%),
+    linear-gradient(135deg,#020617 0%,#08111f 46%,#111827 100%);
+  color:#f8fafc;
 }
 
 /* =========================
@@ -62,8 +65,9 @@ nav{
 }
 
 .logo{
-  display:flex;
+  display:inline-flex;
   align-items:center;
+  text-decoration:none;
 }
 
 .logo img{
@@ -72,8 +76,58 @@ nav{
   transition:0.3s ease;
 }
 
-.logo img:hover{
+.logo:hover img{
   transform:scale(1.05);
+}
+
+.logo-dark{
+  display:none;
+  align-items:center;
+  gap:12px;
+  position:relative;
+  padding:7px 10px 7px 6px;
+  border-radius:16px;
+  background:linear-gradient(135deg,rgba(99,102,241,.12),rgba(236,72,153,.1));
+  border:1px solid rgba(129,140,248,.18);
+}
+
+.logo-dark img{
+  width:54px;
+  height:54px;
+  object-fit:contain;
+  filter:drop-shadow(0 0 18px rgba(99,102,241,.7)) drop-shadow(0 0 24px rgba(236,72,153,.28));
+}
+
+.logo-dark span{
+  background:linear-gradient(90deg,#ffffff,#c4b5fd 48%,#f9a8d4);
+  -webkit-background-clip:text;
+  -webkit-text-fill-color:transparent;
+  font-size:23px;
+  font-weight:800;
+  letter-spacing:0;
+  line-height:1;
+  white-space:nowrap;
+  filter:drop-shadow(0 0 14px rgba(129,140,248,.28));
+}
+
+.logo-dark:after{
+  content:"";
+  position:absolute;
+  left:68px;
+  right:12px;
+  bottom:7px;
+  height:2px;
+  border-radius:999px;
+  background:linear-gradient(90deg,#6366f1,#ec4899);
+  opacity:.9;
+}
+
+body.dark .logo-light{
+  display:none;
+}
+
+body.dark .logo-dark{
+  display:flex;
 }
 
 .nav-links{
@@ -380,6 +434,14 @@ footer{
     font-size:34px;
   }
 
+  .nav-a1{
+    display:none;
+  }
+
+  .user-box{
+    display:none;
+  }
+
 }
 
 /* =========================
@@ -400,6 +462,16 @@ footer{
     height:80px;
       margin-right: 220px;
         margin-top: -20px;
+  }
+
+  .logo-dark img{
+    width:46px;
+    height:46px;
+    margin:0;
+  }
+
+  .logo-dark span{
+    font-size:20px;
   }
 
   .nav-links{
@@ -541,6 +613,24 @@ footer{
   cursor:pointer;
 }
 
+.nav-menu-btn{
+  display:inline-flex;
+  align-items:center;
+  width:44px;
+  padding:0;
+  gap:5px;
+  flex-direction:column;
+  justify-content:center;
+}
+
+.nav-menu-btn span{
+  display:block;
+  width:20px;
+  height:2px;
+  border-radius:999px;
+  background:currentColor;
+}
+
 .nav-menu-btn:hover,.theme-btn:hover,.nav-a1:hover{
   color:#4f46e5;
   transform:translateY(-1px);
@@ -633,7 +723,6 @@ footer{
 
 body.dark .hero-badge,
 body.dark .card,
-body.dark .cta,
 body.dark .nav-a1,
 body.dark .nav-menu-btn,
 body.dark .theme-btn,
@@ -643,17 +732,59 @@ body.dark .user-box{
   color:#e5e7eb;
 }
 
+body.dark .hero-badge{
+  background:rgba(15,23,42,.78);
+  border-color:rgba(129,140,248,.34);
+  color:#c4b5fd;
+  box-shadow:0 14px 36px rgba(79,70,229,.18);
+}
+
+body.dark .card{
+  background:linear-gradient(145deg,rgba(15,23,42,.88),rgba(30,41,59,.7));
+  border-color:rgba(129,140,248,.24);
+  box-shadow:0 22px 55px rgba(0,0,0,.32), inset 0 1px 0 rgba(255,255,255,.04);
+}
+
+body.dark .card:hover{
+  box-shadow:0 26px 70px rgba(79,70,229,.22), inset 0 1px 0 rgba(255,255,255,.06);
+}
+
 body.dark .hero p,
 body.dark .card p,
-body.dark .feature-list,
+body.dark .feature-list li,
 body.dark .cta p,
 body.dark footer{
   color:#cbd5e1;
 }
 
+body.dark .card h2,
+body.dark .side-menu-head h3{
+  color:#f8fafc;
+}
+
+body.dark .secondary-btn{
+  background:rgba(15,23,42,.8);
+  border-color:rgba(129,140,248,.34);
+  color:#f8fafc;
+  box-shadow:0 16px 36px rgba(2,6,23,.28);
+}
+
+body.dark .download-button,
+body.dark .primary-btn{
+  box-shadow:0 18px 42px rgba(236,72,153,.22);
+}
+
+body.dark .cta{
+  background:
+    radial-gradient(circle at top left,rgba(255,255,255,.22),transparent 32%),
+    linear-gradient(135deg,#4f46e5,#db2777);
+  box-shadow:0 24px 72px rgba(79,70,229,.28);
+}
+
 body.dark .side-menu{
-  background:rgba(15,23,42,.98);
-  border-color:rgba(148,163,184,.22);
+  background:linear-gradient(180deg,rgba(15,23,42,.98),rgba(30,41,59,.98));
+  border-color:rgba(129,140,248,.3);
+  box-shadow:-26px 0 80px rgba(2,6,23,.55);
 }
 
 body.dark .menu-close,
@@ -723,12 +854,37 @@ body.dark .side-menu-link.secondary{
 }
 @media(max-width:768px){
 
+  .nav-inner{
+    flex-direction:row;
+    justify-content:space-between;
+  }
+
+  .logo img{
+    height:64px;
+    margin:0;
+  }
+
+  .logo{
+    max-width:58%;
+  }
+
+  .logo-light{
+    max-width:100%;
+    height:auto;
+  }
+
+  .logo-dark img{
+    width:46px;
+    height:46px;
+  }
+
+  .logo-dark span{
+    font-size:20px;
+  }
+
   .user-box{
     padding:8px 10px;
-    max-width: 155px;
-    margin-right: -150px;
-    margin-top: -115px;
-    margin-left: 60px;
+    max-width: 170px;
   }
 
   .user-box span{
@@ -742,27 +898,38 @@ body.dark .side-menu-link.secondary{
   }
 
   .nav-right{
-    justify-content:center;
-    flex-wrap:wrap;
+    justify-content:flex-end;
+    flex-wrap:nowrap;
   }
 
-  .theme-btn,.nav-menu-btn,.nav-a1,.nav-btn1{
+  .theme-btn,.nav-a1,.nav-btn1{
     min-height:40px;
     padding:0 12px;
     font-size:13px;
+  }
+
+  .nav-menu-btn{
+    display:inline-flex;
+    min-width:42px;
+    min-height:40px;
+    padding:0;
   }
 }
 </style>
 </head>
 
-<body>
+<body class="dark">
 <nav>
 
   <div class="container nav-inner">
 
-    <div class="logo">
-      <img src="images/logo.png" alt="Vani AI Logo">
-    </div>
+    <a class="logo" href="index.php" aria-label="Vani AI home">
+      <img class="logo-light" src="images/logo.png" alt="Vani AI Logo">
+      <span class="logo-dark" aria-hidden="true">
+        <img src="images/logo_img.png" alt="">
+        <span>VANI AI</span>
+      </span>
+    </a>
 
    <div class="nav-right">
 
@@ -779,12 +946,20 @@ body.dark .side-menu-link.secondary{
     </span>
 	 <a href="logout.php" class="nav-btn">Logout</a>
   </div>
+  <button class="nav-menu-btn" type="button" id="menuToggle" aria-label="Open menu" aria-expanded="false">
+    <span></span>
+    <span></span>
+    <span></span>
+  </button>
 
 <?php else: ?>
 
   <a href="login.php" class="nav-a1">Login</a>
-  <button class="theme-btn" type="button" id="themeToggle">Dark / Bright</button>
-  <button class="nav-menu-btn" type="button" id="menuToggle" aria-label="Open menu" aria-expanded="false">Menu</button>
+  <button class="nav-menu-btn" type="button" id="menuToggle" aria-label="Open menu" aria-expanded="false">
+    <span></span>
+    <span></span>
+    <span></span>
+  </button>
 
 <?php endif; ?>
 
@@ -801,11 +976,18 @@ body.dark .side-menu-link.secondary{
     <button class="menu-close" type="button" id="menuClose" aria-label="Close menu">×</button>
   </div>
   <div class="side-menu-links">
+    <button class="theme-btn" type="button" id="themeToggle">Dark / Bright</button>
+    <a class="side-menu-link secondary" href="index.php">Home <span>→</span></a>
     <a class="side-menu-link" href="subscription.php">Subscription Plans <span>→</span></a>
     <a class="side-menu-link secondary" href="#products">Products <span>→</span></a>
-    <a class="side-menu-link" href="#products">Get Started <span>→</span></a>
-    <a class="side-menu-link secondary" href="login.php">Login <span>→</span></a>
-    <a class="side-menu-link secondary" href="signup.php">Create Account <span>→</span></a>
+    <a class="side-menu-link secondary" href="terms.php">Terms & Conditions <span>→</span></a>
+    <a class="side-menu-link secondary" href="contact.php">Contact <span>→</span></a>
+    <?php if(is_authenticated_user()): ?>
+      <a class="side-menu-link secondary" href="dashboard.php">Dashboard <span>→</span></a>
+      <a class="side-menu-link secondary" href="logout.php">Logout <span>→</span></a>
+    <?php else: ?>
+      <a class="side-menu-link secondary" href="login.php">Login <span>→</span></a>
+    <?php endif; ?>
   </div>
 </aside>
 
@@ -950,15 +1132,21 @@ function setMenu(open) {
 function setTheme(mode) {
   const dark = mode === "dark";
   document.body.classList.toggle("dark", dark);
-  if (themeToggle) themeToggle.setAttribute("aria-pressed", String(dark));
+  if (themeToggle) {
+    themeToggle.setAttribute("aria-pressed", String(dark));
+    themeToggle.textContent = dark ? "Bright Mode" : "Dark Mode";
+  }
   localStorage.setItem("vani-index-theme", dark ? "dark" : "bright");
 }
 
-setTheme(localStorage.getItem("vani-index-theme") || "bright");
+setTheme(localStorage.getItem("vani-index-theme") || "dark");
 
 menuToggle?.addEventListener("click", () => setMenu(true));
 menuClose?.addEventListener("click", () => setMenu(false));
 menuOverlay?.addEventListener("click", () => setMenu(false));
+sideMenu?.querySelectorAll("a").forEach(link => {
+  link.addEventListener("click", () => setMenu(false));
+});
 document.addEventListener("keydown", event => {
   if (event.key === "Escape") setMenu(false);
 });
