@@ -23,6 +23,7 @@ function billing_plans(): array {
                 'email_otp' => true,
                 'mobile_otp' => true,
                 'whatsapp_redirect' => true,
+                'webhook_support' => true,
                 'export_reports' => false,
                 'partial_analytics' => false,
                 'advanced_analytics' => false
@@ -36,6 +37,7 @@ function billing_plans(): array {
                 'email_otp' => true,
                 'mobile_otp' => true,
                 'whatsapp_redirect' => true,
+                'webhook_support' => true,
                 'export_reports' => false,
                 'partial_analytics' => true,
                 'advanced_analytics' => false
