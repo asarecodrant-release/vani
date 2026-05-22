@@ -1,6 +1,3 @@
-<?php
-require_once __DIR__ . '/session-auth.php';
-?>
 <style>
 .site-menu-trigger{
   display:inline-flex;
@@ -10,6 +7,7 @@ require_once __DIR__ . '/session-auth.php';
   gap:5px;
   width:42px;
   height:42px;
+  padding:0;
   border:1px solid rgba(129,140,248,.28);
   border-radius:12px;
   background:rgba(15,23,42,.72);
