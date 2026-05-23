@@ -543,6 +543,7 @@ for each row
 execute function public.set_updated_at();
 
 alter table public.chatbot_settings enable row level security;
+alter table public.chatbot_signups enable row level security;
 alter table public.chatbot_conversations enable row level security;
 alter table public.chatbot_sessions enable row level security;
 alter table public.customer_profiles enable row level security;
@@ -560,6 +561,35 @@ drop policy if exists "dashboard settings readable" on public.chatbot_settings;
 create policy "dashboard settings readable"
 on public.chatbot_settings
 for select
+to anon, authenticated
+using (true);
+
+drop policy if exists "dashboard chatbot signups readable" on public.chatbot_signups;
+create policy "dashboard chatbot signups readable"
+on public.chatbot_signups
+for select
+to anon, authenticated
+using (true);
+
+drop policy if exists "dashboard chatbot signups insertable" on public.chatbot_signups;
+create policy "dashboard chatbot signups insertable"
+on public.chatbot_signups
+for insert
+to anon, authenticated
+with check (true);
+
+drop policy if exists "dashboard chatbot signups updatable" on public.chatbot_signups;
+create policy "dashboard chatbot signups updatable"
+on public.chatbot_signups
+for update
+to anon, authenticated
+using (true)
+with check (true);
+
+drop policy if exists "dashboard chatbot signups deletable" on public.chatbot_signups;
+create policy "dashboard chatbot signups deletable"
+on public.chatbot_signups
+for delete
 to anon, authenticated
 using (true);
 
@@ -892,6 +922,7 @@ to anon, authenticated
 using (true);
 
 grant select, insert, update, delete on public.chatbot_settings to anon, authenticated;
+grant select, insert, update, delete on public.chatbot_signups to anon, authenticated;
 grant select, insert, update, delete on public.chatbot_conversations to anon, authenticated;
 grant select, insert, update, delete on public.chatbot_sessions to anon, authenticated;
 grant select, insert, update, delete on public.customer_profiles to anon, authenticated;

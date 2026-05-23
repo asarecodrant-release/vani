@@ -2503,9 +2503,12 @@ if ($action === "delete_chatbot") {
 
     $deleted = ($res['status'] >= 200 && $res['status'] < 300 && empty($check['data']));
     if (!$deleted) {
+        $permissionDenied = in_array((int)$res['status'], [401, 403], true);
         echo json_encode([
             "success" => false,
-            "message" => "Chatbot was not deleted from the database",
+            "message" => $permissionDenied
+                ? "Chatbot could not be deleted because Supabase delete permission is missing for chatbot_signups. Run the latest supabase-dashboard-schema.sql."
+                : "Chatbot was not deleted from the database",
             "debug" => $res
         ]);
         exit;

@@ -795,6 +795,32 @@ function widget_last_verification_time(array $lead, string $metadataKey): int {
     return strtotime((string)($lead['created_at'] ?? '')) ?: 0;
 }
 
+function widget_wallet_lead_charge_note(string $chargeKey): string {
+    if (strpos($chargeKey, 'reactivated_') === 0) {
+        return 'This person had not verified again for the last 30 days, so this is billed as a fresh/reactivated lead.';
+    }
+    if (strpos($chargeKey, 'repeat_') === 0) {
+        return 'Repeat verification within 30 days.';
+    }
+    return 'Fresh lead verification.';
+}
+
+function widget_wallet_lead_charge_description(string $channel, string $chargeKey): string {
+    $labels = [
+        'fresh_email_lead' => 'Fresh Email OTP Lead',
+        'repeat_email_lead' => 'Repeat Email OTP Verification',
+        'reactivated_email_lead' => 'Reactivated Email OTP Lead',
+        'fresh_mobile_lead' => 'Fresh Mobile OTP Lead',
+        'repeat_mobile_lead' => 'Repeat Mobile OTP Verification',
+        'reactivated_mobile_lead' => 'Reactivated Mobile OTP Lead'
+    ];
+    $description = $channel . ' OTP verification - ' . ($labels[$chargeKey] ?? str_replace('_', ' ', $chargeKey));
+    if (strpos($chargeKey, 'reactivated_') === 0) {
+        $description .= ' (not verified for last 30 days)';
+    }
+    return $description;
+}
+
 function widget_charge_email_otp_lead(string $customerId, array $lead): array {
     $meta = is_array($lead['metadata'] ?? null) ? $lead['metadata'] : [];
     if (!empty($meta['wallet_email_otp_charged_at'])) {
@@ -816,10 +842,11 @@ function widget_charge_email_otp_lead(string $customerId, array $lead): array {
         $chargeKey = ($lastVerified && (time() - $lastVerified) > 30 * 86400) ? 'reactivated_email_lead' : 'repeat_email_lead';
     }
     $amountPaise = billing_wallet_charge_paise($planId, $chargeKey);
-    $charge = widget_debit_wallet($email, $customerId, $amountPaise, "Email OTP verification - " . str_replace('_', ' ', $chargeKey), "lead_email_otp", $leadId, [
+    $charge = widget_debit_wallet($email, $customerId, $amountPaise, widget_wallet_lead_charge_description('Email', $chargeKey), "lead_email_otp", $leadId, [
         "plan_id" => $planId,
         "charge_key" => $chargeKey,
-        "lead_email" => $leadEmail
+        "lead_email" => $leadEmail,
+        "billing_note" => widget_wallet_lead_charge_note($chargeKey)
     ]);
     if (!$charge['success']) {
         return $charge;
@@ -827,6 +854,7 @@ function widget_charge_email_otp_lead(string $customerId, array $lead): array {
     $meta['wallet_email_otp_charged_at'] = gmdate('Y-m-d\TH:i:s\Z');
     $meta['wallet_email_otp_charge_key'] = $chargeKey;
     $meta['wallet_email_otp_amount_paise'] = $amountPaise;
+    $meta['wallet_email_otp_charge_note'] = widget_wallet_lead_charge_note($chargeKey);
     supabase("PATCH", "lead_generation_leads?id=eq." . urlencode($leadId), [
         "metadata" => (object)$meta
     ]);
@@ -858,10 +886,11 @@ function widget_charge_mobile_otp_lead(string $customerId, array $lead): array {
         $chargeKey = ($lastVerified && (time() - $lastVerified) > 30 * 86400) ? 'reactivated_mobile_lead' : 'repeat_mobile_lead';
     }
     $amountPaise = billing_wallet_charge_paise($planId, $chargeKey);
-    $charge = widget_debit_wallet($email, $customerId, $amountPaise, "Mobile OTP verification - " . str_replace('_', ' ', $chargeKey), "lead_mobile_otp", $leadId, [
+    $charge = widget_debit_wallet($email, $customerId, $amountPaise, widget_wallet_lead_charge_description('Mobile', $chargeKey), "lead_mobile_otp", $leadId, [
         "plan_id" => $planId,
         "charge_key" => $chargeKey,
-        "lead_phone" => $leadPhone
+        "lead_phone" => $leadPhone,
+        "billing_note" => widget_wallet_lead_charge_note($chargeKey)
     ]);
     if (!$charge['success']) {
         return $charge;
@@ -869,6 +898,7 @@ function widget_charge_mobile_otp_lead(string $customerId, array $lead): array {
     $meta['wallet_mobile_otp_charged_at'] = gmdate('Y-m-d\TH:i:s\Z');
     $meta['wallet_mobile_otp_charge_key'] = $chargeKey;
     $meta['wallet_mobile_otp_amount_paise'] = $amountPaise;
+    $meta['wallet_mobile_otp_charge_note'] = widget_wallet_lead_charge_note($chargeKey);
     supabase("PATCH", "lead_generation_leads?id=eq." . urlencode($leadId), [
         "metadata" => (object)$meta
     ]);
@@ -929,6 +959,77 @@ function widget_save_lead(string $customerId, string $userId, array $fields): ar
     return $res;
 }
 
+function widget_lead_notification_charge_key(array $lead, string $eventType): string {
+    $meta = widget_lead_metadata($lead);
+    if ($eventType === 'mobile') {
+        return (string)($meta['wallet_mobile_otp_charge_key'] ?? '');
+    }
+    if ($eventType === 'email') {
+        return (string)($meta['wallet_email_otp_charge_key'] ?? '');
+    }
+    return (string)($meta['wallet_email_otp_charge_key'] ?? $meta['wallet_mobile_otp_charge_key'] ?? '');
+}
+
+function widget_lead_notification_type_label(string $chargeKey, string $eventType): string {
+    if (strpos($chargeKey, 'reactivated_') === 0) {
+        return 'Reactivated fresh lead';
+    }
+    if (strpos($chargeKey, 'fresh_') === 0 || $chargeKey === '') {
+        return 'Fresh lead';
+    }
+    return $eventType === 'mobile' ? 'Mobile lead' : 'Email lead';
+}
+
+function widget_lead_notification_note(string $chargeKey): string {
+    if (strpos($chargeKey, 'reactivated_') === 0) {
+        return 'This person has not verified for the last 30 days, so Vani treated and billed this as a fresh/reactivated lead.';
+    }
+    if (strpos($chargeKey, 'fresh_') === 0 || $chargeKey === '') {
+        return 'This is a fresh lead captured by your Vani chatbot.';
+    }
+    return 'This was a repeat lead within 30 days.';
+}
+
+function widget_lead_notification_html(array $lead, string $eventType, string $leadTypeLabel, string $note): string {
+    $leadEmail = trim((string)($lead['email'] ?? ''));
+    $leadPhone = trim((string)($lead['phone_number'] ?? ''));
+    $sourceUrl = trim((string)($lead['source_url'] ?? ''));
+    $createdAt = trim((string)($lead['created_at'] ?? gmdate('Y-m-d\TH:i:s\Z')));
+    $channel = $eventType === 'mobile' ? 'Mobile OTP' : ($eventType === 'identity' ? 'Identity verification' : 'Email OTP');
+
+    $rows = '';
+    foreach ([
+        'Lead type' => $leadTypeLabel,
+        'Channel' => $channel,
+        'Email' => $leadEmail,
+        'Mobile' => $leadPhone,
+        'Source' => $sourceUrl,
+        'Captured at' => $createdAt
+    ] as $label => $value) {
+        if ($value === '') {
+            continue;
+        }
+        $rows .= '<tr><td style="padding:12px 0;color:#64748b;font-size:13px;font-weight:700;border-bottom:1px solid #e5e7eb;">' . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . '</td><td style="padding:12px 0;color:#0f172a;font-size:14px;font-weight:800;text-align:right;border-bottom:1px solid #e5e7eb;word-break:break-word;">' . htmlspecialchars($value, ENT_QUOTES, 'UTF-8') . '</td></tr>';
+    }
+
+    return '<!doctype html><html><body style="margin:0;padding:0;background:#f6f8fc;font-family:Arial,sans-serif;color:#0f172a;">'
+        . '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f6f8fc;padding:24px 12px;"><tr><td align="center">'
+        . '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;background:#ffffff;border:1px solid #e5e7eb;border-radius:20px;overflow:hidden;box-shadow:0 20px 48px rgba(15,23,42,.08);">'
+        . '<tr><td style="padding:26px 28px;background:linear-gradient(135deg,#4f46e5,#0891b2);color:#ffffff;">'
+        . '<div style="font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;opacity:.86;">Vani AI Lead Alert</div>'
+        . '<h1 style="margin:10px 0 6px;font-size:28px;line-height:1.2;">Congratulations, you have a new lead</h1>'
+        . '<p style="margin:0;font-size:15px;line-height:1.6;opacity:.92;">Your chatbot captured a qualified visitor contact.</p>'
+        . '</td></tr>'
+        . '<tr><td style="padding:26px 28px;">'
+        . '<div style="display:inline-block;padding:7px 11px;border-radius:999px;background:#eef2ff;color:#4f46e5;font-size:12px;font-weight:800;">' . htmlspecialchars($leadTypeLabel, ENT_QUOTES, 'UTF-8') . '</div>'
+        . '<p style="margin:18px 0 18px;color:#334155;font-size:15px;line-height:1.7;">' . htmlspecialchars($note, ENT_QUOTES, 'UTF-8') . '</p>'
+        . '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;">' . $rows . '</table>'
+        . '<div style="margin-top:22px;padding:14px 16px;border-radius:14px;background:#ecfeff;border:1px solid #bae6fd;color:#164e63;font-size:14px;line-height:1.6;">Follow up quickly while the visitor intent is fresh.</div>'
+        . '</td></tr>'
+        . '<tr><td style="padding:18px 28px;background:#f8fafc;color:#64748b;font-size:12px;line-height:1.6;">This email was sent by Vani AI from Codrant because lead notification is enabled for your chatbot.</td></tr>'
+        . '</table></td></tr></table></body></html>';
+}
+
 function widget_notify_lead_by_email(string $customerId, array $lead, string $eventType = 'lead'): bool {
     $leadId = (int)($lead['id'] ?? 0);
     if ($leadId) {
@@ -955,6 +1056,10 @@ function widget_notify_lead_by_email(string $customerId, array $lead, string $ev
     }
 
     $meta = widget_lead_metadata($lead);
+    $chargeKey = widget_lead_notification_charge_key($lead, $eventType);
+    if (strpos($chargeKey, 'repeat_') === 0) {
+        return false;
+    }
     $flag = $eventType . '_notification_email_sent';
     if (widget_bool($meta[$flag] ?? false)) {
         return false;
@@ -971,25 +1076,10 @@ function widget_notify_lead_by_email(string $customerId, array $lead, string $ev
     }
 
     require_once __DIR__ . '/email.php';
-    if ($eventType === 'identity') {
-        $subject = "New verified lead captured";
-        $html = "<p>A lead completed identity verification.</p>";
-    } elseif ($eventType === 'mobile') {
-        $subject = "New lead mobile captured";
-        $html = "<p>A lead shared their mobile number: <strong>" . htmlspecialchars($leadPhone) . "</strong></p>";
-    } else {
-        $subject = "New lead email captured";
-        $html = "<p>A lead shared their email: <strong>" . htmlspecialchars($leadEmail) . "</strong></p>";
-    }
-    if ($leadEmail !== '') {
-        $html .= "<p>Email: " . htmlspecialchars($leadEmail) . "</p>";
-    }
-    if ($leadPhone !== '') {
-        $html .= "<p>Phone: " . htmlspecialchars($leadPhone) . "</p>";
-    }
-    if (!empty($lead['source_url'])) {
-        $html .= "<p>Source: " . htmlspecialchars((string)$lead['source_url']) . "</p>";
-    }
+    $leadTypeLabel = widget_lead_notification_type_label($chargeKey, $eventType);
+    $note = widget_lead_notification_note($chargeKey);
+    $subject = "Congratulations, new " . strtolower($leadTypeLabel) . " captured";
+    $html = widget_lead_notification_html($lead, $eventType, $leadTypeLabel, $note);
 
     $sent = sendBrevoEmail($notificationEmail, $subject, $html);
     if ($sent) {

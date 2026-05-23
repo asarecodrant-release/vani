@@ -987,7 +987,9 @@ body.dark .panel{border-color:var(--line)}
 .overview-hero p{color:var(--muted);line-height:1.7}
 .bot-picker{display:grid;gap:10px;padding:18px;border-radius:18px;background:rgba(255,255,255,.58);border:1px solid var(--line)}
 body.dark .bot-picker{background:rgba(15,23,42,.56)}
+.bot-picker-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .bot-picker label,.field label{font-size:13px;font-weight:700;color:var(--muted)}
+.delete-bot-mini{min-height:30px;border-radius:9px;padding:0 9px;font-size:12px;white-space:nowrap}
 select,input,textarea{
   width:100%;border:1px solid var(--line);background:var(--panel-strong);color:var(--ink);
   border-radius:12px;padding:12px 13px;outline:none;
@@ -1388,7 +1390,10 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
             <p>You are currently configuring the bot for the mentioned website.</p>
           </div>
           <form class="bot-picker" method="get" action="dashboard.php">
-            <label for="bot">Select Website bot</label>
+            <div class="bot-picker-head">
+              <label for="bot">Select Website bot</label>
+              <button class="danger-btn delete-bot-mini" type="button" id="deleteChatbotBtn" data-bot-name="<?php echo h($botName); ?>">Delete</button>
+            </div>
             <select id="bot" name="bot" onchange="this.form.submit()">
               <?php if (empty($bots)): ?>
                 <option value="">No bots available</option>
@@ -1455,11 +1460,6 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
             <h3>Copy embed script</h3>
             <p>Install this bot on your website with one script tag.</p>
             <button class="pill-btn copy-btn" type="button" data-copy="<?php echo h($embedCode); ?>">Copy script</button>
-          </div>
-          <div class="panel action-card danger-zone">
-            <h3>Delete chatbot</h3>
-            <p>Permanently delete this chatbot and its related setup, FAQs, conversations, leads, API keys, and support tickets.</p>
-            <button class="danger-btn" type="button" id="deleteChatbotBtn" data-bot-name="<?php echo h($botName); ?>">Delete chatbot</button>
           </div>
           <!-- Settings shortcut hidden while Bot Settings tab is hidden; keep this code for later.
           <div class="panel action-card">
@@ -3962,6 +3962,7 @@ document.getElementById("deleteChatbotBtn")?.addEventListener("click", async eve
   }
 
   const button = event.currentTarget;
+  const originalText = button.textContent;
   button.disabled = true;
   button.textContent = "Deleting...";
   const response = await fetch("/api.php?action=delete_chatbot", {
@@ -3972,7 +3973,7 @@ document.getElementById("deleteChatbotBtn")?.addEventListener("click", async eve
   const data = await response.json().catch(() => ({}));
   if (!data.success) {
     button.disabled = false;
-    button.textContent = "Delete chatbot";
+    button.textContent = originalText;
     showToast(data.message || "Chatbot could not be deleted");
     return;
   }
