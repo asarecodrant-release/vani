@@ -9,6 +9,7 @@ create table if not exists public.chatbot_settings (
   bot_name text,
   welcome_message text default 'Hi, how can I help you today?',
   theme_color text default '#6366f1',
+  theme_pattern text default 'none',
   position text default 'right' check (position in ('left', 'right')),
   avatar_url text,
   language text default 'English',
@@ -53,6 +54,9 @@ alter table public.chatbot_settings
 
 alter table public.chatbot_settings
   add column if not exists faq_actions_enabled boolean not null default false;
+
+alter table public.chatbot_settings
+  add column if not exists theme_pattern text default 'none';
 
 create table if not exists public.chatbot_conversations (
   id bigserial primary key,

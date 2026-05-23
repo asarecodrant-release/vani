@@ -117,6 +117,28 @@
     return value === true || value === 1 || value === "1" || value === "true";
   }
 
+  function themeBackground() {
+    return config.theme_color || "#6366f1";
+  }
+
+  function themeAccent() {
+    const bg = themeBackground();
+    const match = String(bg).match(/#[0-9a-f]{6}/i);
+    return match ? match[0] : "#6366f1";
+  }
+
+  function patternBackground(pattern) {
+    if (!pattern || pattern === "none") return "";
+    if (pattern === "dots") return "radial-gradient(rgba(99,102,241,.18) 1px, transparent 1px)";
+    if (pattern === "grid") return "linear-gradient(rgba(99,102,241,.10) 1px, transparent 1px), linear-gradient(90deg, rgba(99,102,241,.10) 1px, transparent 1px)";
+    if (pattern === "diagonal") return "repeating-linear-gradient(45deg, rgba(99,102,241,.10) 0 2px, transparent 2px 10px)";
+    if (pattern === "waves") return "radial-gradient(ellipse at top, rgba(6,182,212,.16), transparent 45%), radial-gradient(ellipse at bottom, rgba(99,102,241,.16), transparent 48%)";
+    const num = Number(String(pattern).replace("pattern-", "")) || 1;
+    const angle = (num * 17) % 180;
+    const hue = (num * 37) % 360;
+    return `repeating-linear-gradient(${angle}deg, hsla(${hue},70%,55%,.10) 0 2px, transparent 2px ${8 + (num % 9)}px), radial-gradient(circle at ${20 + (num % 60)}% ${20 + ((num * 3) % 60)}%, hsla(${(hue + 80) % 360},70%,55%,.12), transparent 28%)`;
+  }
+
   function liveActionsEnabled() {
     return isEnabled(config.live_chat_actions_enabled) && isEnabled(config.billing?.live_chat_actions);
   }
@@ -320,7 +342,7 @@
       fontSize: "10px",
       fontWeight: "800",
       color: "#fff",
-      background: botAvatarUrl && !isUser ? "#fff" : `linear-gradient(135deg,${config.theme_color || "#6366f1"},#06b6d4)`,
+      background: botAvatarUrl && !isUser ? "#fff" : themeBackground(),
       border: botAvatarUrl && !isUser ? "1px solid #e2e8f0" : "0",
       boxShadow: "0 8px 18px rgba(15,23,42,.16)"
     });
@@ -332,7 +354,7 @@
       lineHeight: "1.5",
       whiteSpace: "pre-wrap",
       wordBreak: "break-word",
-      background: isUser ? `linear-gradient(135deg,${config.theme_color || "#6366f1"},#06b6d4)` : "rgba(255,255,255,.96)",
+      background: isUser ? themeBackground() : "rgba(255,255,255,.96)",
       color: isUser ? "#fff" : "#0f172a",
       border: isUser ? "0" : "1px solid #e2e8f0",
       boxShadow: isUser ? "0 10px 24px rgba(79,70,229,.22)" : "0 10px 26px rgba(15,23,42,.07)"
@@ -396,7 +418,7 @@
       fontSize: "10px",
       fontWeight: "800",
       color: "#fff",
-      background: botAvatarUrl ? "#fff" : `linear-gradient(135deg,${config.theme_color || "#6366f1"},#06b6d4)`,
+      background: botAvatarUrl ? "#fff" : themeBackground(),
       border: botAvatarUrl ? "1px solid #e2e8f0" : "0",
       boxShadow: "0 8px 18px rgba(15,23,42,.16)"
     });
@@ -464,7 +486,7 @@
           minHeight: "38px",
           border: "1px solid rgba(99,102,241,.22)",
           borderRadius: "14px",
-          background: `linear-gradient(135deg,${config.theme_color || "#6366f1"},#06b6d4)`,
+          background: themeBackground(),
           color: "#fff",
           cursor: "pointer",
           fontWeight: "800",
@@ -503,7 +525,7 @@
         width: "22px",
         height: "22px",
         borderRadius: "999px",
-        background: `linear-gradient(135deg,${config.theme_color || "#6366f1"},#06b6d4)`,
+        background: themeBackground(),
         color: "#fff",
         alignItems: "center",
         justifyContent: "center",
@@ -553,7 +575,7 @@
       });
       option.onmouseenter = () => {
         option.style.background = "#fff";
-        option.style.borderColor = config.theme_color || "#6366f1";
+        option.style.borderColor = themeAccent();
         option.style.boxShadow = "0 12px 28px rgba(15,23,42,.12)";
         option.style.transform = "translateY(-1px)";
       };
@@ -644,7 +666,7 @@
       return;
     }
 
-    const color = config.theme_color || "#6366f1";
+    const color = themeBackground();
     const position = config.position === "left" ? "left" : "right";
     const sideStyles = position === "left" ? {left: "20px"} : {right: "20px"};
     const greetingSideStyles = position === "left" ? {left: "90px"} : {right: "90px"};
@@ -829,6 +851,11 @@
     const suggestionsBox = box.querySelector("[data-vani-suggestions]");
     const whatsappAction = box.querySelector("[data-vani-whatsapp-action]");
     box.querySelector("[data-vani-title]").textContent = config.bot_name || "Chat Support";
+    const patternCss = patternBackground(config.theme_pattern || "none");
+    if (messages && patternCss) {
+      messages.style.backgroundImage = `${patternCss}, linear-gradient(180deg,#f8fafc 0%,#eef2ff 100%)`;
+      messages.style.backgroundSize = "18px 18px, cover";
+    }
     let debounce;
 
     addMessage(messages, greetingText, "bot");

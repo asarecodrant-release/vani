@@ -48,6 +48,10 @@ function first_value(array $row, array $keys, string $fallback = ''): string {
     return $fallback;
 }
 
+function dashboard_theme_color_input_value(string $value): string {
+    return preg_match('/^#[0-9a-f]{6}$/i', trim($value)) ? trim($value) : '#6366f1';
+}
+
 function dashboard_disable_paid_service_toggles(array $bots, string $reason): void {
     foreach ($bots as $bot) {
         $customerId = trim((string)($bot['customer_id'] ?? ''));
@@ -807,6 +811,9 @@ $chatOpenRate = $uniqueVisitorCount > 0 ? round(($sessionsOpened / max(1, $uniqu
 $maxDailyCount = !empty($dailyChartCounts) ? max($dailyChartCounts) : 0;
 $maxHourCount = !empty($hourChartCounts) ? max($hourChartCounts) : 0;
 $themeColor = first_value($selectedBot, ['theme_color'], '#6366f1');
+$themeColor = first_value($settings, ['theme_color'], $themeColor);
+$themeColorInputValue = dashboard_theme_color_input_value($themeColor);
+$themePattern = first_value($settings, ['theme_pattern'], 'none');
 $chatbotImage = first_value($settings, ['avatar_url'], $botImages[0] ?? '');
 $botName = first_value($settings, ['bot_name'], first_value($selectedBot, ['website_name'], 'Vani Bot'));
 $welcomeMessage = first_value($settings, ['welcome_message'], 'Hi, how can I help you today?');
@@ -1027,6 +1034,15 @@ body.dark .profile-photo{background:rgba(15,23,42,.44)}
 .section-body > .panel-actions{padding-top:16px}
 .swatches{display:flex;gap:10px;flex-wrap:wrap}
 .swatch{width:34px;height:34px;border-radius:10px;border:2px solid rgba(255,255,255,.8);box-shadow:0 4px 10px rgba(15,23,42,.12);cursor:pointer}
+.theme-designer{display:grid;gap:16px;padding:16px;border:1px solid var(--line);border-radius:18px;background:rgba(255,255,255,.42)}
+body.dark .theme-designer{background:rgba(15,23,42,.44)}
+.theme-preview-box{min-height:92px;border-radius:18px;border:1px solid var(--line);box-shadow:inset 0 1px 0 rgba(255,255,255,.26),0 16px 34px rgba(15,23,42,.12);display:grid;place-items:center;color:#fff;font-weight:900;text-shadow:0 1px 12px rgba(0,0,0,.36);overflow:hidden}
+.theme-controls{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.theme-color-grid,.pattern-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(42px,1fr));gap:8px}
+.theme-color-chip{height:42px;border-radius:12px;border:2px solid rgba(255,255,255,.85);cursor:pointer;box-shadow:0 7px 16px rgba(15,23,42,.13)}
+.pattern-grid{max-height:230px;overflow:auto;padding-right:3px}
+.pattern-chip{height:44px;border-radius:12px;border:1px solid var(--line);cursor:pointer;background-color:var(--panel-strong)}
+.theme-color-chip.active,.pattern-chip.active{outline:3px solid rgba(99,102,241,.24);border-color:rgba(99,102,241,.82)}
 .bot-image-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(72px,1fr));gap:10px}
 .bot-image-option{border:1px solid var(--line);background:var(--panel-strong);border-radius:14px;padding:8px;cursor:pointer;display:grid;place-items:center}
 .bot-image-option img{width:100%;aspect-ratio:1;object-fit:contain}
@@ -1231,7 +1247,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
   .section-head{align-items:flex-start;flex-direction:column;padding:16px 16px 0}
   .section-body{padding:16px}
   .overview-hero h2{font-size:28px}
-  .metrics,.quick-actions,.form-grid,.outside-faq-grid,.faq-action-grid,.lead-grid,.analytics-grid,.analytics-grid.two,.funnel,.pricing-grid,.security-grid{grid-template-columns:1fr}
+  .metrics,.quick-actions,.form-grid,.theme-controls,.outside-faq-grid,.faq-action-grid,.lead-grid,.analytics-grid,.analytics-grid.two,.funnel,.pricing-grid,.security-grid{grid-template-columns:1fr}
   .panel-actions{justify-content:stretch}
   .panel-actions .pill-btn,.panel-actions .ghost-btn,.panel-actions .danger-btn{width:100%}
   .user-menu{justify-content:space-between}
@@ -1434,8 +1450,50 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
             <div class="field"><label>Bot Name</label><input id="botNameInput" value="<?php echo h($botName); ?>"></div>
             <div class="field"><label>Position</label><select id="positionInput"><option <?php echo $position === 'right' ? 'selected' : ''; ?>>right</option><option <?php echo $position === 'left' ? 'selected' : ''; ?>>left</option></select></div>
             <div class="field full"><label>Welcome Message</label><textarea id="welcomeInput"><?php echo h($welcomeMessage); ?></textarea></div>
-            <div class="field"><label>Theme color</label><input id="themeColorInput" type="color" value="<?php echo h($themeColor); ?>"></div>
             <div class="field"><label>Language</label><select id="languageInput"><option><?php echo h($language); ?></option><option>English</option><option>Hindi</option><option>Spanish</option><option>French</option></select></div>
+            <div class="field full">
+              <label>Theme color</label>
+              <div class="theme-designer">
+                <input id="themeColorInput" type="hidden" value="<?php echo h($themeColor); ?>">
+                <input id="themePatternInput" type="hidden" value="<?php echo h($themePattern); ?>">
+                <div class="theme-preview-box" id="themePreviewBox" style="background:<?php echo h($themeColor); ?>">Selected theme</div>
+                <div class="theme-controls">
+                  <div class="field">
+                    <label>Solid color</label>
+                    <input id="themeSolidColorInput" type="color" value="<?php echo h($themeColorInputValue); ?>">
+                  </div>
+                  <div class="field">
+                    <label>Gradient type</label>
+                    <select id="themeGradientType"><option value="linear">Linear</option><option value="radial">Circular</option></select>
+                  </div>
+                  <div class="field">
+                    <label>Direction</label>
+                    <select id="themeGradientDirection"><option value="135deg">Diagonal</option><option value="90deg">Left to right</option><option value="180deg">Top to bottom</option><option value="45deg">Soft angle</option><option value="circle">Circle</option></select>
+                  </div>
+                  <div class="field">
+                    <label>Gradient colors</label>
+                    <div class="theme-color-grid">
+                      <input class="themeGradientColor" type="color" value="#6366f1">
+                      <input class="themeGradientColor" type="color" value="#06b6d4">
+                      <input class="themeGradientColor" type="color" value="#10b981">
+                      <input class="themeGradientColor" type="color" value="#f59e0b">
+                      <input class="themeGradientColor" type="color" value="#ef4444">
+                      <input class="themeGradientColor" type="color" value="#ec4899">
+                      <input class="themeGradientColor" type="color" value="#7c3aed">
+                      <input class="themeGradientColor" type="color" value="#111827">
+                    </div>
+                  </div>
+                </div>
+                <div class="field full">
+                  <label>Quick theme boxes</label>
+                  <div class="theme-color-grid" id="themeColorGrid"></div>
+                </div>
+                <div class="field full">
+                  <label>Pattern theme</label>
+                  <div class="pattern-grid" id="themePatternGrid"></div>
+                </div>
+              </div>
+            </div>
             <div class="field full">
               <label>Chatbot image</label>
               <?php if ($chatbotImage): ?>
@@ -1450,16 +1508,6 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                 <?php endforeach; ?>
               </div>
             </div>
-            <div class="field full">
-              <label>Quick colors</label>
-              <div class="swatches">
-                <button class="swatch" style="background:#6366f1" type="button" title="Indigo"></button>
-                <button class="swatch" style="background:#06b6d4" type="button" title="Cyan"></button>
-                <button class="swatch" style="background:#10b981" type="button" title="Green"></button>
-                <button class="swatch" style="background:#ec4899" type="button" title="Pink"></button>
-                <button class="swatch" style="background:#f59e0b" type="button" title="Amber"></button>
-              </div>
-            </div>
             <div class="panel-actions"><button class="pill-btn" type="button" id="saveSetupBtn">Save setup</button></div>
           </div>
         </div>
@@ -1468,59 +1516,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
       <section class="tab-panel" id="faqs">
         <div class="panel">
           <div class="section-head"><h3>FAQ Management</h3><span class="tag"><?php echo h($faqCount); ?>/<?php echo h($freeFaqLimit); ?> FAQs</span></div>
-          <div class="section-body">
-            <?php if ($faqFreezeActive): ?>
-              <div class="notice" style="margin-bottom:16px">
-                <strong><?php echo h($activePlan['name']); ?> FAQ limit active:</strong><br>
-                Your first <?php echo h($displayFaqLimit); ?> FAQs are active. <?php echo h($frozenFaqCount); ?> extra FAQs are frozen and saved here. Starter unfreezes 100, Growth unfreezes 300, and Business unfreezes all FAQs.
-              </div>
-            <?php endif; ?>
-            <form id="faqForm" class="form-grid">
-              <input type="hidden" id="faqCustomerId" value="<?php echo h($selectedBotId); ?>">
-              <div class="field"><label>Question</label><input id="faqQuestion" placeholder="What do you want customers to ask?"></div>
-              <div class="field"><label>Category</label><input id="faqCategory" placeholder="General"></div>
-              <div class="field full"><label>Answer</label><textarea id="faqAnswer" placeholder="Write a helpful answer"></textarea></div>
-              <div class="field full"><button class="pill-btn" type="submit">Add FAQ</button></div>
-            </form>
-          </div>
-          <div class="section-body" style="padding-top:0">
-            <div class="inline-row" style="margin-bottom:14px">
-              <input id="faqSearch" placeholder="Search FAQs">
-            </div>
-            <div class="table-wrap">
-              <table id="faqTable">
-                <thead><tr><th>Question</th><th>Answer</th><th>Category</th><th>Actions</th></tr></thead>
-                <tbody>
-                  <?php foreach ($faqs as $faq): ?>
-                    <?php $faqFrozen = $faqFreezeActive && empty($faqActiveIds[(string)($faq['id'] ?? '')]); ?>
-                    <tr data-faq-id="<?php echo h($faq['id'] ?? ''); ?>" <?php echo $faqFrozen ? 'data-frozen="true"' : ''; ?>>
-                      <td>
-                        <span class="faq-display"><?php echo h($faq['question'] ?? ''); ?> <?php if ($faqFrozen): ?><span class="tag bad">Frozen</span><?php endif; ?></span>
-                        <textarea class="faq-edit-field faq-question-input" aria-label="FAQ question"><?php echo h($faq['question'] ?? ''); ?></textarea>
-                      </td>
-                      <td>
-                        <span class="faq-display"><?php echo h($faq['answer'] ?? ''); ?></span>
-                        <textarea class="faq-edit-field faq-answer-input" aria-label="FAQ answer"><?php echo h($faq['answer'] ?? ''); ?></textarea>
-                      </td>
-                      <td>
-                        <span class="tag faq-display"><?php echo h($faq['category'] ?? 'General'); ?></span>
-                        <input class="faq-edit-field faq-category-input" value="<?php echo h($faq['category'] ?? 'General'); ?>" aria-label="FAQ category">
-                      </td>
-                      <td>
-                        <div class="faq-actions">
-                          <button class="ghost-btn faq-edit-btn" type="button">Edit</button>
-                          <button class="pill-btn faq-save-btn faq-edit-field" type="button">Save</button>
-                          <button class="ghost-btn faq-cancel-btn faq-edit-field" type="button">Cancel</button>
-                          <button class="danger-btn faq-delete-btn" type="button">Delete</button>
-                        </div>
-                      </td>
-                    </tr>
-                  <?php endforeach; ?>
-                </tbody>
-              </table>
-            </div>
-          </div>
-          <div class="section-body faq-action-section">
+          <div class="section-body faq-action-section" style="border-top:0;margin-top:0">
             <div class="inline-row" style="justify-content:space-between;gap:16px;margin-bottom:14px">
               <div>
                 <h3>FAQ Action Suggestions</h3>
@@ -1586,6 +1582,58 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                   </div>
                 </div>
               <?php endforeach; ?>
+            </div>
+          </div>
+          <div class="section-body">
+            <?php if ($faqFreezeActive): ?>
+              <div class="notice" style="margin-bottom:16px">
+                <strong><?php echo h($activePlan['name']); ?> FAQ limit active:</strong><br>
+                Your first <?php echo h($displayFaqLimit); ?> FAQs are active. <?php echo h($frozenFaqCount); ?> extra FAQs are frozen and saved here. Starter unfreezes 100, Growth unfreezes 300, and Business unfreezes all FAQs.
+              </div>
+            <?php endif; ?>
+            <form id="faqForm" class="form-grid">
+              <input type="hidden" id="faqCustomerId" value="<?php echo h($selectedBotId); ?>">
+              <div class="field"><label>Question</label><input id="faqQuestion" placeholder="What do you want customers to ask?"></div>
+              <div class="field"><label>Category</label><input id="faqCategory" placeholder="General"></div>
+              <div class="field full"><label>Answer</label><textarea id="faqAnswer" placeholder="Write a helpful answer"></textarea></div>
+              <div class="field full"><button class="pill-btn" type="submit">Add FAQ</button></div>
+            </form>
+          </div>
+          <div class="section-body" style="padding-top:0">
+            <div class="inline-row" style="margin-bottom:14px">
+              <input id="faqSearch" placeholder="Search FAQs">
+            </div>
+            <div class="table-wrap">
+              <table id="faqTable">
+                <thead><tr><th>Question</th><th>Answer</th><th>Category</th><th>Actions</th></tr></thead>
+                <tbody>
+                  <?php foreach ($faqs as $faq): ?>
+                    <?php $faqFrozen = $faqFreezeActive && empty($faqActiveIds[(string)($faq['id'] ?? '')]); ?>
+                    <tr data-faq-id="<?php echo h($faq['id'] ?? ''); ?>" <?php echo $faqFrozen ? 'data-frozen="true"' : ''; ?>>
+                      <td>
+                        <span class="faq-display"><?php echo h($faq['question'] ?? ''); ?> <?php if ($faqFrozen): ?><span class="tag bad">Frozen</span><?php endif; ?></span>
+                        <textarea class="faq-edit-field faq-question-input" aria-label="FAQ question"><?php echo h($faq['question'] ?? ''); ?></textarea>
+                      </td>
+                      <td>
+                        <span class="faq-display"><?php echo h($faq['answer'] ?? ''); ?></span>
+                        <textarea class="faq-edit-field faq-answer-input" aria-label="FAQ answer"><?php echo h($faq['answer'] ?? ''); ?></textarea>
+                      </td>
+                      <td>
+                        <span class="tag faq-display"><?php echo h($faq['category'] ?? 'General'); ?></span>
+                        <input class="faq-edit-field faq-category-input" value="<?php echo h($faq['category'] ?? 'General'); ?>" aria-label="FAQ category">
+                      </td>
+                      <td>
+                        <div class="faq-actions">
+                          <button class="ghost-btn faq-edit-btn" type="button">Edit</button>
+                          <button class="pill-btn faq-save-btn faq-edit-field" type="button">Save</button>
+                          <button class="ghost-btn faq-cancel-btn faq-edit-field" type="button">Cancel</button>
+                          <button class="danger-btn faq-delete-btn" type="button">Delete</button>
+                        </div>
+                      </td>
+                    </tr>
+                  <?php endforeach; ?>
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
@@ -3448,6 +3496,101 @@ document.querySelectorAll(".swatch").forEach(swatch => {
   });
 });
 
+const themePresets = [
+  "#6366f1","#06b6d4","#10b981","#ec4899","#f59e0b","#ef4444","#111827","#7c3aed",
+  "linear-gradient(135deg,#6366f1,#06b6d4)","linear-gradient(135deg,#10b981,#0ea5e9)","linear-gradient(135deg,#f97316,#ec4899)","linear-gradient(135deg,#111827,#6366f1)",
+  "linear-gradient(90deg,#4f46e5,#7c3aed,#ec4899)","linear-gradient(135deg,#0f172a,#0891b2,#22c55e)","linear-gradient(180deg,#f59e0b,#ef4444,#7c2d12)","radial-gradient(circle,#06b6d4,#4f46e5)",
+  "linear-gradient(135deg,#0f172a,#334155,#64748b,#06b6d4)","linear-gradient(135deg,#dc2626,#f97316,#facc15,#22c55e,#06b6d4,#2563eb,#7c3aed,#db2777)"
+];
+const patternStyles = {
+  none: "none",
+  dots: "radial-gradient(rgba(99,102,241,.22) 1px, transparent 1px)",
+  grid: "linear-gradient(rgba(99,102,241,.12) 1px, transparent 1px), linear-gradient(90deg, rgba(99,102,241,.12) 1px, transparent 1px)",
+  diagonal: "repeating-linear-gradient(45deg, rgba(99,102,241,.12) 0 2px, transparent 2px 10px)",
+  waves: "radial-gradient(ellipse at top, rgba(6,182,212,.18), transparent 45%), radial-gradient(ellipse at bottom, rgba(99,102,241,.18), transparent 48%)"
+};
+for (let i = 1; i <= 45; i++) {
+  const angle = (i * 17) % 180;
+  const hue = (i * 37) % 360;
+  patternStyles[`pattern-${i}`] = `repeating-linear-gradient(${angle}deg, hsla(${hue},70%,55%,.12) 0 2px, transparent 2px ${8 + (i % 9)}px), radial-gradient(circle at ${20 + (i % 60)}% ${20 + ((i * 3) % 60)}%, hsla(${(hue + 80) % 360},70%,55%,.14), transparent 28%)`;
+}
+
+function setThemeValue(value) {
+  const input = document.getElementById("themeColorInput");
+  const preview = document.getElementById("themePreviewBox");
+  if (input) input.value = value;
+  if (preview) preview.style.background = value;
+  document.querySelectorAll(".theme-color-chip").forEach(chip => chip.classList.toggle("active", chip.dataset.theme === value));
+}
+
+function buildGradientTheme() {
+  const type = document.getElementById("themeGradientType")?.value || "linear";
+  const direction = document.getElementById("themeGradientDirection")?.value || "135deg";
+  const colors = Array.from(document.querySelectorAll(".themeGradientColor")).map(input => input.value).filter(Boolean).slice(0, 8);
+  return type === "radial" ? `radial-gradient(${direction === "circle" ? "circle" : "ellipse"},${colors.join(",")})` : `linear-gradient(${direction},${colors.join(",")})`;
+}
+
+function applyPatternPreview(pattern) {
+  const preview = document.getElementById("themePreviewBox");
+  if (!preview) return;
+  const theme = document.getElementById("themeColorInput")?.value || "#6366f1";
+  const patternCss = patternStyles[pattern] || "none";
+  preview.style.backgroundImage = patternCss === "none" ? theme : `${patternCss}, ${theme}`;
+  preview.style.backgroundSize = pattern === "grid" || pattern === "dots" ? "18px 18px, 18px 18px, cover" : "cover";
+}
+
+function initThemeDesigner() {
+  const grid = document.getElementById("themeColorGrid");
+  const patternGrid = document.getElementById("themePatternGrid");
+  if (!grid || !patternGrid) return;
+  themePresets.forEach(theme => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "theme-color-chip";
+    button.dataset.theme = theme;
+    button.style.background = theme;
+    button.addEventListener("click", () => {
+      setThemeValue(theme);
+      applyPatternPreview(document.getElementById("themePatternInput")?.value || "none");
+    });
+    grid.appendChild(button);
+  });
+  Object.entries(patternStyles).forEach(([key, pattern]) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "pattern-chip";
+    button.dataset.pattern = key;
+    button.title = key;
+    button.style.backgroundImage = pattern === "none" ? "none" : pattern;
+    button.style.backgroundSize = "18px 18px, cover";
+    button.addEventListener("click", () => {
+      document.getElementById("themePatternInput").value = key;
+      document.querySelectorAll(".pattern-chip").forEach(chip => chip.classList.toggle("active", chip.dataset.pattern === key));
+      applyPatternPreview(key);
+    });
+    patternGrid.appendChild(button);
+  });
+  document.getElementById("themeSolidColorInput")?.addEventListener("input", event => {
+    setThemeValue(event.target.value);
+    applyPatternPreview(document.getElementById("themePatternInput")?.value || "none");
+  });
+  document.querySelectorAll(".themeGradientColor,#themeGradientType,#themeGradientDirection").forEach(control => {
+    control.addEventListener("input", () => {
+      setThemeValue(buildGradientTheme());
+      applyPatternPreview(document.getElementById("themePatternInput")?.value || "none");
+    });
+    control.addEventListener("change", () => {
+      setThemeValue(buildGradientTheme());
+      applyPatternPreview(document.getElementById("themePatternInput")?.value || "none");
+    });
+  });
+  setThemeValue(document.getElementById("themeColorInput")?.value || "#6366f1");
+  const currentPattern = document.getElementById("themePatternInput")?.value || "none";
+  document.querySelectorAll(".pattern-chip").forEach(chip => chip.classList.toggle("active", chip.dataset.pattern === currentPattern));
+  applyPatternPreview(currentPattern);
+}
+initThemeDesigner();
+
 document.querySelectorAll("input[name='dashboardBotImage']").forEach(input => {
   input.addEventListener("change", () => {
     const preview = document.getElementById("selectedBotImagePreview");
@@ -3775,6 +3918,7 @@ document.getElementById("saveSetupBtn")?.addEventListener("click", () => {
     bot_name: document.getElementById("botNameInput").value.trim(),
     welcome_message: document.getElementById("welcomeInput").value.trim(),
     theme_color: document.getElementById("themeColorInput").value,
+    theme_pattern: document.getElementById("themePatternInput")?.value || "none",
     avatar_url: document.querySelector("input[name='dashboardBotImage']:checked")?.value || "",
     position: document.getElementById("positionInput").value,
     language: document.getElementById("languageInput").value

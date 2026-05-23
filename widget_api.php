@@ -1315,6 +1315,7 @@ if ($action === "get_widget_config" || $action === "get_theme") {
         );
     }
     $themeColor = $settings['theme_color'] ?? $signup['theme_color'] ?? '#6366f1';
+    $themePattern = trim((string)($settings['theme_pattern'] ?? 'none')) ?: 'none';
     $botName = trim((string)($settings['bot_name'] ?? ''));
     if ($botName === '') {
         $botName = trim((string)($signup['website_name'] ?? ''));
@@ -1326,6 +1327,7 @@ if ($action === "get_widget_config" || $action === "get_theme") {
     widget_json_response([
         "success" => true,
         "theme_color" => $themeColor,
+        "theme_pattern" => $themePattern,
         "bot_name" => $botName,
         "welcome_message" => $settings['welcome_message'] ?? 'Hi, how can I help you today?',
         "avatar_url" => $settings['avatar_url'] ?? '',
