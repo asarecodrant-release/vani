@@ -2299,14 +2299,13 @@ if ($action === "create_razorpay_order") {
         echo json_encode(["success" => false, "message" => "Login required"]);
         exit;
     }
-    echo json_encode([
-        "success" => false,
-        "message" => "One-time plan payments are disabled. Automatic recurring payment authorization is mandatory for Starter, Growth, and Business plans."
-    ]);
-    exit;
     $data = getJSON();
     $planId = trim((string)($data['plan_id'] ?? ''));
     $customerId = trim((string)($data['customer_id'] ?? ''));
+    if (!authenticated_customer_access($customerId)) {
+        echo json_encode(["success" => false, "message" => "Access denied"]);
+        exit;
+    }
     if (!in_array($planId, billing_plan_ids(), true) || $planId === 'free') {
         echo json_encode(["success" => false, "message" => "Select a paid plan"]);
         exit;
@@ -2323,14 +2322,15 @@ if ($action === "create_razorpay_order") {
             "email" => $email,
             "customer_id" => $customerId,
             "plan_id" => $planId,
-            "order_type" => "subscription"
+            "order_type" => "subscription",
+            "payment_mode" => "one_time"
         ]
     ]);
     if ($order['status'] < 200 || $order['status'] >= 300 || empty($order['data']['id'])) {
         echo json_encode(["success" => false, "message" => "Razorpay order could not be created", "debug" => $order]);
         exit;
     }
-    supabase("POST", "billing_orders", [[
+    $storedOrder = supabase("POST", "billing_orders", [[
         "email" => $email,
         "customer_id" => $customerId ?: null,
         "plan_id" => $planId,
@@ -2340,8 +2340,16 @@ if ($action === "create_razorpay_order") {
         "status" => "created",
         "razorpay_order_id" => $order['data']['id'],
         "receipt" => $receipt,
-        "metadata" => (object)["plan_name" => $plan['name']]
+        "metadata" => (object)["plan_name" => $plan['name'], "payment_mode" => "one_time"]
     ]]);
+    if ($storedOrder['status'] < 200 || $storedOrder['status'] >= 300) {
+        echo json_encode([
+            "success" => false,
+            "message" => "Razorpay order was created but could not be saved. Run the latest Supabase schema migration and try again.",
+            "debug" => $storedOrder
+        ]);
+        exit;
+    }
     [$keyId] = razorpay_credentials();
     echo json_encode([
         "success" => true,
@@ -2357,11 +2365,6 @@ if ($action === "verify_razorpay_payment") {
         echo json_encode(["success" => false, "message" => "Login required"]);
         exit;
     }
-    echo json_encode([
-        "success" => false,
-        "message" => "One-time plan payment verification is disabled. Use automatic recurring payment authorization."
-    ]);
-    exit;
     $data = getJSON();
     $orderId = trim((string)($data['razorpay_order_id'] ?? ''));
     $paymentId = trim((string)($data['razorpay_payment_id'] ?? ''));
@@ -2386,22 +2389,64 @@ if ($action === "verify_razorpay_payment") {
         echo json_encode(["success" => false, "message" => "Payment order not found or already processed"]);
         exit;
     }
+    $customerId = trim((string)($order['customer_id'] ?? ''));
+    if ($customerId !== '' && !authenticated_customer_access($customerId)) {
+        echo json_encode(["success" => false, "message" => "Access denied"]);
+        exit;
+    }
+    $payment = razorpay_request("GET", "payments/" . rawurlencode($paymentId), []);
+    if ($payment['status'] < 200 || $payment['status'] >= 300 || empty($payment['data']['id'])) {
+        echo json_encode(["success" => false, "message" => "Payment could not be fetched", "debug" => $payment]);
+        exit;
+    }
+    $paymentData = $payment['data'];
+    if (($paymentData['order_id'] ?? '') !== $orderId) {
+        echo json_encode(["success" => false, "message" => "Payment does not match this order"]);
+        exit;
+    }
+    $paymentStatus = (string)($paymentData['status'] ?? '');
+    if (!in_array($paymentStatus, ['captured', 'authorized'], true) && empty($paymentData['captured'])) {
+        echo json_encode(["success" => false, "message" => "Payment is not captured yet", "payment_status" => $paymentStatus]);
+        exit;
+    }
     $planId = (string)$order['plan_id'];
     $amountPaise = (int)$order['amount_paise'];
     $email = authenticated_email();
-    $customerId = (string)($order['customer_id'] ?? '');
     wallet_credit_subscription($email, $customerId, $planId, $amountPaise, $paymentId);
+    supabase("PATCH", "billing_accounts?" . billing_account_filter($customerId, $email), [
+        "auto_recharge_enabled" => false,
+        "saved_payment_method_status" => "missing",
+        "saved_payment_method_reference" => null
+    ]);
     supabase("PATCH", "billing_orders?razorpay_order_id=eq." . urlencode($orderId), [
         "status" => "paid",
         "razorpay_payment_id" => $paymentId,
         "razorpay_signature" => $signature,
-        "paid_at" => gmdate('Y-m-d\TH:i:s\Z')
+        "paid_at" => gmdate('Y-m-d\TH:i:s\Z'),
+        "metadata" => (object)[
+            "payment_mode" => "one_time",
+            "payment_status" => $paymentStatus
+        ]
     ]);
+    $invoice = create_customer_invoice(
+        $customerId,
+        $email,
+        $planId,
+        $amountPaise,
+        $paymentId,
+        $orderId,
+        'subscription',
+        ["source" => "razorpay_one_time_checkout", "payment_mode" => "one_time"]
+    );
+    if (!empty($invoice)) {
+        send_customer_invoice_email($invoice);
+    }
     echo json_encode([
         "success" => true,
         "message" => "Payment verified and premium activated",
         "active_plan" => $planId,
-        "account" => billing_account_for_email($email)
+        "invoice" => !empty($invoice) ? ["invoice_number" => $invoice['invoice_number'] ?? null] : null,
+        "account" => $customerId !== '' ? billing_account_for_customer($customerId) : billing_account_for_email($email)
     ]);
     exit;
 }

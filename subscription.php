@@ -45,8 +45,13 @@ h2{font-size:20px}
 .price{font-size:34px;font-weight:800}
 .card.featured .price{font-size:40px}
 .price small{font-size:14px;color:#94a3b8;font-weight:700}
-.features{display:grid;gap:9px;color:#cbd5e1;font-size:14px;line-height:1.45}
-.features span:before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:#22c55e;margin-right:8px}
+.features{display:grid;gap:9px;font-size:14px;line-height:1.45}
+.features span{display:grid;grid-template-columns:18px minmax(0,1fr);gap:8px;align-items:start}
+.features span:before{display:inline-grid;place-items:center;width:18px;height:18px;border-radius:999px;font-size:12px;font-weight:900;line-height:1}
+.features .is-included{color:#d1fae5}
+.features .is-included:before{content:"\2713";background:rgba(34,197,94,.16);color:#4ade80}
+.features .is-excluded{color:#fecaca}
+.features .is-excluded:before{content:"\00D7";background:rgba(239,68,68,.16);color:#f87171}
 table{width:100%;border-collapse:collapse;font-size:13px}
 td,th{padding:8px 0;border-bottom:1px solid rgba(148,163,184,.22);text-align:left;color:#cbd5e1}
 td:last-child,th:last-child{text-align:right;font-weight:800}
@@ -88,7 +93,7 @@ td:last-child,th:last-child{text-align:right;font-weight:800}
     <article class="card">
       <div class="head"><div><span class="eyebrow">Starter</span><h2>Starter Plan</h2></div><span class="tag">Small</span></div>
       <div class="price">₹199<small>/month</small></div>
-      <div class="features"><span>100 FAQ answers for small websites</span><span>Email and Mobile OTP verification for real leads</span><span>Dedicated WhatsApp button and Many more action items for FAQs</span><span>Webhook support</span><span>FAQ Action Suggestions</span><span>Auto wallet recharge: below ₹50, recharge ₹199</span></div>
+      <div class="features"><span class="is-included">100 FAQ answers for small websites</span><span class="is-excluded">300 FAQ capacity for growing businesses</span><span class="is-excluded">Unlimited FAQ capacity for larger businesses</span><span class="is-included">Email and Mobile OTP verification for real leads</span><span class="is-excluded">Email and Mobile combined widget</span><span class="is-included">Dedicated WhatsApp button and many more action items for FAQs</span><span class="is-included">Webhook support</span><span class="is-included">FAQ Action Suggestions</span><span class="is-excluded">Live Chat Actions for real-time website reactions</span><span class="is-included">Auto wallet recharge: below ₹50, recharge ₹199</span><span class="is-excluded">API Integration to migrate or save data in your database</span><span class="is-excluded">Analytics dashboard access</span><span class="is-excluded">Chat can run only on allowed domains</span></div>
       <table><tr><th>Wallet action</th><th>Charge</th></tr><tr><td>Fresh Email OTP Lead</td><td>₹6</td></tr><tr><td>Repeat Email OTP Verification</td><td>₹2</td></tr><tr><td>Fresh Mobile OTP Lead</td><td>₹12</td></tr><tr><td>Repeat Mobile OTP Verification</td><td>₹3</td></tr><tr><td>WhatsApp Redirect</td><td>Add-on ₹99, refundable if cancelled within 1 hour</td></tr></table>
       <div class="note">Validity of Fresh Email and Mobile OTP Leads is 30 days from last user verification.</div>
       <div class="actions"><a class="nav-btn" href="login.php">Choose Starter</a></div>
@@ -97,7 +102,7 @@ td:last-child,th:last-child{text-align:right;font-weight:800}
     <article class="card featured">
       <div class="head"><div><span class="eyebrow">Growth</span><h2>Growth Plan</h2></div><span class="tag good">Popular</span></div>
       <div class="price">₹499<small>/month</small></div>
-      <div class="features"><span>300 FAQ answers for growing local businesses</span><span>Email and Mobile OTP verification for real leads</span><span>Dedicated WhatsApp button and Many more action items for FAQs</span><span>Webhook support</span><span>FAQ Action Suggestions</span><span>Auto wallet recharge: below ₹100, recharge ₹499</span><span>Better wallet rates than Starter on email and mobile leads</span><span>Analytics access: Overview, Conversations, FAQ Insights, Leads</span></div>
+      <div class="features"><span class="is-included">100 FAQ answers for small websites</span><span class="is-included">300 FAQ capacity for growing businesses</span><span class="is-excluded">Unlimited FAQ capacity for larger businesses</span><span class="is-included">Email and Mobile OTP verification for real leads</span><span class="is-excluded">Email and Mobile combined widget</span><span class="is-included">Dedicated WhatsApp button and many more action items for FAQs</span><span class="is-included">Webhook support</span><span class="is-included">FAQ Action Suggestions</span><span class="is-excluded">Live Chat Actions for real-time website reactions</span><span class="is-included">Auto wallet recharge: below ₹100, recharge ₹499</span><span class="is-excluded">API Integration to migrate or save data in your database</span><span class="is-included">Analytics access: Overview, Conversations, FAQ Insights, Leads</span><span class="is-excluded">Advanced Analytics: Pages, Real-Time, Reports Download</span><span class="is-excluded">Chat can run only on allowed domains</span><span class="is-included">Better wallet rates than Starter on email and mobile leads</span></div>
       <table><tr><th>Wallet action</th><th>Charge</th></tr><tr><td>Fresh Email OTP Lead</td><td>₹5</td></tr><tr><td>Repeat Email OTP Verification</td><td>₹1</td></tr><tr><td>Fresh Mobile OTP Lead</td><td>₹10</td></tr><tr><td>Repeat Mobile OTP Verification</td><td>₹2</td></tr><tr><td>WhatsApp Redirect</td><td>Add-on ₹99, refundable if cancelled within 1 hour</td></tr></table>
       <div class="note">Validity of Fresh Email and Mobile OTP Leads is 30 days from last user verification.</div>
       <div class="actions"><a class="nav-btn" href="login.php">Choose Growth</a></div>
@@ -106,7 +111,7 @@ td:last-child,th:last-child{text-align:right;font-weight:800}
     <article class="card">
       <div class="head"><div><span class="eyebrow">Business</span><h2>Business Plan</h2></div><span class="tag">Scale</span></div>
       <div class="price">₹999<small>/month</small></div>
-      <div class="features"><span>Unlimited FAQ capacity for larger businesses</span><span>Email and Mobile combined OTP verification for real leads</span><span>Dedicated WhatsApp button and Many more action items for FAQs</span><span>Webhook support</span><span>FAQ Action Suggestions</span><span>Live Chat Actions for real-time website reactions</span><span>Auto wallet recharge: below ₹200, recharge ₹999</span><span>Access for API Integration, Migrate or save data in your database via API</span><span>Advanced Analytics: Overview, Conversations, FAQ Insights, Leads, Pages, Real-Time, Reports Download</span><span>Chat can run only allowed domains</span></div>
+      <div class="features"><span class="is-included">100 FAQ answers for small websites</span><span class="is-included">300 FAQ capacity for growing businesses</span><span class="is-included">Unlimited FAQ capacity for larger businesses</span><span class="is-included">Email and Mobile OTP verification for real leads</span><span class="is-included">Email and Mobile combined widget</span><span class="is-included">Dedicated WhatsApp button and many more action items for FAQs</span><span class="is-included">Webhook support</span><span class="is-included">FAQ Action Suggestions</span><span class="is-included">Live Chat Actions for real-time website reactions</span><span class="is-included">Auto wallet recharge: below ₹200, recharge ₹999</span><span class="is-included">API Integration to migrate or save data in your database</span><span class="is-included">Advanced Analytics: Overview, Conversations, FAQ Insights, Leads, Pages, Real-Time, Reports Download</span><span class="is-included">Chat can run only on allowed domains</span></div>
       <table><tr><th>Wallet action</th><th>Charge</th></tr><tr><td>Fresh Email OTP Lead</td><td>₹5</td></tr><tr><td>Repeat Email OTP Verification</td><td>₹1</td></tr><tr><td>Fresh Mobile OTP Lead</td><td>₹10</td></tr><tr><td>Repeat Mobile OTP Verification</td><td>₹2</td></tr><tr><td>WhatsApp Redirect</td><td>Add-on ₹99, refundable if cancelled within 1 hour</td></tr></table>
       <div class="note">Validity of Fresh Email and Mobile OTP Leads is 30 days from last user verification.</div>
       <div class="actions"><a class="nav-btn" href="login.php">Choose Business</a></div>

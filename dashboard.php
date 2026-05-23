@@ -1294,8 +1294,21 @@ body.dark .subscription-wallet-note{background:linear-gradient(135deg,rgba(34,19
 .pricing-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
 .price{font-size:30px;font-weight:800}
 .price small{font-size:13px;color:var(--muted);font-weight:700}
-.feature-list{display:grid;gap:8px;color:var(--ink);font-size:14px}
-.feature-list span:before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:#22c55e;margin-right:8px}
+.payment-choice-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px}
+.payment-choice{position:relative;display:grid;gap:7px;padding:14px 14px 14px 42px;border:1px solid var(--line);border-radius:14px;background:var(--panel-strong);cursor:pointer}
+.payment-choice input{position:absolute;left:14px;top:17px;accent-color:var(--brand)}
+.payment-choice strong{font-size:14px}
+.payment-choice small{color:var(--muted);line-height:1.45}
+.payment-choice:has(input:checked){border-color:rgba(99,102,241,.65);box-shadow:0 0 0 3px rgba(99,102,241,.12)}
+.feature-list{display:grid;gap:8px;font-size:14px}
+.feature-list span{display:grid;grid-template-columns:18px minmax(0,1fr);gap:8px;align-items:start}
+.feature-list span:before{display:inline-grid;place-items:center;width:18px;height:18px;border-radius:999px;font-size:12px;font-weight:900;line-height:1}
+.feature-list .is-included{color:#15803d}
+.feature-list .is-included:before{content:"\2713";background:rgba(34,197,94,.14);color:#16a34a}
+.feature-list .is-excluded{color:#b91c1c}
+.feature-list .is-excluded:before{content:"\00D7";background:rgba(239,68,68,.13);color:#dc2626}
+body.dark .feature-list .is-included{color:#86efac}
+body.dark .feature-list .is-excluded{color:#fecaca}
 .wallet-table{min-width:0}
 .wallet-table table{min-width:0}
 .wallet-table th,.wallet-table td{padding:9px 0;font-size:13px}
@@ -1438,7 +1451,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
   .faq-subtabs,.integration-subtabs{display:grid;grid-template-columns:1fr;padding:0 16px 16px}
   .faq-subtab-btn,.integration-subtab-btn{width:100%}
   .overview-hero h2{font-size:28px}
-  .metrics,.quick-actions,.form-grid,.theme-controls,.outside-faq-grid,.faq-action-grid,.lead-grid,.analytics-grid,.analytics-grid.two,.funnel,.pricing-grid,.security-grid,.bulk-report-summary{grid-template-columns:1fr}
+  .metrics,.quick-actions,.form-grid,.theme-controls,.outside-faq-grid,.faq-action-grid,.lead-grid,.analytics-grid,.analytics-grid.two,.funnel,.pricing-grid,.security-grid,.bulk-report-summary,.payment-choice-grid{grid-template-columns:1fr}
   .panel-actions{justify-content:stretch}
   .panel-actions .pill-btn,.panel-actions .ghost-btn,.panel-actions .danger-btn{width:100%}
   .user-menu{justify-content:space-between}
@@ -1810,6 +1823,8 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                 <div>
                   <h3>Scheduled FAQ Action Suggestions <span class="help-tip" tabindex="0" aria-label="How scheduled FAQ action suggestions work" data-tip="Use this when you want to promote an action after a visitor asks a set number of questions. Set three slots, such as 3, 5, and 5. After the 3rd answer the first action appears. After 5 more questions the second action appears. After 5 more questions the third action appears. Then the cycle starts again. If the visitor ignores the action and asks another question, it disappears.">?</span></h3>
                   <small class="input-help">Show one customer action after a visitor completes a configured number of questions. The three slots repeat in order, for example 3, then 5, then 5 questions.</small>
+                  <small class="input-help">Available for Starter, Growth, and Business plans.</small>
+                  <?php if (!$canUseFaqActionSuggestions): ?><small class="input-help error">Starter, Growth, or Business plan required.</small><?php endif; ?>
                 </div>
                 <button class="pill-btn" type="button" id="saveScheduledFaqActionsBtn" <?php echo $canUseFaqActionSuggestions ? '' : 'disabled'; ?>>Save schedule</button>
               </div>
@@ -2703,8 +2718,20 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
           </div>
 
           <div class="notice" style="margin-top:18px">
-            <strong>Mandatory automatic payment setup</strong><br>
-            Every paid plan starts with Razorpay recurring authorization. The first payment adds the plan amount to your wallet and saves the approved token for future automatic wallet recharges.
+            <strong>Choose payment preference</strong><br>
+            Customers can buy a plan once for the current 30-day cycle, or allow automatic recurring payment for future wallet recharges. In both cases, the plan amount is credited to the wallet first.
+            <div class="payment-choice-grid">
+              <label class="payment-choice">
+                <input type="radio" name="subscriptionPaymentMode" value="one_time" checked>
+                <strong>One-time payment</strong>
+                <small>Pay only for this purchase. No automatic card/debit-card recharge token will be saved.</small>
+              </label>
+              <label class="payment-choice">
+                <input type="radio" name="subscriptionPaymentMode" value="auto">
+                <strong>Auto payment</strong>
+                <small>Use Razorpay recurring authorization so future wallet recharges can run automatically.</small>
+              </label>
+            </div>
             <div class="form-grid" style="margin-top:14px">
               <div class="field">
                 <label for="subscriptionAutoPayNameInput">Customer name</label>
@@ -2722,10 +2749,10 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
               <div class="pricing-head"><div><span class="eyebrow">Starter</span><h3>Starter Plan</h3></div><span class="tag">Small</span></div>
               <?php if ($activePlanId === 'starter'): ?><div class="current-plan-note">Current plan</div><?php endif; ?>
               <div class="price">₹199<small>/month</small></div>
-              <div class="feature-list"><span>100 FAQ answers for small websites</span><span>Email and Mobile OTP verification for real leads</span><span>Dedicated WhatsApp button and Many more action items for FAQs</span><span>Webhook support</span><span>FAQ Action Suggestions</span><span>Auto wallet recharge: below ₹50, recharge ₹199</span></div>
+              <div class="feature-list"><span class="is-included">100 FAQ answers for small websites</span><span class="is-excluded">300 FAQ capacity for growing businesses</span><span class="is-excluded">Unlimited FAQ capacity for larger businesses</span><span class="is-included">Email and Mobile OTP verification for real leads</span><span class="is-excluded">Email and Mobile combined widget</span><span class="is-included">Dedicated WhatsApp button and many more action items for FAQs</span><span class="is-included">Webhook support</span><span class="is-included">FAQ Action Suggestions</span><span class="is-excluded">Live Chat Actions for real-time website reactions</span><span class="is-included">Auto wallet recharge: below ₹50, recharge ₹199</span><span class="is-excluded">API Integration to migrate or save data in your database</span><span class="is-excluded">Analytics dashboard access</span><span class="is-excluded">Chat can run only on allowed domains</span></div>
               <div class="wallet-table"><table><thead><tr><th>Wallet action</th><th>Charge</th></tr></thead><tbody><tr><td>Fresh Email OTP Lead</td><td>₹6</td></tr><tr><td>Repeat Email OTP Verification</td><td>₹2</td></tr><tr><td>Fresh Mobile OTP Lead</td><td>₹12</td></tr><tr><td>Repeat Mobile OTP Verification</td><td>₹3</td></tr><tr><td>WhatsApp Redirect</td><td>Add-on ₹99, refundable if cancelled within 1 hour</td></tr></tbody></table></div>
               <small class="muted">Validity of Fresh Email and Mobile OTP Leads is 30 days from last user verification.</small>
-              <button class="pill-btn billing-plan-btn" type="button" data-plan-id="starter">Start Auto Payment</button>
+              <button class="pill-btn billing-plan-btn" type="button" data-plan-id="starter">Buy Subscription</button>
               <small class="muted">Best for portfolios, coaches, and small businesses.</small>
             </div>
 
@@ -2733,10 +2760,10 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
               <div class="pricing-head"><div><span class="eyebrow">Growth</span><h3>Growth Plan</h3></div><span class="tag good">Popular</span></div>
               <?php if ($activePlanId === 'growth'): ?><div class="current-plan-note">Current plan</div><?php endif; ?>
               <div class="price">₹499<small>/month</small></div>
-              <div class="feature-list"><span>300 FAQ answers for growing local businesses</span><span>Email and Mobile OTP verification for real leads</span><span>Dedicated WhatsApp button and Many more action items for FAQs</span><span>Webhook support</span><span>FAQ Action Suggestions</span><span>Auto wallet recharge: below ₹100, recharge ₹499</span><span>Better wallet rates than Starter on email and mobile leads</span><span>Analytics access: Overview, Conversations, FAQ Insights, Leads</span></div>
+              <div class="feature-list"><span class="is-included">100 FAQ answers for small websites</span><span class="is-included">300 FAQ capacity for growing businesses</span><span class="is-excluded">Unlimited FAQ capacity for larger businesses</span><span class="is-included">Email and Mobile OTP verification for real leads</span><span class="is-excluded">Email and Mobile combined widget</span><span class="is-included">Dedicated WhatsApp button and many more action items for FAQs</span><span class="is-included">Webhook support</span><span class="is-included">FAQ Action Suggestions</span><span class="is-excluded">Live Chat Actions for real-time website reactions</span><span class="is-included">Auto wallet recharge: below ₹100, recharge ₹499</span><span class="is-excluded">API Integration to migrate or save data in your database</span><span class="is-included">Analytics access: Overview, Conversations, FAQ Insights, Leads</span><span class="is-excluded">Advanced Analytics: Pages, Real-Time, Reports Download</span><span class="is-excluded">Chat can run only on allowed domains</span><span class="is-included">Better wallet rates than Starter on email and mobile leads</span></div>
               <div class="wallet-table"><table><thead><tr><th>Wallet action</th><th>Charge</th></tr></thead><tbody><tr><td>Fresh Email OTP Lead</td><td>₹5</td></tr><tr><td>Repeat Email OTP Verification</td><td>₹1</td></tr><tr><td>Fresh Mobile OTP Lead</td><td>₹10</td></tr><tr><td>Repeat Mobile OTP Verification</td><td>₹2</td></tr><tr><td>WhatsApp Redirect</td><td>Add-on ₹99, refundable if cancelled within 1 hour</td></tr></tbody></table></div>
               <small class="muted">Validity of Fresh Email and Mobile OTP Leads is 30 days from last user verification.</small>
-              <button class="pill-btn billing-plan-btn" type="button" data-plan-id="growth">Start Auto Payment</button>
+              <button class="pill-btn billing-plan-btn" type="button" data-plan-id="growth">Buy Subscription</button>
               <small class="muted">Best for local businesses, agencies, and service providers.</small>
             </div>
 
@@ -2744,10 +2771,10 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
               <div class="pricing-head"><div><span class="eyebrow">Business</span><h3>Business Plan</h3></div><span class="tag">Scale</span></div>
               <?php if ($activePlanId === 'business'): ?><div class="current-plan-note">Current plan</div><?php endif; ?>
               <div class="price">₹999<small>/month</small></div>
-              <div class="feature-list"><span>Unlimited FAQ capacity for larger businesses</span><span>Email and Mobile combined OTP verification for real leads</span><span>Dedicated WhatsApp button and Many more action items for FAQs</span><span>Webhook support</span><span>FAQ Action Suggestions</span><span>Live Chat Actions for real-time website reactions</span><span>Auto wallet recharge: below ₹200, recharge ₹999</span><span>Access for API Integration, Migrate or save data in your database via API</span><span>Advanced Analytics: Overview, Conversations, FAQ Insights, Leads, Pages, Real-Time, Reports Download</span><span>Chat can run only allowed domains</span></div>
+              <div class="feature-list"><span class="is-included">100 FAQ answers for small websites</span><span class="is-included">300 FAQ capacity for growing businesses</span><span class="is-included">Unlimited FAQ capacity for larger businesses</span><span class="is-included">Email and Mobile OTP verification for real leads</span><span class="is-included">Email and Mobile combined widget</span><span class="is-included">Dedicated WhatsApp button and many more action items for FAQs</span><span class="is-included">Webhook support</span><span class="is-included">FAQ Action Suggestions</span><span class="is-included">Live Chat Actions for real-time website reactions</span><span class="is-included">Auto wallet recharge: below ₹200, recharge ₹999</span><span class="is-included">API Integration to migrate or save data in your database</span><span class="is-included">Advanced Analytics: Overview, Conversations, FAQ Insights, Leads, Pages, Real-Time, Reports Download</span><span class="is-included">Chat can run only on allowed domains</span></div>
               <div class="wallet-table"><table><thead><tr><th>Wallet action</th><th>Charge</th></tr></thead><tbody><tr><td>Fresh Email OTP Lead</td><td>₹5</td></tr><tr><td>Repeat Email OTP Verification</td><td>₹1</td></tr><tr><td>Fresh Mobile OTP Lead</td><td>₹10</td></tr><tr><td>Repeat Mobile OTP Verification</td><td>₹2</td></tr><tr><td>WhatsApp Redirect</td><td>Add-on ₹99, refundable if cancelled within 1 hour</td></tr></tbody></table></div>
               <small class="muted">Validity of Fresh Email and Mobile OTP Leads is 30 days from last user verification.</small>
-              <button class="pill-btn billing-plan-btn" type="button" data-plan-id="business">Start Auto Payment</button>
+              <button class="pill-btn billing-plan-btn" type="button" data-plan-id="business">Buy Subscription</button>
               <small class="muted">Best for real estate, education institutes, marketing agencies, SaaS businesses, and larger teams.</small>
             </div>
 
@@ -2763,11 +2790,12 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
             </div>
             <p class="muted" style="margin-top:12px">
               Associated plan: <?php echo h($activePlan['name']); ?>. Wallet balance: <?php echo h(billing_rupees($billingWalletPaise)); ?>. Auto payment status: <?php echo h($isCancelledWalletAccess ? 'Stopped' : ucfirst($savedPaymentMethodStatus)); ?>.
+              <?php if ($activePlanId !== 'free' && $savedPaymentMethodStatus !== 'active' && !$isCancelledWalletAccess): ?>This plan was purchased without automatic payment, so there is no auto payment to unsubscribe.<?php endif; ?>
               <?php if ($isCancelledWalletAccess): ?>You will continue on <?php echo h($activePlan['name']); ?> until the wallet reaches zero, then the account will move to Free service.<?php endif; ?>
             </p>
             <div class="panel-actions">
-              <button class="danger-btn" type="button" id="cancelSubscriptionBtn" <?php echo $activePlanId === 'free' || $isCancelledWalletAccess ? 'disabled' : ''; ?>>
-                <?php echo h($isCancelledWalletAccess ? 'Auto Payment Stopped' : ($activePlanId === 'free' ? 'Free Service Active' : 'Unsubscribe Auto Payment')); ?>
+              <button class="danger-btn" type="button" id="cancelSubscriptionBtn" <?php echo $activePlanId === 'free' || $isCancelledWalletAccess || $savedPaymentMethodStatus !== 'active' ? 'disabled' : ''; ?>>
+                <?php echo h($isCancelledWalletAccess ? 'Auto Payment Stopped' : ($activePlanId === 'free' ? 'Free Service Active' : ($savedPaymentMethodStatus !== 'active' ? 'No Auto Payment Saved' : 'Unsubscribe Auto Payment'))); ?>
               </button>
             </div>
           </div>
@@ -2884,7 +2912,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
               <span class="tag <?php echo $savedPaymentMethodStatus === 'active' ? 'good' : 'bad'; ?>" id="autoRechargeMandateStatusTag"><?php echo h($savedPaymentMethodStatus === 'active' ? 'Ready' : 'Authorize'); ?></span>
             </div>
             <p class="muted" style="margin-top:12px">
-              This authorization is now mandatory during plan purchase. Choose Starter, Growth, or Business from the Subscription tab to approve automatic payment and activate the plan.
+              Automatic payment is optional during plan purchase. Choose Starter, Growth, or Business from the Subscription tab, then select one-time payment or auto payment before checkout.
             </p>
           </div>
 
@@ -3459,30 +3487,32 @@ async function startPlanCheckout(planId, button) {
     showToast("Razorpay checkout could not be loaded");
     return;
   }
-  const autoPayName = document.getElementById("subscriptionAutoPayNameInput")?.value.trim() || "";
-  const autoPayContact = document.getElementById("subscriptionAutoPayContactInput")?.value.trim() || "";
-  if (autoPayName.length < 3) {
+  const paymentMode = document.querySelector('input[name="subscriptionPaymentMode"]:checked')?.value || "one_time";
+  const customerName = document.getElementById("subscriptionAutoPayNameInput")?.value.trim() || "";
+  const customerContact = document.getElementById("subscriptionAutoPayContactInput")?.value.trim() || "";
+  if (paymentMode === "auto" && customerName.length < 3) {
     showToast("Enter customer name for automatic payment");
     document.getElementById("subscriptionAutoPayNameInput")?.focus();
     return;
   }
-  if (!autoPayContact) {
+  if (paymentMode === "auto" && !customerContact) {
     showToast("Enter mobile number with country code");
     document.getElementById("subscriptionAutoPayContactInput")?.focus();
     return;
   }
   const originalText = button.textContent;
   button.disabled = true;
-  button.textContent = "Creating auto payment...";
+  button.textContent = paymentMode === "auto" ? "Creating auto payment..." : "Creating order...";
 
-  const orderResponse = await fetch("/api.php?action=create_razorpay_subscription_checkout", {
+  const createAction = paymentMode === "auto" ? "create_razorpay_subscription_checkout" : "create_razorpay_order";
+  const orderResponse = await fetch(`/api.php?action=${createAction}`, {
     method: "POST",
     headers: {"Content-Type": "application/json"},
     body: JSON.stringify({
       plan_id: planId,
       customer_id: selectedCustomerId,
-      name: autoPayName,
-      contact: autoPayContact
+      name: customerName,
+      contact: customerContact
     })
   });
   const orderData = await orderResponse.json().catch(() => ({}));
@@ -3490,41 +3520,49 @@ async function startPlanCheckout(planId, button) {
   button.textContent = originalText;
 
   if (!orderData.success) {
-    showToast(orderData.message || "Automatic payment could not be started");
+    showToast(orderData.message || "Payment could not be started");
     return;
   }
 
-  const checkout = new Razorpay({
+  const checkoutOptions = {
     key: orderData.key_id,
     name: "Vani AI",
-    description: `${orderData.plan.name} subscription with automatic payment`,
-    subscription_id: orderData.subscription_id,
+    description: `${orderData.plan.name} ${paymentMode === "auto" ? "subscription with automatic payment" : "subscription"}`,
     remember_customer: true,
     prefill: {
-      name: autoPayName,
+      name: customerName,
       email: billingEmail,
-      contact: orderData.contact || autoPayContact
+      contact: orderData.contact || customerContact
     },
     readonly: {email: true},
     theme: {color: "#6366f1"},
     handler: async response => {
-      showToast("Verifying automatic payment...");
-      const verifyResponse = await fetch("/api.php?action=verify_razorpay_subscription_payment", {
+      showToast(paymentMode === "auto" ? "Verifying automatic payment..." : "Verifying payment...");
+      const verifyAction = paymentMode === "auto" ? "verify_razorpay_subscription_payment" : "verify_razorpay_payment";
+      const verifyResponse = await fetch(`/api.php?action=${verifyAction}`, {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify(response)
       });
       const verifyData = await verifyResponse.json().catch(() => ({}));
       if (!verifyData.success) {
-        showToast(verifyData.message || "Automatic payment verification failed");
+        showToast(verifyData.message || "Payment verification failed");
         return;
       }
-      showToast("Plan activated with automatic payment");
+      showToast(paymentMode === "auto" ? "Plan activated with automatic payment" : "Plan activated");
       setTimeout(() => location.reload(), 900);
     }
-  });
+  };
+  if (paymentMode === "auto") {
+    checkoutOptions.subscription_id = orderData.subscription_id;
+  } else {
+    checkoutOptions.amount = orderData.order.amount;
+    checkoutOptions.currency = orderData.order.currency || "INR";
+    checkoutOptions.order_id = orderData.order.id;
+  }
+  const checkout = new Razorpay(checkoutOptions);
   checkout.on("payment.failed", response => {
-    showToast(response.error?.description || "Subscription payment authorization failed");
+    showToast(response.error?.description || "Payment authorization failed");
   });
   checkout.open();
 }
