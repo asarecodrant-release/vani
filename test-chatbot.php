@@ -57,20 +57,23 @@ $botName = $selectedBot['website_name'] ?? 'Selected chatbot';
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0;font-family:'Inter',sans-serif}
-body{min-height:100vh;color:#0f172a;background:linear-gradient(135deg,#f0f9ff,#eef2ff,#faf5ff);padding:28px}
+:root{--bg-a:#f0f9ff;--bg-b:#eef2ff;--bg-c:#faf5ff;--panel:rgba(255,255,255,.82);--ink:#0f172a;--muted:#64748b;--line:rgba(148,163,184,.24);--ghost:#fff;--brand:#6366f1;--brand-2:#ec4899;--shadow:0 18px 45px rgba(15,23,42,.09)}
+body.dark{--bg-a:#020617;--bg-b:#111827;--bg-c:#172554;--panel:rgba(15,23,42,.82);--ink:#e5e7eb;--muted:#94a3b8;--line:rgba(148,163,184,.24);--ghost:rgba(15,23,42,.74);--shadow:0 18px 45px rgba(0,0,0,.28)}
+body{min-height:100vh;color:var(--ink);background:linear-gradient(135deg,var(--bg-a),var(--bg-b),var(--bg-c));padding:28px}
 .shell{width:min(980px,100%);margin:0 auto;display:grid;gap:18px}
 .top{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
 .brand{display:flex;align-items:center;gap:12px;text-decoration:none;color:inherit}
 .brand img{width:54px;height:auto}
-.brand strong{font-size:20px;background:linear-gradient(90deg,#6366f1,#ec4899);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.panel{background:rgba(255,255,255,.82);border:1px solid rgba(148,163,184,.24);border-radius:22px;padding:24px;box-shadow:0 18px 45px rgba(15,23,42,.09);backdrop-filter:blur(16px)}
-.eyebrow{font-size:12px;font-weight:800;color:#6366f1;text-transform:uppercase;letter-spacing:.08em}
+.brand strong{font-size:20px;background:linear-gradient(90deg,var(--brand),var(--brand-2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:22px;padding:24px;box-shadow:var(--shadow);backdrop-filter:blur(16px)}
+.eyebrow{font-size:12px;font-weight:800;color:var(--brand);text-transform:uppercase;letter-spacing:.08em}
 h1{font-size:32px;line-height:1.2;margin:10px 0}
-p{color:#64748b;line-height:1.7}
+.top-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+p{color:var(--muted);line-height:1.7}
 .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}
-.pill-btn,.ghost-btn{min-height:42px;border-radius:12px;padding:0 14px;font-weight:700;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}
-.pill-btn{color:#fff;background:linear-gradient(135deg,#6366f1,#ec4899)}
-.ghost-btn{color:#0f172a;background:#fff;border:1px solid rgba(148,163,184,.32)}
+.pill-btn,.ghost-btn{min-height:42px;border-radius:12px;padding:0 14px;font-weight:700;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+.pill-btn{color:#fff;background:linear-gradient(135deg,var(--brand),var(--brand-2));border:0}
+.ghost-btn{color:var(--ink);background:var(--ghost);border:1px solid var(--line)}
 .snippet{display:block;white-space:pre-wrap;word-break:break-all;margin-top:14px;padding:16px;border-radius:14px;background:#111827;color:#e5e7eb;font-size:13px;line-height:1.6}
 .empty{text-align:center}
 @media(max-width:640px){body{padding:16px}.panel{padding:18px;border-radius:18px}h1{font-size:26px}.pill-btn,.ghost-btn{width:100%}}
@@ -83,7 +86,10 @@ p{color:#64748b;line-height:1.7}
       <img src="images/logo_img.png" alt="Vani AI">
       <strong>Vani AI</strong>
     </a>
-    <a class="ghost-btn" href="dashboard.php<?php echo $selectedBotId ? '?bot=' . h(urlencode($selectedBotId)) : ''; ?>">Back to dashboard</a>
+    <div class="top-actions">
+      <button class="ghost-btn" type="button" id="themeToggle">Dark Mode</button>
+      <a class="ghost-btn" href="dashboard.php<?php echo $selectedBotId ? '?bot=' . h(urlencode($selectedBotId)) : ''; ?>">Back to dashboard</a>
+    </div>
   </div>
 
   <?php if (!$selectedBotId || empty($selectedBot)): ?>
@@ -106,5 +112,19 @@ p{color:#64748b;line-height:1.7}
 <?php if ($selectedBotId && !empty($selectedBot)): ?>
 <script src="<?php echo h($widgetUrl); ?>" data-id="<?php echo h($selectedBotId); ?>"></script>
 <?php endif; ?>
+<script>
+const themeToggle = document.getElementById("themeToggle");
+function setTheme(theme) {
+  const dark = theme === "dark";
+  document.body.classList.toggle("dark", dark);
+  if (themeToggle) {
+    themeToggle.textContent = dark ? "Bright Mode" : "Dark Mode";
+    themeToggle.setAttribute("aria-pressed", String(dark));
+  }
+  localStorage.setItem("vani-index-theme", dark ? "dark" : "bright");
+}
+setTheme(localStorage.getItem("vani-index-theme") || "bright");
+themeToggle?.addEventListener("click", () => setTheme(document.body.classList.contains("dark") ? "bright" : "dark"));
+</script>
 </body>
 </html>

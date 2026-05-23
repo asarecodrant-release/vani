@@ -33,6 +33,8 @@ nav{padding:16px 0}
 .eyebrow{display:inline-flex;color:#c4b5fd;font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px}
 h1{font-size:48px;line-height:1.12;max-width:840px;margin:0 auto}
 .hero p{max-width:780px;margin:18px auto 0;color:#cbd5e1;font-size:18px;line-height:1.7}
+.wallet-note{max-width:900px;margin:22px auto 0;padding:17px 20px;border:1px solid rgba(34,197,94,.28);border-radius:18px;background:linear-gradient(135deg,rgba(34,197,94,.13),rgba(8,145,178,.1));color:#e5e7eb;line-height:1.65;text-align:left}
+.wallet-note strong{display:block;margin-bottom:5px;font-size:17px;color:#fff}
 .pricing-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:16px;margin:34px 0 42px;align-items:stretch}
 .card{grid-column:span 2;background:linear-gradient(145deg,rgba(15,23,42,.88),rgba(30,41,59,.7));border:1px solid rgba(129,140,248,.24);border-radius:18px;padding:18px;display:grid;gap:14px;box-shadow:0 22px 55px rgba(0,0,0,.32),inset 0 1px 0 rgba(255,255,255,.04)}
 .card.featured{grid-column:span 2;padding:24px;border-color:rgba(34,197,94,.5);box-shadow:0 24px 70px rgba(34,197,94,.18);transform:scale(1.02)}
@@ -76,6 +78,10 @@ td:last-child,th:last-child{text-align:right;font-weight:800}
     <span class="eyebrow">Subscription Plans</span>
     <h1>Start small, verify real leads, and scale your chatbot as demand grows.</h1>
     <p>Each monthly plan includes FAQ capacity and paid lead verification. Wallet charges apply for OTP verification and WhatsApp redirection. WhatsApp redirection is ₹99 per 30 days on every plan.</p>
+    <div class="wallet-note">
+      <strong>Subscription amount is credited to the customer's wallet.</strong>
+      When a plan is purchased or renewed, the plan amount is added to the customer's wallet. The wallet is then used as-you-go based on real usage, mainly when new website visitors verify by Email OTP or Mobile OTP, and for paid add-ons such as WhatsApp Redirect.
+    </div>
   </section>
 
   <section class="pricing-grid">

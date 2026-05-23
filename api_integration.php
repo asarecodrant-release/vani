@@ -83,8 +83,9 @@ $apiKeyRows = api_doc_rows(supabase(
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0;font-family:Inter,sans-serif}
-:root{--bg:#f8fafc;--panel:#fff;--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--brand:#4f46e5;--brand-2:#0891b2;--good:#15803d;--bad:#b91c1c}
-body{background:linear-gradient(180deg,#eef2ff 0,#f8fafc 260px);color:var(--ink);min-height:100vh}
+:root{--bg:#f8fafc;--panel:#fff;--panel-soft:rgba(255,255,255,.74);--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--brand:#4f46e5;--brand-2:#0891b2;--good:#15803d;--bad:#b91c1c;--hero-bg:#eef2ff;--thead:#f8fafc;--inline-bg:#e2e8f0;--inline-ink:#0f172a;--shadow:0 18px 45px rgba(15,23,42,.06)}
+body.dark{--bg:#020617;--panel:#0f172a;--panel-soft:rgba(15,23,42,.74);--ink:#e5e7eb;--muted:#94a3b8;--line:rgba(148,163,184,.24);--brand:#818cf8;--brand-2:#22d3ee;--good:#86efac;--bad:#fca5a5;--hero-bg:#111827;--thead:#111827;--inline-bg:rgba(129,140,248,.18);--inline-ink:#dbeafe;--shadow:0 18px 45px rgba(0,0,0,.28)}
+body{background:linear-gradient(180deg,var(--hero-bg) 0,var(--bg) 260px);color:var(--ink);min-height:100vh}
 .container{width:100%;max-width:1180px;margin:0 auto;padding:24px 20px 54px}
 .topbar{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:24px}
 .brand{display:flex;align-items:center;gap:12px;text-decoration:none;color:var(--ink);font-weight:800;font-size:20px}
@@ -92,23 +93,23 @@ body{background:linear-gradient(180deg,#eef2ff 0,#f8fafc 260px);color:var(--ink)
 .actions{display:flex;gap:10px;flex-wrap:wrap}
 .btn,.ghost{display:inline-flex;align-items:center;justify-content:center;min-height:40px;border-radius:12px;padding:0 14px;text-decoration:none;font-weight:800;border:1px solid transparent}
 .btn{background:linear-gradient(135deg,var(--brand),var(--brand-2));color:#fff}
-.ghost{background:rgba(255,255,255,.72);border-color:var(--line);color:var(--ink)}
+.ghost{background:var(--panel-soft);border-color:var(--line);color:var(--ink)}
 .hero{display:grid;gap:12px;margin-bottom:22px}
 .eyebrow{text-transform:uppercase;letter-spacing:.08em;font-size:12px;font-weight:800;color:var(--brand)}
 h1{font-size:42px;line-height:1.08;max-width:860px}
 .hero p{font-size:17px;line-height:1.7;color:var(--muted);max-width:860px}
 .grid{display:grid;grid-template-columns:280px minmax(0,1fr);gap:18px;align-items:start}
 .sidebar{position:sticky;top:16px;display:grid;gap:8px}
-.sidebar a{padding:10px 12px;border:1px solid var(--line);background:rgba(255,255,255,.74);border-radius:12px;color:var(--ink);text-decoration:none;font-weight:700;font-size:14px}
-.panel{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:20px;box-shadow:0 18px 45px rgba(15,23,42,.06);margin-bottom:16px}
+.sidebar a{padding:10px 12px;border:1px solid var(--line);background:var(--panel-soft);border-radius:12px;color:var(--ink);text-decoration:none;font-weight:700;font-size:14px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:20px;box-shadow:var(--shadow);margin-bottom:16px}
 .panel h2{font-size:24px;margin-bottom:12px}.panel h3{font-size:18px;margin:18px 0 10px}
 .panel p,.panel li{color:var(--muted);line-height:1.65;font-size:15px}
 ul,ol{padding-left:20px;display:grid;gap:8px}
 code{display:block;background:#111827;color:#e5e7eb;border-radius:14px;padding:14px;white-space:pre-wrap;word-break:break-word;line-height:1.55;font-size:13px}
-.inline-code{display:inline;padding:2px 6px;border-radius:7px;background:#e2e8f0;color:#0f172a;font-size:.92em}
+.inline-code{display:inline;padding:2px 6px;border-radius:7px;background:var(--inline-bg);color:var(--inline-ink);font-size:.92em}
 table{width:100%;border-collapse:collapse;min-width:720px}.table-wrap{overflow:auto;border-radius:14px;border:1px solid var(--line)}
 th,td{text-align:left;padding:13px 14px;border-bottom:1px solid var(--line);vertical-align:top}
-th{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);background:#f8fafc}
+th{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);background:var(--thead)}
 td{font-size:14px;color:var(--ink);line-height:1.55}
 .tag{display:inline-flex;border-radius:999px;background:rgba(79,70,229,.1);color:var(--brand);padding:6px 10px;font-weight:800;font-size:12px}
 .callout{padding:14px 16px;border-radius:14px;background:rgba(8,145,178,.1);border:1px solid rgba(8,145,178,.22);color:var(--ink);line-height:1.6}
@@ -121,6 +122,7 @@ td{font-size:14px;color:var(--ink);line-height:1.55}
   <div class="topbar">
     <a class="brand" href="dashboard.php"><img src="images/logo_img.png" alt="Vani AI"><span>Vani AI API</span></a>
     <div class="actions">
+      <button class="ghost" type="button" id="themeToggle">Dark Mode</button>
       <a class="ghost" href="<?php echo h($dashboardUrl); ?>">Back to Integration</a>
       <a class="btn" href="dashboard.php#subscription">Business Plan Active</a>
     </div>
@@ -425,5 +427,19 @@ window.addEventListener("vani:liveAction", function(event) {
     </main>
   </div>
 </div>
+<script>
+const themeToggle = document.getElementById("themeToggle");
+function setTheme(theme) {
+  const dark = theme === "dark";
+  document.body.classList.toggle("dark", dark);
+  if (themeToggle) {
+    themeToggle.textContent = dark ? "Bright Mode" : "Dark Mode";
+    themeToggle.setAttribute("aria-pressed", String(dark));
+  }
+  localStorage.setItem("vani-index-theme", dark ? "dark" : "bright");
+}
+setTheme(localStorage.getItem("vani-index-theme") || "bright");
+themeToggle?.addEventListener("click", () => setTheme(document.body.classList.contains("dark") ? "bright" : "dark"));
+</script>
 </body>
 </html>

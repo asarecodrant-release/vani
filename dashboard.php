@@ -1143,6 +1143,9 @@ body.dark .funnel-step{background:rgba(15,23,42,.38)}
 .active-subscription-banner small{display:block;color:var(--muted);line-height:1.5;margin-top:4px}
 .active-subscription-banner .tag{align-self:flex-start}
 body.dark .active-subscription-banner{background:linear-gradient(135deg,rgba(99,102,241,.2),rgba(6,182,212,.14))}
+.subscription-wallet-note{margin-top:18px;padding:16px 18px;border:1px solid rgba(34,197,94,.24);border-radius:18px;background:linear-gradient(135deg,rgba(34,197,94,.12),rgba(6,182,212,.09));color:var(--ink);line-height:1.65}
+.subscription-wallet-note strong{display:block;font-size:17px;margin-bottom:4px}
+body.dark .subscription-wallet-note{background:linear-gradient(135deg,rgba(34,197,94,.16),rgba(6,182,212,.12))}
 .pricing-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:16px;margin-top:18px;align-items:stretch}
 .pricing-card{grid-column:span 2;padding:16px;display:grid;gap:12px;align-content:start}
 .pricing-card.featured{grid-column:span 2;padding:22px;border-color:rgba(34,197,94,.55);box-shadow:0 18px 42px rgba(34,197,94,.16);transform:scale(1.02);z-index:1}
@@ -2402,6 +2405,11 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
           <span class="eyebrow">Subscription</span>
           <h2 style="margin:8px 0 10px">Subscription Plans</h2>
           <p class="muted">Choose the monthly plan that fits your FAQ limit, lead verification, analytics, and integration needs.</p>
+
+          <div class="subscription-wallet-note">
+            <strong>Subscription amount is credited to your wallet.</strong>
+            When a customer buys or renews a plan, the plan amount is added to the customer's wallet. The wallet is then used as-you-go for real usage, mainly when new website visitors verify by Email OTP or Mobile OTP, and for paid add-ons such as WhatsApp Redirect.
+          </div>
 
           <div class="active-subscription-banner">
             <div>
