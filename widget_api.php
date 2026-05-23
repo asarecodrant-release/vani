@@ -82,8 +82,72 @@ function widget_billing_legacy_account_has_value(array $account): bool {
         || trim((string)($account['saved_payment_method_customer_id'] ?? '')) !== '';
 }
 
+function widget_legacy_owner_customer_id(string $email): string {
+    if ($email === '') {
+        return '';
+    }
+    $orders = widget_safe_rows(supabase(
+        "GET",
+        "billing_orders?select=customer_id,status,created_at&email=eq." . urlencode($email) . "&customer_id=not.is.null&status=eq.paid&order=created_at.desc&limit=10"
+    ));
+    foreach ($orders as $order) {
+        $customerId = trim((string)($order['customer_id'] ?? ''));
+        if ($customerId !== '') {
+            return $customerId;
+        }
+    }
+    return '';
+}
+
+function widget_customer_has_paid_order(string $email, string $customerId): bool {
+    if ($email === '' || $customerId === '') {
+        return false;
+    }
+    return !empty(widget_safe_rows(supabase(
+        "GET",
+        "billing_orders?select=id&email=eq." . urlencode($email) . "&customer_id=eq." . urlencode($customerId) . "&status=eq.paid&limit=1"
+    )));
+}
+
+function widget_email_has_assigned_paid_account(string $email, string $exceptCustomerId = ''): bool {
+    if ($email === '') {
+        return false;
+    }
+    $rows = widget_safe_rows(supabase(
+        "GET",
+        "billing_accounts?select=*&email=eq." . urlencode($email) . "&customer_id=not.is.null&limit=20"
+    ));
+    foreach ($rows as $row) {
+        $rowCustomerId = trim((string)($row['customer_id'] ?? ''));
+        if ($rowCustomerId !== $exceptCustomerId && widget_billing_legacy_account_has_value($row)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function widget_email_bot_count(string $email): int {
+    if ($email === '') {
+        return 0;
+    }
+    return count(widget_safe_rows(supabase(
+        "GET",
+        "chatbot_signups?select=customer_id&email=eq." . urlencode($email) . "&limit=2"
+    )));
+}
+
 function widget_adopt_legacy_billing_account(string $customerId, string $email, array $customerAccount = []): array {
     if ($customerId === '' || $email === '') {
+        return $customerAccount;
+    }
+    $legacyOwnerCustomerId = widget_legacy_owner_customer_id($email);
+    if ($legacyOwnerCustomerId !== '' && $legacyOwnerCustomerId !== $customerId) {
+        return $customerAccount;
+    }
+    if ($legacyOwnerCustomerId === '' && widget_email_has_assigned_paid_account($email, $customerId)) {
+        return $customerAccount;
+    }
+    if ($legacyOwnerCustomerId === '' && widget_email_bot_count($email) > 1) {
         return $customerAccount;
     }
     $legacyRows = widget_safe_rows(supabase(
@@ -136,6 +200,71 @@ function widget_adopt_legacy_billing_account(string $customerId, string $email, 
     return $customerAccount;
 }
 
+function widget_free_billing_snapshot(string $customerId, string $email): array {
+    return [
+        "customer_id" => $customerId,
+        "email" => $email,
+        "wallet_balance_paise" => 0,
+        "current_plan" => "free",
+        "subscription_status" => "free",
+        "auto_recharge_enabled" => false,
+        "saved_payment_method_status" => "missing"
+    ];
+}
+
+function widget_repair_misassigned_billing_account(string $customerId, string $email, array $account): array {
+    if ($customerId === '' || $email === '' || !widget_billing_legacy_account_has_value($account)) {
+        return $account;
+    }
+    $ownerCustomerId = widget_legacy_owner_customer_id($email);
+    if ($ownerCustomerId === '' || $ownerCustomerId === $customerId) {
+        return $account;
+    }
+    if (widget_customer_has_paid_order($email, $customerId)) {
+        return $account;
+    }
+    $payload = ["customer_id" => $ownerCustomerId, "email" => $email];
+    foreach ([
+        "wallet_balance_paise",
+        "current_plan",
+        "subscription_status",
+        "auto_recharge_enabled",
+        "auto_recharge_threshold_paise",
+        "auto_recharge_amount_paise",
+        "saved_payment_method_status",
+        "saved_payment_method_reference",
+        "saved_payment_method_customer_id",
+        "saved_payment_method_contact",
+        "last_auto_recharge_attempt_at",
+        "current_period_start",
+        "current_period_end"
+    ] as $field) {
+        if (array_key_exists($field, $account)) {
+            $payload[$field] = $account[$field];
+        }
+    }
+    $ownerRows = widget_safe_rows(supabase("GET", "billing_accounts?select=*&customer_id=eq." . urlencode($ownerCustomerId) . "&limit=1"));
+    if (empty($ownerRows[0])) {
+        supabase("POST", "billing_accounts", [$payload]);
+    } elseif (!widget_billing_legacy_account_has_value($ownerRows[0])) {
+        supabase("PATCH", "billing_accounts?customer_id=eq." . urlencode($ownerCustomerId), $payload);
+    }
+    supabase("PATCH", "billing_accounts?customer_id=eq." . urlencode($customerId), [
+        "wallet_balance_paise" => 0,
+        "current_plan" => "free",
+        "subscription_status" => "free",
+        "auto_recharge_enabled" => false,
+        "auto_recharge_threshold_paise" => 0,
+        "auto_recharge_amount_paise" => 0,
+        "saved_payment_method_status" => "missing",
+        "saved_payment_method_reference" => null,
+        "saved_payment_method_customer_id" => null,
+        "saved_payment_method_contact" => null
+    ]);
+    widget_downgrade_account_to_free($customerId, 'subscription_owner_mismatch');
+    return widget_free_billing_snapshot($customerId, $email);
+}
+
 function widget_billing_account_for_customer(string $customerId): array {
     $customerId = trim($customerId);
     if ($customerId === '') {
@@ -150,6 +279,7 @@ function widget_billing_account_for_customer(string $customerId): array {
         if (!widget_billing_legacy_account_has_value($rows[0]) && $email !== '') {
             $rows[0] = widget_adopt_legacy_billing_account($customerId, $email, $rows[0]);
         }
+        $rows[0] = widget_repair_misassigned_billing_account($customerId, $email, $rows[0]);
         return $rows[0];
     }
     $email = widget_billing_email_for_customer($customerId);
