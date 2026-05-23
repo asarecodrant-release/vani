@@ -3343,6 +3343,19 @@ const analyticsReport = <?php echo json_encode([
     "success_rate" => !empty($page["conversations"]) ? round((($page["answered"] ?? 0) / max(1, $page["conversations"])) * 100) : 0
   ], array_slice($sourcePageStats, 0, 25)))
 ], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE); ?>;
+analyticsReport.summary = analyticsReport.summary || {};
+analyticsReport.comparison = analyticsReport.comparison || {current: {}, previous: {}};
+analyticsReport.daily_counts = analyticsReport.daily_counts || {};
+analyticsReport.hour_counts = analyticsReport.hour_counts || {};
+analyticsReport.devices = analyticsReport.devices || {};
+analyticsReport.browsers = analyticsReport.browsers || {};
+analyticsReport.countries = analyticsReport.countries || {};
+analyticsReport.cities = analyticsReport.cities || {};
+analyticsReport.unique_leads = analyticsReport.unique_leads || [];
+analyticsReport.top_questions = analyticsReport.top_questions || [];
+analyticsReport.unanswered_questions = analyticsReport.unanswered_questions || [];
+analyticsReport.conversations = analyticsReport.conversations || [];
+analyticsReport.source_pages = analyticsReport.source_pages || [];
 
 function setDrawer(type, open) {
   const isNav = type === "nav";
