@@ -341,6 +341,86 @@
     messages.scrollTop = messages.scrollHeight;
   }
 
+  function addThinkingMessage(messages) {
+    const botName = (config.bot_name || "Chatbot").trim() || "Chatbot";
+    const row = document.createElement("div");
+    row.className = "vani-message-row vani-message-bot vani-thinking-row";
+    const avatar = document.createElement("span");
+    const botAvatarUrl = resolveAssetUrl(config.avatar_url);
+    if (botAvatarUrl) {
+      const avatarImage = document.createElement("img");
+      avatarImage.src = botAvatarUrl;
+      avatarImage.alt = "";
+      css(avatarImage, {
+        width: "100%",
+        height: "100%",
+        objectFit: "contain",
+        display: "block"
+      });
+      avatarImage.onerror = () => {
+        avatarImage.remove();
+        avatar.textContent = "AI";
+      };
+      avatar.appendChild(avatarImage);
+    } else {
+      avatar.textContent = "AI";
+    }
+    const bubble = document.createElement("div");
+    const label = document.createElement("span");
+    label.textContent = `${botName} is thinking`;
+    const dots = document.createElement("span");
+    dots.className = "vani-thinking-dots";
+    dots.appendChild(document.createElement("i"));
+    dots.appendChild(document.createElement("i"));
+    dots.appendChild(document.createElement("i"));
+    css(row, {
+      display: "flex",
+      alignItems: "flex-end",
+      gap: "8px",
+      margin: "9px 0",
+      justifyContent: "flex-start",
+      animation: "vaniMessageIn .24s ease both"
+    });
+    css(avatar, {
+      width: "26px",
+      height: "26px",
+      borderRadius: "999px",
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      flex: "0 0 auto",
+      overflow: "hidden",
+      padding: botAvatarUrl ? "3px" : "0",
+      fontSize: "10px",
+      fontWeight: "800",
+      color: "#fff",
+      background: botAvatarUrl ? "#fff" : `linear-gradient(135deg,${config.theme_color || "#6366f1"},#06b6d4)`,
+      border: botAvatarUrl ? "1px solid #e2e8f0" : "0",
+      boxShadow: "0 8px 18px rgba(15,23,42,.16)"
+    });
+    css(bubble, {
+      padding: "10px 12px",
+      borderRadius: "16px 16px 16px 5px",
+      maxWidth: "82%",
+      fontSize: "13px",
+      lineHeight: "1.5",
+      color: "#64748b",
+      background: "rgba(255,255,255,.96)",
+      border: "1px solid #e2e8f0",
+      boxShadow: "0 10px 26px rgba(15,23,42,.07)",
+      display: "inline-flex",
+      alignItems: "center",
+      gap: "7px"
+    });
+    bubble.appendChild(label);
+    bubble.appendChild(dots);
+    row.appendChild(avatar);
+    row.appendChild(bubble);
+    messages.appendChild(row);
+    messages.scrollTop = messages.scrollHeight;
+    return row;
+  }
+
   function renderSuggestions(suggestionsBox, input, items) {
     suggestionsBox.innerHTML = "";
     suggestionsBox.style.display = items.length ? "grid" : "none";
@@ -480,9 +560,27 @@
         from { opacity: 0; transform: translateY(8px) scale(.98); }
         to { opacity: 1; transform: translateY(0) scale(1); }
       }
+      @keyframes vaniThinkingDot {
+        0%, 80%, 100% { opacity: .25; transform: translateY(0); }
+        40% { opacity: 1; transform: translateY(-2px); }
+      }
       .vani-suggestion-card {
         animation: vaniSuggestionIn .22s ease both;
       }
+      .vani-thinking-dots {
+        display: inline-flex;
+        gap: 3px;
+        align-items: center;
+      }
+      .vani-thinking-dots i {
+        width: 4px;
+        height: 4px;
+        border-radius: 999px;
+        background: currentColor;
+        animation: vaniThinkingDot 1.15s ease-in-out infinite;
+      }
+      .vani-thinking-dots i:nth-child(2) { animation-delay: .14s; }
+      .vani-thinking-dots i:nth-child(3) { animation-delay: .28s; }
     `;
     document.head.appendChild(style);
 
@@ -587,7 +685,7 @@
         <button data-vani-close type="button" aria-label="Close chat" title="Close chat" style="width:30px;height:30px;border:1px solid rgba(255,255,255,.38);border-radius:999px;background:rgba(255,255,255,.16);color:#fff;cursor:pointer;font-size:20px;line-height:1;display:flex;align-items:center;justify-content:center;padding:0;">×</button>
       </div>
       <div data-vani-messages style="flex:1;overflow:auto;padding:14px;background:linear-gradient(180deg,#f8fafc 0%,#eef2ff 100%);scroll-behavior:smooth;"></div>
-      <div data-vani-suggestions style="max-height:160px;overflow:auto;background:linear-gradient(180deg,#ffffff 0%,#f8fafc 100%);border-top:1px solid #e5e7eb;padding:8px;display:grid;gap:7px;"></div>
+      <div data-vani-suggestions style="max-height:160px;overflow:auto;background:transparent;border-top:0;padding:8px;display:grid;gap:7px;"></div>
       <div data-vani-lead-prompt style="display:none;padding:10px;border-top:1px solid #e5e7eb;background:#fff;"></div>
       <div data-vani-whatsapp-action style="display:none;padding:10px;border-top:1px solid #e5e7eb;background:#fff;"></div>
       <div style="display:flex;border-top:1px solid #e5e7eb;background:#fff;">
@@ -1675,6 +1773,7 @@
       sessionChatStartedAt = sessionChatStartedAt || new Date().toISOString();
       sessionMessageCount++;
       const requestStartedAt = Date.now();
+      const thinkingMessage = addThinkingMessage(messages);
 
       const response = await api("chat", "POST", {
         customer_id: customerId,
@@ -1691,6 +1790,7 @@
         })
       });
 
+      thinkingMessage.remove();
       addMessage(messages, response.reply || "No response", "bot");
       emitLiveAction(response.answered ? "faqAnswered" : "unknownQuestion", {
         message,
