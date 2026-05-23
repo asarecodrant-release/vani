@@ -1124,6 +1124,12 @@ body.dark .panel{border-color:var(--line)}
 .eyebrow{font-size:12px;font-weight:800;color:var(--brand);text-transform:uppercase;letter-spacing:.08em}
 .overview-hero h2{font-size:34px;line-height:1.18;margin:9px 0;background:linear-gradient(90deg,var(--brand),var(--brand-2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
 .overview-hero p{color:var(--muted);line-height:1.7}
+.subscription-transfer-card{margin-top:18px;display:grid;grid-template-columns:minmax(0,1.1fr) minmax(260px,.9fr);gap:16px;align-items:end}
+.subscription-transfer-card h3{margin:6px 0 8px}
+.subscription-transfer-card .field{margin:0}
+.subscription-transfer-card .transfer-warning{font-size:13px;color:var(--muted);line-height:1.5}
+.subscription-transfer-card .transfer-warning strong{color:#b91c1c}
+body.dark .subscription-transfer-card .transfer-warning strong{color:#fecaca}
 .bot-picker{display:grid;gap:10px;padding:18px;border-radius:18px;background:rgba(255,255,255,.58);border:1px solid var(--line)}
 body.dark .bot-picker{background:rgba(15,23,42,.56)}
 .bot-picker-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
@@ -1441,7 +1447,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
   .page-title{min-width:0}
   .page-title p{display:none}
   .metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
-  .overview-hero,.split,.profile-grid{grid-template-columns:1fr}
+  .overview-hero,.subscription-transfer-card,.split,.profile-grid{grid-template-columns:1fr}
   .profile-photo{justify-items:start;grid-template-columns:auto 1fr;align-items:center}
 }
 @media(max-width:720px){
@@ -1589,6 +1595,31 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
             </select>
             <small class="muted">Select the appropriate chatbot from those created by: <?php echo h($email); ?></small>
           </form>
+        </div>
+
+        <div class="panel subscription-transfer-card">
+          <div>
+            <span class="eyebrow">Subscription Transfer</span>
+            <h3>Move this plan to another chatbot</h3>
+            <p class="muted">Transfer the current paid plan and wallet balance from this chatbot to another chatbot created under <?php echo h($email); ?>.</p>
+            <p class="transfer-warning"><strong>Important:</strong> this is a transfer, not sharing. After transfer, this chatbot moves to Free service and paid toggles are turned off here.</p>
+          </div>
+          <div class="field">
+            <label for="transferSubscriptionTarget">Transfer to chatbot</label>
+            <select id="transferSubscriptionTarget" <?php echo $activePlanId === 'free' ? 'disabled' : ''; ?>>
+              <option value="">Select target chatbot</option>
+              <?php foreach ($bots as $bot): ?>
+                <?php $cid = (string)($bot['customer_id'] ?? ''); ?>
+                <?php if ($cid === '' || $cid === $selectedBotId) { continue; } ?>
+                <option value="<?php echo h($cid); ?>"><?php echo h(($bot['website_name'] ?? 'Bot') . ' - ' . $cid); ?></option>
+              <?php endforeach; ?>
+            </select>
+            <small class="input-help">
+              Current plan: <?php echo h($activePlan['name']); ?>. Wallet balance: <?php echo h(billing_rupees($billingWalletPaise)); ?>.
+              <?php echo $activePlanId === 'free' ? 'No paid plan is available to transfer.' : 'Target chatbot must be on Free service.'; ?>
+            </small>
+            <button class="pill-btn" type="button" id="transferSubscriptionBtn" <?php echo $activePlanId === 'free' || count($bots) < 2 ? 'disabled' : ''; ?>>Transfer Subscription</button>
+          </div>
         </div>
 
         <div class="metrics">
@@ -4713,6 +4744,45 @@ document.getElementById("deleteChatbotBtn")?.addEventListener("click", async eve
   setTimeout(() => {
     window.location.href = data.redirect || "dashboard.php";
   }, 700);
+});
+
+document.getElementById("transferSubscriptionBtn")?.addEventListener("click", async event => {
+  const sourceCustomerId = selectedCustomerId || "";
+  const targetCustomerId = document.getElementById("transferSubscriptionTarget")?.value || "";
+  if (!sourceCustomerId) return showToast("Select a bot first");
+  if (!targetCustomerId) return showToast("Select target chatbot");
+  const targetText = document.getElementById("transferSubscriptionTarget")?.selectedOptions?.[0]?.textContent?.trim() || "the selected chatbot";
+  const warning = [
+    "Transfer subscription?",
+    "",
+    `The current plan and wallet balance will move to ${targetText}.`,
+    "This chatbot will move to Free service and paid toggles will be turned off here."
+  ].join("\n");
+  if (!confirm(warning)) return;
+
+  const button = event.currentTarget;
+  const originalText = button.textContent;
+  button.disabled = true;
+  button.textContent = "Transferring...";
+  const response = await fetch("/api.php?action=transfer_chatbot_subscription", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      source_customer_id: sourceCustomerId,
+      target_customer_id: targetCustomerId
+    })
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!data.success) {
+    button.disabled = false;
+    button.textContent = originalText;
+    showToast(data.message || "Subscription could not be transferred");
+    return;
+  }
+  showToast("Subscription transferred");
+  setTimeout(() => {
+    window.location.href = `dashboard.php?bot=${encodeURIComponent(targetCustomerId)}#subscription`;
+  }, 800);
 });
 
 document.getElementById("saveSetupBtn")?.addEventListener("click", () => {

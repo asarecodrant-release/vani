@@ -489,6 +489,8 @@ function disable_paid_service_toggles_for_customer(string $customerId, string $r
     supabase("PATCH", "chatbot_settings?customer_id=eq." . urlencode($customerId), [
         "handoff_enabled" => false,
         "allowed_domains_enabled" => false,
+        "live_chat_actions_enabled" => false,
+        "faq_actions_enabled" => false,
         "webhook_url" => null,
         "webhook_secret" => null
     ]);
@@ -507,6 +509,8 @@ function disable_paid_service_toggles_for_email(string $email, string $reason = 
         supabase("PATCH", "chatbot_settings?customer_id=eq." . urlencode($customerId), [
             "handoff_enabled" => false,
             "allowed_domains_enabled" => false,
+            "live_chat_actions_enabled" => false,
+            "faq_actions_enabled" => false,
             "webhook_url" => null,
             "webhook_secret" => null
         ]);
@@ -1747,6 +1751,124 @@ if ($action === "billing_plans") {
         "account" => $account,
         "active_plan" => billing_active_plan_from_account($account),
         "plans" => billing_plans()
+    ]);
+    exit;
+}
+
+if ($action === "transfer_chatbot_subscription") {
+    if (!is_authenticated_user()) {
+        echo json_encode(["success" => false, "message" => "Login required"]);
+        exit;
+    }
+
+    $data = getJSON();
+    $email = authenticated_email();
+    $sourceCustomerId = trim((string)($data['source_customer_id'] ?? ''));
+    $targetCustomerId = trim((string)($data['target_customer_id'] ?? ''));
+    if ($sourceCustomerId === '' || $targetCustomerId === '' || $sourceCustomerId === $targetCustomerId) {
+        echo json_encode(["success" => false, "message" => "Select a different target chatbot"]);
+        exit;
+    }
+    if (!authenticated_customer_access($sourceCustomerId) || !authenticated_customer_access($targetCustomerId)) {
+        echo json_encode(["success" => false, "message" => "Access denied"]);
+        exit;
+    }
+
+    $sourceAccount = billing_account_for_customer($sourceCustomerId);
+    $targetAccount = billing_account_for_customer($targetCustomerId);
+    $sourcePlanId = billing_active_plan_from_account($sourceAccount);
+    $targetPlanId = billing_active_plan_from_account($targetAccount);
+    if ($sourcePlanId === 'free' || !billing_legacy_account_has_value($sourceAccount)) {
+        echo json_encode(["success" => false, "message" => "The selected chatbot does not have an active paid subscription to transfer"]);
+        exit;
+    }
+    if ($targetPlanId !== 'free' || billing_legacy_account_has_value($targetAccount)) {
+        echo json_encode(["success" => false, "message" => "Target chatbot already has billing value or an active plan. Transfer to a Free chatbot only."]);
+        exit;
+    }
+
+    $transferFields = [
+        "email" => $email,
+        "wallet_balance_paise" => (int)($sourceAccount['wallet_balance_paise'] ?? 0),
+        "current_plan" => (string)($sourceAccount['current_plan'] ?? $sourcePlanId),
+        "subscription_status" => (string)($sourceAccount['subscription_status'] ?? 'active'),
+        "auto_recharge_enabled" => filter_var($sourceAccount['auto_recharge_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN),
+        "auto_recharge_threshold_paise" => (int)($sourceAccount['auto_recharge_threshold_paise'] ?? 0),
+        "auto_recharge_amount_paise" => (int)($sourceAccount['auto_recharge_amount_paise'] ?? 0),
+        "saved_payment_method_status" => (string)($sourceAccount['saved_payment_method_status'] ?? 'missing'),
+        "saved_payment_method_reference" => ($sourceAccount['saved_payment_method_reference'] ?? null) ?: null,
+        "saved_payment_method_customer_id" => ($sourceAccount['saved_payment_method_customer_id'] ?? null) ?: null,
+        "saved_payment_method_contact" => ($sourceAccount['saved_payment_method_contact'] ?? null) ?: null,
+        "last_auto_recharge_attempt_at" => ($sourceAccount['last_auto_recharge_attempt_at'] ?? null) ?: null,
+        "current_period_start" => ($sourceAccount['current_period_start'] ?? null) ?: null,
+        "current_period_end" => ($sourceAccount['current_period_end'] ?? null) ?: null
+    ];
+
+    $targetUpdate = supabase("PATCH", "billing_accounts?customer_id=eq." . urlencode($targetCustomerId), $transferFields);
+    if ($targetUpdate['status'] < 200 || $targetUpdate['status'] >= 300 || empty($targetUpdate['data'][0])) {
+        $targetCreatePayload = $transferFields;
+        $targetCreatePayload["customer_id"] = $targetCustomerId;
+        $targetUpdate = supabase("POST", "billing_accounts", [$targetCreatePayload]);
+    }
+    if ($targetUpdate['status'] < 200 || $targetUpdate['status'] >= 300) {
+        echo json_encode(["success" => false, "message" => "Subscription could not be assigned to the target chatbot", "debug" => $targetUpdate]);
+        exit;
+    }
+
+    $sourceReset = supabase("PATCH", "billing_accounts?customer_id=eq." . urlencode($sourceCustomerId), [
+        "wallet_balance_paise" => 0,
+        "current_plan" => "free",
+        "subscription_status" => "free",
+        "auto_recharge_enabled" => false,
+        "auto_recharge_threshold_paise" => 0,
+        "auto_recharge_amount_paise" => 0,
+        "saved_payment_method_status" => "missing",
+        "saved_payment_method_reference" => null,
+        "saved_payment_method_customer_id" => null,
+        "saved_payment_method_contact" => null,
+        "last_auto_recharge_attempt_at" => null,
+        "current_period_start" => null,
+        "current_period_end" => null
+    ]);
+    if ($sourceReset['status'] < 200 || $sourceReset['status'] >= 300) {
+        echo json_encode(["success" => false, "message" => "Target was updated, but source chatbot could not be reset. Please refresh and check billing.", "debug" => $sourceReset]);
+        exit;
+    }
+
+    disable_paid_service_toggles_for_customer($sourceCustomerId, 'subscription_transferred');
+    supabase("PATCH", "wallet_transactions?customer_id=eq." . urlencode($sourceCustomerId), [
+        "customer_id" => $targetCustomerId
+    ]);
+    supabase("PATCH", "customer_invoices?customer_id=eq." . urlencode($sourceCustomerId), [
+        "customer_id" => $targetCustomerId
+    ]);
+
+    $receipt = substr("transfer_" . $sourcePlanId . "_" . time() . "_" . bin2hex(random_bytes(3)), 0, 40);
+    supabase("POST", "billing_orders", [[
+        "email" => $email,
+        "customer_id" => $targetCustomerId,
+        "plan_id" => $sourcePlanId,
+        "order_type" => "subscription",
+        "amount_paise" => 0,
+        "currency" => "INR",
+        "status" => "paid",
+        "razorpay_order_id" => null,
+        "receipt" => $receipt,
+        "metadata" => (object)[
+            "payment_mode" => "transfer",
+            "source_customer_id" => $sourceCustomerId,
+            "target_customer_id" => $targetCustomerId,
+            "transferred_at" => gmdate('c')
+        ],
+        "paid_at" => gmdate('Y-m-d\TH:i:s\Z')
+    ]]);
+
+    echo json_encode([
+        "success" => true,
+        "message" => "Subscription transferred successfully",
+        "source_customer_id" => $sourceCustomerId,
+        "target_customer_id" => $targetCustomerId,
+        "target_account" => billing_account_for_customer($targetCustomerId)
     ]);
     exit;
 }
