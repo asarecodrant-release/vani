@@ -19,7 +19,7 @@ $botImages = array_values(array_filter($botImages, 'is_file'));
 natcasesort($botImages);
 $botImages = array_map(fn($path) => 'images/' . basename($path), $botImages);
 $brandLogoDataUri = '';
-foreach ([__DIR__ . '/images/logo.png', __DIR__ . '/images/logo_img.png'] as $logoPath) {
+foreach ([__DIR__ . '/images/logo_img.png', __DIR__ . '/images/logo.png'] as $logoPath) {
     if (is_readable($logoPath)) {
         $extension = strtolower(pathinfo($logoPath, PATHINFO_EXTENSION));
         $mime = $extension === 'svg' ? 'image/svg+xml' : ($extension === 'webp' ? 'image/webp' : ($extension === 'jpg' || $extension === 'jpeg' ? 'image/jpeg' : 'image/png'));
@@ -2260,6 +2260,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
               <a class="filter-chip <?php echo $analyticsRange === '7_days' ? 'active' : ''; ?>" href="<?php echo h(analytics_url('7_days', $selectedBotId)); ?>">7 days: <?php echo h($last7AllQueries); ?></a>
               <a class="filter-chip <?php echo $analyticsRange === '30_days' ? 'active' : ''; ?>" href="<?php echo h(analytics_url('30_days', $selectedBotId)); ?>">30 days: <?php echo h($last30AllQueries); ?></a>
               <a class="filter-chip <?php echo $analyticsRange === 'custom' ? 'active' : ''; ?>" href="<?php echo h(analytics_url('custom', $selectedBotId, $analyticsFrom, $analyticsTo)); ?>">Custom range</a>
+              <button class="pill-btn analytics-pdf-report-btn" type="button" <?php echo $canExportReports ? '' : 'data-premium-lock="Business subscription required"'; ?>>Download PDF Report</button>
             </div>
           </div>
           <form class="analytics-filter-form" method="get" action="dashboard.php">
@@ -3271,6 +3272,7 @@ const vaniBrandLogo = <?php echo js_json($brandLogoDataUri); ?>;
 const analyticsReport = <?php echo js_json([
   "bot_name" => $botName,
   "range_label" => $analyticsRangeLabel,
+  "range_key" => $analyticsRange,
   "date_from" => $analyticsFrom,
   "date_to" => $analyticsTo,
   "previous_date_from" => $previousAnalyticsFrom,
@@ -4078,9 +4080,18 @@ function analyticsReportHtml() {
   const previous = comparison.previous || {};
   const generatedAt = new Date().toLocaleString();
   const daily = analyticsDateSeries();
-  const maxDaily = Math.max(1, ...daily.conversations, ...daily.leads);
+  const hourRows = Object.entries(analyticsReport.hour_counts || {}).sort(([a], [b]) => Number(a) - Number(b)).map(([name, value]) => ({name: `${name}:00`, value: Number(value) || 0}));
+  const leadQuality = analyticsReport.lead_quality || {};
+  const leadQualityRows = [
+    {name: "Real Leads", value: Number(leadQuality.real) || 0},
+    {name: "Weak Leads", value: Number(leadQuality.weak) || 0},
+    {name: "Email Contacts", value: Number(leadQuality.email) || 0},
+    {name: "Mobile Contacts", value: Number(leadQuality.mobile) || 0}
+  ];
+  const maxDaily = Math.max(1, ...daily.conversations, ...daily.answered, ...daily.unanswered, ...daily.leads);
   const logo = vaniBrandLogo ? `<img src="${vaniBrandLogo}" alt="Vani AI">` : `<strong>Vani AI</strong>`;
   const card = (title, value, note = "") => `<div class="kpi"><span>${esc(title)}</span><strong>${esc(value)}</strong><small>${esc(note)}</small></div>`;
+  const alertCard = (title, value, note, status = "") => `<div class="alert ${status}"><strong>${esc(title)}</strong><b>${esc(value)}</b><span>${esc(note)}</span></div>`;
   const summaryRows = Object.entries(summary)
     .map(([key, value]) => `<tr><th>${esc(label(key))}</th><td>${esc(value)}</td></tr>`).join("");
   const comparisonRows = Object.keys(current).map(key => {
@@ -4093,8 +4104,10 @@ function analyticsReportHtml() {
   const trendBars = daily.dates.length
     ? daily.dates.map((date, index) => {
         const conversations = daily.conversations[index] || 0;
+        const answered = daily.answered[index] || 0;
+        const unanswered = daily.unanswered[index] || 0;
         const leads = daily.leads[index] || 0;
-        return `<div class="trend-item"><div class="trend-stack"><i style="height:${Math.max(4, Math.round((conversations / maxDaily) * 120))}px"></i><b style="height:${leads ? Math.max(4, Math.round((leads / maxDaily) * 120)) : 0}px"></b></div><span>${esc(date.slice(5))}</span></div>`;
+        return `<div class="trend-item"><div class="trend-stack"><i title="Conversations" style="height:${Math.max(4, Math.round((conversations / maxDaily) * 120))}px"></i><em title="Answered" style="height:${answered ? Math.max(4, Math.round((answered / maxDaily) * 120)) : 0}px"></em><u title="Unanswered" style="height:${unanswered ? Math.max(4, Math.round((unanswered / maxDaily) * 120)) : 0}px"></u><b title="Leads" style="height:${leads ? Math.max(4, Math.round((leads / maxDaily) * 120)) : 0}px"></b></div><span>${esc(date.slice(5))}</span></div>`;
       }).join("")
     : `<p class="empty">No trend data available for this period.</p>`;
   const funnel = (analyticsReport.funnel || []).map((item, index, items) => {
@@ -4105,7 +4118,12 @@ function analyticsReportHtml() {
   const breakdown = (title, objectValue) => {
     const rows = analyticsEntries(objectValue, 8);
     const maxValue = Math.max(1, ...rows.map(item => item.value));
-    return `<section class="panel"><h2>${esc(title)}</h2>${rows.length ? rows.map(item => `<div class="bar-row"><span>${esc(item.name)}</span><div><i style="width:${Math.round((item.value / maxValue) * 100)}%"></i></div><strong>${esc(number(item.value))}</strong></div>`).join("") : `<p class="empty">No data</p>`}</section>`;
+    return `<section class="panel page-break-avoid"><h2>${esc(title)}</h2>${rows.length ? rows.map(item => `<div class="bar-row"><span>${esc(item.name)}</span><div><i style="width:${Math.round((item.value / maxValue) * 100)}%"></i></div><strong>${esc(number(item.value))}</strong></div>`).join("") : `<p class="empty">No data</p>`}</section>`;
+  };
+  const barList = (title, rows) => {
+    const filtered = rows.filter(item => Number(item.value) > 0);
+    const maxValue = Math.max(1, ...filtered.map(item => Number(item.value) || 0));
+    return `<section class="panel page-break-avoid"><h2>${esc(title)}</h2>${filtered.length ? filtered.map(item => `<div class="bar-row"><span>${esc(item.name)}</span><div><i style="width:${Math.round(((Number(item.value) || 0) / maxValue) * 100)}%"></i></div><strong>${esc(number(item.value))}</strong></div>`).join("") : `<p class="empty">No data</p>`}</section>`;
   };
   const table = (title, headers, rows) => `
     <section class="panel page-break-avoid"><h2>${esc(title)}</h2>
@@ -4118,13 +4136,13 @@ function analyticsReportHtml() {
 *{box-sizing:border-box}body{font-family:Inter,Segoe UI,Arial,sans-serif;margin:0;color:#111827;background:#f8fafc;line-height:1.45}
 .report{max-width:1120px;margin:0 auto;padding:28px}.cover{color:#fff;border-radius:24px;padding:28px;background:linear-gradient(135deg,#111827,#4338ca 58%,#0891b2);display:grid;gap:22px;box-shadow:0 18px 45px rgba(15,23,42,.18)}
 .brand{display:flex;align-items:center;gap:14px}.brand img{width:54px;height:54px;object-fit:contain;border-radius:14px;background:#fff;padding:6px}.brand strong{font-size:22px}.brand span{display:block;font-size:12px;color:rgba(255,255,255,.78);font-weight:700;text-transform:uppercase;letter-spacing:.08em}
-.cover h1{font-size:34px;margin:0}.cover p{margin:0;color:rgba(255,255,255,.82)}.meta{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.meta div{padding:12px;border:1px solid rgba(255,255,255,.18);border-radius:14px;background:rgba(255,255,255,.1)}.meta span{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:rgba(255,255,255,.7)}.meta strong{display:block;margin-top:4px}
+.cover h1{font-size:34px;margin:0}.cover p{margin:0;color:rgba(255,255,255,.82)}.meta{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.meta div{padding:12px;border:1px solid rgba(255,255,255,.18);border-radius:14px;background:rgba(255,255,255,.1)}.meta span{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:rgba(255,255,255,.7)}.meta strong{display:block;margin-top:4px}.filter-strip{display:flex;gap:10px;flex-wrap:wrap}.filter-strip span{border:1px solid rgba(255,255,255,.2);border-radius:999px;background:rgba(255,255,255,.12);padding:8px 11px;font-size:12px;font-weight:800}
 .section-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:18px 0}.kpi,.panel{background:#fff;border:1px solid #e2e8f0;border-radius:18px;box-shadow:0 8px 24px rgba(15,23,42,.06)}.kpi{padding:16px;display:grid;gap:7px}.kpi span{font-size:11px;color:#64748b;text-transform:uppercase;font-weight:800;letter-spacing:.05em}.kpi strong{font-size:25px;color:#111827}.kpi small{color:#64748b}
-.panel{padding:18px;margin:16px 0}.panel h2{font-size:18px;margin:0 0 14px}.two{display:grid;grid-template-columns:1.25fr .75fr;gap:16px}.three{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}.empty{color:#64748b;padding:18px;text-align:center}.empty-cell{text-align:center;color:#64748b}
-.trend{height:190px;display:flex;align-items:end;gap:8px;border-left:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;padding:12px 8px 0}.trend-item{flex:1;display:grid;gap:7px;min-width:0;text-align:center}.trend-stack{height:130px;display:flex;align-items:end;justify-content:center;gap:3px}.trend-stack i,.trend-stack b{display:block;width:10px;border-radius:8px 8px 0 0}.trend-stack i{background:#4f46e5}.trend-stack b{background:#06b6d4}.trend-item span{font-size:10px;color:#64748b;white-space:nowrap}
+.panel{padding:18px;margin:16px 0}.panel h2{font-size:18px;margin:0 0 14px}.two{display:grid;grid-template-columns:1.25fr .75fr;gap:16px}.three{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}.empty{color:#64748b;padding:18px;text-align:center}.empty-cell{text-align:center;color:#64748b}.alert-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:18px 0}.alert{padding:16px;border:1px solid #e2e8f0;border-radius:18px;background:#fff;display:grid;gap:5px}.alert strong{font-size:13px}.alert b{font-size:24px}.alert span{color:#64748b;font-size:12px}.alert.good{border-color:#bbf7d0;background:#f0fdf4}.alert.warn{border-color:#fde68a;background:#fffbeb}.alert.bad{border-color:#fecaca;background:#fef2f2}
+.trend{height:190px;display:flex;align-items:end;gap:8px;border-left:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;padding:12px 8px 0}.trend-item{flex:1;display:grid;gap:7px;min-width:0;text-align:center}.trend-stack{height:130px;display:flex;align-items:end;justify-content:center;gap:3px}.trend-stack i,.trend-stack b,.trend-stack em,.trend-stack u{display:block;width:8px;border-radius:8px 8px 0 0;text-decoration:none}.trend-stack i{background:#4f46e5}.trend-stack em{background:#22c55e}.trend-stack u{background:#f59e0b}.trend-stack b{background:#06b6d4}.trend-item span{font-size:10px;color:#64748b;white-space:nowrap}
 .funnel-row,.bar-row{display:grid;grid-template-columns:120px 1fr 58px;gap:10px;align-items:center;margin:10px 0;font-size:12px;color:#475569}.funnel-row div,.bar-row div{height:13px;border-radius:999px;background:#e2e8f0;overflow:hidden}.funnel-row i,.bar-row i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#4f46e5,#06b6d4)}.funnel-row strong,.bar-row strong{text-align:right;color:#111827}
 table{width:100%;border-collapse:separate;border-spacing:0;margin-top:8px;overflow:hidden;border:1px solid #e2e8f0;border-radius:14px}th,td{text-align:left;border-bottom:1px solid #e2e8f0;padding:9px 10px;font-size:12px;vertical-align:top;word-break:break-word}th{background:#f1f5f9;color:#475569;text-transform:uppercase;font-size:10px;letter-spacing:.05em}tr:last-child td{border-bottom:0}.delta{font-weight:800;color:#64748b}.delta.good{color:#15803d}.delta.bad{color:#b91c1c}
-.footer{display:flex;justify-content:space-between;gap:16px;color:#64748b;font-size:11px;margin-top:20px}.legend{display:flex;gap:14px;color:#64748b;font-size:12px}.legend i{display:inline-block;width:10px;height:10px;border-radius:999px;margin-right:5px}.legend .c{background:#4f46e5}.legend .l{background:#06b6d4}
+.footer{display:flex;justify-content:space-between;gap:16px;color:#64748b;font-size:11px;margin-top:20px}.legend{display:flex;gap:14px;flex-wrap:wrap;color:#64748b;font-size:12px}.legend i{display:inline-block;width:10px;height:10px;border-radius:999px;margin-right:5px}.legend .c{background:#4f46e5}.legend .a{background:#22c55e}.legend .u{background:#f59e0b}.legend .l{background:#06b6d4}
 @media print{body{background:#fff}.report{padding:0}.cover,.kpi,.panel{box-shadow:none}.page-break-avoid{break-inside:avoid}.two,.three,.section-grid,.meta{break-inside:avoid}}
 </style>
 </head><body>
@@ -4133,21 +4151,36 @@ table{width:100%;border-collapse:separate;border-spacing:0;margin-top:8px;overfl
   <div class="brand">${logo}<div><strong>Vani AI</strong><span>Analytics report</span></div></div>
   <div><h1>Performance Dashboard Report</h1><p>BI-style snapshot generated from the dashboard data currently loaded in your browser.</p></div>
   <div class="meta"><div><span>Chatbot</span><strong>${esc(analyticsReport.bot_name)}</strong></div><div><span>Range</span><strong>${esc(analyticsReport.range_label)}</strong></div><div><span>Period</span><strong>${esc(analyticsReport.date_from)} to ${esc(analyticsReport.date_to)}</strong></div><div><span>Generated</span><strong>${esc(generatedAt)}</strong></div></div>
+  <div class="filter-strip"><span>Applied filter: ${esc(analyticsReport.range_label)}</span><span>From ${esc(analyticsReport.date_from)}</span><span>To ${esc(analyticsReport.date_to)}</span><span>Previous period: ${esc(analyticsReport.previous_date_from)} to ${esc(analyticsReport.previous_date_to)}</span></div>
 </section>
 <section class="section-grid">
 ${card("Conversations", number(summary.total_conversations), "Tracked chat sessions and queries")}
+${card("Messages", number(summary.total_messages), "User messages currently tracked")}
+${card("Visitors", number(summary.unique_visitors), `${number(summary.returning_users_percent)}% returning users`)}
 ${card("Answer Rate", percent(summary.answered_queries_percent), `${number(summary.unanswered_queries_percent)}% unanswered`)}
 ${card("Leads", number(summary.leads_collected), `${number(summary.unique_leads)} unique leads`)}
+${card("OTP Verified", number(summary.otp_verified_leads), `${number(summary.real_unique_leads)} real leads`)}
 ${card("Avg Response", summary.avg_response_time_ms ? `${number(summary.avg_response_time_ms)}ms` : "No data", "Widget API response time")}
+${card("Avg Duration", summary.avg_conversation_duration || "No data", "Widget session duration")}
+</section>
+<section class="alert-grid">
+${alertCard("Answer Health", `${number(summary.unanswered_queries_percent)}%`, "Unanswered queries in the selected filter.", Number(summary.unanswered_queries_percent) > 30 ? "bad" : (Number(summary.unanswered_queries_percent) > 10 ? "warn" : "good"))}
+${alertCard("Lead Capture", `${number(current.lead_conversion || 0)}%`, "Conversation to lead conversion for this period.", Number(current.lead_conversion || 0) >= 10 ? "good" : (Number(current.lead_conversion || 0) > 0 ? "warn" : "bad"))}
+${alertCard("Response Time", summary.avg_response_time_ms ? `${number(summary.avg_response_time_ms)}ms` : "No data", "Average response time tracked by widget API.", summary.avg_response_time_ms && Number(summary.avg_response_time_ms) <= 1500 ? "good" : (summary.avg_response_time_ms ? "warn" : ""))}
 </section>
 <section class="two">
-  <div class="panel"><h2>Conversation, Answer and Lead Trend</h2><div class="legend"><span><i class="c"></i>Conversations</span><span><i class="l"></i>Leads</span></div><div class="trend">${trendBars}</div></div>
+  <div class="panel"><h2>Conversation, Answer and Lead Trend</h2><div class="legend"><span><i class="c"></i>Conversations</span><span><i class="a"></i>Answered</span><span><i class="u"></i>Unanswered</span><span><i class="l"></i>Leads</span></div><div class="trend">${trendBars}</div></div>
   <div class="panel"><h2>Conversion Funnel</h2>${funnel || `<p class="empty">No funnel data</p>`}</div>
 </section>
 <section class="three">
   ${breakdown("Device Mix", analyticsReport.devices)}
   ${breakdown("Browser Breakdown", analyticsReport.browsers)}
   ${breakdown("Country Distribution", analyticsReport.countries)}
+</section>
+<section class="three">
+  ${barList("Hourly Usage", hourRows)}
+  ${barList("Lead Quality", leadQualityRows)}
+  ${breakdown("City Distribution", analyticsReport.cities)}
 </section>
 <section class="panel page-break-avoid"><h2>Previous Period Comparison</h2><table><thead><tr><th>Metric</th><th>Current</th><th>Previous</th><th>Change</th></tr></thead><tbody>${comparisonRows || `<tr><td colspan="4" class="empty-cell">No comparison data</td></tr>`}</tbody></table></section>
 <section class="panel page-break-avoid"><h2>Complete Summary</h2><table><tbody>${summaryRows}</tbody></table></section>
@@ -4180,13 +4213,28 @@ document.getElementById("downloadMonthlyReportBtn")?.addEventListener("click", (
   showToast("Monthly report downloaded");
 });
 
-document.getElementById("printAnalyticsReportBtn")?.addEventListener("click", () => {
+function printAnalyticsPdfReport() {
   const reportWindow = window.open("", "_blank");
   if (!reportWindow) return showToast("Allow popups to print the report");
   reportWindow.document.write(analyticsReportHtml());
   reportWindow.document.close();
   reportWindow.focus();
   setTimeout(() => reportWindow.print(), 350);
+}
+
+document.querySelectorAll(".analytics-pdf-report-btn").forEach(button => {
+  button.addEventListener("click", () => {
+    if (button.dataset.premiumLock) {
+      alert(button.dataset.premiumLock);
+      openTab("subscription");
+      return;
+    }
+    printAnalyticsPdfReport();
+  });
+});
+
+document.getElementById("printAnalyticsReportBtn")?.addEventListener("click", () => {
+  printAnalyticsPdfReport();
 });
 
 async function startPlanCheckout(planId, button) {
