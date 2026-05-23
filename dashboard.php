@@ -648,6 +648,9 @@ $lastActivity = '';
 $answeredCount = 0;
 $unansweredCount = 0;
 $dailyCounts = [];
+$dailyAnsweredCounts = [];
+$dailyUnansweredCounts = [];
+$dailyLeadCounts = [];
 $hourCounts = [];
 $topQuestionCounts = [];
 $faqById = [];
@@ -709,6 +712,11 @@ foreach ($conversationRows as $row) {
         $day = substr($created, 0, 10);
         $hour = substr($created, 11, 2);
         $dailyCounts[$day] = ($dailyCounts[$day] ?? 0) + 1;
+        if ($answered) {
+            $dailyAnsweredCounts[$day] = ($dailyAnsweredCounts[$day] ?? 0) + 1;
+        } else {
+            $dailyUnansweredCounts[$day] = ($dailyUnansweredCounts[$day] ?? 0) + 1;
+        }
         if ($hour !== '') {
             $hourCounts[$hour] = ($hourCounts[$hour] ?? 0) + 1;
         }
@@ -781,6 +789,11 @@ foreach ($conversationRows as $row) {
 }
 
 foreach ($leadRows as $lead) {
+    $leadCreated = (string)($lead['created_at'] ?? '');
+    if ($leadCreated !== '') {
+        $leadDay = substr($leadCreated, 0, 10);
+        $dailyLeadCounts[$leadDay] = ($dailyLeadCounts[$leadDay] ?? 0) + 1;
+    }
     $sourceUrl = trim((string)($lead['source_url'] ?? ''));
     $sourceLabel = $sourceUrl !== '' ? parse_url($sourceUrl, PHP_URL_PATH) : '';
     $sourceLabel = $sourceLabel ?: ($sourceUrl ?: 'Unknown page');
@@ -867,6 +880,12 @@ arsort($countryCounts);
 arsort($cityCounts);
 $dailyChartCounts = $dailyCounts;
 ksort($dailyChartCounts);
+$dailyAnsweredChartCounts = $dailyAnsweredCounts;
+ksort($dailyAnsweredChartCounts);
+$dailyUnansweredChartCounts = $dailyUnansweredCounts;
+ksort($dailyUnansweredChartCounts);
+$dailyLeadChartCounts = $dailyLeadCounts;
+ksort($dailyLeadChartCounts);
 $hourChartCounts = $hourCounts;
 ksort($hourChartCounts);
 arsort($hourCounts);
@@ -1385,6 +1404,34 @@ body.dark .critical-save-note{background:rgba(127,29,29,.22);border-color:rgba(2
 .analytics-tab-btn.active{background:linear-gradient(135deg,var(--brand),var(--brand-2));border-color:transparent;color:#fff}
 .analytics-subpanel{display:none;gap:18px}
 .analytics-subpanel.active{display:grid}
+.bi-kpi-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+.bi-kpi{padding:16px;border:1px solid var(--line);border-radius:18px;background:linear-gradient(180deg,rgba(255,255,255,.7),rgba(255,255,255,.36));display:grid;gap:8px;min-width:0;cursor:pointer}
+body.dark .bi-kpi{background:linear-gradient(180deg,rgba(15,23,42,.78),rgba(15,23,42,.42))}
+.bi-kpi span{font-size:12px;color:var(--muted);font-weight:800;text-transform:uppercase;letter-spacing:.04em}
+.bi-kpi strong{font-size:26px;line-height:1.05;overflow-wrap:anywhere}
+.bi-kpi small{color:var(--muted);line-height:1.45}
+.bi-dashboard-grid{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(320px,.8fr);gap:16px}
+.bi-dashboard-grid.three{grid-template-columns:repeat(3,minmax(0,1fr))}
+.bi-panel{padding:16px;min-width:0}
+.bi-panel-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}
+.bi-panel-head h3{font-size:17px}
+.bi-chart{width:100%;min-height:310px;border:1px solid var(--line);border-radius:16px;background:rgba(255,255,255,.28)}
+body.dark .bi-chart{background:rgba(15,23,42,.28)}
+.bi-chart.compact{min-height:250px}
+.bi-chart.tall{min-height:430px}
+.bi-alert-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.bi-alert{padding:14px;border:1px solid var(--line);border-radius:16px;background:rgba(255,255,255,.38);display:grid;gap:6px;min-width:0}
+body.dark .bi-alert{background:rgba(15,23,42,.36)}
+.bi-alert strong{font-size:15px}.bi-alert span{font-size:13px;color:var(--muted);line-height:1.45}
+.bi-alert.good{border-color:rgba(34,197,94,.34);background:rgba(34,197,94,.09)}
+.bi-alert.warn{border-color:rgba(245,158,11,.38);background:rgba(245,158,11,.1)}
+.bi-alert.bad{border-color:rgba(239,68,68,.34);background:rgba(239,68,68,.09)}
+.bi-drilldown{display:none;position:fixed;right:20px;top:86px;bottom:20px;width:min(520px,calc(100vw - 40px));z-index:70;border:1px solid var(--line);border-radius:18px;background:var(--panel);box-shadow:var(--shadow);overflow:hidden}
+.bi-drilldown.open{display:grid;grid-template-rows:auto 1fr}
+.bi-drilldown-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:16px;border-bottom:1px solid var(--line)}
+.bi-drilldown-body{overflow:auto;padding:16px}
+.bi-drilldown table{min-width:0}
+.bi-drilldown .ghost-btn{padding:8px 10px}
 .mini-chart{display:grid;gap:10px;margin-top:12px}
 .bar-row{display:grid;grid-template-columns:minmax(82px,.45fr) minmax(0,1fr) 44px;gap:10px;align-items:center;font-size:13px;color:var(--muted)}
 .bar-track{height:12px;border-radius:999px;background:rgba(148,163,184,.2);overflow:hidden}
@@ -1582,7 +1629,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
   .faq-subtabs,.integration-subtabs{display:grid;grid-template-columns:1fr;padding:0 16px 16px}
   .faq-subtab-btn,.integration-subtab-btn{width:100%}
   .overview-hero h2{font-size:28px}
-  .metrics,.form-grid,.theme-controls,.outside-faq-grid,.faq-action-grid,.lead-grid,.analytics-grid,.analytics-grid.two,.funnel,.pricing-grid,.security-grid,.bulk-report-summary,.payment-choice-grid{grid-template-columns:1fr}
+  .metrics,.form-grid,.theme-controls,.outside-faq-grid,.faq-action-grid,.lead-grid,.analytics-grid,.analytics-grid.two,.bi-kpi-grid,.bi-dashboard-grid,.bi-dashboard-grid.three,.bi-alert-grid,.funnel,.pricing-grid,.security-grid,.bulk-report-summary,.payment-choice-grid{grid-template-columns:1fr}
   .panel-actions{justify-content:stretch}
   .panel-actions .pill-btn,.panel-actions .ghost-btn,.panel-actions .danger-btn{width:100%}
   .subscription-transfer-card{padding:18px}
@@ -2239,6 +2286,45 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
         </div>
         <?php else: ?>
         <div class="analytics-subpanel active" id="analytics-overview">
+        <div class="bi-kpi-grid">
+          <div class="bi-kpi" data-drilldown-type="summary" data-drilldown-key="conversations"><span>Conversations</span><strong><?php echo h($conversationCount); ?></strong><small><?php echo analytics_delta_html($analyticsCurrentSummary['conversations'], $analyticsPreviousSummary['conversations']); ?></small></div>
+          <div class="bi-kpi" data-drilldown-type="summary" data-drilldown-key="answer_rate"><span>Answer Rate</span><strong><?php echo h($accuracy); ?>%</strong><small><?php echo h($answeredCount); ?> answered / <?php echo h($unansweredCount); ?> unanswered</small></div>
+          <div class="bi-kpi" data-drilldown-type="summary" data-drilldown-key="leads"><span>Lead Conversion</span><strong><?php echo h($leadConversionRate); ?>%</strong><small><?php echo h($leadCount); ?> leads from selected range</small></div>
+          <div class="bi-kpi" data-drilldown-type="summary" data-drilldown-key="visitors"><span>Visitors</span><strong><?php echo h($uniqueVisitorCount); ?></strong><small><?php echo h($returningUsersPercent); ?>% returning users</small></div>
+        </div>
+
+        <div class="bi-alert-grid">
+          <div class="bi-alert <?php echo $unansweredPercent > 30 ? 'bad' : ($unansweredPercent > 10 ? 'warn' : 'good'); ?>"><strong>Answer Health</strong><span><?php echo h($unansweredPercent); ?>% unanswered queries in this period.</span></div>
+          <div class="bi-alert <?php echo $leadConversionRate >= 10 ? 'good' : ($leadConversionRate > 0 ? 'warn' : 'bad'); ?>"><strong>Lead Capture</strong><span><?php echo h($leadConversionRate); ?>% conversion from conversations to raw leads.</span></div>
+          <div class="bi-alert <?php echo $avgResponseTimeMs && $avgResponseTimeMs <= 1500 ? 'good' : ($avgResponseTimeMs ? 'warn' : ''); ?>"><strong>Response Time</strong><span><?php echo $avgResponseTimeMs ? h($avgResponseTimeMs) . 'ms average widget response.' : 'No response time data tracked yet.'; ?></span></div>
+        </div>
+
+        <div class="bi-dashboard-grid">
+          <div class="panel bi-panel">
+            <div class="bi-panel-head"><h3>Conversation, Answer & Lead Trend</h3><span class="tag"><?php echo h($analyticsRangeLabel); ?></span></div>
+            <div class="bi-chart tall" id="analyticsTrendChart" data-chart-title="Conversation trend"></div>
+          </div>
+          <div class="panel bi-panel">
+            <div class="bi-panel-head"><h3>Conversion Funnel</h3><span class="tag"><?php echo h($leadConversionRate); ?>%</span></div>
+            <div class="bi-chart tall" id="analyticsFunnelChart" data-chart-title="Lead funnel"></div>
+          </div>
+        </div>
+
+        <div class="bi-dashboard-grid three">
+          <div class="panel bi-panel">
+            <div class="bi-panel-head"><h3>Device Mix</h3><span class="tag"><?php echo h(count($deviceCounts)); ?> types</span></div>
+            <div class="bi-chart compact" id="analyticsDeviceChart" data-chart-title="Device mix"></div>
+          </div>
+          <div class="panel bi-panel">
+            <div class="bi-panel-head"><h3>Top Questions</h3><span class="tag"><?php echo h(count($topQuestionCounts)); ?> tracked</span></div>
+            <div class="bi-chart compact" id="analyticsQuestionChart" data-chart-title="Top questions"></div>
+          </div>
+          <div class="panel bi-panel">
+            <div class="bi-panel-head"><h3>Source Pages</h3><span class="tag"><?php echo h(count($sourcePageStats)); ?> pages</span></div>
+            <div class="bi-chart compact" id="analyticsPageChart" data-chart-title="Source pages"></div>
+          </div>
+        </div>
+
         <div class="metrics">
           <div class="panel metric"><span>Total Conversations</span><strong><?php echo h($conversationCount); ?></strong><small>Tracked chat sessions/queries.</small><?php echo analytics_delta_html($analyticsCurrentSummary['conversations'], $analyticsPreviousSummary['conversations']); ?></div>
           <div class="panel metric"><span>Total Messages</span><strong><?php echo h($totalMessages); ?></strong><small>User messages currently tracked.</small><?php echo analytics_delta_html($analyticsCurrentSummary['messages'], $analyticsPreviousSummary['messages']); ?></div>
@@ -2256,6 +2342,17 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
         </div>
 
         <div class="analytics-subpanel" id="analytics-conversations">
+        <div class="bi-dashboard-grid">
+          <div class="panel bi-panel">
+            <div class="bi-panel-head"><h3>Hourly Usage</h3><span class="tag">Peak <?php echo h($peakUsage); ?></span></div>
+            <div class="bi-chart" id="analyticsHourChart" data-chart-title="Hourly usage"></div>
+          </div>
+          <div class="panel bi-panel">
+            <div class="bi-panel-head"><h3>Browser Breakdown</h3><span class="tag"><?php echo h(count($browserCounts)); ?> browsers</span></div>
+            <div class="bi-chart" id="analyticsBrowserChart" data-chart-title="Browser breakdown"></div>
+          </div>
+        </div>
+
         <div class="analytics-grid two">
           <div class="panel section-body">
             <h3>Conversations Trend</h3>
@@ -2360,6 +2457,17 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
         </div>
 
         <div class="analytics-subpanel" id="analytics-leads">
+        <div class="bi-dashboard-grid">
+          <div class="panel bi-panel">
+            <div class="bi-panel-head"><h3>Lead Capture Trend</h3><span class="tag"><?php echo h($leadCount); ?> raw leads</span></div>
+            <div class="bi-chart" id="analyticsLeadTrendChart" data-chart-title="Lead capture trend"></div>
+          </div>
+          <div class="panel bi-panel">
+            <div class="bi-panel-head"><h3>Lead Quality</h3><span class="tag"><?php echo h($otpVerifiedLeadPercent); ?>% verified</span></div>
+            <div class="bi-chart" id="analyticsLeadQualityChart" data-chart-title="Lead quality"></div>
+          </div>
+        </div>
+
         <div class="metrics">
           <div class="panel metric"><span>Unique Leads</span><strong><?php echo h($uniqueLeadCount); ?></strong><small>Deduplicated by email or mobile number for the selected date range.</small></div>
           <div class="panel metric"><span>Real Leads</span><strong><?php echo h($realUniqueLeadCount); ?></strong><small>Email or mobile OTP verified.</small></div>
@@ -2461,6 +2569,16 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
         </div>
         </div>
         <?php endif; ?>
+        <aside class="bi-drilldown" id="analyticsDrilldown" aria-live="polite">
+          <div class="bi-drilldown-head">
+            <div>
+              <span class="eyebrow">Drill-down</span>
+              <h3 id="analyticsDrilldownTitle">Analytics detail</h3>
+            </div>
+            <button class="ghost-btn" type="button" id="closeAnalyticsDrilldownBtn">Close</button>
+          </div>
+          <div class="bi-drilldown-body" id="analyticsDrilldownBody"></div>
+        </aside>
       </section>
 
       <section class="tab-panel" id="install">
@@ -3169,11 +3287,27 @@ const analyticsReport = <?php echo js_json([
     "previous" => $analyticsPreviousSummary
   ],
   "daily_counts" => $dailyChartCounts,
+  "daily_answered_counts" => $dailyAnsweredChartCounts,
+  "daily_unanswered_counts" => $dailyUnansweredChartCounts,
+  "daily_lead_counts" => $dailyLeadChartCounts,
   "hour_counts" => $hourChartCounts,
   "devices" => $deviceCounts,
   "browsers" => $browserCounts,
   "countries" => $countryCounts,
   "cities" => $cityCounts,
+  "funnel" => [
+    ["label" => "Visitors", "value" => $uniqueVisitorCount],
+    ["label" => "Chat Opened", "value" => $chatOpenedCount],
+    ["label" => "Started Chat", "value" => $conversationCount],
+    ["label" => "Shared Contact", "value" => $uniqueLeadCount],
+    ["label" => "OTP Verified", "value" => $realUniqueLeadCount]
+  ],
+  "lead_quality" => [
+    "real" => $realUniqueLeadCount,
+    "weak" => $weakLeadCount,
+    "email" => $emailLeadCount,
+    "mobile" => $phoneLeadCount
+  ],
   "lead_periods" => $leadPeriodStats,
   "unique_leads" => array_values(array_map(fn($lead) => [
     "lead_type" => $lead["lead_type"] ?? "Weak",
@@ -3260,7 +3394,7 @@ function openTab(id, updateHash = true) {
   });
   if (updateHash && location.hash !== "#" + id) history.replaceState(null, "", "#" + id);
   closeDrawers();
-  if (id === "analytics") setTimeout(renderAnalyticsWorldMap, 80);
+  if (id === "analytics") setTimeout(renderAnalyticsVisuals, 80);
 }
 
 tabs.forEach(tab => tab.addEventListener("click", () => openTab(tab.dataset.tab)));
@@ -3434,6 +3568,7 @@ function openAnalyticsTab(id, updateHash = true) {
     panel.classList.toggle("active", panel.id === target);
   });
   if (updateHash) history.replaceState(null, "", "#analytics/" + target.replace("analytics-", ""));
+  setTimeout(renderAnalyticsVisuals, 80);
 }
 
 document.querySelectorAll(".analytics-tab-btn").forEach(tab => {
@@ -3536,6 +3671,236 @@ function csvValue(value) {
 function rowsToCsv(rows) {
   return rows.map(row => row.map(csvValue).join(",")).join("\n");
 }
+
+const analyticsCharts = new Map();
+
+function analyticsThemeColors() {
+  const style = getComputedStyle(document.body);
+  return {
+    ink: style.getPropertyValue("--ink").trim() || "#0f172a",
+    muted: style.getPropertyValue("--muted").trim() || "#64748b",
+    line: style.getPropertyValue("--line").trim() || "rgba(148,163,184,.35)",
+    brand: style.getPropertyValue("--brand").trim() || "#6366f1",
+    brand2: style.getPropertyValue("--brand-2").trim() || "#06b6d4"
+  };
+}
+
+function analyticsEntries(objectValue, limit = 12) {
+  return Object.entries(objectValue || {})
+    .map(([name, value]) => ({name, value: Number(value) || 0}))
+    .filter(item => item.value > 0)
+    .sort((a, b) => b.value - a.value)
+    .slice(0, limit);
+}
+
+function analyticsDateSeries() {
+  const dateSet = new Set([
+    ...Object.keys(analyticsReport.daily_counts || {}),
+    ...Object.keys(analyticsReport.daily_answered_counts || {}),
+    ...Object.keys(analyticsReport.daily_unanswered_counts || {}),
+    ...Object.keys(analyticsReport.daily_lead_counts || {})
+  ]);
+  const dates = Array.from(dateSet).sort();
+  return {
+    dates,
+    conversations: dates.map(date => Number(analyticsReport.daily_counts?.[date] || 0)),
+    answered: dates.map(date => Number(analyticsReport.daily_answered_counts?.[date] || 0)),
+    unanswered: dates.map(date => Number(analyticsReport.daily_unanswered_counts?.[date] || 0)),
+    leads: dates.map(date => Number(analyticsReport.daily_lead_counts?.[date] || 0))
+  };
+}
+
+function chartElement(id) {
+  const el = document.getElementById(id);
+  if (!el || !el.offsetWidth) return null;
+  return el;
+}
+
+function emptyChart(el, message = "No analytics data yet.") {
+  el.innerHTML = `<div class="empty">${htmlEscape(message)}</div>`;
+}
+
+function setAnalyticsChart(id, option, emptyCheck) {
+  const el = chartElement(id);
+  if (!el) return;
+  if (emptyCheck) {
+    emptyChart(el);
+    return;
+  }
+  if (!window.echarts) {
+    emptyChart(el, "Chart library could not be loaded.");
+    return;
+  }
+  const colors = analyticsThemeColors();
+  let chart = analyticsCharts.get(id);
+  if (!chart) {
+    chart = echarts.init(el);
+    analyticsCharts.set(id, chart);
+  }
+  chart.setOption({
+    textStyle: {color: colors.ink, fontFamily: "inherit"},
+    color: [colors.brand, colors.brand2, "#22c55e", "#f59e0b", "#ec4899", "#14b8a6"],
+    grid: {left: 42, right: 18, top: 42, bottom: 42, containLabel: true},
+    tooltip: {trigger: "axis", confine: true},
+    legend: {top: 8, textStyle: {color: colors.muted}},
+    ...option
+  }, true);
+  chart.off("click");
+  chart.on("click", () => {
+    const drillType = id === "analyticsQuestionChart" ? "questions" : (id === "analyticsPageChart" ? "pages" : "summary");
+    const detail = analyticsDrilldownContent(drillType, id);
+    openAnalyticsDrilldown(detail.title, detail.html);
+  });
+}
+
+function renderAnalyticsBICharts() {
+  const colors = analyticsThemeColors();
+  const series = analyticsDateSeries();
+  setAnalyticsChart("analyticsTrendChart", {
+    xAxis: {type: "category", data: series.dates, axisLabel: {color: colors.muted}},
+    yAxis: {type: "value", axisLabel: {color: colors.muted}, splitLine: {lineStyle: {color: colors.line}}},
+    dataZoom: series.dates.length > 12 ? [{type: "inside"}, {type: "slider", height: 18, bottom: 8}] : [],
+    series: [
+      {name: "Conversations", type: "line", smooth: true, areaStyle: {opacity: .12}, data: series.conversations},
+      {name: "Answered", type: "bar", stack: "answers", data: series.answered},
+      {name: "Unanswered", type: "bar", stack: "answers", data: series.unanswered},
+      {name: "Leads", type: "line", smooth: true, data: series.leads}
+    ]
+  }, !series.dates.length);
+
+  const funnel = (analyticsReport.funnel || []).map(item => ({name: item.label, value: Number(item.value) || 0}));
+  setAnalyticsChart("analyticsFunnelChart", {
+    tooltip: {trigger: "item", formatter: "{b}: {c}", confine: true},
+    series: [{
+      type: "funnel",
+      left: "8%",
+      right: "8%",
+      top: 42,
+      bottom: 18,
+      sort: "none",
+      label: {formatter: "{b}\n{c}", color: colors.ink, fontWeight: 700},
+      itemStyle: {borderColor: "rgba(255,255,255,.75)", borderWidth: 1},
+      data: funnel
+    }]
+  }, !funnel.some(item => item.value > 0));
+
+  const devices = analyticsEntries(analyticsReport.devices, 8);
+  setAnalyticsChart("analyticsDeviceChart", {
+    tooltip: {trigger: "item", formatter: "{b}: {c} ({d}%)", confine: true},
+    legend: {bottom: 0, type: "scroll", textStyle: {color: colors.muted}},
+    series: [{type: "pie", radius: ["42%", "70%"], center: ["50%", "46%"], label: {formatter: "{b}\n{c}"}, data: devices}]
+  }, !devices.length);
+
+  const questions = (analyticsReport.top_questions || []).slice(0, 8).map(item => ({name: item.question, value: Number(item.count) || 0}));
+  setAnalyticsChart("analyticsQuestionChart", {
+    grid: {left: 110, right: 18, top: 22, bottom: 24},
+    xAxis: {type: "value", axisLabel: {color: colors.muted}, splitLine: {lineStyle: {color: colors.line}}},
+    yAxis: {type: "category", data: questions.map(item => item.name), axisLabel: {color: colors.muted, width: 96, overflow: "truncate"}},
+    series: [{name: "Questions", type: "bar", data: questions.map(item => item.value), label: {show: true, position: "right"}}]
+  }, !questions.length);
+
+  const pages = (analyticsReport.source_pages || []).slice(0, 8);
+  setAnalyticsChart("analyticsPageChart", {
+    grid: {left: 112, right: 18, top: 32, bottom: 28},
+    tooltip: {trigger: "axis", axisPointer: {type: "shadow"}, confine: true},
+    xAxis: {type: "value", axisLabel: {color: colors.muted}, splitLine: {lineStyle: {color: colors.line}}},
+    yAxis: {type: "category", data: pages.map(item => item.page), axisLabel: {color: colors.muted, width: 100, overflow: "truncate"}},
+    series: [
+      {name: "Conversations", type: "bar", data: pages.map(item => Number(item.conversations) || 0)},
+      {name: "Leads", type: "bar", data: pages.map(item => Number(item.leads) || 0)}
+    ]
+  }, !pages.length);
+
+  const hourEntries = Object.entries(analyticsReport.hour_counts || {}).sort(([a], [b]) => Number(a) - Number(b));
+  setAnalyticsChart("analyticsHourChart", {
+    xAxis: {type: "category", data: hourEntries.map(([hour]) => `${hour}:00`), axisLabel: {color: colors.muted}},
+    yAxis: {type: "value", axisLabel: {color: colors.muted}, splitLine: {lineStyle: {color: colors.line}}},
+    series: [{name: "Queries", type: "bar", data: hourEntries.map(([, value]) => Number(value) || 0), label: {show: true, position: "top"}}]
+  }, !hourEntries.length);
+
+  const browsers = analyticsEntries(analyticsReport.browsers, 8);
+  setAnalyticsChart("analyticsBrowserChart", {
+    tooltip: {trigger: "item", formatter: "{b}: {c} ({d}%)", confine: true},
+    legend: {bottom: 0, type: "scroll", textStyle: {color: colors.muted}},
+    series: [{type: "pie", radius: "68%", center: ["50%", "46%"], label: {formatter: "{b}\n{c}"}, data: browsers}]
+  }, !browsers.length);
+
+  setAnalyticsChart("analyticsLeadTrendChart", {
+    xAxis: {type: "category", data: series.dates, axisLabel: {color: colors.muted}},
+    yAxis: {type: "value", axisLabel: {color: colors.muted}, splitLine: {lineStyle: {color: colors.line}}},
+    series: [{name: "Leads", type: "line", smooth: true, areaStyle: {opacity: .16}, data: series.leads}]
+  }, !series.leads.some(value => value > 0));
+
+  const leadQuality = analyticsReport.lead_quality || {};
+  const leadQualityRows = [
+    {name: "Real Leads", value: Number(leadQuality.real) || 0},
+    {name: "Weak Leads", value: Number(leadQuality.weak) || 0},
+    {name: "Email Contacts", value: Number(leadQuality.email) || 0},
+    {name: "Mobile Contacts", value: Number(leadQuality.mobile) || 0}
+  ];
+  setAnalyticsChart("analyticsLeadQualityChart", {
+    xAxis: {type: "category", data: leadQualityRows.map(item => item.name), axisLabel: {color: colors.muted, interval: 0, rotate: 18}},
+    yAxis: {type: "value", axisLabel: {color: colors.muted}, splitLine: {lineStyle: {color: colors.line}}},
+    series: [{name: "Lead Quality", type: "bar", data: leadQualityRows.map(item => item.value), label: {show: true, position: "top"}}]
+  }, !leadQualityRows.some(item => item.value > 0));
+}
+
+function renderAnalyticsVisuals() {
+  renderAnalyticsBICharts();
+  renderAnalyticsWorldMap();
+  analyticsCharts.forEach(chart => chart.resize());
+}
+
+window.addEventListener("resize", () => {
+  analyticsCharts.forEach(chart => chart.resize());
+});
+
+function analyticsTable(headers, rows) {
+  if (!rows.length) return '<p class="empty">No matching analytics rows yet.</p>';
+  return `<div class="table-wrap"><table><thead><tr>${headers.map(header => `<th>${htmlEscape(header)}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table></div>`;
+}
+
+function openAnalyticsDrilldown(title, html) {
+  const drawer = document.getElementById("analyticsDrilldown");
+  const heading = document.getElementById("analyticsDrilldownTitle");
+  const body = document.getElementById("analyticsDrilldownBody");
+  if (!drawer || !heading || !body) return;
+  heading.textContent = title;
+  body.innerHTML = html;
+  drawer.classList.add("open");
+}
+
+function analyticsDrilldownContent(type, key) {
+  if (type === "summary") {
+    const current = analyticsReport.comparison?.current || {};
+    const previous = analyticsReport.comparison?.previous || {};
+    const rows = Object.keys(current).map(metric => `<tr><td>${htmlEscape(metric.replace(/_/g, " "))}</td><td>${htmlEscape(current[metric])}</td><td>${htmlEscape(previous[metric] ?? 0)}</td></tr>`);
+    return {
+      title: key === "leads" ? "Lead comparison" : "Period comparison",
+      html: analyticsTable(["Metric", "Current", "Previous"], rows)
+    };
+  }
+  if (type === "questions") {
+    const rows = (analyticsReport.top_questions || []).map(item => `<tr><td>${htmlEscape(item.question)}</td><td>${htmlEscape(item.count)}</td><td>${htmlEscape(item.success_rate)}%</td></tr>`);
+    return {title: "Question drill-down", html: analyticsTable(["Question", "Count", "Success"], rows)};
+  }
+  if (type === "pages") {
+    const rows = (analyticsReport.source_pages || []).map(item => `<tr><td>${htmlEscape(item.page)}</td><td>${htmlEscape(item.conversations)}</td><td>${htmlEscape(item.leads)}</td><td>${htmlEscape(item.success_rate)}%</td></tr>`);
+    return {title: "Page drill-down", html: analyticsTable(["Page", "Conversations", "Leads", "Success"], rows)};
+  }
+  return {title: "Analytics detail", html: '<p class="empty">No drill-down data available.</p>'};
+}
+
+document.querySelectorAll("[data-drilldown-type]").forEach(item => {
+  item.addEventListener("click", () => {
+    const detail = analyticsDrilldownContent(item.dataset.drilldownType, item.dataset.drilldownKey || "");
+    openAnalyticsDrilldown(detail.title, detail.html);
+  });
+});
+
+document.getElementById("closeAnalyticsDrilldownBtn")?.addEventListener("click", () => {
+  document.getElementById("analyticsDrilldown")?.classList.remove("open");
+});
 
 function worldMapCountryName(name) {
   const aliases = {
@@ -3649,9 +4014,9 @@ async function renderAnalyticsWorldMap() {
 }
 
 if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", () => setTimeout(renderAnalyticsWorldMap, 0), {once: true});
+  document.addEventListener("DOMContentLoaded", () => setTimeout(renderAnalyticsVisuals, 0), {once: true});
 } else {
-  setTimeout(renderAnalyticsWorldMap, 0);
+  setTimeout(renderAnalyticsVisuals, 0);
 }
 
 function analyticsCsv() {
