@@ -1287,6 +1287,7 @@ body.dark .active-subscription-banner{background:linear-gradient(135deg,rgba(99,
 body.dark .subscription-wallet-note{background:linear-gradient(135deg,rgba(34,197,94,.16),rgba(6,182,212,.12))}
 .pricing-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:16px;margin-top:18px;align-items:stretch}
 .pricing-card{grid-column:span 2;padding:16px;display:grid;gap:12px;align-content:start}
+.pricing-card.plan-selected{border-color:rgba(99,102,241,.82);box-shadow:0 0 0 3px rgba(99,102,241,.14),0 18px 42px rgba(99,102,241,.16)}
 .pricing-card.featured{grid-column:span 2;padding:22px;border-color:rgba(34,197,94,.55);box-shadow:0 18px 42px rgba(34,197,94,.16);transform:scale(1.02);z-index:1}
 .pricing-card.current-plan{border-color:rgba(99,102,241,.7);box-shadow:0 14px 34px rgba(99,102,241,.16)}
 .current-plan-note{padding:9px 11px;border-radius:10px;background:rgba(99,102,241,.12);color:#4f46e5;font-size:13px;font-weight:800}
@@ -1300,6 +1301,9 @@ body.dark .subscription-wallet-note{background:linear-gradient(135deg,rgba(34,19
 .payment-choice strong{font-size:14px}
 .payment-choice small{color:var(--muted);line-height:1.45}
 .payment-choice:has(input:checked){border-color:rgba(99,102,241,.65);box-shadow:0 0 0 3px rgba(99,102,241,.12)}
+.subscription-checkout-panel{display:none;margin-top:18px}
+.subscription-checkout-panel.active{display:block}
+.subscription-checkout-panel .section-head{padding:0}
 .feature-list{display:grid;gap:8px;font-size:14px}
 .feature-list span{display:grid;grid-template-columns:18px minmax(0,1fr);gap:8px;align-items:start}
 .feature-list span:before{display:inline-grid;place-items:center;width:18px;height:18px;border-radius:999px;font-size:12px;font-weight:900;line-height:1}
@@ -2717,9 +2721,50 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
             <div class="panel metric"><span>Best default</span><strong>Growth</strong><small>Most local businesses will fit this tier.</small></div>
           </div>
 
-          <div class="notice" style="margin-top:18px">
-            <strong>Choose payment preference</strong><br>
-            Customers can buy a plan once for the current 30-day cycle, or allow automatic recurring payment for future wallet recharges. In both cases, the plan amount is credited to the wallet first.
+          <div class="pricing-grid">
+            <div class="panel pricing-card <?php echo $activePlanId === 'starter' ? 'current-plan' : ''; ?>">
+              <div class="pricing-head"><div><span class="eyebrow">Starter</span><h3>Starter Plan</h3></div><span class="tag">Small</span></div>
+              <?php if ($activePlanId === 'starter'): ?><div class="current-plan-note">Current plan</div><?php endif; ?>
+              <div class="price">₹199<small>/month</small></div>
+              <div class="feature-list"><span class="is-included">100 FAQ answers for small websites</span><span class="is-included">Email and Mobile OTP verification for real leads</span><span class="is-included">Dedicated WhatsApp button and many more action items for FAQs</span><span class="is-included">Webhook support</span><span class="is-included">FAQ Action Suggestions</span><span class="is-included">Auto wallet recharge: below ₹50, recharge ₹199</span><span class="is-excluded">Live Chat Actions for real-time website reactions</span><span class="is-excluded">API Integration to migrate or save data in your database</span><span class="is-excluded">Analytics dashboard access</span><span class="is-excluded">Chat can run only on allowed domains</span></div>
+              <div class="wallet-table"><table><thead><tr><th>Wallet action</th><th>Charge</th></tr></thead><tbody><tr><td>Fresh Email OTP Lead</td><td>₹6</td></tr><tr><td>Repeat Email OTP Verification</td><td>₹2</td></tr><tr><td>Fresh Mobile OTP Lead</td><td>₹12</td></tr><tr><td>Repeat Mobile OTP Verification</td><td>₹3</td></tr><tr><td>WhatsApp Redirect</td><td>Add-on ₹99, refundable if cancelled within 1 hour</td></tr></tbody></table></div>
+              <small class="muted">Validity of Fresh Email and Mobile OTP Leads is 30 days from last user verification.</small>
+              <button class="pill-btn billing-plan-btn" type="button" data-plan-id="starter">Buy Subscription</button>
+              <small class="muted">Best for portfolios, coaches, and small businesses.</small>
+            </div>
+
+            <div class="panel pricing-card featured <?php echo $activePlanId === 'growth' ? 'current-plan' : ''; ?>">
+              <div class="pricing-head"><div><span class="eyebrow">Growth</span><h3>Growth Plan</h3></div><span class="tag good">Popular</span></div>
+              <?php if ($activePlanId === 'growth'): ?><div class="current-plan-note">Current plan</div><?php endif; ?>
+              <div class="price">₹499<small>/month</small></div>
+              <div class="feature-list"><span class="is-included">300 FAQ capacity for growing businesses</span><span class="is-included">Email and Mobile OTP verification for real leads</span><span class="is-included">Dedicated WhatsApp button and many more action items for FAQs</span><span class="is-included">Webhook support</span><span class="is-included">FAQ Action Suggestions</span><span class="is-included">Auto wallet recharge: below ₹100, recharge ₹499</span><span class="is-included">Analytics access: Overview, Conversations, FAQ Insights, Leads</span><span class="is-included">Better wallet rates than Starter on email and mobile leads</span><span class="is-excluded">Live Chat Actions for real-time website reactions</span><span class="is-excluded">API Integration to migrate or save data in your database</span><span class="is-excluded">Chat can run only on allowed domains</span></div>
+              <div class="wallet-table"><table><thead><tr><th>Wallet action</th><th>Charge</th></tr></thead><tbody><tr><td>Fresh Email OTP Lead</td><td>₹5</td></tr><tr><td>Repeat Email OTP Verification</td><td>₹1</td></tr><tr><td>Fresh Mobile OTP Lead</td><td>₹10</td></tr><tr><td>Repeat Mobile OTP Verification</td><td>₹2</td></tr><tr><td>WhatsApp Redirect</td><td>Add-on ₹99, refundable if cancelled within 1 hour</td></tr></tbody></table></div>
+              <small class="muted">Validity of Fresh Email and Mobile OTP Leads is 30 days from last user verification.</small>
+              <button class="pill-btn billing-plan-btn" type="button" data-plan-id="growth">Buy Subscription</button>
+              <small class="muted">Best for local businesses, agencies, and service providers.</small>
+            </div>
+
+            <div class="panel pricing-card <?php echo $activePlanId === 'business' ? 'current-plan' : ''; ?>">
+              <div class="pricing-head"><div><span class="eyebrow">Business</span><h3>Business Plan</h3></div><span class="tag">Scale</span></div>
+              <?php if ($activePlanId === 'business'): ?><div class="current-plan-note">Current plan</div><?php endif; ?>
+              <div class="price">₹999<small>/month</small></div>
+              <div class="feature-list"><span class="is-included">100 FAQ answers for small websites</span><span class="is-included">300 FAQ capacity for growing businesses</span><span class="is-included">Unlimited FAQ capacity for larger businesses</span><span class="is-included">Email and Mobile OTP verification for real leads</span><span class="is-included">Email and Mobile combined widget</span><span class="is-included">Dedicated WhatsApp button and many more action items for FAQs</span><span class="is-included">Webhook support</span><span class="is-included">FAQ Action Suggestions</span><span class="is-included">Live Chat Actions for real-time website reactions</span><span class="is-included">Auto wallet recharge: below ₹200, recharge ₹999</span><span class="is-included">API Integration to migrate or save data in your database</span><span class="is-included">Advanced Analytics: Overview, Conversations, FAQ Insights, Leads, Pages, Real-Time, Reports Download</span><span class="is-included">Chat can run only on allowed domains</span></div>
+              <div class="wallet-table"><table><thead><tr><th>Wallet action</th><th>Charge</th></tr></thead><tbody><tr><td>Fresh Email OTP Lead</td><td>₹5</td></tr><tr><td>Repeat Email OTP Verification</td><td>₹1</td></tr><tr><td>Fresh Mobile OTP Lead</td><td>₹10</td></tr><tr><td>Repeat Mobile OTP Verification</td><td>₹2</td></tr><tr><td>WhatsApp Redirect</td><td>Add-on ₹99, refundable if cancelled within 1 hour</td></tr></tbody></table></div>
+              <small class="muted">Validity of Fresh Email and Mobile OTP Leads is 30 days from last user verification.</small>
+              <button class="pill-btn billing-plan-btn" type="button" data-plan-id="business">Buy Subscription</button>
+              <small class="muted">Best for real estate, education institutes, marketing agencies, SaaS businesses, and larger teams.</small>
+            </div>
+
+          </div>
+
+          <div class="notice subscription-checkout-panel" id="subscriptionCheckoutPanel">
+            <div class="section-head">
+              <div>
+                <strong>Complete subscription purchase</strong><br>
+                <span class="muted">Selected plan: <span id="selectedSubscriptionPlanName">None</span>. Choose one-time payment or auto payment, then continue to Razorpay.</span>
+              </div>
+              <span class="tag good" id="selectedSubscriptionPlanPrice">Select a plan</span>
+            </div>
             <div class="payment-choice-grid">
               <label class="payment-choice">
                 <input type="radio" name="subscriptionPaymentMode" value="one_time" checked>
@@ -2742,42 +2787,9 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                 <input id="subscriptionAutoPayContactInput" value="<?php echo h($razorpayCustomerContact); ?>" placeholder="+919876543210" autocomplete="tel">
               </div>
             </div>
-          </div>
-
-          <div class="pricing-grid">
-            <div class="panel pricing-card <?php echo $activePlanId === 'starter' ? 'current-plan' : ''; ?>">
-              <div class="pricing-head"><div><span class="eyebrow">Starter</span><h3>Starter Plan</h3></div><span class="tag">Small</span></div>
-              <?php if ($activePlanId === 'starter'): ?><div class="current-plan-note">Current plan</div><?php endif; ?>
-              <div class="price">₹199<small>/month</small></div>
-              <div class="feature-list"><span class="is-included">100 FAQ answers for small websites</span><span class="is-excluded">300 FAQ capacity for growing businesses</span><span class="is-excluded">Unlimited FAQ capacity for larger businesses</span><span class="is-included">Email and Mobile OTP verification for real leads</span><span class="is-excluded">Email and Mobile combined widget</span><span class="is-included">Dedicated WhatsApp button and many more action items for FAQs</span><span class="is-included">Webhook support</span><span class="is-included">FAQ Action Suggestions</span><span class="is-excluded">Live Chat Actions for real-time website reactions</span><span class="is-included">Auto wallet recharge: below ₹50, recharge ₹199</span><span class="is-excluded">API Integration to migrate or save data in your database</span><span class="is-excluded">Analytics dashboard access</span><span class="is-excluded">Chat can run only on allowed domains</span></div>
-              <div class="wallet-table"><table><thead><tr><th>Wallet action</th><th>Charge</th></tr></thead><tbody><tr><td>Fresh Email OTP Lead</td><td>₹6</td></tr><tr><td>Repeat Email OTP Verification</td><td>₹2</td></tr><tr><td>Fresh Mobile OTP Lead</td><td>₹12</td></tr><tr><td>Repeat Mobile OTP Verification</td><td>₹3</td></tr><tr><td>WhatsApp Redirect</td><td>Add-on ₹99, refundable if cancelled within 1 hour</td></tr></tbody></table></div>
-              <small class="muted">Validity of Fresh Email and Mobile OTP Leads is 30 days from last user verification.</small>
-              <button class="pill-btn billing-plan-btn" type="button" data-plan-id="starter">Buy Subscription</button>
-              <small class="muted">Best for portfolios, coaches, and small businesses.</small>
+            <div class="panel-actions">
+              <button class="pill-btn" type="button" id="continueSubscriptionPaymentBtn">Continue to Payment</button>
             </div>
-
-            <div class="panel pricing-card featured <?php echo $activePlanId === 'growth' ? 'current-plan' : ''; ?>">
-              <div class="pricing-head"><div><span class="eyebrow">Growth</span><h3>Growth Plan</h3></div><span class="tag good">Popular</span></div>
-              <?php if ($activePlanId === 'growth'): ?><div class="current-plan-note">Current plan</div><?php endif; ?>
-              <div class="price">₹499<small>/month</small></div>
-              <div class="feature-list"><span class="is-included">100 FAQ answers for small websites</span><span class="is-included">300 FAQ capacity for growing businesses</span><span class="is-excluded">Unlimited FAQ capacity for larger businesses</span><span class="is-included">Email and Mobile OTP verification for real leads</span><span class="is-excluded">Email and Mobile combined widget</span><span class="is-included">Dedicated WhatsApp button and many more action items for FAQs</span><span class="is-included">Webhook support</span><span class="is-included">FAQ Action Suggestions</span><span class="is-excluded">Live Chat Actions for real-time website reactions</span><span class="is-included">Auto wallet recharge: below ₹100, recharge ₹499</span><span class="is-excluded">API Integration to migrate or save data in your database</span><span class="is-included">Analytics access: Overview, Conversations, FAQ Insights, Leads</span><span class="is-excluded">Advanced Analytics: Pages, Real-Time, Reports Download</span><span class="is-excluded">Chat can run only on allowed domains</span><span class="is-included">Better wallet rates than Starter on email and mobile leads</span></div>
-              <div class="wallet-table"><table><thead><tr><th>Wallet action</th><th>Charge</th></tr></thead><tbody><tr><td>Fresh Email OTP Lead</td><td>₹5</td></tr><tr><td>Repeat Email OTP Verification</td><td>₹1</td></tr><tr><td>Fresh Mobile OTP Lead</td><td>₹10</td></tr><tr><td>Repeat Mobile OTP Verification</td><td>₹2</td></tr><tr><td>WhatsApp Redirect</td><td>Add-on ₹99, refundable if cancelled within 1 hour</td></tr></tbody></table></div>
-              <small class="muted">Validity of Fresh Email and Mobile OTP Leads is 30 days from last user verification.</small>
-              <button class="pill-btn billing-plan-btn" type="button" data-plan-id="growth">Buy Subscription</button>
-              <small class="muted">Best for local businesses, agencies, and service providers.</small>
-            </div>
-
-            <div class="panel pricing-card <?php echo $activePlanId === 'business' ? 'current-plan' : ''; ?>">
-              <div class="pricing-head"><div><span class="eyebrow">Business</span><h3>Business Plan</h3></div><span class="tag">Scale</span></div>
-              <?php if ($activePlanId === 'business'): ?><div class="current-plan-note">Current plan</div><?php endif; ?>
-              <div class="price">₹999<small>/month</small></div>
-              <div class="feature-list"><span class="is-included">100 FAQ answers for small websites</span><span class="is-included">300 FAQ capacity for growing businesses</span><span class="is-included">Unlimited FAQ capacity for larger businesses</span><span class="is-included">Email and Mobile OTP verification for real leads</span><span class="is-included">Email and Mobile combined widget</span><span class="is-included">Dedicated WhatsApp button and many more action items for FAQs</span><span class="is-included">Webhook support</span><span class="is-included">FAQ Action Suggestions</span><span class="is-included">Live Chat Actions for real-time website reactions</span><span class="is-included">Auto wallet recharge: below ₹200, recharge ₹999</span><span class="is-included">API Integration to migrate or save data in your database</span><span class="is-included">Advanced Analytics: Overview, Conversations, FAQ Insights, Leads, Pages, Real-Time, Reports Download</span><span class="is-included">Chat can run only on allowed domains</span></div>
-              <div class="wallet-table"><table><thead><tr><th>Wallet action</th><th>Charge</th></tr></thead><tbody><tr><td>Fresh Email OTP Lead</td><td>₹5</td></tr><tr><td>Repeat Email OTP Verification</td><td>₹1</td></tr><tr><td>Fresh Mobile OTP Lead</td><td>₹10</td></tr><tr><td>Repeat Mobile OTP Verification</td><td>₹2</td></tr><tr><td>WhatsApp Redirect</td><td>Add-on ₹99, refundable if cancelled within 1 hour</td></tr></tbody></table></div>
-              <small class="muted">Validity of Fresh Email and Mobile OTP Leads is 30 days from last user verification.</small>
-              <button class="pill-btn billing-plan-btn" type="button" data-plan-id="business">Buy Subscription</button>
-              <small class="muted">Best for real estate, education institutes, marketing agencies, SaaS businesses, and larger teams.</small>
-            </div>
-
           </div>
 
           <div class="notice" style="margin-top:18px">
@@ -3479,6 +3491,10 @@ document.getElementById("printAnalyticsReportBtn")?.addEventListener("click", ()
 });
 
 async function startPlanCheckout(planId, button) {
+  if (!planId) {
+    showToast("Select a subscription plan first");
+    return;
+  }
   if (!selectedCustomerId) {
     showToast("Select or create a bot before subscribing");
     return;
@@ -3567,8 +3583,35 @@ async function startPlanCheckout(planId, button) {
   checkout.open();
 }
 
+const subscriptionPlanLabels = {
+  starter: {name: "Starter Plan", price: "₹199/month"},
+  growth: {name: "Growth Plan", price: "₹499/month"},
+  business: {name: "Business Plan", price: "₹999/month"}
+};
+let selectedSubscriptionPlanId = "";
+
+function selectSubscriptionPlan(planId) {
+  selectedSubscriptionPlanId = planId;
+  document.querySelectorAll(".pricing-card").forEach(card => {
+    const button = card.querySelector(".billing-plan-btn");
+    const isSelected = button?.dataset.planId === planId;
+    card.classList.toggle("plan-selected", isSelected);
+    if (button) button.textContent = isSelected ? "Selected" : "Buy Subscription";
+  });
+  const panel = document.getElementById("subscriptionCheckoutPanel");
+  const plan = subscriptionPlanLabels[planId] || {name: "Selected plan", price: ""};
+  document.getElementById("selectedSubscriptionPlanName").textContent = plan.name;
+  document.getElementById("selectedSubscriptionPlanPrice").textContent = plan.price;
+  panel?.classList.add("active");
+  panel?.scrollIntoView({behavior: "smooth", block: "nearest"});
+}
+
 document.querySelectorAll(".billing-plan-btn").forEach(button => {
-  button.addEventListener("click", () => startPlanCheckout(button.dataset.planId, button));
+  button.addEventListener("click", () => selectSubscriptionPlan(button.dataset.planId));
+});
+
+document.getElementById("continueSubscriptionPaymentBtn")?.addEventListener("click", event => {
+  startPlanCheckout(selectedSubscriptionPlanId, event.currentTarget);
 });
 
 document.getElementById("cancelSubscriptionBtn")?.addEventListener("click", async event => {
