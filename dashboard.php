@@ -1083,6 +1083,27 @@ tr.editing .faq-edit-btn{display:none}
 body.dark .security-card{background:rgba(15,23,42,.44)}
 .security-card h4{font-size:15px}
 .security-card .muted{font-size:13px}
+#install .section-body{align-items:start}
+#install .security-card{align-content:start}
+@media(min-width:1181px){
+  #install .section-body.form-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+  #install .section-body.form-grid > .field.full:nth-child(1),
+  #install .section-body.form-grid > .field.full:nth-child(2){grid-column:span 1;align-self:stretch;border:1px solid var(--line);border-radius:18px;background:rgba(255,255,255,.34);padding:16px}
+  body.dark #install .section-body.form-grid > .field.full:nth-child(1),
+  body.dark #install .section-body.form-grid > .field.full:nth-child(2){background:rgba(15,23,42,.36)}
+  #install .section-body.form-grid > .panel-actions.full{grid-column:1/-1;justify-content:flex-end}
+  #install .security-grid{grid-template-columns:minmax(300px,.9fr) minmax(420px,1.1fr);align-items:start}
+  #install .security-grid .security-card:nth-child(2){grid-column:2;grid-row:1 / span 3}
+  #install .security-grid .security-card:nth-child(1){grid-column:1;grid-row:1}
+  #install .security-grid .security-card:nth-child(3){grid-column:1;grid-row:2}
+  #install .security-grid .security-card:nth-child(4){grid-column:1;grid-row:3}
+  #install .integration-reference-grid{grid-template-columns:minmax(280px,.8fr) minmax(420px,1.2fr)}
+  #install .integration-reference-grid .security-card:nth-child(2){grid-column:2;grid-row:1 / span 2}
+  #install .integration-reference-grid .security-card:nth-child(3){grid-column:1;grid-row:2}
+  #install .security-card .pill-btn,
+  #install .security-card .ghost-btn{width:fit-content}
+  #install .security-card textarea{min-height:76px}
+}
 .api-key-reveal{display:none;margin-top:10px}
 .api-key-reveal.active{display:block}
 .api-key-code{font-size:12px}
@@ -1117,6 +1138,11 @@ body.dark .funnel-step{background:rgba(15,23,42,.38)}
 .funnel-step strong{font-size:20px}
 .funnel-step span{font-size:12px;color:var(--muted);font-weight:700}
 .report-actions{display:flex;gap:10px;flex-wrap:wrap}
+.active-subscription-banner{margin-top:18px;padding:18px;border:1px solid rgba(99,102,241,.22);border-radius:18px;background:linear-gradient(135deg,rgba(99,102,241,.13),rgba(6,182,212,.1));display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.active-subscription-banner h3{font-size:22px;margin-top:4px}
+.active-subscription-banner small{display:block;color:var(--muted);line-height:1.5;margin-top:4px}
+.active-subscription-banner .tag{align-self:flex-start}
+body.dark .active-subscription-banner{background:linear-gradient(135deg,rgba(99,102,241,.2),rgba(6,182,212,.14))}
 .pricing-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:16px;margin-top:18px;align-items:stretch}
 .pricing-card{grid-column:span 2;padding:16px;display:grid;gap:12px;align-content:start}
 .pricing-card.featured{grid-column:span 2;padding:22px;border-color:rgba(34,197,94,.55);box-shadow:0 18px 42px rgba(34,197,94,.16);transform:scale(1.02);z-index:1}
@@ -2137,7 +2163,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
             </div>
 
             <div class="field full">
-              <div class="security-grid">
+              <div class="security-grid integration-reference-grid">
                 <div class="security-card">
                   <h4>Customer API example</h4>
                   <code class="api-key-code">curl -H "Authorization: Bearer CUSTOMER_API_KEY" "<?php echo h($customerApiUrl); ?>"</code>
@@ -2367,6 +2393,24 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
           <span class="eyebrow">Subscription</span>
           <h2 style="margin:8px 0 10px">Subscription Plans</h2>
           <p class="muted">Choose the monthly plan that fits your FAQ limit, lead verification, analytics, and integration needs.</p>
+
+          <div class="active-subscription-banner">
+            <div>
+              <span class="eyebrow">Active subscription</span>
+              <h3><?php echo h($activePlan['name']); ?> Plan</h3>
+              <small>
+                Status: <?php echo h($isCancelledWalletAccess ? 'Auto payment stopped, wallet access active' : ucfirst($subscriptionStatus)); ?>.
+                Wallet balance: <?php echo h(billing_rupees($billingWalletPaise)); ?>.
+                FAQ usage: <?php echo h($faqCount); ?>/<?php echo $planFaqLimit === PHP_INT_MAX ? 'Unlimited' : h($planFaqLimit); ?>.
+              </small>
+              <?php if (!empty($billingAccount['current_period_end'])): ?>
+                <small>Current period ends: <?php echo h((string)$billingAccount['current_period_end']); ?></small>
+              <?php endif; ?>
+            </div>
+            <span class="tag <?php echo $activePlanId === 'free' ? 'bad' : 'good'; ?>">
+              <?php echo h($activePlanId === 'free' ? 'Free service active' : 'Active plan'); ?>
+            </span>
+          </div>
 
           <div class="metrics" style="margin-top:18px">
             <div class="panel metric"><span>Current plan</span><strong><?php echo h($activePlan['name']); ?></strong><small><?php echo h($faqCount); ?>/<?php echo $planFaqLimit === PHP_INT_MAX ? 'Unlimited' : h($planFaqLimit); ?> FAQs used.</small></div>
