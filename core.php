@@ -6,9 +6,9 @@ if (file_exists($autoloadPath)) {
     require $autoloadPath;
 }
 
-if (class_exists(Dotenv\Dotenv::class) && file_exists(__DIR__ . '/.env')) {
+if (class_exists(Dotenv\Dotenv::class) && is_readable(__DIR__ . '/.env')) {
     Dotenv\Dotenv::createImmutable(__DIR__)->safeLoad();
-} elseif (file_exists(__DIR__ . '/.env')) {
+} elseif (is_readable(__DIR__ . '/.env')) {
     foreach (parse_ini_file(__DIR__ . '/.env', false, INI_SCANNER_RAW) ?: [] as $key => $value) {
         $_ENV[$key] = $value;
         putenv($key . '=' . $value);

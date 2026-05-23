@@ -3,7 +3,7 @@
 // =====================================
 // BREVO CONFIG
 // =====================================
-if (file_exists(__DIR__ . '/.env')) {
+if (is_readable(__DIR__ . '/.env')) {
     foreach (parse_ini_file(__DIR__ . '/.env', false, INI_SCANNER_RAW) ?: [] as $key => $value) {
         if (!isset($_ENV[$key])) {
             $_ENV[$key] = $value;
