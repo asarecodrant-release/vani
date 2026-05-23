@@ -41,6 +41,27 @@ function widget_get_signup(string $customerId): array {
     return $rows[0] ?? [];
 }
 
+function widget_faq_action_suggestions(string $customerId, $faqId, array $settings, string $activePlan): array {
+    $faqId = (int)$faqId;
+    if ($customerId === '' || $faqId <= 0) {
+        return [];
+    }
+    if (!widget_bool($settings['faq_actions_enabled'] ?? false) || !billing_feature_enabled($activePlan, 'faq_action_suggestions')) {
+        return [];
+    }
+    $rows = widget_safe_rows(supabase(
+        "GET",
+        "faq_action_suggestions?select=id,faq_id,label,action_type,action_value,display_order&customer_id=eq." . urlencode($customerId) . "&faq_id=eq." . urlencode((string)$faqId) . "&is_active=eq.true&order=display_order.asc,created_at.asc&limit=5"
+    ));
+    return array_values(array_map(fn($row) => [
+        "id" => $row["id"] ?? null,
+        "faq_id" => $row["faq_id"] ?? $faqId,
+        "label" => (string)($row["label"] ?? ""),
+        "action_type" => (string)($row["action_type"] ?? "link"),
+        "action_value" => (string)($row["action_value"] ?? "")
+    ], $rows));
+}
+
 function widget_billing_plan_for_customer(string $customerId): string {
     $account = widget_billing_account_for_customer($customerId);
     $status = (string)($account['subscription_status'] ?? 'free');
@@ -335,6 +356,7 @@ function widget_disable_paid_service_toggles_for_email(string $email, string $re
             "handoff_enabled" => false,
             "allowed_domains_enabled" => false,
             "live_chat_actions_enabled" => false,
+            "faq_actions_enabled" => false,
             "webhook_url" => null,
             "webhook_secret" => null
         ]);
@@ -364,6 +386,7 @@ function widget_downgrade_account_to_free(string $customerId, string $reason = '
         "handoff_enabled" => false,
         "allowed_domains_enabled" => false,
         "live_chat_actions_enabled" => false,
+        "faq_actions_enabled" => false,
         "webhook_url" => null,
         "webhook_secret" => null
     ]);
@@ -1315,12 +1338,14 @@ if ($action === "get_widget_config" || $action === "get_theme") {
             "mobile_otp" => billing_feature_enabled($activePlan, 'mobile_otp'),
             "whatsapp_redirect" => billing_feature_enabled($activePlan, 'whatsapp_redirect'),
             "allowed_domains" => billing_feature_enabled($activePlan, 'allowed_domains'),
-            "live_chat_actions" => billing_feature_enabled($activePlan, 'live_chat_actions')
+            "live_chat_actions" => billing_feature_enabled($activePlan, 'live_chat_actions'),
+            "faq_action_suggestions" => billing_feature_enabled($activePlan, 'faq_action_suggestions')
         ],
         "website_verification_enabled" => widget_bool($settings['website_verification_enabled'] ?? false),
         "allowed_domains_enabled" => widget_bool($settings['allowed_domains_enabled'] ?? false) && billing_feature_enabled($activePlan, 'allowed_domains'),
         "allowed_domains" => $settings['allowed_domains'] ?? '',
         "live_chat_actions_enabled" => widget_bool($settings['live_chat_actions_enabled'] ?? false) && billing_feature_enabled($activePlan, 'live_chat_actions'),
+        "faq_actions_enabled" => widget_bool($settings['faq_actions_enabled'] ?? false) && billing_feature_enabled($activePlan, 'faq_action_suggestions'),
         "verification_status" => $access['status'],
         "access_allowed" => $access['allowed'],
         "access_message" => $access['message'],
@@ -1464,6 +1489,10 @@ if ($action === "chat") {
         widget_create_handoff_ticket_if_enabled($customerId, $settings, $message, $reply, $sourceUrl, $userId, $conversationId);
     }
 
+    $faqActions = $answered && $matchedFaqId
+        ? widget_faq_action_suggestions($customerId, $matchedFaqId, $settings, $activePlan)
+        : [];
+
     if (!empty($data['session_id'])) {
         widget_save_session(array_merge($data, [
             "started_at" => $data['started_at'] ?? gmdate('Y-m-d\TH:i:s\Z'),
@@ -1475,7 +1504,8 @@ if ($action === "chat") {
         "success" => true,
         "reply" => $reply,
         "answered" => $answered,
-        "matched_faq_id" => $matchedFaqId
+        "matched_faq_id" => $matchedFaqId,
+        "actions" => $faqActions
     ]);
 }
 

@@ -1595,7 +1595,7 @@ if ($action === "customer_api_profile") {
     ));
     $settings = safe_rows(supabase(
         "GET",
-        "chatbot_settings?select=bot_name,welcome_message,theme_color,position,avatar_url,language,is_active,website_verification_enabled,allowed_domains_enabled,allowed_domains,live_chat_actions_enabled,webhook_url,verification_status,created_at,updated_at&customer_id=eq." . urlencode($customerId) . "&limit=1"
+        "chatbot_settings?select=bot_name,welcome_message,theme_color,position,avatar_url,language,is_active,website_verification_enabled,allowed_domains_enabled,allowed_domains,live_chat_actions_enabled,faq_actions_enabled,webhook_url,verification_status,created_at,updated_at&customer_id=eq." . urlencode($customerId) . "&limit=1"
     ));
     customer_api_json($validation, "profile", [
         "profile" => $profile[0] ?? null,
@@ -2765,6 +2765,110 @@ if ($action === "chat") {
     exit;
 }
 
+// ==========================
+// SAVE FAQ ACTION SUGGESTION
+// ==========================
+if ($action === "save_faq_action") {
+
+    $data = getJSON();
+    $customer_id = trim($data['customer_id'] ?? '');
+    $faq_id = trim((string)($data['faq_id'] ?? ''));
+    $label = trim((string)($data['label'] ?? ''));
+    $action_type = trim((string)($data['action_type'] ?? 'link'));
+    $action_value = trim((string)($data['action_value'] ?? ''));
+    $display_order = max(0, min(999, (int)($data['display_order'] ?? 0)));
+    $is_active = array_key_exists('is_active', $data) ? filter_var($data['is_active'], FILTER_VALIDATE_BOOLEAN) : true;
+
+    if (!$customer_id || !$faq_id || !$label || !$action_value) {
+        echo json_encode(["success" => false, "message" => "FAQ, label, and action value are required"]);
+        exit;
+    }
+
+    $activePlan = billing_active_plan_from_account(billing_account_for_customer($customer_id));
+    if (!billing_feature_enabled($activePlan, 'faq_action_suggestions')) {
+        echo json_encode(["success" => false, "requires_paid" => true, "message" => "FAQ Action Suggestions requires Growth or Business plan"]);
+        exit;
+    }
+
+    $settingsRows = safe_rows(supabase(
+        "GET",
+        "chatbot_settings?select=faq_actions_enabled&customer_id=eq." . urlencode($customer_id) . "&limit=1"
+    ));
+    if (empty($settingsRows[0]) || !filter_var($settingsRows[0]['faq_actions_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+        echo json_encode(["success" => false, "message" => "Turn ON FAQ Action Suggestions first"]);
+        exit;
+    }
+
+    if (!in_array($action_type, ['link', 'whatsapp', 'event'], true)) {
+        echo json_encode(["success" => false, "message" => "Invalid action type"]);
+        exit;
+    }
+    if ($action_type === 'link' && !preg_match('{^https://\S+$}i', $action_value)) {
+        echo json_encode(["success" => false, "message" => "Link actions must start with https://"]);
+        exit;
+    }
+    if ($action_type === 'whatsapp' && !preg_match('/^\+?[1-9]\d{7,15}$/', $action_value)) {
+        echo json_encode(["success" => false, "message" => "WhatsApp number must include country code"]);
+        exit;
+    }
+    if ($action_type === 'event' && !preg_match('/^[a-zA-Z][a-zA-Z0-9_.:-]{1,80}$/', $action_value)) {
+        echo json_encode(["success" => false, "message" => "Event name can use letters, numbers, dash, dot, underscore, or colon"]);
+        exit;
+    }
+
+    $faq = supabase(
+        "GET",
+        "faq_questions?select=id&id=eq." . urlencode($faq_id) . "&customer_id=eq." . urlencode($customer_id) . "&limit=1"
+    );
+
+    if (empty($faq['data'])) {
+        echo json_encode(["success" => false, "message" => "FAQ not found"]);
+        exit;
+    }
+
+    $payload = [
+        "customer_id" => $customer_id,
+        "faq_id" => (int)$faq_id,
+        "label" => $label,
+        "action_type" => $action_type,
+        "action_value" => $action_value,
+        "display_order" => $display_order,
+        "is_active" => $is_active
+    ];
+
+    $res = supabase("POST", "faq_action_suggestions", [$payload]);
+
+    echo json_encode([
+        "success" => ($res['status'] >= 200 && $res['status'] < 300),
+        "action" => $res['data'][0] ?? null,
+        "debug" => $res
+    ]);
+    exit;
+}
+
+// ==========================
+// DELETE FAQ ACTION SUGGESTION
+// ==========================
+if ($action === "delete_faq_action") {
+
+    $data = getJSON();
+    $customer_id = trim($data['customer_id'] ?? '');
+    $id = trim((string)($data['id'] ?? ''));
+
+    if (!$customer_id || !$id) {
+        echo json_encode(["success" => false, "message" => "Missing FAQ action"]);
+        exit;
+    }
+
+    $res = supabase(
+        "DELETE",
+        "faq_action_suggestions?id=eq." . urlencode($id) . "&customer_id=eq." . urlencode($customer_id)
+    );
+
+    echo json_encode(["success" => ($res['status'] >= 200 && $res['status'] < 300), "debug" => $res]);
+    exit;
+}
+
 
 // ==========================
 // SAVE DASHBOARD SETTINGS
@@ -2811,6 +2915,13 @@ if ($action === "save_dashboard_settings") {
         }
         unset($data['live_chat_actions_enabled']);
     }
+    if (!billing_feature_enabled($activePlan, 'faq_action_suggestions')) {
+        if (!empty($data['faq_actions_enabled'])) {
+            echo json_encode(["success" => false, "requires_paid" => true, "message" => "FAQ Action Suggestions requires Growth or Business plan"]);
+            exit;
+        }
+        unset($data['faq_actions_enabled']);
+    }
 
     $allowed = [
         "bot_name",
@@ -2831,6 +2942,7 @@ if ($action === "save_dashboard_settings") {
         "handoff_enabled",
         "handoff_email",
         "live_chat_actions_enabled",
+        "faq_actions_enabled",
         "verification_status"
     ];
 

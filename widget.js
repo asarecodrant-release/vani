@@ -40,6 +40,8 @@
   ];
   let config = {};
   let msg91OtpScriptPromise = null;
+  let activeFaqActions = [];
+  let activeFaqActionContext = {};
 
   let userId = localStorage.getItem("vani_widget_user_id");
   if (!userId) {
@@ -421,10 +423,75 @@
     return row;
   }
 
-  function renderSuggestions(suggestionsBox, input, items) {
+  function renderSuggestions(suggestionsBox, input, items, options = {}) {
     suggestionsBox.innerHTML = "";
-    suggestionsBox.style.display = items.length ? "grid" : "none";
-    items.forEach((item, index) => {
+    const includeFaqs = options.includeFaqs !== false;
+    const hasActions = activeFaqActions.length > 0;
+    const visibleItems = includeFaqs ? items : [];
+    suggestionsBox.style.display = hasActions || visibleItems.length ? "grid" : "none";
+
+    if (hasActions) {
+      const actionGroup = document.createElement("div");
+      actionGroup.className = "vani-action-panel";
+      css(actionGroup, {
+        display: "grid",
+        gap: "8px",
+        padding: "10px",
+        borderRadius: "16px",
+        background: "linear-gradient(180deg,rgba(255,255,255,.86),rgba(248,250,252,.72))",
+        border: "1px solid rgba(199,210,254,.75)",
+        boxShadow: "0 14px 34px rgba(15,23,42,.10)",
+        marginBottom: visibleItems.length ? "7px" : "0"
+      });
+      const heading = document.createElement("div");
+      heading.textContent = "Recommended next step";
+      css(heading, {
+        color: "#64748b",
+        fontSize: "11px",
+        fontWeight: "800",
+        letterSpacing: ".03em",
+        textTransform: "uppercase"
+      });
+      actionGroup.appendChild(heading);
+      activeFaqActions.forEach((action, index) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = action.label || "Continue";
+        button.className = "vani-suggestion-card";
+        button.style.animationDelay = `${Math.min(index * 35, 180)}ms`;
+        css(button, {
+          width: "100%",
+          minHeight: "38px",
+          border: "1px solid rgba(99,102,241,.22)",
+          borderRadius: "14px",
+          background: `linear-gradient(135deg,${config.theme_color || "#6366f1"},#06b6d4)`,
+          color: "#fff",
+          cursor: "pointer",
+          fontWeight: "800",
+          fontSize: "13px",
+          padding: "10px 12px",
+          textAlign: "center",
+          boxShadow: "0 10px 26px rgba(79,70,229,.14)",
+          animation: index === 0 ? "vaniSuggestionIn .22s ease both, vaniActionPulse 2.2s ease-in-out infinite" : "vaniSuggestionIn .22s ease both",
+          transition: "transform .16s ease, box-shadow .16s ease, filter .16s ease"
+        });
+        button.onmouseenter = () => {
+          button.style.transform = "translateY(-1px)";
+          button.style.filter = "brightness(1.04)";
+          button.style.boxShadow = "0 16px 34px rgba(79,70,229,.22)";
+        };
+        button.onmouseleave = () => {
+          button.style.transform = "translateY(0)";
+          button.style.filter = "brightness(1)";
+          button.style.boxShadow = "0 10px 26px rgba(79,70,229,.14)";
+        };
+        button.onclick = () => handleFaqAction(action, activeFaqActionContext, suggestionsBox, input);
+        actionGroup.appendChild(button);
+      });
+      suggestionsBox.appendChild(actionGroup);
+    }
+
+    visibleItems.forEach((item, index) => {
       const option = document.createElement("button");
       option.type = "button";
       option.className = "vani-suggestion-card";
@@ -506,6 +573,52 @@
     });
   }
 
+  function handleFaqAction(action, context = {}, suggestionsBox = null, input = null) {
+    const actionType = action.action_type || "link";
+    const value = String(action.action_value || "").trim();
+    activeFaqActions = [];
+    activeFaqActionContext = {};
+    if (suggestionsBox && input) {
+      suggestionsBox.style.transition = "opacity .16s ease, transform .16s ease";
+      suggestionsBox.style.opacity = "0";
+      suggestionsBox.style.transform = "translateY(4px)";
+      window.setTimeout(() => {
+        renderSuggestions(suggestionsBox, input, [], {includeFaqs: false});
+        suggestionsBox.style.opacity = "1";
+        suggestionsBox.style.transform = "translateY(0)";
+      }, 150);
+    }
+    emitLiveAction("faqActionClicked", {
+      action_id: action.id || null,
+      faq_id: action.faq_id || context.matched_faq_id || null,
+      label: action.label || "",
+      action_type: actionType,
+      action_value: value,
+      message: context.message || ""
+    });
+    if (actionType === "link") {
+      if (/^https:\/\//i.test(value)) window.open(value, "_blank", "noopener,noreferrer");
+      return;
+    }
+    if (actionType === "whatsapp") {
+      const phone = value.replace(/[^\d+]/g, "").replace(/(?!^)\+/g, "").replace(/\D+/g, "");
+      if (/^[1-9][0-9]{7,14}$/.test(phone)) window.open(`https://wa.me/${phone}`, "_blank", "noopener,noreferrer");
+      return;
+    }
+    if (actionType === "event") {
+      window.dispatchEvent(new CustomEvent(`vani:${value}`, {
+        detail: {
+          customer_id: customerId,
+          user_id: userId,
+          session_id: sessionId,
+          source_url: window.location.href,
+          action,
+          context
+        }
+      }));
+    }
+  }
+
   const tracked = new Set();
 
   async function trackUsage(questionId) {
@@ -560,12 +673,23 @@
         from { opacity: 0; transform: translateY(8px) scale(.98); }
         to { opacity: 1; transform: translateY(0) scale(1); }
       }
+      @keyframes vaniActionPanelIn {
+        from { opacity: 0; transform: translateY(12px); filter: blur(2px); }
+        to { opacity: 1; transform: translateY(0); filter: blur(0); }
+      }
+      @keyframes vaniActionPulse {
+        0%, 100% { box-shadow: 0 10px 26px rgba(79,70,229,.10); }
+        50% { box-shadow: 0 14px 34px rgba(79,70,229,.18); }
+      }
       @keyframes vaniThinkingDot {
         0%, 80%, 100% { opacity: .25; transform: translateY(0); }
         40% { opacity: 1; transform: translateY(-2px); }
       }
       .vani-suggestion-card {
         animation: vaniSuggestionIn .22s ease both;
+      }
+      .vani-action-panel {
+        animation: vaniActionPanelIn .26s ease both;
       }
       .vani-thinking-dots {
         display: inline-flex;
@@ -710,6 +834,10 @@
     addMessage(messages, greetingText, "bot");
 
     async function loadTop() {
+      if (activeFaqActions.length) {
+        renderSuggestions(suggestionsBox, input, [], {includeFaqs: false});
+        return;
+      }
       const response = await api("get_top_faqs", "GET", null, `&customer_id=${encodeURIComponent(customerId)}`);
       renderSuggestions(suggestionsBox, input, response.data || []);
     }
@@ -1767,9 +1895,12 @@
         message,
         faq_id: selectedFaqId || null
       });
+      activeFaqActions = [];
+      activeFaqActionContext = {};
       input.value = "";
       delete input.dataset.selectedFaqId;
       suggestionsBox.innerHTML = "";
+      suggestionsBox.style.display = "none";
       sessionChatStartedAt = sessionChatStartedAt || new Date().toISOString();
       sessionMessageCount++;
       const requestStartedAt = Date.now();
@@ -1792,6 +1923,12 @@
 
       thinkingMessage.remove();
       addMessage(messages, response.reply || "No response", "bot");
+      activeFaqActions = Array.isArray(response.actions) ? response.actions.filter(action => action && action.label && action.action_value) : [];
+      activeFaqActionContext = {
+        message,
+        matched_faq_id: response.matched_faq_id || null
+      };
+      renderSuggestions(suggestionsBox, input, [], {includeFaqs: false});
       emitLiveAction(response.answered ? "faqAnswered" : "unknownQuestion", {
         message,
         reply: response.reply || "",

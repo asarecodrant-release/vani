@@ -66,6 +66,7 @@ function dashboard_disable_paid_service_toggles(array $bots, string $reason): vo
             "handoff_enabled" => false,
             "allowed_domains_enabled" => false,
             "live_chat_actions_enabled" => false,
+            "faq_actions_enabled" => false,
             "webhook_url" => null,
             "webhook_secret" => null
         ]);
@@ -436,6 +437,13 @@ $apiUsageRows = $selectedBotId
     ))
     : [];
 
+$faqActionRows = $selectedBotId
+    ? safe_data(supabase(
+        "GET",
+        "faq_action_suggestions?select=*&customer_id=eq." . urlencode($selectedBotId) . "&order=display_order.asc,created_at.desc"
+    ))
+    : [];
+
 $todayAllQueries = count(array_filter($conversationRows, fn($row) => date_in_range($row, 'created_at', $analyticsToday, $analyticsToday)));
 $yesterdayAllQueries = count(array_filter($conversationRows, fn($row) => date_in_range($row, 'created_at', $analyticsYesterday, $analyticsYesterday)));
 $last7AllQueries = count(array_filter($conversationRows, fn($row) => date_in_range($row, 'created_at', gmdate('Y-m-d', time() - (6 * 86400)), $analyticsToday)));
@@ -492,6 +500,7 @@ $canUseWebhook = billing_feature_enabled($activePlanId, 'webhook_support');
 $canUseHumanHandoff = billing_feature_enabled($activePlanId, 'human_handoff');
 $canUseAllowedDomains = billing_feature_enabled($activePlanId, 'allowed_domains');
 $canUseLiveChatActions = billing_feature_enabled($activePlanId, 'live_chat_actions');
+$canUseFaqActionSuggestions = billing_feature_enabled($activePlanId, 'faq_action_suggestions');
 $autoRechargeRule = billing_auto_recharge_rule($activePlanId);
 $autoRechargeThresholdPaise = (int)($billingAccount['auto_recharge_threshold_paise'] ?? 0) ?: (int)$autoRechargeRule['threshold_paise'];
 $autoRechargeAmountPaise = (int)($billingAccount['auto_recharge_amount_paise'] ?? 0) ?: (int)$autoRechargeRule['amount_paise'];
@@ -811,7 +820,12 @@ $allowedDomains = first_value($settings, ['allowed_domains'], '');
 $handoffEnabled = filter_var($settings['handoff_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
 $handoffEmail = first_value($settings, ['handoff_email'], $email);
 $liveChatActionsEnabled = filter_var($settings['live_chat_actions_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
+$faqActionsEnabled = filter_var($settings['faq_actions_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
 $verificationStatus = first_value($settings, ['verification_status'], 'Pending');
+$faqById = [];
+foreach ($faqs as $faq) {
+    $faqById[(string)($faq['id'] ?? '')] = $faq;
+}
 $websiteName = first_value($selectedBot, ['website_name'], '');
 $leadEnabled = filter_var($leadSettings['is_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
 $leadCollectLocation = filter_var($leadSettings['collect_location'] ?? false, FILTER_VALIDATE_BOOLEAN);
@@ -1108,6 +1122,12 @@ body.dark .outside-faq-card{background:rgba(15,23,42,.44)}
 .outside-faq-meta{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
 .outside-faq-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 .outside-faq-grid .field.full{grid-column:1/-1}
+.faq-action-section{margin-top:16px;border-top:1px solid var(--line)}
+.faq-action-list{display:grid;gap:12px;margin-top:14px}
+.faq-action-card{padding:14px;border:1px solid var(--line);border-radius:16px;background:rgba(255,255,255,.42);display:grid;gap:12px}
+body.dark .faq-action-card{background:rgba(15,23,42,.44)}
+.faq-action-grid{display:grid;grid-template-columns:1.2fr 1fr 1.4fr .7fr auto;gap:10px;align-items:end}
+.faq-action-grid .field{min-width:0}
 .lead-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
 .lead-master{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px;border:1px solid var(--line);border-radius:18px;background:rgba(255,255,255,.42);margin-top:16px}
 body.dark .lead-master{background:rgba(15,23,42,.44)}
@@ -1211,7 +1231,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
   .section-head{align-items:flex-start;flex-direction:column;padding:16px 16px 0}
   .section-body{padding:16px}
   .overview-hero h2{font-size:28px}
-  .metrics,.quick-actions,.form-grid,.outside-faq-grid,.lead-grid,.analytics-grid,.analytics-grid.two,.funnel,.pricing-grid,.security-grid{grid-template-columns:1fr}
+  .metrics,.quick-actions,.form-grid,.outside-faq-grid,.faq-action-grid,.lead-grid,.analytics-grid,.analytics-grid.two,.funnel,.pricing-grid,.security-grid{grid-template-columns:1fr}
   .panel-actions{justify-content:stretch}
   .panel-actions .pill-btn,.panel-actions .ghost-btn,.panel-actions .danger-btn{width:100%}
   .user-menu{justify-content:space-between}
@@ -1498,6 +1518,74 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                   <?php endforeach; ?>
                 </tbody>
               </table>
+            </div>
+          </div>
+          <div class="section-body faq-action-section">
+            <div class="inline-row" style="justify-content:space-between;gap:16px;margin-bottom:14px">
+              <div>
+                <h3>FAQ Action Suggestions</h3>
+                <small class="input-help">Show action buttons after a matched FAQ answer, such as open a page, WhatsApp, or trigger a website event.</small>
+                <?php if (!$canUseFaqActionSuggestions): ?><small class="input-help error">Growth or Business plan required.</small><?php endif; ?>
+              </div>
+              <label class="switch" title="Enable FAQ action suggestions">
+                <input id="faqActionsToggle" type="checkbox" <?php echo $faqActionsEnabled && $canUseFaqActionSuggestions ? 'checked' : ''; ?> <?php echo $canUseFaqActionSuggestions ? '' : 'disabled'; ?> aria-label="Enable FAQ action suggestions">
+                <span class="switch-slider"></span>
+              </label>
+            </div>
+
+            <form id="faqActionForm" class="faq-action-card">
+              <input type="hidden" id="faqActionCustomerId" value="<?php echo h($selectedBotId); ?>">
+              <div class="faq-action-grid">
+                <div class="field">
+                  <label>FAQ</label>
+                  <select id="faqActionFaqId" <?php echo $canUseFaqActionSuggestions ? '' : 'disabled'; ?>>
+                    <option value="">Select FAQ</option>
+                    <?php foreach ($faqs as $faq): ?>
+                      <option value="<?php echo h($faq['id'] ?? ''); ?>"><?php echo h($faq['question'] ?? ''); ?></option>
+                    <?php endforeach; ?>
+                  </select>
+                </div>
+                <div class="field">
+                  <label>Button label</label>
+                  <input id="faqActionLabel" placeholder="Book demo" maxlength="80" <?php echo $canUseFaqActionSuggestions ? '' : 'disabled'; ?>>
+                </div>
+                <div class="field">
+                  <label>Action type</label>
+                  <select id="faqActionType" <?php echo $canUseFaqActionSuggestions ? '' : 'disabled'; ?>>
+                    <option value="link">Open link</option>
+                    <option value="whatsapp">Open WhatsApp</option>
+                    <option value="event">Website event</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label>Order</label>
+                  <input id="faqActionOrder" type="number" min="0" max="999" value="0" <?php echo $canUseFaqActionSuggestions ? '' : 'disabled'; ?>>
+                </div>
+                <button class="pill-btn" type="submit" <?php echo $canUseFaqActionSuggestions ? '' : 'disabled'; ?>>Add action</button>
+                <div class="field full" style="grid-column:1/-1">
+                  <label>Action value</label>
+                  <input id="faqActionValue" placeholder="https://example.com/demo, +919876543210, or customEventName" <?php echo $canUseFaqActionSuggestions ? '' : 'disabled'; ?>>
+                  <small class="input-help">For links use https:// URLs. For WhatsApp use country code. For website events, enter an event name such as openPricing.</small>
+                </div>
+              </div>
+            </form>
+
+            <div class="faq-action-list" id="faqActionList">
+              <?php if (empty($faqActionRows)): ?><p class="empty">No FAQ actions configured yet.</p><?php endif; ?>
+              <?php foreach ($faqActionRows as $actionRow): ?>
+                <?php $linkedFaq = $faqById[(string)($actionRow['faq_id'] ?? '')] ?? []; ?>
+                <?php $actionActive = filter_var($actionRow['is_active'] ?? true, FILTER_VALIDATE_BOOLEAN); ?>
+                <div class="faq-action-card" data-faq-action-id="<?php echo h($actionRow['id'] ?? ''); ?>">
+                  <div class="faq-action-grid">
+                    <div><label>FAQ</label><strong><?php echo h($linkedFaq['question'] ?? 'Deleted FAQ'); ?></strong></div>
+                    <div><label>Label</label><span><?php echo h($actionRow['label'] ?? ''); ?></span></div>
+                    <div><label>Type</label><span class="tag"><?php echo h($actionRow['action_type'] ?? 'link'); ?></span></div>
+                    <div><label>Status</label><span class="tag <?php echo $actionActive ? 'good' : 'bad'; ?>"><?php echo $actionActive ? 'Active' : 'Off'; ?></span></div>
+                    <button class="danger-btn faq-action-delete-btn" type="button">Delete</button>
+                    <div style="grid-column:1/-1"><small class="input-help"><?php echo h($actionRow['action_value'] ?? ''); ?></small></div>
+                  </div>
+                </div>
+              <?php endforeach; ?>
             </div>
           </div>
         </div>
@@ -2268,7 +2356,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
               <div class="pricing-head"><div><span class="eyebrow">Growth</span><h3>Growth Plan</h3></div><span class="tag good">Popular</span></div>
               <?php if ($activePlanId === 'growth'): ?><div class="current-plan-note">Current plan</div><?php endif; ?>
               <div class="price">₹499<small>/month</small></div>
-              <div class="feature-list"><span>300 FAQ answers for growing local businesses</span><span>Email and Mobile OTP verification for real leads</span><span>WhatsApp Redirect add-on billed at ₹99 / 30 days</span><span>Webhook support</span><span>Auto wallet recharge: below ₹100, recharge ₹499</span><span>Partial Analytics dashboard for tracking captured contacts</span><span>Better wallet rates than Starter on email and mobile leads</span><span>Analytics access: Overview, Conversations, FAQ Insights, Leads</span></div>
+              <div class="feature-list"><span>300 FAQ answers for growing local businesses</span><span>Email and Mobile OTP verification for real leads</span><span>WhatsApp Redirect add-on billed at ₹99 / 30 days</span><span>Webhook support</span><span>FAQ Action Suggestions</span><span>Auto wallet recharge: below ₹100, recharge ₹499</span><span>Partial Analytics dashboard for tracking captured contacts</span><span>Better wallet rates than Starter on email and mobile leads</span><span>Analytics access: Overview, Conversations, FAQ Insights, Leads</span></div>
               <div class="wallet-table"><table><thead><tr><th>Wallet action</th><th>Charge</th></tr></thead><tbody><tr><td>Fresh Email OTP Lead</td><td>₹5</td></tr><tr><td>Repeat Email OTP Verification</td><td>₹1</td></tr><tr><td>Fresh Mobile OTP Lead</td><td>₹10</td></tr><tr><td>Repeat Mobile OTP Verification</td><td>₹2</td></tr><tr><td>WhatsApp Redirect</td><td>Add-on ₹99, refundable if cancelled within 1 hour</td></tr></tbody></table></div>
               <small class="muted">Validity of Fresh Email and Mobile OTP Leads is 30 days from last user verification.</small>
               <button class="pill-btn billing-plan-btn" type="button" data-plan-id="growth">Start Auto Payment</button>
@@ -2279,7 +2367,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
               <div class="pricing-head"><div><span class="eyebrow">Business</span><h3>Business Plan</h3></div><span class="tag">Scale</span></div>
               <?php if ($activePlanId === 'business'): ?><div class="current-plan-note">Current plan</div><?php endif; ?>
               <div class="price">₹999<small>/month</small></div>
-              <div class="feature-list"><span>Unlimited FAQ capacity for larger businesses</span><span>Email and Mobile combined OTP verification for real leads</span><span>WhatsApp Redirect add-on billed at ₹99 / 30 days</span><span>Webhook support</span><span>Live Chat Actions for real-time website reactions</span><span>Auto wallet recharge: below ₹200, recharge ₹999</span><span>Complete Analytics dashboard for tracking captured contacts</span><span>Access for API Integration, Migrate or save data in your database via API</span><span>Advanced Analytics: Overview, Conversations, FAQ Insights, Leads, Pages, Real-Time, Reports Download</span><span>Chat can run only allowed domains</span></div>
+              <div class="feature-list"><span>Unlimited FAQ capacity for larger businesses</span><span>Email and Mobile combined OTP verification for real leads</span><span>WhatsApp Redirect add-on billed at ₹99 / 30 days</span><span>Webhook support</span><span>FAQ Action Suggestions</span><span>Live Chat Actions for real-time website reactions</span><span>Auto wallet recharge: below ₹200, recharge ₹999</span><span>Complete Analytics dashboard for tracking captured contacts</span><span>Access for API Integration, Migrate or save data in your database via API</span><span>Advanced Analytics: Overview, Conversations, FAQ Insights, Leads, Pages, Real-Time, Reports Download</span><span>Chat can run only allowed domains</span></div>
               <div class="wallet-table"><table><thead><tr><th>Wallet action</th><th>Charge</th></tr></thead><tbody><tr><td>Fresh Email OTP Lead</td><td>₹5</td></tr><tr><td>Repeat Email OTP Verification</td><td>₹1</td></tr><tr><td>Fresh Mobile OTP Lead</td><td>₹10</td></tr><tr><td>Repeat Mobile OTP Verification</td><td>₹2</td></tr><tr><td>WhatsApp Redirect</td><td>Add-on ₹99, refundable if cancelled within 1 hour</td></tr></tbody></table></div>
               <small class="muted">Validity of Fresh Email and Mobile OTP Leads is 30 days from last user verification.</small>
               <button class="pill-btn billing-plan-btn" type="button" data-plan-id="business">Start Auto Payment</button>
@@ -2474,7 +2562,8 @@ const businessFeatures = <?php echo json_encode([
   "webhook_support" => $canUseWebhook,
   "human_handoff" => $canUseHumanHandoff,
   "allowed_domains" => $canUseAllowedDomains,
-  "live_chat_actions" => $canUseLiveChatActions
+  "live_chat_actions" => $canUseLiveChatActions,
+  "faq_action_suggestions" => $canUseFaqActionSuggestions
 ]); ?>;
 const leadWalletCharges = <?php echo json_encode([
   "fresh_email_lead" => billing_wallet_charge_paise($activePlanId, "fresh_email_lead"),
@@ -3541,6 +3630,99 @@ document.getElementById("faqTable")?.addEventListener("click", async event => {
     currentFaqCount = Math.max(0, currentFaqCount - 1);
     showToast("FAQ deleted");
   }
+});
+
+async function saveFaqActionsToggle({live = false} = {}) {
+  const toggle = document.getElementById("faqActionsToggle");
+  if (!toggle) return;
+  if (toggle.checked && !businessFeatures.faq_action_suggestions) {
+    toggle.checked = false;
+    alert("FAQ Action Suggestions requires Growth or Business plan");
+    openTab("subscription");
+    return;
+  }
+  const saved = await saveDashboardSettings({
+    faq_actions_enabled: businessFeatures.faq_action_suggestions && !!toggle.checked
+  });
+  if (saved && live) {
+    showToast(toggle.checked ? "FAQ Action Suggestions enabled" : "FAQ Action Suggestions disabled");
+  }
+}
+
+document.getElementById("faqActionsToggle")?.addEventListener("change", () => {
+  saveFaqActionsToggle({live: true});
+});
+
+document.getElementById("faqActionForm")?.addEventListener("submit", async event => {
+  event.preventDefault();
+  if (!businessFeatures.faq_action_suggestions) {
+    showToast("FAQ Action Suggestions requires Growth or Business plan");
+    openTab("subscription");
+    return;
+  }
+  if (!document.getElementById("faqActionsToggle")?.checked) {
+    showToast("Turn ON FAQ Action Suggestions first");
+    return;
+  }
+  const button = event.currentTarget.querySelector("button[type='submit']");
+  const customerId = document.getElementById("faqActionCustomerId")?.value || "";
+  const faqId = document.getElementById("faqActionFaqId")?.value || "";
+  const label = document.getElementById("faqActionLabel")?.value.trim() || "";
+  const actionType = document.getElementById("faqActionType")?.value || "link";
+  const actionValue = document.getElementById("faqActionValue")?.value.trim() || "";
+  const displayOrder = Number(document.getElementById("faqActionOrder")?.value || 0);
+  if (!customerId) return showToast("Select a bot first");
+  if (!faqId) return showToast("Select FAQ");
+  if (!label) return showToast("Enter button label");
+  if (!actionValue) return showToast("Enter action value");
+  button.disabled = true;
+  button.textContent = "Saving...";
+  const response = await fetch("/api.php?action=save_faq_action", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      customer_id: customerId,
+      faq_id: faqId,
+      label,
+      action_type: actionType,
+      action_value: actionValue,
+      display_order: displayOrder,
+      is_active: true
+    })
+  });
+  const data = await response.json().catch(() => ({}));
+  button.disabled = false;
+  button.textContent = "Add action";
+  if (!data.success) {
+    showToast(data.message || "FAQ action could not be saved");
+    if (data.requires_paid) openTab("subscription");
+    return;
+  }
+  showToast("FAQ action saved");
+  setTimeout(() => location.reload(), 700);
+});
+
+document.getElementById("faqActionList")?.addEventListener("click", async event => {
+  const button = event.target.closest(".faq-action-delete-btn");
+  const card = event.target.closest("[data-faq-action-id]");
+  if (!button || !card) return;
+  if (!confirm("Delete this FAQ action?")) return;
+  const customerId = document.getElementById("faqActionCustomerId")?.value || "";
+  button.disabled = true;
+  button.textContent = "Deleting...";
+  const response = await fetch("/api.php?action=delete_faq_action", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({customer_id: customerId, id: card.dataset.faqActionId || ""})
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!data.success) {
+    button.disabled = false;
+    button.textContent = "Delete";
+    return showToast(data.message || "FAQ action could not be deleted");
+  }
+  card.remove();
+  showToast("FAQ action deleted");
 });
 
 async function saveDashboardSettings(extraPayload) {
