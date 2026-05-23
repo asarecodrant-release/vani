@@ -79,7 +79,7 @@ td:last-child,th:last-child{text-align:right;font-weight:800}
     <h1>Start small, verify real leads, and scale your chatbot as demand grows.</h1>
     <p>Each monthly plan includes FAQ capacity and paid lead verification. Wallet charges apply for OTP verification and WhatsApp redirection. WhatsApp redirection is ₹99 per 30 days on every plan.</p>
     <div class="wallet-note">
-      <strong>Subscription amount is credited to the customer's wallet.</strong>
+      <strong> 100% Subscription amount is credited to the customer's wallet.</strong>
       When a plan is purchased or renewed, the plan amount is added to the customer's wallet. The wallet is then used as-you-go based on real usage, mainly when new website visitors verify by Email OTP or Mobile OTP, and for paid add-ons such as WhatsApp Redirect.
     </div>
   </section>

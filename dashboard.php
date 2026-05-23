@@ -2675,7 +2675,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
           <p class="muted">Choose the monthly plan that fits your FAQ limit, lead verification, analytics, and integration needs.</p>
 
           <div class="subscription-wallet-note">
-            <strong>Subscription amount is credited to your wallet.</strong>
+            <strong>100% Subscription amount is credited to your wallet.</strong>
             When a customer buys or renews a plan, the plan amount is added to the customer's wallet. The wallet is then used as-you-go for real usage, mainly when new website visitors verify by Email OTP or Mobile OTP, and for paid add-ons such as WhatsApp Redirect.
           </div>
 
