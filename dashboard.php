@@ -2627,7 +2627,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
             </div>
 
             <div class="panel-actions full">
-              <button class="pill-btn" type="button" id="saveIntegrationBtn">Save integration settings</button>
+              <span class="input-help" id="integrationAutosaveStatus">Changes save automatically.</span>
             </div>
           </div>
 
@@ -3342,7 +3342,7 @@ const analyticsReport = <?php echo json_encode([
     "leads" => $page["leads"] ?? 0,
     "success_rate" => !empty($page["conversations"]) ? round((($page["answered"] ?? 0) / max(1, $page["conversations"])) * 100) : 0
   ], array_slice($sourcePageStats, 0, 25)))
-], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE); ?>;
+], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE); ?>;
 
 function setDrawer(type, open) {
   const isNav = type === "nav";
@@ -3878,6 +3878,7 @@ function openAnalyticsDrill(type, value = "") {
 }
 
 document.addEventListener("click", event => {
+  if (!(event.target instanceof Element)) return;
   const trigger = event.target.closest("[data-drill]");
   if (!trigger) return;
   event.preventDefault();
@@ -3890,13 +3891,21 @@ document.getElementById("analyticsDrillDrawer")?.addEventListener("click", event
 });
 
 function renderAnalyticsCommandCenter() {
-  updateAnalyticsDeltas();
-  renderLineChart("biConversationTrend", analyticsReport.daily_counts);
-  renderBarChart("biDeviceMix", Object.keys(analyticsReport.devices || {}).length ? analyticsReport.devices : analyticsReport.browsers);
-  renderCountryMap();
+  try {
+    updateAnalyticsDeltas();
+    renderLineChart("biConversationTrend", analyticsReport.daily_counts);
+    renderBarChart("biDeviceMix", Object.keys(analyticsReport.devices || {}).length ? analyticsReport.devices : analyticsReport.browsers);
+    renderCountryMap();
+  } catch (error) {
+    console.error("Analytics render failed", error);
+  }
 }
 
-renderAnalyticsCommandCenter();
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", renderAnalyticsCommandCenter, {once: true});
+} else {
+  renderAnalyticsCommandCenter();
+}
 
 document.querySelectorAll("[data-jump]").forEach(btn => {
   btn.addEventListener("click", event => {
@@ -5419,34 +5428,73 @@ document.getElementById("saveSettingsBtn")?.addEventListener("click", () => {
   });
 });
 
-document.getElementById("saveIntegrationBtn")?.addEventListener("click", async event => {
-  const button = event.currentTarget;
+let integrationAutosaveTimer = null;
+let integrationAutosaveSaving = false;
+let integrationAutosaveQueued = false;
+
+function updateIntegrationAutosaveStatus(text, state = "") {
+  const status = document.getElementById("integrationAutosaveStatus");
+  if (!status) return;
+  status.textContent = text;
+  status.classList.toggle("error", state === "error");
+}
+
+function integrationSettingsPayload() {
   const websiteVerificationEnabled = !!document.getElementById("websiteVerificationToggle")?.checked;
   const allowedDomainsEnabled = businessFeatures.allowed_domains && !!document.getElementById("allowedDomainsToggle")?.checked;
   const allowedDomains = document.getElementById("allowedDomainsInput")?.value.trim() || "";
+  return {
+    website_verification_enabled: websiteVerificationEnabled,
+    allowed_domains_enabled: allowedDomainsEnabled,
+    allowed_domains: allowedDomains,
+    verification_status: websiteVerificationEnabled ? "Pending" : "Disabled"
+  };
+}
 
-  if (allowedDomainsEnabled && !allowedDomains) {
+async function saveIntegrationSettingsAutomatically() {
+  if (integrationAutosaveSaving) {
+    integrationAutosaveQueued = true;
+    return;
+  }
+  const payload = integrationSettingsPayload();
+
+  if (payload.allowed_domains_enabled && !payload.allowed_domains) {
+    updateIntegrationAutosaveStatus("Add at least one allowed domain to save.", "error");
     showToast("Add at least one allowed domain");
     document.getElementById("allowedDomainsInput")?.focus();
     return;
   }
 
-  button.disabled = true;
-  button.textContent = "Saving...";
-  const saved = await saveDashboardSettings({
-    website_verification_enabled: websiteVerificationEnabled,
-    allowed_domains_enabled: allowedDomainsEnabled,
-    allowed_domains: allowedDomains,
-    verification_status: websiteVerificationEnabled ? "Pending" : "Disabled"
-  });
-  button.disabled = false;
-  button.textContent = "Save integration settings";
+  integrationAutosaveSaving = true;
+  updateIntegrationAutosaveStatus("Saving changes...");
+  const saved = await saveDashboardSettings(payload, {silent: true});
+  integrationAutosaveSaving = false;
+
+  if (integrationAutosaveQueued) {
+    integrationAutosaveQueued = false;
+    scheduleIntegrationAutosave();
+    return;
+  }
 
   if (saved) {
     const statusText = document.getElementById("verificationStatusText");
-    if (statusText) statusText.textContent = websiteVerificationEnabled ? "Pending" : "Disabled";
+    if (statusText) statusText.textContent = payload.verification_status;
   }
+  updateIntegrationAutosaveStatus(saved ? "All changes saved automatically." : "Could not save changes. Please try again.", saved ? "" : "error");
+  showToast(saved ? "Integration settings saved" : "Integration settings could not be saved");
+}
+
+function scheduleIntegrationAutosave() {
+  clearTimeout(integrationAutosaveTimer);
+  updateIntegrationAutosaveStatus("Changes pending...");
+  integrationAutosaveTimer = setTimeout(saveIntegrationSettingsAutomatically, 650);
+}
+
+["websiteVerificationToggle", "allowedDomainsToggle"].forEach(id => {
+  document.getElementById(id)?.addEventListener("change", scheduleIntegrationAutosave);
 });
+
+document.getElementById("allowedDomainsInput")?.addEventListener("input", scheduleIntegrationAutosave);
 
 function validateHumanHandoffEmail(showMessage = false) {
   const input = document.getElementById("humanHandoffEmailInput");
