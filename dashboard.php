@@ -23,6 +23,20 @@ function h($value): string {
     return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
 }
 
+function js_json($value): string {
+    $json = json_encode(
+        $value,
+        JSON_HEX_TAG
+        | JSON_HEX_AMP
+        | JSON_HEX_APOS
+        | JSON_HEX_QUOT
+        | JSON_UNESCAPED_UNICODE
+        | JSON_INVALID_UTF8_SUBSTITUTE
+        | JSON_PARTIAL_OUTPUT_ON_ERROR
+    );
+    return $json === false ? '{}' : $json;
+}
+
 function safe_data(array $response): array {
     $data = $response['data'] ?? null;
     if (!is_array($data)) {
@@ -2999,8 +3013,8 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
     <div class="bulk-report-body" id="bulkFaqReportBody"></div>
   </div>
 </div>
-<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
-<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<script defer src="https://checkout.razorpay.com/v1/checkout.js"></script>
+<script defer src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <script>
 const tabs = document.querySelectorAll(".tab-btn");
 const panels = document.querySelectorAll(".tab-panel");
@@ -3010,18 +3024,18 @@ const navToggle = document.getElementById("navToggle");
 const accountToggle = document.getElementById("accountToggle");
 const drawerOverlay = document.getElementById("drawerOverlay");
 const accountToggleText = accountToggle?.textContent || "";
-let currentFaqCount = <?php echo json_encode($faqCount); ?>;
-const freeFaqLimit = <?php echo json_encode($freeFaqLimit); ?>;
-const faqLimitIsUnlimited = <?php echo json_encode($planFaqLimit === PHP_INT_MAX); ?>;
-const faqLimitLabel = <?php echo json_encode($planFaqLimit === PHP_INT_MAX ? 'Unlimited' : (string)$planFaqLimit); ?>;
-const selectedCustomerId = <?php echo json_encode($selectedBotId); ?>;
-const billingEmail = <?php echo json_encode($email); ?>;
-const leadPaidFeatures = <?php echo json_encode([
+let currentFaqCount = <?php echo js_json($faqCount); ?>;
+const freeFaqLimit = <?php echo js_json($freeFaqLimit); ?>;
+const faqLimitIsUnlimited = <?php echo js_json($planFaqLimit === PHP_INT_MAX); ?>;
+const faqLimitLabel = <?php echo js_json($planFaqLimit === PHP_INT_MAX ? 'Unlimited' : (string)$planFaqLimit); ?>;
+const selectedCustomerId = <?php echo js_json($selectedBotId); ?>;
+const billingEmail = <?php echo js_json($email); ?>;
+const leadPaidFeatures = <?php echo js_json([
   "email_otp" => $canUseEmailOtp,
   "mobile_otp" => $canUseMobileOtp,
   "whatsapp_redirect" => $canUseWhatsappRedirect
 ]); ?>;
-const businessFeatures = <?php echo json_encode([
+const businessFeatures = <?php echo js_json([
   "api_access" => $canUseBusinessApi,
   "webhook_support" => $canUseWebhook,
   "human_handoff" => $canUseHumanHandoff,
@@ -3029,7 +3043,7 @@ const businessFeatures = <?php echo json_encode([
   "live_chat_actions" => $canUseLiveChatActions,
   "faq_action_suggestions" => $canUseFaqActionSuggestions
 ]); ?>;
-const leadWalletCharges = <?php echo json_encode([
+const leadWalletCharges = <?php echo js_json([
   "fresh_email_lead" => billing_wallet_charge_paise($activePlanId, "fresh_email_lead"),
   "repeat_email_lead" => billing_wallet_charge_paise($activePlanId, "repeat_email_lead"),
   "reactivated_email_lead" => billing_wallet_charge_paise($activePlanId, "reactivated_email_lead"),
@@ -3038,11 +3052,11 @@ const leadWalletCharges = <?php echo json_encode([
   "reactivated_mobile_lead" => billing_wallet_charge_paise($activePlanId, "reactivated_mobile_lead"),
   "whatsapp_redirect_addon" => billing_wallet_charge_paise($activePlanId, "whatsapp_redirect_addon")
 ]); ?>;
-const whatsappRedirectLockedOn = <?php echo json_encode($whatsappRedirectLockedOn); ?>;
-const whatsappRedirectLocked = <?php echo json_encode($whatsappRedirectLocked); ?>;
-const walletBalancePaise = <?php echo json_encode($billingWalletPaise); ?>;
-const whatsappRedirectChargePaise = <?php echo json_encode($whatsappChargePaise); ?>;
-const analyticsReport = <?php echo json_encode([
+const whatsappRedirectLockedOn = <?php echo js_json($whatsappRedirectLockedOn); ?>;
+const whatsappRedirectLocked = <?php echo js_json($whatsappRedirectLocked); ?>;
+const walletBalancePaise = <?php echo js_json($billingWalletPaise); ?>;
+const whatsappRedirectChargePaise = <?php echo js_json($whatsappChargePaise); ?>;
+const analyticsReport = <?php echo js_json([
   "bot_name" => $botName,
   "range_label" => $analyticsRangeLabel,
   "date_from" => $analyticsFrom,
@@ -3100,7 +3114,7 @@ const analyticsReport = <?php echo json_encode([
     "leads" => $page["leads"] ?? 0,
     "success_rate" => !empty($page["conversations"]) ? round((($page["answered"] ?? 0) / max(1, $page["conversations"])) * 100) : 0
   ], array_slice($sourcePageStats, 0, 25)))
-], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE); ?>;
+]); ?>;
 
 function setDrawer(type, open) {
   const isNav = type === "nav";
@@ -3680,16 +3694,16 @@ document.getElementById("cancelSubscriptionBtn")?.addEventListener("click", asyn
   }
 });
 
-themeToggle.addEventListener("click", () => {
+themeToggle?.addEventListener("click", () => {
   const dark = !document.body.classList.contains("dark");
   document.body.classList.toggle("dark", dark);
-  themeToggle.textContent = dark ? "Bright" : "Dark";
+  if (themeToggle) themeToggle.textContent = dark ? "Bright" : "Dark";
   localStorage.setItem("vani_dashboard_theme", dark ? "dark" : "bright");
 });
 
 if (localStorage.getItem("vani_dashboard_theme") === "dark") {
   document.body.classList.add("dark");
-  themeToggle.textContent = "Bright";
+  if (themeToggle) themeToggle.textContent = "Bright";
 }
 
 function formatLastActivityForBrowser() {
