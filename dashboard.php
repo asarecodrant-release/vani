@@ -23,6 +23,20 @@ function h($value): string {
     return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
 }
 
+function js_json($value): string {
+    $json = json_encode(
+        $value,
+        JSON_HEX_TAG
+        | JSON_HEX_AMP
+        | JSON_HEX_APOS
+        | JSON_HEX_QUOT
+        | JSON_UNESCAPED_UNICODE
+        | JSON_INVALID_UTF8_SUBSTITUTE
+        | JSON_PARTIAL_OUTPUT_ON_ERROR
+    );
+    return $json === false ? '{}' : $json;
+}
+
 function safe_data(array $response): array {
     $data = $response['data'] ?? null;
     if (!is_array($data)) {
@@ -3233,18 +3247,18 @@ const navToggle = document.getElementById("navToggle");
 const accountToggle = document.getElementById("accountToggle");
 const drawerOverlay = document.getElementById("drawerOverlay");
 const accountToggleText = accountToggle?.textContent || "";
-let currentFaqCount = <?php echo json_encode($faqCount); ?>;
-const freeFaqLimit = <?php echo json_encode($freeFaqLimit); ?>;
-const faqLimitIsUnlimited = <?php echo json_encode($planFaqLimit === PHP_INT_MAX); ?>;
-const faqLimitLabel = <?php echo json_encode($planFaqLimit === PHP_INT_MAX ? 'Unlimited' : (string)$planFaqLimit); ?>;
-const selectedCustomerId = <?php echo json_encode($selectedBotId); ?>;
-const billingEmail = <?php echo json_encode($email); ?>;
-const leadPaidFeatures = <?php echo json_encode([
+let currentFaqCount = <?php echo js_json($faqCount); ?>;
+const freeFaqLimit = <?php echo js_json($freeFaqLimit); ?>;
+const faqLimitIsUnlimited = <?php echo js_json($planFaqLimit === PHP_INT_MAX); ?>;
+const faqLimitLabel = <?php echo js_json($planFaqLimit === PHP_INT_MAX ? 'Unlimited' : (string)$planFaqLimit); ?>;
+const selectedCustomerId = <?php echo js_json($selectedBotId); ?>;
+const billingEmail = <?php echo js_json($email); ?>;
+const leadPaidFeatures = <?php echo js_json([
   "email_otp" => $canUseEmailOtp,
   "mobile_otp" => $canUseMobileOtp,
   "whatsapp_redirect" => $canUseWhatsappRedirect
 ]); ?>;
-const businessFeatures = <?php echo json_encode([
+const businessFeatures = <?php echo js_json([
   "api_access" => $canUseBusinessApi,
   "webhook_support" => $canUseWebhook,
   "human_handoff" => $canUseHumanHandoff,
@@ -3252,7 +3266,7 @@ const businessFeatures = <?php echo json_encode([
   "live_chat_actions" => $canUseLiveChatActions,
   "faq_action_suggestions" => $canUseFaqActionSuggestions
 ]); ?>;
-const leadWalletCharges = <?php echo json_encode([
+const leadWalletCharges = <?php echo js_json([
   "fresh_email_lead" => billing_wallet_charge_paise($activePlanId, "fresh_email_lead"),
   "repeat_email_lead" => billing_wallet_charge_paise($activePlanId, "repeat_email_lead"),
   "reactivated_email_lead" => billing_wallet_charge_paise($activePlanId, "reactivated_email_lead"),
@@ -3261,11 +3275,11 @@ const leadWalletCharges = <?php echo json_encode([
   "reactivated_mobile_lead" => billing_wallet_charge_paise($activePlanId, "reactivated_mobile_lead"),
   "whatsapp_redirect_addon" => billing_wallet_charge_paise($activePlanId, "whatsapp_redirect_addon")
 ]); ?>;
-const whatsappRedirectLockedOn = <?php echo json_encode($whatsappRedirectLockedOn); ?>;
-const whatsappRedirectLocked = <?php echo json_encode($whatsappRedirectLocked); ?>;
-const walletBalancePaise = <?php echo json_encode($billingWalletPaise); ?>;
-const whatsappRedirectChargePaise = <?php echo json_encode($whatsappChargePaise); ?>;
-const analyticsReport = <?php echo json_encode([
+const whatsappRedirectLockedOn = <?php echo js_json($whatsappRedirectLockedOn); ?>;
+const whatsappRedirectLocked = <?php echo js_json($whatsappRedirectLocked); ?>;
+const walletBalancePaise = <?php echo js_json($billingWalletPaise); ?>;
+const whatsappRedirectChargePaise = <?php echo js_json($whatsappChargePaise); ?>;
+const analyticsReport = <?php echo js_json([
   "bot_name" => $botName,
   "range_label" => $analyticsRangeLabel,
   "date_from" => $analyticsFrom,
@@ -3342,7 +3356,7 @@ const analyticsReport = <?php echo json_encode([
     "leads" => $page["leads"] ?? 0,
     "success_rate" => !empty($page["conversations"]) ? round((($page["answered"] ?? 0) / max(1, $page["conversations"])) * 100) : 0
   ], array_slice($sourcePageStats, 0, 25)))
-], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE); ?>;
+]); ?>;
 analyticsReport.summary = analyticsReport.summary || {};
 analyticsReport.comparison = analyticsReport.comparison || {current: {}, previous: {}};
 analyticsReport.daily_counts = analyticsReport.daily_counts || {};
@@ -5250,27 +5264,31 @@ function setupSettingsPayload() {
 }
 
 function updateDashboardSetupPreview(payload) {
-  const botName = payload.bot_name || "Vani Bot";
-  const themeColor = payload.theme_color || "#6366f1";
-  const themePattern = payload.theme_pattern || "none";
-  const avatarUrl = payload.avatar_url || "";
-  const welcomeMessage = payload.welcome_message || "Hi, how can I help you today?";
-  document.getElementById("overviewBotNameText")?.replaceChildren(document.createTextNode(botName));
-  document.getElementById("sidebarBotNameText")?.replaceChildren(document.createTextNode(botName));
-  const deleteButton = document.getElementById("deleteChatbotBtn");
-  if (deleteButton) deleteButton.dataset.botName = botName;
-  document.getElementById("overviewThemeMessage")?.replaceChildren(document.createTextNode(welcomeMessage));
-  const patternCss = typeof patternStyles !== "undefined" ? (patternStyles[themePattern] || "none") : "none";
-  ["overviewThemeBubble", "overviewThemeTyping"].forEach(id => {
-    const bubble = document.getElementById(id);
-    if (!bubble) return;
-    bubble.style.background = themeColor;
-    bubble.style.backgroundImage = patternCss === "none" ? "" : `${patternCss}, ${themeColor}`;
-    bubble.style.backgroundSize = themePattern === "grid" || themePattern === "dots" ? "18px 18px, 18px 18px, cover" : "cover";
-  });
-  const overviewImage = document.getElementById("overviewBotImagePreview");
-  if (overviewImage && avatarUrl) overviewImage.src = avatarUrl;
-  if (analyticsReport) analyticsReport.bot_name = botName;
+  try {
+    const botName = payload.bot_name || "Vani Bot";
+    const themeColor = payload.theme_color || "#6366f1";
+    const themePattern = payload.theme_pattern || "none";
+    const avatarUrl = payload.avatar_url || "";
+    const welcomeMessage = payload.welcome_message || "Hi, how can I help you today?";
+    document.getElementById("overviewBotNameText")?.replaceChildren(document.createTextNode(botName));
+    document.getElementById("sidebarBotNameText")?.replaceChildren(document.createTextNode(botName));
+    const deleteButton = document.getElementById("deleteChatbotBtn");
+    if (deleteButton) deleteButton.dataset.botName = botName;
+    document.getElementById("overviewThemeMessage")?.replaceChildren(document.createTextNode(welcomeMessage));
+    const patternCss = typeof patternStyles !== "undefined" ? (patternStyles[themePattern] || "none") : "none";
+    ["overviewThemeBubble", "overviewThemeTyping"].forEach(id => {
+      const bubble = document.getElementById(id);
+      if (!bubble) return;
+      bubble.style.background = themeColor;
+      bubble.style.backgroundImage = patternCss === "none" ? "" : `${patternCss}, ${themeColor}`;
+      bubble.style.backgroundSize = themePattern === "grid" || themePattern === "dots" ? "18px 18px, 18px 18px, cover" : "cover";
+    });
+    const overviewImage = document.getElementById("overviewBotImagePreview");
+    if (overviewImage && avatarUrl) overviewImage.src = avatarUrl;
+    if (typeof analyticsReport !== "undefined" && analyticsReport) analyticsReport.bot_name = botName;
+  } catch (error) {
+    console.error("Setup dashboard preview failed", error);
+  }
 }
 
 function updateSetupAutosaveStatus(text, state = "") {
@@ -5288,22 +5306,28 @@ async function saveSetupSettingsAutomatically() {
   }
   setupAutosaveSaving = true;
   updateSetupAutosaveStatus("Saving changes...");
-  if (setupAutosaveToastState !== "saving") {
-    showToast("Saving changes...");
-    setupAutosaveToastState = "saving";
+  try {
+    if (setupAutosaveToastState !== "saving") {
+      showToast("Saving changes...");
+      setupAutosaveToastState = "saving";
+    }
+    const payload = setupSettingsPayload();
+    const saved = await saveDashboardSettings(payload, {silent: true});
+    if (saved) updateDashboardSetupPreview(payload);
+    updateSetupAutosaveStatus(saved ? "All changes saved automatically." : "Could not save changes. Please try again.", saved ? "" : "error");
+    showToast(saved ? "Changes saved" : "Changes could not be saved");
+    setupAutosaveToastState = saved ? "saved" : "error";
+  } catch (error) {
+    console.error("Setup autosave failed", error);
+    updateSetupAutosaveStatus("Could not save changes. Please try again.", "error");
+    setupAutosaveToastState = "error";
+  } finally {
+    setupAutosaveSaving = false;
+    if (setupAutosaveQueued) {
+      setupAutosaveQueued = false;
+      scheduleSetupAutosave();
+    }
   }
-  const payload = setupSettingsPayload();
-  const saved = await saveDashboardSettings(payload, {silent: true});
-  setupAutosaveSaving = false;
-  if (setupAutosaveQueued) {
-    setupAutosaveQueued = false;
-    scheduleSetupAutosave();
-    return;
-  }
-  if (saved) updateDashboardSetupPreview(payload);
-  updateSetupAutosaveStatus(saved ? "All changes saved automatically." : "Could not save changes. Please try again.", saved ? "" : "error");
-  showToast(saved ? "Changes saved" : "Changes could not be saved");
-  setupAutosaveToastState = saved ? "saved" : "error";
 }
 
 function scheduleSetupAutosave() {
@@ -5429,13 +5453,13 @@ document.getElementById("transferSubscriptionBtn")?.addEventListener("click", as
 });
 
 document.getElementById("saveSettingsBtn")?.addEventListener("click", () => {
-  const isActive = document.getElementById("activeInput").value === "true";
+  const isActive = document.getElementById("activeInput")?.value === "true";
   saveDashboardSettings({
-    api_key: document.getElementById("apiKeyInput").value.trim(),
-    rate_limit: Number(document.getElementById("rateLimitInput").value || 100),
+    api_key: document.getElementById("apiKeyInput")?.value.trim() || "",
+    rate_limit: Number(document.getElementById("rateLimitInput")?.value || 100),
     is_active: isActive,
-    notification_preference: document.getElementById("notificationInput").value,
-    allowed_domains: document.getElementById("domainsInput").value.trim()
+    notification_preference: document.getElementById("notificationInput")?.value || "email",
+    allowed_domains: document.getElementById("domainsInput")?.value.trim() || ""
   }).then(saved => {
     if (saved) setOverviewActiveUI(isActive);
   });
@@ -5469,32 +5493,36 @@ async function saveIntegrationSettingsAutomatically() {
     integrationAutosaveQueued = true;
     return;
   }
-  const payload = integrationSettingsPayload();
-
-  if (payload.allowed_domains_enabled && !payload.allowed_domains) {
-    updateIntegrationAutosaveStatus("Add at least one allowed domain to save.", "error");
-    showToast("Add at least one allowed domain");
-    document.getElementById("allowedDomainsInput")?.focus();
-    return;
-  }
-
   integrationAutosaveSaving = true;
-  updateIntegrationAutosaveStatus("Saving changes...");
-  const saved = await saveDashboardSettings(payload, {silent: true});
-  integrationAutosaveSaving = false;
+  try {
+    const payload = integrationSettingsPayload();
 
-  if (integrationAutosaveQueued) {
-    integrationAutosaveQueued = false;
-    scheduleIntegrationAutosave();
-    return;
-  }
+    if (payload.allowed_domains_enabled && !payload.allowed_domains) {
+      updateIntegrationAutosaveStatus("Add at least one allowed domain to save.", "error");
+      showToast("Add at least one allowed domain");
+      document.getElementById("allowedDomainsInput")?.focus();
+      return;
+    }
 
-  if (saved) {
-    const statusText = document.getElementById("verificationStatusText");
-    if (statusText) statusText.textContent = payload.verification_status;
+    updateIntegrationAutosaveStatus("Saving changes...");
+    const saved = await saveDashboardSettings(payload, {silent: true});
+
+    if (saved) {
+      const statusText = document.getElementById("verificationStatusText");
+      if (statusText) statusText.textContent = payload.verification_status;
+    }
+    updateIntegrationAutosaveStatus(saved ? "All changes saved automatically." : "Could not save changes. Please try again.", saved ? "" : "error");
+    showToast(saved ? "Integration settings saved" : "Integration settings could not be saved");
+  } catch (error) {
+    console.error("Integration autosave failed", error);
+    updateIntegrationAutosaveStatus("Could not save changes. Please try again.", "error");
+  } finally {
+    integrationAutosaveSaving = false;
+    if (integrationAutosaveQueued) {
+      integrationAutosaveQueued = false;
+      scheduleIntegrationAutosave();
+    }
   }
-  updateIntegrationAutosaveStatus(saved ? "All changes saved automatically." : "Could not save changes. Please try again.", saved ? "" : "error");
-  showToast(saved ? "Integration settings saved" : "Integration settings could not be saved");
 }
 
 function scheduleIntegrationAutosave() {
