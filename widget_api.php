@@ -62,6 +62,25 @@ function widget_faq_action_suggestions(string $customerId, $faqId, array $settin
     ], $rows));
 }
 
+function widget_scheduled_faq_actions(string $customerId, array $settings, string $activePlan): array {
+    if (!widget_bool($settings['faq_actions_enabled'] ?? false) || !billing_feature_enabled($activePlan, 'faq_action_suggestions')) {
+        return [];
+    }
+    $rows = widget_safe_rows(supabase(
+        "GET",
+        "faq_scheduled_action_suggestions?select=id,slot_no,trigger_after_questions,label,action_type,action_value&customer_id=eq." . urlencode($customerId) . "&is_active=eq.true&order=slot_no.asc&limit=3"
+    ));
+    return array_values(array_map(fn($row) => [
+        "id" => "scheduled-" . (string)($row["id"] ?? $row["slot_no"] ?? ""),
+        "slot_no" => (int)($row["slot_no"] ?? 0),
+        "trigger_after_questions" => max(1, (int)($row["trigger_after_questions"] ?? 1)),
+        "label" => (string)($row["label"] ?? ""),
+        "action_type" => (string)($row["action_type"] ?? "link"),
+        "action_value" => (string)($row["action_value"] ?? ""),
+        "scheduled" => true
+    ], $rows));
+}
+
 function widget_webhook_deliver(string $customerId, string $event, array $data = [], array $settings = [], string $activePlan = ''): bool {
     if ($customerId === '') {
         return false;
@@ -1515,6 +1534,7 @@ if ($action === "get_widget_config" || $action === "get_theme") {
         "live_chat_actions_enabled" => widget_bool($settings['live_chat_actions_enabled'] ?? false) && billing_feature_enabled($activePlan, 'live_chat_actions'),
         "faq_actions_enabled" => widget_bool($settings['faq_actions_enabled'] ?? false) && billing_feature_enabled($activePlan, 'faq_action_suggestions'),
         "faq_category_menu_enabled" => widget_bool($settings['faq_category_menu_enabled'] ?? false),
+        "scheduled_faq_actions" => widget_scheduled_faq_actions($customerId, $settings, $activePlan),
         "verification_status" => $access['status'],
         "access_allowed" => $access['allowed'],
         "access_message" => $access['message'],

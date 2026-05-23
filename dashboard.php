@@ -76,6 +76,26 @@ function dashboard_disable_paid_service_toggles(array $bots, string $reason): vo
     }
 }
 
+function dashboard_normalize_lead_phone(string $phone): string {
+    return preg_replace('/\D+/', '', $phone) ?: '';
+}
+
+function dashboard_lead_period_count(array $rows, int $days): int {
+    $cutoff = strtotime('-' . max(1, $days - 1) . ' days', strtotime(gmdate('Y-m-d') . ' 00:00:00 UTC'));
+    $seen = [];
+    foreach ($rows as $row) {
+        $createdAt = strtotime((string)($row['created_at'] ?? '')) ?: 0;
+        if ($createdAt < $cutoff) {
+            continue;
+        }
+        $email = strtolower(trim((string)($row['email'] ?? '')));
+        $phone = dashboard_normalize_lead_phone((string)($row['phone_number'] ?? ''));
+        $key = $email !== '' ? 'email:' . $email : ($phone !== '' ? 'phone:' . $phone : 'lead:' . (string)($row['id'] ?? spl_object_id((object)$row)));
+        $seen[$key] = true;
+    }
+    return count($seen);
+}
+
 function dashboard_billing_account_has_value(array $account): bool {
     return (string)($account['current_plan'] ?? 'free') !== 'free'
         || (string)($account['subscription_status'] ?? 'free') !== 'free'
@@ -390,7 +410,7 @@ $leadSettingsRows = $selectedBotId
 $leadRows = $selectedBotId
     ? safe_data(supabase(
         "GET",
-        "lead_generation_leads?select=*&customer_id=eq." . urlencode($selectedBotId) . "&order=created_at.desc&limit=100"
+        "lead_generation_leads?select=*&customer_id=eq." . urlencode($selectedBotId) . "&order=created_at.desc&limit=5000"
     ))
     : [];
 
@@ -447,11 +467,23 @@ $faqActionRows = $selectedBotId
     ))
     : [];
 
+$scheduledFaqActionRows = $selectedBotId
+    ? safe_data(supabase(
+        "GET",
+        "faq_scheduled_action_suggestions?select=*&customer_id=eq." . urlencode($selectedBotId) . "&order=slot_no.asc"
+    ))
+    : [];
+$scheduledFaqActionsBySlot = [];
+foreach ($scheduledFaqActionRows as $row) {
+    $scheduledFaqActionsBySlot[(int)($row['slot_no'] ?? 0)] = $row;
+}
+
 $todayAllQueries = count(array_filter($conversationRows, fn($row) => date_in_range($row, 'created_at', $analyticsToday, $analyticsToday)));
 $yesterdayAllQueries = count(array_filter($conversationRows, fn($row) => date_in_range($row, 'created_at', $analyticsYesterday, $analyticsYesterday)));
 $last7AllQueries = count(array_filter($conversationRows, fn($row) => date_in_range($row, 'created_at', gmdate('Y-m-d', time() - (6 * 86400)), $analyticsToday)));
 $last30AllQueries = count(array_filter($conversationRows, fn($row) => date_in_range($row, 'created_at', gmdate('Y-m-d', time() - (29 * 86400)), $analyticsToday)));
 
+$allLeadRows = $leadRows;
 $conversationRows = array_values(array_filter($conversationRows, fn($row) => date_in_range($row, 'created_at', $analyticsFrom, $analyticsTo)));
 $usageRows = array_values(array_filter($usageRows, fn($row) => date_in_range($row, 'created_at', $analyticsFrom, $analyticsTo)));
 $leadRows = array_values(array_filter($leadRows, fn($row) => date_in_range($row, 'created_at', $analyticsFrom, $analyticsTo)));
@@ -777,6 +809,111 @@ foreach ($leadRows as $lead) {
         $phoneLeadCount++;
     }
 }
+
+$leadPeriodStats = [
+    ['label' => 'Weekly', 'days' => 7, 'count' => dashboard_lead_period_count($allLeadRows, 7)],
+    ['label' => 'Monthly', 'days' => 30, 'count' => dashboard_lead_period_count($allLeadRows, 30)],
+    ['label' => 'Quarterly', 'days' => 90, 'count' => dashboard_lead_period_count($allLeadRows, 90)],
+    ['label' => 'Six months', 'days' => 182, 'count' => dashboard_lead_period_count($allLeadRows, 182)],
+    ['label' => 'Yearly', 'days' => 365, 'count' => dashboard_lead_period_count($allLeadRows, 365)]
+];
+
+$uniqueLeadMap = [];
+$leadEmailIndex = [];
+$leadPhoneIndex = [];
+foreach ($leadRows as $lead) {
+    $email = strtolower(trim((string)($lead['email'] ?? '')));
+    $phone = dashboard_normalize_lead_phone((string)($lead['phone_number'] ?? ''));
+    $emailKey = $email !== '' && isset($leadEmailIndex[$email]) ? $leadEmailIndex[$email] : '';
+    $phoneKey = $phone !== '' && isset($leadPhoneIndex[$phone]) ? $leadPhoneIndex[$phone] : '';
+    if ($emailKey !== '' && $phoneKey !== '' && $emailKey !== $phoneKey && isset($uniqueLeadMap[$emailKey], $uniqueLeadMap[$phoneKey])) {
+        $uniqueLeadMap[$emailKey]['email'] = $uniqueLeadMap[$emailKey]['email'] ?: $uniqueLeadMap[$phoneKey]['email'];
+        $uniqueLeadMap[$emailKey]['phone_number'] = $uniqueLeadMap[$emailKey]['phone_number'] ?: $uniqueLeadMap[$phoneKey]['phone_number'];
+        $uniqueLeadMap[$emailKey]['email_otp_count'] += (int)$uniqueLeadMap[$phoneKey]['email_otp_count'];
+        $uniqueLeadMap[$emailKey]['mobile_otp_count'] += (int)$uniqueLeadMap[$phoneKey]['mobile_otp_count'];
+        $uniqueLeadMap[$emailKey]['total_records'] += (int)$uniqueLeadMap[$phoneKey]['total_records'];
+        $uniqueLeadMap[$emailKey]['whatsapp_redirect_count'] += (int)$uniqueLeadMap[$phoneKey]['whatsapp_redirect_count'];
+        $uniqueLeadMap[$emailKey]['source_pages'] = array_replace($uniqueLeadMap[$emailKey]['source_pages'], $uniqueLeadMap[$phoneKey]['source_pages']);
+        $uniqueLeadMap[$emailKey]['location'] = $uniqueLeadMap[$emailKey]['location'] ?: $uniqueLeadMap[$phoneKey]['location'];
+        $uniqueLeadMap[$emailKey]['lead_type'] = ($uniqueLeadMap[$emailKey]['lead_type'] === 'Real' || $uniqueLeadMap[$phoneKey]['lead_type'] === 'Real') ? 'Real' : 'Weak';
+        if ($uniqueLeadMap[$emailKey]['first_seen'] === '' || ($uniqueLeadMap[$phoneKey]['first_seen'] !== '' && strcmp($uniqueLeadMap[$phoneKey]['first_seen'], $uniqueLeadMap[$emailKey]['first_seen']) < 0)) {
+            $uniqueLeadMap[$emailKey]['first_seen'] = $uniqueLeadMap[$phoneKey]['first_seen'];
+        }
+        if ($uniqueLeadMap[$emailKey]['last_seen'] === '' || ($uniqueLeadMap[$phoneKey]['last_seen'] !== '' && strcmp($uniqueLeadMap[$phoneKey]['last_seen'], $uniqueLeadMap[$emailKey]['last_seen']) > 0)) {
+            $uniqueLeadMap[$emailKey]['last_seen'] = $uniqueLeadMap[$phoneKey]['last_seen'];
+        }
+        foreach ($leadPhoneIndex as $indexedPhone => $indexedKey) {
+            if ($indexedKey === $phoneKey) {
+                $leadPhoneIndex[$indexedPhone] = $emailKey;
+            }
+        }
+        unset($uniqueLeadMap[$phoneKey]);
+        $phoneKey = $emailKey;
+    }
+    $key = $emailKey !== '' ? $emailKey : $phoneKey;
+    if ($key === '') {
+        $key = $email !== '' ? 'email:' . $email : ($phone !== '' ? 'phone:' . $phone : 'lead:' . (string)($lead['id'] ?? count($uniqueLeadMap)));
+        $uniqueLeadMap[$key] = [
+            'lead_type' => 'Weak',
+            'email' => '',
+            'phone_number' => '',
+            'email_otp_count' => 0,
+            'mobile_otp_count' => 0,
+            'total_records' => 0,
+            'whatsapp_redirect_count' => 0,
+            'source_pages' => [],
+            'location' => '',
+            'first_seen' => '',
+            'last_seen' => ''
+        ];
+    }
+    if ($email !== '') {
+        $leadEmailIndex[$email] = $key;
+        $uniqueLeadMap[$key]['email'] = $uniqueLeadMap[$key]['email'] ?: (string)($lead['email'] ?? '');
+    }
+    if ($phone !== '') {
+        $leadPhoneIndex[$phone] = $key;
+        $uniqueLeadMap[$key]['phone_number'] = $uniqueLeadMap[$key]['phone_number'] ?: (string)($lead['phone_number'] ?? '');
+    }
+    $emailVerified = filter_var($lead['email_otp_verified'] ?? false, FILTER_VALIDATE_BOOLEAN);
+    $mobileVerified = filter_var($lead['mobile_otp_verified'] ?? false, FILTER_VALIDATE_BOOLEAN);
+    if ($emailVerified) {
+        $uniqueLeadMap[$key]['email_otp_count']++;
+    }
+    if ($mobileVerified) {
+        $uniqueLeadMap[$key]['mobile_otp_count']++;
+    }
+    if ($emailVerified || $mobileVerified || (string)($lead['verification_quality'] ?? '') === 'real') {
+        $uniqueLeadMap[$key]['lead_type'] = 'Real';
+    }
+    if (filter_var($lead['whatsapp_redirected'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+        $uniqueLeadMap[$key]['whatsapp_redirect_count']++;
+    }
+    $sourceUrl = trim((string)($lead['source_url'] ?? ''));
+    $sourceLabel = $sourceUrl !== '' ? (parse_url($sourceUrl, PHP_URL_PATH) ?: $sourceUrl) : '';
+    if ($sourceLabel !== '') {
+        $uniqueLeadMap[$key]['source_pages'][$sourceLabel] = true;
+    }
+    $location = first_value($lead, ['location_text', 'city', 'country_name'], '');
+    if ($location !== '' && $uniqueLeadMap[$key]['location'] === '') {
+        $uniqueLeadMap[$key]['location'] = $location;
+    }
+    $created = (string)($lead['created_at'] ?? '');
+    if ($created !== '') {
+        if ($uniqueLeadMap[$key]['first_seen'] === '' || strcmp($created, $uniqueLeadMap[$key]['first_seen']) < 0) {
+            $uniqueLeadMap[$key]['first_seen'] = $created;
+        }
+        if ($uniqueLeadMap[$key]['last_seen'] === '' || strcmp($created, $uniqueLeadMap[$key]['last_seen']) > 0) {
+            $uniqueLeadMap[$key]['last_seen'] = $created;
+        }
+    }
+    $uniqueLeadMap[$key]['total_records']++;
+}
+$uniqueLeadRows = array_values($uniqueLeadMap);
+usort($uniqueLeadRows, fn($a, $b) => strcmp((string)($b['last_seen'] ?? ''), (string)($a['last_seen'] ?? '')));
+$uniqueLeadCount = count($uniqueLeadRows);
+$weakLeadCount = count(array_filter($uniqueLeadRows, fn($row) => ($row['lead_type'] ?? '') === 'Weak'));
+$realUniqueLeadCount = $uniqueLeadCount - $weakLeadCount;
 
 $leadConversionRate = $conversationCount > 0 ? round(($leadCount / max(1, $conversationCount)) * 100) : 0;
 $otpVerifiedLeadPercent = $leadCount > 0 ? round(($verifiedLeadCount / max(1, $leadCount)) * 100) : 0;
@@ -1169,10 +1306,18 @@ body.dark .outside-faq-card{background:rgba(15,23,42,.44)}
 .outside-faq-meta{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
 .outside-faq-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 .outside-faq-grid .field.full{grid-column:1/-1}
+.faq-subtabs,.integration-subtabs{display:flex;gap:8px;flex-wrap:wrap;padding:0 20px 18px;border-bottom:1px solid var(--line)}
+.faq-subtab-btn,.integration-subtab-btn{border:1px solid var(--line);background:var(--panel-strong);color:var(--muted);border-radius:12px;min-height:38px;padding:0 13px;font-weight:800;cursor:pointer}
+.faq-subtab-btn:hover,.faq-subtab-btn.active,.integration-subtab-btn:hover,.integration-subtab-btn.active{background:rgba(99,102,241,.12);color:var(--brand);border-color:rgba(99,102,241,.34)}
+.faq-subpanel,.integration-subpanel{display:none}
+.faq-subpanel.active,.integration-subpanel.active{display:block}
 .faq-action-section{margin-top:16px;border-top:1px solid var(--line)}
 .faq-action-list{display:grid;gap:12px;margin-top:14px}
 .faq-action-card{padding:14px;border:1px solid var(--line);border-radius:16px;background:rgba(255,255,255,.42);display:grid;gap:12px}
 body.dark .faq-action-card{background:rgba(15,23,42,.44)}
+.help-tip{position:relative;display:inline-grid;place-items:center;width:22px;height:22px;border-radius:999px;border:1px solid rgba(99,102,241,.35);background:rgba(99,102,241,.12);color:var(--brand);font-size:13px;font-weight:900;cursor:help;margin-left:8px;vertical-align:middle}
+.help-tip:after{content:attr(data-tip);position:absolute;left:50%;bottom:calc(100% + 10px);transform:translateX(-50%) translateY(4px);width:min(320px,calc(100vw - 48px));padding:12px 13px;border-radius:12px;background:var(--panel-strong);border:1px solid var(--line);box-shadow:0 16px 34px rgba(15,23,42,.16);color:var(--ink);font-size:12px;font-weight:600;line-height:1.55;text-align:left;opacity:0;pointer-events:none;transition:.16s ease;z-index:20}
+.help-tip:hover:after,.help-tip:focus-visible:after{opacity:1;transform:translateX(-50%) translateY(0)}
 .faq-action-grid{display:grid;grid-template-columns:1.2fr 1fr 1.4fr .7fr auto;gap:10px;align-items:end}
 .faq-action-grid .field{min-width:0}
 .bulk-faq-card{margin-bottom:16px;padding:16px;border:1px solid var(--line);border-radius:18px;background:rgba(255,255,255,.42);display:grid;gap:14px}
@@ -1290,6 +1435,8 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
   .panel{border-radius:18px}
   .section-head{align-items:flex-start;flex-direction:column;padding:16px 16px 0}
   .section-body{padding:16px}
+  .faq-subtabs,.integration-subtabs{display:grid;grid-template-columns:1fr;padding:0 16px 16px}
+  .faq-subtab-btn,.integration-subtab-btn{width:100%}
   .overview-hero h2{font-size:28px}
   .metrics,.quick-actions,.form-grid,.theme-controls,.outside-faq-grid,.faq-action-grid,.lead-grid,.analytics-grid,.analytics-grid.two,.funnel,.pricing-grid,.security-grid,.bulk-report-summary{grid-template-columns:1fr}
   .panel-actions{justify-content:stretch}
@@ -1563,7 +1710,12 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
       <section class="tab-panel" id="faqs">
         <div class="panel">
           <div class="section-head"><h3>FAQ Management</h3><span class="tag" id="faqCountTag"><?php echo h($faqCount); ?>/<?php echo h($freeFaqLimit); ?> FAQs</span></div>
-          <div class="section-body faq-action-section" style="border-top:0;margin-top:0">
+          <div class="faq-subtabs" role="tablist" aria-label="FAQ Management sections">
+            <button class="faq-subtab-btn active" type="button" data-faq-subtab="faq-subpanel-options">Options</button>
+            <button class="faq-subtab-btn" type="button" data-faq-subtab="faq-subpanel-qa">FAQ Q&amp;A</button>
+            <button class="faq-subtab-btn" type="button" data-faq-subtab="faq-subpanel-scheduled">Scheduled Actions</button>
+          </div>
+          <div class="section-body faq-action-section faq-subpanel active" id="faq-subpanel-options" style="border-top:0;margin-top:0">
             <div class="inline-row" style="justify-content:space-between;gap:16px;margin-bottom:14px">
               <div>
                 <h3>FAQ Category Public Menu</h3>
@@ -1649,7 +1801,59 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                 </div>
               <?php endforeach; ?>
             </div>
+
           </div>
+
+          <div class="section-body faq-subpanel" id="faq-subpanel-scheduled">
+            <div class="faq-action-card">
+              <div class="inline-row" style="justify-content:space-between;gap:16px">
+                <div>
+                  <h3>Scheduled FAQ Action Suggestions <span class="help-tip" tabindex="0" aria-label="How scheduled FAQ action suggestions work" data-tip="Use this when you want to promote an action after a visitor asks a set number of questions. Set three slots, such as 3, 5, and 5. After the 3rd answer the first action appears. After 5 more questions the second action appears. After 5 more questions the third action appears. Then the cycle starts again. If the visitor ignores the action and asks another question, it disappears.">?</span></h3>
+                  <small class="input-help">Show one customer action after a visitor completes a configured number of questions. The three slots repeat in order, for example 3, then 5, then 5 questions.</small>
+                </div>
+                <button class="pill-btn" type="button" id="saveScheduledFaqActionsBtn" <?php echo $canUseFaqActionSuggestions ? '' : 'disabled'; ?>>Save schedule</button>
+              </div>
+              <div class="faq-action-list" id="scheduledFaqActionList">
+                <?php for ($slot = 1; $slot <= 3; $slot++): ?>
+                  <?php $scheduled = $scheduledFaqActionsBySlot[$slot] ?? []; ?>
+                  <div class="faq-action-card scheduled-faq-action-card" data-slot-no="<?php echo h($slot); ?>">
+                    <div class="faq-action-grid">
+                      <div class="field">
+                        <label>Option <?php echo h($slot); ?> after questions</label>
+                        <input class="scheduledActionAfter" type="number" min="1" max="50" value="<?php echo h($scheduled['trigger_after_questions'] ?? ($slot === 1 ? 3 : 5)); ?>" <?php echo $canUseFaqActionSuggestions ? '' : 'disabled'; ?>>
+                      </div>
+                      <div class="field">
+                        <label>Button label</label>
+                        <input class="scheduledActionLabel" maxlength="80" placeholder="Book demo" value="<?php echo h($scheduled['label'] ?? ''); ?>" <?php echo $canUseFaqActionSuggestions ? '' : 'disabled'; ?>>
+                      </div>
+                      <div class="field">
+                        <label>Action type</label>
+                        <select class="scheduledActionType" <?php echo $canUseFaqActionSuggestions ? '' : 'disabled'; ?>>
+                          <?php $scheduledType = (string)($scheduled['action_type'] ?? 'link'); ?>
+                          <?php foreach (['link' => 'Open page / product page', 'whatsapp' => 'Open WhatsApp', 'call' => 'Call now', 'email' => 'Send email', 'download' => 'Download file', 'coupon' => 'Copy coupon/code', 'booking' => 'Book appointment', 'map' => 'Open map location', 'form' => 'Show enquiry form', 'track_order' => 'Track order / status link', 'category' => 'Show FAQ category', 'event' => 'Website event'] as $type => $label): ?>
+                            <option value="<?php echo h($type); ?>" <?php echo $scheduledType === $type ? 'selected' : ''; ?>><?php echo h($label); ?></option>
+                          <?php endforeach; ?>
+                        </select>
+                      </div>
+                      <div class="field">
+                        <label>Status</label>
+                        <label class="switch" title="Enable this scheduled action">
+                          <input class="scheduledActionActive" type="checkbox" <?php echo filter_var($scheduled['is_active'] ?? false, FILTER_VALIDATE_BOOLEAN) ? 'checked' : ''; ?> <?php echo $canUseFaqActionSuggestions ? '' : 'disabled'; ?> aria-label="Enable scheduled action <?php echo h($slot); ?>">
+                          <span class="switch-slider"></span>
+                        </label>
+                      </div>
+                      <div class="field full" style="grid-column:1/-1">
+                        <label>Action value</label>
+                        <input class="scheduledActionValue" placeholder="https://example.com/demo, +919876543210, or coupon code" value="<?php echo h($scheduled['action_value'] ?? ''); ?>" <?php echo $canUseFaqActionSuggestions ? '' : 'disabled'; ?>>
+                        <small class="input-help">If enabled, label and value are required. The visitor sees this action after the configured question count.</small>
+                      </div>
+                    </div>
+                  </div>
+                <?php endfor; ?>
+              </div>
+            </div>
+          </div>
+          <div class="faq-subpanel" id="faq-subpanel-qa">
           <div class="section-body">
             <?php if ($faqFreezeActive): ?>
               <div class="notice" style="margin-bottom:16px">
@@ -1715,6 +1919,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                 </tbody>
               </table>
             </div>
+          </div>
           </div>
         </div>
       </section>
@@ -1988,16 +2193,50 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
         </div>
 
         <div class="analytics-subpanel" id="analytics-leads">
+        <div class="metrics">
+          <div class="panel metric"><span>Unique Leads</span><strong><?php echo h($uniqueLeadCount); ?></strong><small>Deduplicated by email or mobile number for the selected date range.</small></div>
+          <div class="panel metric"><span>Real Leads</span><strong><?php echo h($realUniqueLeadCount); ?></strong><small>Email or mobile OTP verified.</small></div>
+          <div class="panel metric"><span>Weak Leads</span><strong><?php echo h($weakLeadCount); ?></strong><small>Contact captured without OTP verification.</small></div>
+          <div class="panel metric"><span>Email Contacts</span><strong><?php echo h($emailLeadCount); ?></strong><small>Raw email captures in selected range.</small></div>
+          <div class="panel metric"><span>Mobile Contacts</span><strong><?php echo h($phoneLeadCount); ?></strong><small>Raw mobile captures in selected range.</small></div>
+          <div class="panel metric"><span>Lead Conversion</span><strong><?php echo h($leadConversionRate); ?>%</strong><small>Raw leads from conversations.</small></div>
+        </div>
+
+        <div class="panel section-body">
+          <h3>Lead Generated Data</h3>
+          <p class="muted" style="margin:10px 0 14px">Duplicate emails and mobile numbers are merged here. Use the date filter above to change the selected range.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Lead type</th><th>Email</th><th>Mobile Number</th><th>Email OTP Count</th><th>Mobile OTP Count</th><th>Total Captures</th><th>WhatsApp Clicks</th><th>Source Pages</th><th>Location</th><th>First Seen</th><th>Last Seen</th></tr></thead>
+              <tbody>
+                <?php if (empty($uniqueLeadRows)): ?><tr><td colspan="11" class="empty">No leads captured in this date range.</td></tr><?php endif; ?>
+                <?php foreach ($uniqueLeadRows as $lead): ?>
+                  <tr>
+                    <td><span class="tag <?php echo ($lead['lead_type'] ?? '') === 'Real' ? 'good' : 'bad'; ?>"><?php echo h($lead['lead_type'] ?? 'Weak'); ?></span></td>
+                    <td><?php echo h($lead['email'] ?: '-'); ?></td>
+                    <td><?php echo h($lead['phone_number'] ?: '-'); ?></td>
+                    <td><?php echo h($lead['email_otp_count'] ?? 0); ?></td>
+                    <td><?php echo h($lead['mobile_otp_count'] ?? 0); ?></td>
+                    <td><?php echo h($lead['total_records'] ?? 0); ?></td>
+                    <td><?php echo h($lead['whatsapp_redirect_count'] ?? 0); ?></td>
+                    <td><?php echo h(implode(', ', array_keys($lead['source_pages'] ?? [])) ?: '-'); ?></td>
+                    <td><?php echo h($lead['location'] ?: '-'); ?></td>
+                    <td><?php echo h(substr((string)($lead['first_seen'] ?? ''), 0, 10) ?: '-'); ?></td>
+                    <td><?php echo h(substr((string)($lead['last_seen'] ?? ''), 0, 10) ?: '-'); ?></td>
+                  </tr>
+                <?php endforeach; ?>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
         <div class="analytics-grid two">
           <div class="panel section-body">
-            <h3>Accuracy / Resolution</h3>
+            <h3>Lead Generation Periods</h3>
             <div class="mini-chart">
-              <div class="bar-row"><span>Answered</span><div class="bar-track"><div class="bar-fill" style="width:<?php echo h($accuracy); ?>%"></div></div><strong><?php echo h($accuracy); ?>%</strong></div>
-              <div class="bar-row"><span>Fallback</span><div class="bar-track"><div class="bar-fill" style="width:<?php echo h($fallbackRate); ?>%"></div></div><strong><?php echo h($fallbackRate); ?>%</strong></div>
-              <div class="bar-row"><span>Escalation</span><div class="bar-track"><div class="bar-fill" style="width:<?php echo h($escalationRate); ?>%"></div></div><strong><?php echo h($escalationRate); ?>%</strong></div>
-              <div class="bar-row"><span>Handoff</span><div class="bar-track"><div class="bar-fill" style="width:<?php echo h($handoffRate); ?>%"></div></div><strong><?php echo h($handoffRate); ?>%</strong></div>
-              <div class="bar-row"><span>Abandon</span><div class="bar-track"><div class="bar-fill" style="width:<?php echo h($abandonmentRate); ?>%"></div></div><strong><?php echo h($abandonmentRate); ?>%</strong></div>
-              <div class="bar-row"><span>Satisfaction</span><div class="bar-track"><div class="bar-fill" style="width:<?php echo h($satisfactionPercent); ?>%"></div></div><strong><?php echo h($satisfactionPercent); ?>%</strong></div>
+              <?php foreach ($leadPeriodStats as $period): ?>
+                <div class="bar-row"><span><?php echo h($period['label']); ?></span><div class="bar-track"><div class="bar-fill" style="width:<?php echo h(round(($period['count'] / max(1, max(array_column($leadPeriodStats, 'count')))) * 100)); ?>%"></div></div><strong><?php echo h($period['count']); ?></strong></div>
+              <?php endforeach; ?>
             </div>
           </div>
           <div class="panel section-body">
@@ -2006,12 +2245,8 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
               <div class="funnel-step"><span>Visitors</span><strong><?php echo h($uniqueVisitorCount); ?></strong></div>
               <div class="funnel-step"><span>Chat Opened</span><strong><?php echo h($chatOpenedCount); ?></strong></div>
               <div class="funnel-step"><span>Started Chat</span><strong><?php echo h($conversationCount); ?></strong></div>
-              <div class="funnel-step"><span>Shared Contact</span><strong><?php echo h($leadCount); ?></strong></div>
-              <div class="funnel-step"><span>OTP Verified</span><strong><?php echo h($verifiedLeadCount); ?></strong></div>
-            </div>
-            <div class="mini-chart">
-              <div class="inline-row" style="justify-content:space-between;border-bottom:1px solid var(--line);padding:10px 0"><span>Email collected</span><strong><?php echo h($emailLeadCount); ?></strong></div>
-              <div class="inline-row" style="justify-content:space-between;border-bottom:1px solid var(--line);padding:10px 0"><span>Phone collected</span><strong><?php echo h($phoneLeadCount); ?></strong></div>
+              <div class="funnel-step"><span>Shared Contact</span><strong><?php echo h($uniqueLeadCount); ?></strong></div>
+              <div class="funnel-step"><span>OTP Verified</span><strong><?php echo h($realUniqueLeadCount); ?></strong></div>
             </div>
           </div>
         </div>
@@ -2064,7 +2299,12 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
       <section class="tab-panel" id="install">
         <div class="panel">
           <div class="section-head"><h3>Integration / Install</h3></div>
-          <div class="section-body form-grid">
+          <div class="integration-subtabs" role="tablist" aria-label="Integration sections">
+            <button class="integration-subtab-btn active" type="button" data-integration-subtab="integration-subpanel-install">Install &amp; Domains</button>
+            <button class="integration-subtab-btn" type="button" data-integration-subtab="integration-subpanel-api">API Keys</button>
+            <button class="integration-subtab-btn" type="button" data-integration-subtab="integration-subpanel-events">Webhooks &amp; Live Actions</button>
+          </div>
+          <div class="section-body form-grid integration-subpanel active" id="integration-subpanel-install">
             <div class="field full">
               <label>Install snippet</label>
               <div class="embed-box"><code id="embedCode"><?php echo h($embedCode ?: 'Create or select a bot to generate the embed script.'); ?></code></div>
@@ -2109,7 +2349,9 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
             <div class="panel-actions full">
               <button class="pill-btn" type="button" id="saveIntegrationBtn">Save integration settings</button>
             </div>
+          </div>
 
+          <div class="section-body form-grid integration-subpanel" id="integration-subpanel-api">
             <div class="field full">
               <div class="section-head" style="padding:0">
                 <div>
@@ -2161,41 +2403,6 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                     <button class="ghost-btn copy-btn" type="button" id="copyNewApiKeyBtn" data-copy="">Copy API key</button>
                   </div>
                 </div>
-
-                <div class="security-card">
-                  <h4>Webhook destination</h4>
-                  <p class="muted">Send verified leads and important events to your customer's system.</p>
-                  <?php if (!$canUseWebhook): ?><small class="input-help error">Active paid plan required.</small><?php endif; ?>
-                  <div class="field">
-                    <label>Webhook URL</label>
-                    <input id="webhookUrlInput" value="<?php echo h(first_value($settings, ['webhook_url'], '')); ?>" placeholder="https://example.com/webhooks/vani" <?php echo $canUseWebhook ? '' : 'disabled'; ?>>
-                  </div>
-                  <div class="field">
-                    <label>Webhook secret</label>
-                    <input id="webhookSecretInput" value="<?php echo h(first_value($settings, ['webhook_secret'], '')); ?>" placeholder="Optional signing secret" <?php echo $canUseWebhook ? '' : 'disabled'; ?>>
-                    <small class="input-help">Use this to verify webhook signatures on your server.</small>
-                  </div>
-                  <div class="inline-row">
-                    <button class="pill-btn" type="button" id="saveWebhookBtn" <?php echo $canUseWebhook ? '' : 'disabled'; ?>>Save webhook</button>
-                    <button class="ghost-btn" type="button" id="testWebhookBtn" <?php echo $canUseWebhook ? '' : 'disabled'; ?>>Test webhook</button>
-                  </div>
-                </div>
-
-                <div class="security-card">
-                  <div class="inline-row" style="justify-content:space-between;gap:14px">
-                    <div>
-                      <h4>Live Chat Actions</h4>
-                      <p class="muted">Let the customer's website react instantly to chatbot events such as chat open, messages, FAQ answers, unknown questions, lead capture, and WhatsApp clicks.</p>
-                      <?php if (!$canUseLiveChatActions): ?><small class="input-help error">Business plan required.</small><?php endif; ?>
-                    </div>
-                    <label class="switch" title="Enable Live Chat Actions">
-                      <input id="liveChatActionsToggle" type="checkbox" <?php echo $liveChatActionsEnabled && $canUseLiveChatActions ? 'checked' : ''; ?> <?php echo $canUseLiveChatActions ? '' : 'disabled'; ?> aria-label="Enable Live Chat Actions">
-                      <span class="switch-slider"></span>
-                    </label>
-                  </div>
-                  <small class="input-help">When ON, the widget dispatches safe browser events on the customer's website. When OFF, no live website events are emitted.</small>
-                  <button class="pill-btn" type="button" id="saveLiveChatActionsBtn" <?php echo $canUseLiveChatActions ? '' : 'disabled'; ?>>Save Live Chat Actions</button>
-                </div>
               </div>
             </div>
 
@@ -2241,7 +2448,47 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                 </div>
               </div>
             </div>
+          </div>
 
+          <div class="section-body form-grid integration-subpanel" id="integration-subpanel-events">
+            <div class="field full">
+              <div class="security-grid">
+                <div class="security-card">
+                  <h4>Webhook destination</h4>
+                  <p class="muted">Send verified leads and important events to your customer's system.</p>
+                  <?php if (!$canUseWebhook): ?><small class="input-help error">Active paid plan required.</small><?php endif; ?>
+                  <div class="field">
+                    <label>Webhook URL</label>
+                    <input id="webhookUrlInput" value="<?php echo h(first_value($settings, ['webhook_url'], '')); ?>" placeholder="https://example.com/webhooks/vani" <?php echo $canUseWebhook ? '' : 'disabled'; ?>>
+                  </div>
+                  <div class="field">
+                    <label>Webhook secret</label>
+                    <input id="webhookSecretInput" value="<?php echo h(first_value($settings, ['webhook_secret'], '')); ?>" placeholder="Optional signing secret" <?php echo $canUseWebhook ? '' : 'disabled'; ?>>
+                    <small class="input-help">Use this to verify webhook signatures on your server.</small>
+                  </div>
+                  <div class="inline-row">
+                    <button class="pill-btn" type="button" id="saveWebhookBtn" <?php echo $canUseWebhook ? '' : 'disabled'; ?>>Save webhook</button>
+                    <button class="ghost-btn" type="button" id="testWebhookBtn" <?php echo $canUseWebhook ? '' : 'disabled'; ?>>Test webhook</button>
+                  </div>
+                </div>
+
+                <div class="security-card">
+                  <div class="inline-row" style="justify-content:space-between;gap:14px">
+                    <div>
+                      <h4>Live Chat Actions</h4>
+                      <p class="muted">Let the customer's website react instantly to chatbot events such as chat open, messages, FAQ answers, unknown questions, lead capture, and WhatsApp clicks.</p>
+                      <?php if (!$canUseLiveChatActions): ?><small class="input-help error">Business plan required.</small><?php endif; ?>
+                    </div>
+                    <label class="switch" title="Enable Live Chat Actions">
+                      <input id="liveChatActionsToggle" type="checkbox" <?php echo $liveChatActionsEnabled && $canUseLiveChatActions ? 'checked' : ''; ?> <?php echo $canUseLiveChatActions ? '' : 'disabled'; ?> aria-label="Enable Live Chat Actions">
+                      <span class="switch-slider"></span>
+                    </label>
+                  </div>
+                  <small class="input-help">When ON, the widget dispatches safe browser events on the customer's website. When OFF, no live website events are emitted.</small>
+                  <button class="pill-btn" type="button" id="saveLiveChatActionsBtn" <?php echo $canUseLiveChatActions ? '' : 'disabled'; ?>>Save Live Chat Actions</button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -2736,6 +2983,9 @@ const analyticsReport = <?php echo json_encode([
     "unanswered_queries_percent" => $unansweredPercent,
     "avg_response_time_ms" => $avgResponseTimeMs,
     "leads_collected" => $leadCount,
+    "unique_leads" => $uniqueLeadCount,
+    "real_unique_leads" => $realUniqueLeadCount,
+    "weak_unique_leads" => $weakLeadCount,
     "otp_verified_leads" => $verifiedLeadCount,
     "active_chatbots" => $activeChatbotCount,
     "most_active_page" => $mostActivePage,
@@ -2748,6 +2998,20 @@ const analyticsReport = <?php echo json_encode([
   "browsers" => $browserCounts,
   "countries" => $countryCounts,
   "cities" => $cityCounts,
+  "lead_periods" => $leadPeriodStats,
+  "unique_leads" => array_values(array_map(fn($lead) => [
+    "lead_type" => $lead["lead_type"] ?? "Weak",
+    "email" => $lead["email"] ?? "",
+    "phone_number" => $lead["phone_number"] ?? "",
+    "email_otp_count" => $lead["email_otp_count"] ?? 0,
+    "mobile_otp_count" => $lead["mobile_otp_count"] ?? 0,
+    "total_records" => $lead["total_records"] ?? 0,
+    "whatsapp_redirect_count" => $lead["whatsapp_redirect_count"] ?? 0,
+    "source_pages" => implode(", ", array_keys($lead["source_pages"] ?? [])),
+    "location" => $lead["location"] ?? "",
+    "first_seen" => substr((string)($lead["first_seen"] ?? ""), 0, 10),
+    "last_seen" => substr((string)($lead["last_seen"] ?? ""), 0, 10)
+  ], array_slice($uniqueLeadRows, 0, 500))),
   "top_questions" => array_values(array_map(fn($item) => [
     "question" => $item["question"] ?? "",
     "count" => $item["count"] ?? 0,
@@ -3007,6 +3271,38 @@ document.querySelectorAll(".analytics-tab-btn").forEach(tab => {
   });
 });
 
+function openFaqSubtab(target) {
+  if (!document.getElementById(target)) return;
+  document.querySelectorAll(".faq-subtab-btn").forEach(item => {
+    item.classList.toggle("active", item.dataset.faqSubtab === target);
+  });
+  document.querySelectorAll("#faqs .faq-subpanel").forEach(panel => {
+    panel.classList.toggle("active", panel.id === target);
+  });
+}
+
+document.querySelectorAll(".faq-subtab-btn").forEach(tab => {
+  tab.addEventListener("click", () => {
+    openFaqSubtab(tab.dataset.faqSubtab || "faq-subpanel-options");
+  });
+});
+
+function openIntegrationSubtab(target) {
+  if (!document.getElementById(target)) return;
+  document.querySelectorAll(".integration-subtab-btn").forEach(item => {
+    item.classList.toggle("active", item.dataset.integrationSubtab === target);
+  });
+  document.querySelectorAll("#install .integration-subpanel").forEach(panel => {
+    panel.classList.toggle("active", panel.id === target);
+  });
+}
+
+document.querySelectorAll(".integration-subtab-btn").forEach(tab => {
+  tab.addEventListener("click", () => {
+    openIntegrationSubtab(tab.dataset.integrationSubtab || "integration-subpanel-install");
+  });
+});
+
 const analyticsHash = location.hash.startsWith("#analytics/") ? location.hash.split("/")[1] : "";
 if (analyticsHash) {
   openTab("analytics", false);
@@ -3019,6 +3315,9 @@ document.querySelectorAll("[data-jump]").forEach(btn => {
     if (target) {
       event.preventDefault();
       openTab(target);
+      if (target === "faqs") {
+        openFaqSubtab("faq-subpanel-qa");
+      }
       if (btn.dataset.question) {
         document.getElementById("faqQuestion").value = btn.dataset.question;
       }
@@ -3088,6 +3387,12 @@ function analyticsCsv() {
     ["Unanswered Questions", "Question", "Source Page", "Date"],
     ...(analyticsReport.unanswered_questions || []).map(item => ["Unanswered Questions", item.question, item.source_page, item.date]),
     [],
+    ["Unique Leads", "Lead Type", "Email", "Mobile Number", "Email OTP Count", "Mobile OTP Count", "Total Captures", "WhatsApp Clicks", "Source Pages", "Location", "First Seen", "Last Seen"],
+    ...(analyticsReport.unique_leads || []).map(item => ["Unique Leads", item.lead_type, item.email, item.phone_number, item.email_otp_count, item.mobile_otp_count, item.total_records, item.whatsapp_redirect_count, item.source_pages, item.location, item.first_seen, item.last_seen]),
+    [],
+    ["Lead Periods", "Period", "Days", "Unique Leads"],
+    ...(analyticsReport.lead_periods || []).map(item => ["Lead Periods", item.label, item.days, item.count]),
+    [],
     ["Source Pages", "Page", "Conversations", "Leads", "Success Rate"],
     ...(analyticsReport.source_pages || []).map(item => ["Source Pages", item.page, item.conversations, item.leads, `${item.success_rate}%`])
   ];
@@ -3111,6 +3416,7 @@ function analyticsReportHtml() {
 <h2>Summary</h2><table><tbody>${summaryRows}</tbody></table>
 ${table("Top Questions", ["Question", "Count", "Success Rate"], (analyticsReport.top_questions || []).map(item => `<tr><td>${esc(item.question)}</td><td>${esc(item.count)}</td><td>${esc(item.success_rate)}%</td></tr>`))}
 ${table("Unanswered Questions", ["Question", "Source Page", "Date"], (analyticsReport.unanswered_questions || []).map(item => `<tr><td>${esc(item.question)}</td><td>${esc(item.source_page)}</td><td>${esc(item.date)}</td></tr>`))}
+${table("Unique Leads", ["Type", "Email", "Mobile", "Email OTP", "Mobile OTP", "Captures", "WhatsApp", "Source Pages", "First Seen", "Last Seen"], (analyticsReport.unique_leads || []).map(item => `<tr><td>${esc(item.lead_type)}</td><td>${esc(item.email)}</td><td>${esc(item.phone_number)}</td><td>${esc(item.email_otp_count)}</td><td>${esc(item.mobile_otp_count)}</td><td>${esc(item.total_records)}</td><td>${esc(item.whatsapp_redirect_count)}</td><td>${esc(item.source_pages)}</td><td>${esc(item.first_seen)}</td><td>${esc(item.last_seen)}</td></tr>`))}
 ${table("Source Pages", ["Page", "Conversations", "Leads", "Success Rate"], (analyticsReport.source_pages || []).map(item => `<tr><td>${esc(item.page)}</td><td>${esc(item.conversations)}</td><td>${esc(item.leads)}</td><td>${esc(item.success_rate)}%</td></tr>`))}
 <p class="muted">Generated from the dashboard data currently loaded in your browser.</p>
 </body></html>`;
@@ -4205,6 +4511,44 @@ document.getElementById("faqActionList")?.addEventListener("click", async event 
   }
   card.remove();
   showToast("FAQ action deleted");
+});
+
+document.getElementById("saveScheduledFaqActionsBtn")?.addEventListener("click", async event => {
+  if (!businessFeatures.faq_action_suggestions) {
+    showToast("FAQ Action Suggestions requires Starter, Growth, or Business plan");
+    openTab("subscription");
+    return;
+  }
+  if (!document.getElementById("faqActionsToggle")?.checked) {
+    showToast("Turn ON FAQ Action Suggestions first");
+    return;
+  }
+  const customerId = document.getElementById("faqActionCustomerId")?.value || "";
+  if (!customerId) return showToast("Select a bot first");
+  const button = event.currentTarget;
+  const actions = Array.from(document.querySelectorAll(".scheduled-faq-action-card")).map(card => ({
+    slot_no: Number(card.dataset.slotNo || 0),
+    trigger_after_questions: Number(card.querySelector(".scheduledActionAfter")?.value || 0),
+    label: card.querySelector(".scheduledActionLabel")?.value.trim() || "",
+    action_type: card.querySelector(".scheduledActionType")?.value || "link",
+    action_value: card.querySelector(".scheduledActionValue")?.value.trim() || "",
+    is_active: !!card.querySelector(".scheduledActionActive")?.checked
+  }));
+  button.disabled = true;
+  button.textContent = "Saving...";
+  const response = await fetch("/api.php?action=save_scheduled_faq_actions", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({customer_id: customerId, actions})
+  });
+  const data = await response.json().catch(() => ({}));
+  button.disabled = false;
+  button.textContent = "Save schedule";
+  if (!data.success) {
+    if (data.requires_paid) openTab("subscription");
+    return showToast(data.message || "Scheduled FAQ actions could not be saved");
+  }
+  showToast("Scheduled FAQ actions saved");
 });
 
 async function saveDashboardSettings(extraPayload) {

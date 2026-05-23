@@ -3135,6 +3135,98 @@ if ($action === "delete_faq_action") {
     exit;
 }
 
+// ==========================
+// SAVE SCHEDULED FAQ ACTIONS
+// ==========================
+if ($action === "save_scheduled_faq_actions") {
+    $data = getJSON();
+    $customer_id = trim($data['customer_id'] ?? '');
+    $actions = is_array($data['actions'] ?? null) ? array_slice($data['actions'], 0, 3) : [];
+
+    if (!$customer_id) {
+        echo json_encode(["success" => false, "message" => "Select a bot first"]);
+        exit;
+    }
+
+    $activePlan = billing_active_plan_from_account(billing_account_for_customer($customer_id));
+    if (!billing_feature_enabled($activePlan, 'faq_action_suggestions')) {
+        echo json_encode(["success" => false, "requires_paid" => true, "message" => "FAQ Action Suggestions requires Starter, Growth, or Business plan"]);
+        exit;
+    }
+
+    $settingsRows = safe_rows(supabase(
+        "GET",
+        "chatbot_settings?select=faq_actions_enabled&customer_id=eq." . urlencode($customer_id) . "&limit=1"
+    ));
+    if (empty($settingsRows[0]) || !filter_var($settingsRows[0]['faq_actions_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+        echo json_encode(["success" => false, "message" => "Turn ON FAQ Action Suggestions first"]);
+        exit;
+    }
+
+    $allowedActionTypes = ['link', 'whatsapp', 'event', 'call', 'email', 'download', 'coupon', 'booking', 'map', 'form', 'track_order', 'category'];
+    $rows = [];
+    foreach ($actions as $index => $row) {
+        $slotNo = max(1, min(3, (int)($row['slot_no'] ?? ($index + 1))));
+        $triggerAfter = max(1, min(50, (int)($row['trigger_after_questions'] ?? 0)));
+        $label = trim((string)($row['label'] ?? ''));
+        $actionType = trim((string)($row['action_type'] ?? 'link'));
+        $actionValue = trim((string)($row['action_value'] ?? ''));
+        $isActive = filter_var($row['is_active'] ?? false, FILTER_VALIDATE_BOOLEAN);
+
+        if (!$isActive && $label === '' && $actionValue === '') {
+            continue;
+        }
+        if ($isActive && (!$triggerAfter || !$label || !$actionValue)) {
+            echo json_encode(["success" => false, "message" => "Enabled scheduled actions need question count, label, and action value"]);
+            exit;
+        }
+        if (!in_array($actionType, $allowedActionTypes, true)) {
+            echo json_encode(["success" => false, "message" => "Invalid action type in option " . $slotNo]);
+            exit;
+        }
+        if (in_array($actionType, ['link', 'download', 'booking', 'track_order'], true) && $actionValue !== '' && !preg_match('{^https://\S+$}i', $actionValue)) {
+            echo json_encode(["success" => false, "message" => "Option " . $slotNo . " must use a secure https:// URL"]);
+            exit;
+        }
+        if (in_array($actionType, ['whatsapp', 'call'], true) && $actionValue !== '' && !preg_match('/^\+?[1-9]\d{7,15}$/', $actionValue)) {
+            echo json_encode(["success" => false, "message" => "Option " . $slotNo . " phone number must include country code"]);
+            exit;
+        }
+        if ($actionType === 'email' && $actionValue !== '' && !filter_var($actionValue, FILTER_VALIDATE_EMAIL)) {
+            echo json_encode(["success" => false, "message" => "Option " . $slotNo . " needs a valid email address"]);
+            exit;
+        }
+        if ($actionType === 'event' && $actionValue !== '' && !preg_match('/^[a-zA-Z][a-zA-Z0-9_.:-]{1,80}$/', $actionValue)) {
+            echo json_encode(["success" => false, "message" => "Option " . $slotNo . " event name is invalid"]);
+            exit;
+        }
+
+        if ($label !== '' || $actionValue !== '') {
+            $rows[] = [
+                "customer_id" => $customer_id,
+                "slot_no" => $slotNo,
+                "trigger_after_questions" => $triggerAfter,
+                "label" => $label !== '' ? $label : "Continue",
+                "action_type" => $actionType,
+                "action_value" => $actionValue,
+                "is_active" => $isActive
+            ];
+        }
+    }
+
+    supabase("DELETE", "faq_scheduled_action_suggestions?customer_id=eq." . urlencode($customer_id));
+    $res = !empty($rows)
+        ? supabase("POST", "faq_scheduled_action_suggestions", $rows)
+        : ["status" => 200, "data" => []];
+
+    echo json_encode([
+        "success" => ($res['status'] >= 200 && $res['status'] < 300),
+        "message" => ($res['status'] >= 200 && $res['status'] < 300) ? "Scheduled FAQ actions saved" : "Scheduled FAQ actions could not be saved",
+        "debug" => $res
+    ]);
+    exit;
+}
+
 
 // ==========================
 // SAVE DASHBOARD SETTINGS

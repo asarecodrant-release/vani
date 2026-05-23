@@ -186,6 +186,37 @@
   let sessionOpenedAt = null;
   let sessionChatStartedAt = null;
   let sessionMessageCount = 0;
+  const scheduledActionStateKey = `vani_scheduled_action_state_${customerId}_${sessionId}`;
+
+  function loadScheduledActionState() {
+    try {
+      return Object.assign({step: 0, count: 0}, JSON.parse(sessionStorage.getItem(scheduledActionStateKey) || "{}"));
+    } catch (e) {
+      return {step: 0, count: 0};
+    }
+  }
+
+  function saveScheduledActionState(state) {
+    try { sessionStorage.setItem(scheduledActionStateKey, JSON.stringify(state)); } catch (e) {}
+  }
+
+  function nextScheduledFaqAction() {
+    const actions = Array.isArray(config.scheduled_faq_actions)
+      ? config.scheduled_faq_actions.filter(action => action && action.label && action.action_value && Number(action.trigger_after_questions || 0) > 0)
+      : [];
+    if (!actions.length) return null;
+    const state = loadScheduledActionState();
+    const step = Math.max(0, Math.min(actions.length - 1, Number(state.step || 0)));
+    const action = actions[step] || actions[0];
+    const count = Number(state.count || 0) + 1;
+    const triggerAfter = Math.max(1, Number(action.trigger_after_questions || 1));
+    if (count >= triggerAfter) {
+      saveScheduledActionState({step: (step + 1) % actions.length, count: 0});
+      return Object.assign({}, action, {scheduled: true});
+    }
+    saveScheduledActionState({step, count});
+    return null;
+  }
 
   function browserInfo() {
     const ua = navigator.userAgent || "";
@@ -2227,7 +2258,10 @@
 
       thinkingMessage.remove();
       addMessage(messages, response.reply || "No response", "bot");
-      activeFaqActions = Array.isArray(response.actions) ? response.actions.filter(action => action && action.label && action.action_value) : [];
+      const scheduledAction = nextScheduledFaqAction();
+      activeFaqActions = scheduledAction
+        ? [scheduledAction]
+        : (Array.isArray(response.actions) ? response.actions.filter(action => action && action.label && action.action_value) : []);
       activeFaqActionContext = {
         message,
         matched_faq_id: response.matched_faq_id || null

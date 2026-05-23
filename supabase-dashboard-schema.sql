@@ -118,6 +118,27 @@ create table if not exists public.faq_action_suggestions (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists public.faq_scheduled_action_suggestions (
+  id bigserial primary key,
+  customer_id uuid not null references public.chatbot_signups(customer_id) on delete cascade,
+  slot_no integer not null check (slot_no between 1 and 3),
+  trigger_after_questions integer not null default 3 check (trigger_after_questions between 1 and 50),
+  label text not null,
+  action_type text not null default 'link' check (action_type in ('link', 'whatsapp', 'event', 'call', 'email', 'download', 'coupon', 'booking', 'map', 'form', 'track_order', 'category')),
+  action_value text,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint faq_scheduled_action_suggestions_customer_slot_unique unique (customer_id, slot_no)
+);
+
+alter table public.faq_scheduled_action_suggestions
+  drop constraint if exists faq_scheduled_action_suggestions_action_type_check;
+
+alter table public.faq_scheduled_action_suggestions
+  add constraint faq_scheduled_action_suggestions_action_type_check
+  check (action_type in ('link', 'whatsapp', 'event', 'call', 'email', 'download', 'coupon', 'booking', 'map', 'form', 'track_order', 'category'));
+
 alter table public.faq_action_suggestions
   drop constraint if exists faq_action_suggestions_action_type_check;
 
@@ -434,6 +455,7 @@ alter table public.faq_questions
 
 alter table public.faq_questions enable row level security;
 alter table public.faq_action_suggestions enable row level security;
+alter table public.faq_scheduled_action_suggestions enable row level security;
 
 create index if not exists idx_chatbot_settings_customer_id
   on public.chatbot_settings(customer_id);
@@ -461,6 +483,9 @@ create index if not exists idx_faq_questions_customer_category
 
 create index if not exists idx_faq_action_suggestions_customer_faq
   on public.faq_action_suggestions(customer_id, faq_id, display_order);
+
+create index if not exists idx_faq_scheduled_action_suggestions_customer_slot
+  on public.faq_scheduled_action_suggestions(customer_id, slot_no);
 
 create index if not exists idx_customer_profiles_email
   on public.customer_profiles(email);
@@ -932,6 +957,35 @@ for delete
 to anon, authenticated
 using (true);
 
+drop policy if exists "faq scheduled action suggestions readable" on public.faq_scheduled_action_suggestions;
+create policy "faq scheduled action suggestions readable"
+on public.faq_scheduled_action_suggestions
+for select
+to anon, authenticated
+using (true);
+
+drop policy if exists "faq scheduled action suggestions insertable" on public.faq_scheduled_action_suggestions;
+create policy "faq scheduled action suggestions insertable"
+on public.faq_scheduled_action_suggestions
+for insert
+to anon, authenticated
+with check (true);
+
+drop policy if exists "faq scheduled action suggestions updatable" on public.faq_scheduled_action_suggestions;
+create policy "faq scheduled action suggestions updatable"
+on public.faq_scheduled_action_suggestions
+for update
+to anon, authenticated
+using (true)
+with check (true);
+
+drop policy if exists "faq scheduled action suggestions deletable" on public.faq_scheduled_action_suggestions;
+create policy "faq scheduled action suggestions deletable"
+on public.faq_scheduled_action_suggestions
+for delete
+to anon, authenticated
+using (true);
+
 grant select, insert, update, delete on public.chatbot_settings to anon, authenticated;
 grant select, insert, update, delete on public.chatbot_signups to anon, authenticated;
 grant select, insert, update, delete on public.chatbot_conversations to anon, authenticated;
@@ -939,6 +993,7 @@ grant select, insert, update, delete on public.chatbot_sessions to anon, authent
 grant select, insert, update, delete on public.customer_profiles to anon, authenticated;
 grant select, insert, update, delete on public.faq_questions to anon, authenticated;
 grant select, insert, update, delete on public.faq_action_suggestions to anon, authenticated;
+grant select, insert, update, delete on public.faq_scheduled_action_suggestions to anon, authenticated;
 grant select, insert, update, delete on public.lead_generation_settings to anon, authenticated;
 grant select, insert, update, delete on public.lead_generation_leads to anon, authenticated;
 grant select, insert, update, delete on public.billing_accounts to anon, authenticated;
@@ -954,6 +1009,7 @@ grant usage, select on sequence public.chatbot_conversations_id_seq to anon, aut
 grant usage, select on sequence public.chatbot_sessions_id_seq to anon, authenticated;
 grant usage, select on sequence public.customer_profiles_id_seq to anon, authenticated;
 grant usage, select on sequence public.faq_action_suggestions_id_seq to anon, authenticated;
+grant usage, select on sequence public.faq_scheduled_action_suggestions_id_seq to anon, authenticated;
 grant usage, select on sequence public.lead_generation_settings_id_seq to anon, authenticated;
 grant usage, select on sequence public.lead_generation_leads_id_seq to anon, authenticated;
 grant usage, select on sequence public.billing_accounts_id_seq to anon, authenticated;
