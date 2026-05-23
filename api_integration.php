@@ -60,14 +60,19 @@ $apiBase = $scheme . '://' . $host . $basePath . '/api.php?action=';
 $dashboardUrl = 'dashboard.php?bot=' . urlencode($selectedBotId) . '#install';
 
 $endpoints = [
-    ['action' => 'customer_api_ping', 'name' => 'API key test', 'access' => 'Key validity, customer ID, active plan'],
-    ['action' => 'customer_api_leads', 'name' => 'Leads', 'access' => 'Names, email, mobile, location, source URL, OTP verification status, WhatsApp redirect status, metadata, created date'],
-    ['action' => 'customer_api_conversations', 'name' => 'Conversations', 'access' => 'Questions, bot replies, matched FAQ ID, status, session/user IDs, source/referrer URLs, browser/device/location analytics, response time, created date'],
-    ['action' => 'customer_api_faqs', 'name' => 'FAQs', 'access' => 'FAQ ID, question, answer, category, created date'],
-    ['action' => 'customer_api_wallet', 'name' => 'Wallet data', 'access' => 'Wallet balance, current plan, subscription status, billing period, wallet transaction history'],
-    ['action' => 'customer_api_profile', 'name' => 'Profile data', 'access' => 'Customer profile, bot signup details, public bot settings, integration settings'],
-    ['action' => 'customer_api_analytics', 'name' => 'Analytics', 'access' => 'Summary metrics, daily counts, devices, browsers, countries, top questions, source page performance']
+    ['action' => 'customer_api_ping', 'name' => 'API key test', 'method' => 'GET', 'filters' => 'None', 'access' => 'Key validity, customer ID, active plan'],
+    ['action' => 'customer_api_leads', 'name' => 'Leads', 'method' => 'GET', 'filters' => 'limit, offset, date_from, date_to', 'access' => 'Names, email, mobile, location, source URL, OTP verification status, WhatsApp redirect status, metadata, created date'],
+    ['action' => 'customer_api_conversations', 'name' => 'Conversations', 'method' => 'GET', 'filters' => 'limit, offset, date_from, date_to', 'access' => 'Questions, bot replies, matched FAQ ID, status, session/user IDs, source/referrer URLs, browser/device/location analytics, response time, created date'],
+    ['action' => 'customer_api_faqs', 'name' => 'FAQs', 'method' => 'GET', 'filters' => 'limit, offset', 'access' => 'FAQ ID, question, answer, category, created date'],
+    ['action' => 'customer_api_wallet', 'name' => 'Wallet data', 'method' => 'GET', 'filters' => 'limit, offset, date_from, date_to', 'access' => 'Wallet balance, current plan, subscription status, billing period, wallet transaction history'],
+    ['action' => 'customer_api_profile', 'name' => 'Profile data', 'method' => 'GET', 'filters' => 'None', 'access' => 'Customer profile, bot signup details, public bot settings, integration settings'],
+    ['action' => 'customer_api_analytics', 'name' => 'Analytics', 'method' => 'GET', 'filters' => 'date_from, date_to', 'access' => 'Summary metrics, daily counts, devices, browsers, countries, top questions, source page performance']
 ];
+
+$apiKeyRows = api_doc_rows(supabase(
+    "GET",
+    "customer_api_keys?select=id,name,key_prefix,allowed_ips,allowed_origins,rate_limit_per_day,last_used_at,revoked_at,created_at&customer_id=eq." . urlencode($selectedBotId) . "&order=created_at.desc"
+));
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -181,25 +186,57 @@ td{font-size:14px;color:var(--ink);line-height:1.55}
         <code>Authorization: Bearer CUSTOMER_API_KEY</code>
         <p>You may also use <span class="inline-code">X-API-Key</span>, but the Authorization header is preferred.</p>
         <div class="callout">API keys are stored as hashes. Vani cannot show the full key again after creation. Create a new key if the original is lost.</div>
-      </section>
-
-      <section class="panel" id="endpoints">
-        <h2>4. Endpoints</h2>
-        <p>Base URL:</p>
-        <code><?php echo h($apiBase); ?>ENDPOINT_NAME</code>
+        <h3>Your Created API Keys</h3>
+        <p>Use the full API key copied at creation time in place of <span class="inline-code">CUSTOMER_API_KEY</span>. This guide only shows safe key prefixes so customers can identify which key belongs to each integration.</p>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Purpose</th><th>Full URL</th></tr></thead>
+            <thead><tr><th>Name</th><th>Safe prefix</th><th>Rate limit</th><th>Restrictions</th><th>Last used</th><th>Status</th></tr></thead>
             <tbody>
-              <?php foreach ($endpoints as $endpoint): ?>
+              <?php if (empty($apiKeyRows)): ?>
+                <tr><td colspan="6">No API keys created yet. Go back to Dashboard -> Integration and create one first.</td></tr>
+              <?php endif; ?>
+              <?php foreach ($apiKeyRows as $keyRow): ?>
+                <?php $revoked = !empty($keyRow['revoked_at']); ?>
                 <tr>
-                  <td><?php echo h($endpoint['name']); ?></td>
-                  <td><span class="inline-code"><?php echo h($apiBase . $endpoint['action']); ?></span></td>
+                  <td><?php echo h($keyRow['name'] ?? 'API key'); ?></td>
+                  <td><span class="inline-code"><?php echo h(($keyRow['key_prefix'] ?? '') . '...'); ?></span></td>
+                  <td><?php echo h($keyRow['rate_limit_per_day'] ?? ''); ?>/day</td>
+                  <td>
+                    <?php if (!empty($keyRow['allowed_ips'])): ?>IPs: <?php echo h($keyRow['allowed_ips']); ?><br><?php endif; ?>
+                    <?php if (!empty($keyRow['allowed_origins'])): ?>Origins: <?php echo h($keyRow['allowed_origins']); ?><?php endif; ?>
+                    <?php if (empty($keyRow['allowed_ips']) && empty($keyRow['allowed_origins'])): ?>No IP/origin restriction<?php endif; ?>
+                  </td>
+                  <td><?php echo h($keyRow['last_used_at'] ?? 'Never'); ?></td>
+                  <td><span class="tag"><?php echo h($revoked ? 'Revoked' : 'Active'); ?></span></td>
                 </tr>
               <?php endforeach; ?>
             </tbody>
           </table>
         </div>
+      </section>
+
+      <section class="panel" id="endpoints">
+        <h2>4. Read-only Data Endpoints</h2>
+        <p>All customer API endpoints are read-only, scoped to the selected bot/customer ID, and require a valid Business API key. Use this section as the full endpoint reference instead of copying endpoint URLs from the dashboard.</p>
+        <p>Base URL:</p>
+        <code><?php echo h($apiBase); ?>ENDPOINT_NAME</code>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Purpose</th><th>Method</th><th>Full URL</th><th>Supported filters</th><th>Data returned</th></tr></thead>
+            <tbody>
+              <?php foreach ($endpoints as $endpoint): ?>
+                <tr>
+                  <td><?php echo h($endpoint['name']); ?></td>
+                  <td><span class="tag"><?php echo h($endpoint['method']); ?></span></td>
+                  <td><span class="inline-code"><?php echo h($apiBase . $endpoint['action']); ?></span></td>
+                  <td><?php echo h($endpoint['filters']); ?></td>
+                  <td><?php echo h($endpoint['access']); ?></td>
+                </tr>
+              <?php endforeach; ?>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout" style="margin-top:14px">Customers should start with <span class="inline-code">customer_api_ping</span>, then connect only the endpoints their own system actually needs.</div>
       </section>
 
       <section class="panel" id="filters">
@@ -255,7 +292,60 @@ const data = await res.json();</code>
           <li>Add a webhook secret for signature verification.</li>
           <li>Save and test the receiving endpoint from the customer’s backend.</li>
         </ol>
-        <div class="callout">Webhook URLs must use HTTPS. Customers should verify the secret before trusting the payload.</div>
+        <h3>Events sent by Vani</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Event</th><th>When it is sent</th></tr></thead>
+            <tbody>
+              <tr><td><span class="inline-code">conversation.answered</span></td><td>A visitor question is answered by a matched FAQ.</td></tr>
+              <tr><td><span class="inline-code">webhook.test</span></td><td>The customer clicks Test webhook in Dashboard -> Integration.</td></tr>
+              <tr><td><span class="inline-code">conversation.unanswered</span></td><td>Vani cannot answer the visitor question.</td></tr>
+              <tr><td><span class="inline-code">support_ticket.created</span></td><td>Human handoff is ON and an unanswered question creates a ticket.</td></tr>
+              <tr><td><span class="inline-code">lead.created</span></td><td>A lead record is saved from email, mobile, location, or WhatsApp redirect flow.</td></tr>
+              <tr><td><span class="inline-code">lead.email_otp_sent</span></td><td>An email OTP lead is created and OTP sending is attempted.</td></tr>
+              <tr><td><span class="inline-code">lead.email_otp_verified</span></td><td>A visitor successfully verifies email OTP.</td></tr>
+              <tr><td><span class="inline-code">lead.mobile_otp_verified</span></td><td>A visitor successfully verifies mobile OTP.</td></tr>
+              <tr><td><span class="inline-code">whatsapp.redirect_clicked</span></td><td>A visitor clicks the WhatsApp redirect button.</td></tr>
+              <tr><td><span class="inline-code">faq.selected</span></td><td>A visitor selects a suggested FAQ question.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Webhook request format</h3>
+        <code>POST https://customer-domain.com/webhooks/vani
+Content-Type: application/json
+X-Vani-Event: conversation.answered
+X-Vani-Timestamp: 2026-05-23T10:30:00Z
+X-Vani-Signature: sha256=HMAC_SIGNATURE</code>
+        <h3>Example payload</h3>
+        <code>{
+  "event": "lead.email_otp_verified",
+  "event_id": "unique-event-id",
+  "customer_id": "<?php echo h($selectedBotId); ?>",
+  "created_at": "2026-05-23T10:30:00Z",
+  "data": {
+    "lead": {
+      "id": 123,
+      "email": "lead@example.com",
+      "email_otp_verified": true,
+      "source_url": "https://example.com/pricing"
+    }
+  }
+}</code>
+        <h3>Signature verification</h3>
+        <p>If a webhook secret is set, Vani signs every payload using HMAC SHA-256. The signed string is:</p>
+        <code>X-Vani-Timestamp + "." + raw_request_body</code>
+        <p>Compare the expected signature with the <span class="inline-code">X-Vani-Signature</span> header before trusting the payload.</p>
+        <code>const crypto = require("crypto");
+
+const expected = "sha256=" + crypto
+  .createHmac("sha256", process.env.VANI_WEBHOOK_SECRET)
+  .update(req.headers["x-vani-timestamp"] + "." + rawBody)
+  .digest("hex");
+
+if (expected !== req.headers["x-vani-signature"]) {
+  throw new Error("Invalid Vani webhook signature");
+}</code>
+        <div class="callout">Webhook URLs must use HTTPS. Vani sends the webhook after saving the event in its own database. If the customer endpoint is down, chatbot functionality continues normally.</div>
       </section>
 
       <section class="panel" id="live-actions">

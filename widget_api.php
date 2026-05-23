@@ -62,6 +62,65 @@ function widget_faq_action_suggestions(string $customerId, $faqId, array $settin
     ], $rows));
 }
 
+function widget_webhook_deliver(string $customerId, string $event, array $data = [], array $settings = [], string $activePlan = ''): bool {
+    if ($customerId === '') {
+        return false;
+    }
+    if (empty($settings)) {
+        $settings = widget_get_settings($customerId);
+    }
+    if ($activePlan === '') {
+        $activePlan = widget_billing_plan_for_customer($customerId);
+    }
+    if (!billing_feature_enabled($activePlan, 'webhook_support')) {
+        return false;
+    }
+    $url = trim((string)($settings['webhook_url'] ?? ''));
+    if ($url === '' || !preg_match('{^https://\S+$}i', $url) || !filter_var($url, FILTER_VALIDATE_URL)) {
+        return false;
+    }
+
+    $timestamp = gmdate('Y-m-d\TH:i:s\Z');
+    $payload = [
+        "event" => $event,
+        "event_id" => bin2hex(random_bytes(16)),
+        "customer_id" => $customerId,
+        "created_at" => $timestamp,
+        "data" => $data
+    ];
+    $json = json_encode($payload, JSON_UNESCAPED_SLASHES);
+    if ($json === false) {
+        return false;
+    }
+
+    $headers = [
+        "Content-Type: application/json",
+        "User-Agent: Vani-Webhook/1.0",
+        "X-Vani-Event: " . $event,
+        "X-Vani-Timestamp: " . $timestamp
+    ];
+    $secret = trim((string)($settings['webhook_secret'] ?? ''));
+    if ($secret !== '') {
+        $headers[] = "X-Vani-Signature: sha256=" . hash_hmac('sha256', $timestamp . "." . $json, $secret);
+    }
+
+    $context = stream_context_create([
+        "http" => [
+            "method" => "POST",
+            "header" => implode("\r\n", $headers),
+            "content" => $json,
+            "timeout" => 3,
+            "ignore_errors" => true
+        ]
+    ]);
+    $response = @file_get_contents($url, false, $context);
+    $status = 0;
+    if (isset($http_response_header[0]) && preg_match('{HTTP/\S+\s(\d{3})}', $http_response_header[0], $match)) {
+        $status = (int)($match[1] ?? 0);
+    }
+    return $response !== false && $status >= 200 && $status < 300;
+}
+
 function widget_billing_plan_for_customer(string $customerId): string {
     $account = widget_billing_account_for_customer($customerId);
     $status = (string)($account['subscription_status'] ?? 'free');
@@ -986,6 +1045,21 @@ function widget_create_handoff_ticket_if_enabled(string $customerId, array $sett
             "email_sent" => true
         ]);
     }
+    if ($ticketId) {
+        widget_webhook_deliver($customerId, "support_ticket.created", [
+            "ticket" => [
+                "id" => $ticketId,
+                "conversation_id" => $conversationId,
+                "user_id" => $userId !== '' ? $userId : null,
+                "user_question" => $question,
+                "bot_response" => $botResponse,
+                "source_url" => $sourceUrl !== '' ? $sourceUrl : null,
+                "status" => "open",
+                "notification_email" => $notificationEmail,
+                "email_sent" => $sent
+            ]
+        ], $settings, $activePlan);
+    }
 }
 
 function widget_msg91_verify_access_token(string $accessToken): array {
@@ -1486,6 +1560,11 @@ if ($action === "chat") {
         $fallbackConversationRes = supabase("POST", "chatbot_conversations", [$conversationPayload]);
         $conversationId = isset($fallbackConversationRes['data'][0]['id']) ? (int)$fallbackConversationRes['data'][0]['id'] : $conversationId;
     }
+    if ($conversationId) {
+        widget_webhook_deliver($customerId, $answered ? "conversation.answered" : "conversation.unanswered", [
+            "conversation" => array_merge($conversationPayload, ["id" => $conversationId])
+        ], $settings, $activePlan);
+    }
 
     if (!$answered) {
         widget_create_handoff_ticket_if_enabled($customerId, $settings, $message, $reply, $sourceUrl, $userId, $conversationId);
@@ -1598,6 +1677,18 @@ if ($action === "create_lead") {
     if ($ok && $lead && !empty($payload['phone_number'])) {
         $notified['mobile'] = widget_notify_lead_by_email($customerId, $lead, 'mobile');
     }
+    if ($ok && $lead) {
+        widget_webhook_deliver($customerId, "lead.created", [
+            "lead" => $lead,
+            "source" => !empty($payload['whatsapp_redirected']) ? "whatsapp_redirect" : "widget"
+        ]);
+        if (!empty($payload['whatsapp_redirected'])) {
+            widget_webhook_deliver($customerId, "whatsapp.redirect_clicked", [
+                "lead" => $lead,
+                "source_url" => $payload['source_url'] ?? null
+            ]);
+        }
+    }
     widget_json_response(["success" => $ok, "debug" => $res, "lead" => $lead, "notified" => $notified]);
 }
 
@@ -1655,6 +1746,12 @@ if ($action === "create_lead_send_email_otp") {
         }
     }
     $notified = (!$suppressNotification && $ok && $lead && $sent) ? widget_notify_lead_by_email($customerId, $lead, 'email') : false;
+    if ($ok && $lead) {
+        widget_webhook_deliver($customerId, "lead.email_otp_sent", [
+            "lead" => $lead,
+            "otp_sent" => $sent
+        ]);
+    }
 
     widget_json_response(["success" => ($ok && $sent), "lead" => $lead, "otp_sent" => $sent, "email_error" => $emailError, "notified" => $notified, "debug" => $res]);
 }
@@ -1782,6 +1879,11 @@ if ($action === "verify_lead_mobile_msg91") {
         $lead = $verifyRes['data'][0];
     }
     $notified = (!$suppressNotification && $ok && $lead) ? widget_notify_lead_by_email($customerId, $lead, 'mobile') : false;
+    if ($ok && $lead) {
+        widget_webhook_deliver($customerId, "lead.mobile_otp_verified", [
+            "lead" => $lead
+        ]);
+    }
     widget_json_response(["success" => $ok, "lead" => $lead, "notified" => $notified, "debug" => $verifyRes]);
 }
 
@@ -1832,6 +1934,11 @@ if ($action === "verify_lead_email_otp") {
     $ok = ($up['status'] >= 200 && $up['status'] < 300);
 
     $notified = (!$suppressNotification && $ok) ? widget_notify_lead_by_email($customerId, array_merge($row, $update), $notificationEvent) : false;
+    if ($ok) {
+        widget_webhook_deliver($customerId, "lead.email_otp_verified", [
+            "lead" => array_merge($row, $update)
+        ]);
+    }
 
     widget_json_response(["success" => $ok, "notified" => $notified]);
 }
@@ -1877,6 +1984,12 @@ if ($action === "track_faq_usage") {
         "question_id" => $questionId,
         "user_id" => $userId
     ]]);
+    if ($res['status'] >= 200 && $res['status'] < 300) {
+        widget_webhook_deliver($customerId, "faq.selected", [
+            "faq_id" => $questionId,
+            "user_id" => $userId
+        ]);
+    }
 
     widget_json_response([
         "success" => ($res['status'] >= 200 && $res['status'] < 300),

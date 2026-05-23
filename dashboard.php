@@ -14,8 +14,6 @@ $selectedBotId = trim($_GET['bot'] ?? '');
 $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
 $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
 $widgetUrl = $scheme . '://' . $host . rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? ''), '/\\') . '/widget.js';
-$customerApiBaseUrl = $scheme . '://' . $host . rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? ''), '/\\') . '/api.php?action=';
-$customerApiUrl = $customerApiBaseUrl . 'customer_api_ping';
 $botImages = glob(__DIR__ . '/images/botimg_*') ?: [];
 $botImages = array_values(array_filter($botImages, 'is_file'));
 natcasesort($botImages);
@@ -1089,19 +1087,17 @@ body.dark .security-card{background:rgba(15,23,42,.44)}
 #install .security-card{align-content:start}
 @media(min-width:1181px){
   #install .section-body.form-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
-  #install .section-body.form-grid > .field.full:nth-child(1),
-  #install .section-body.form-grid > .field.full:nth-child(2){grid-column:span 1;align-self:stretch;border:1px solid var(--line);border-radius:18px;background:rgba(255,255,255,.34);padding:16px}
-  body.dark #install .section-body.form-grid > .field.full:nth-child(1),
-  body.dark #install .section-body.form-grid > .field.full:nth-child(2){background:rgba(15,23,42,.36)}
+  #install .section-body.form-grid > .field.full:nth-child(1){grid-column:1/-1}
+  #install .section-body.form-grid > .field.full:nth-child(2),
+  #install .section-body.form-grid > .field.full:nth-child(3){grid-column:span 1;align-self:stretch;border:1px solid var(--line);border-radius:18px;background:rgba(255,255,255,.34);padding:16px}
+  body.dark #install .section-body.form-grid > .field.full:nth-child(2),
+  body.dark #install .section-body.form-grid > .field.full:nth-child(3){background:rgba(15,23,42,.36)}
   #install .section-body.form-grid > .panel-actions.full{grid-column:1/-1;justify-content:flex-end}
   #install .security-grid{grid-template-columns:minmax(300px,.9fr) minmax(420px,1.1fr);align-items:start}
   #install .security-grid .security-card:nth-child(2){grid-column:2;grid-row:1 / span 3}
   #install .security-grid .security-card:nth-child(1){grid-column:1;grid-row:1}
   #install .security-grid .security-card:nth-child(3){grid-column:1;grid-row:2}
   #install .security-grid .security-card:nth-child(4){grid-column:1;grid-row:3}
-  #install .integration-reference-grid{grid-template-columns:minmax(280px,.8fr) minmax(420px,1.2fr)}
-  #install .integration-reference-grid .security-card:nth-child(2){grid-column:2;grid-row:1 / span 2}
-  #install .integration-reference-grid .security-card:nth-child(3){grid-column:1;grid-row:2}
   #install .security-card .pill-btn,
   #install .security-card .ghost-btn{width:fit-content}
   #install .security-card textarea{min-height:76px}
@@ -2019,6 +2015,14 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
           <div class="section-head"><h3>Integration / Install</h3></div>
           <div class="section-body form-grid">
             <div class="field full">
+              <label>Install snippet</label>
+              <div class="embed-box"><code id="embedCode"><?php echo h($embedCode ?: 'Create or select a bot to generate the embed script.'); ?></code></div>
+              <div class="panel-actions">
+                <button class="pill-btn copy-btn" type="button" data-copy="<?php echo h($embedCode); ?>">Copy JS snippet</button>
+              </div>
+            </div>
+
+            <div class="field full">
               <div class="inline-row" style="justify-content:space-between;gap:16px">
                 <div>
                   <label>Website verification</label>
@@ -2120,7 +2124,10 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                     <input id="webhookSecretInput" value="<?php echo h(first_value($settings, ['webhook_secret'], '')); ?>" placeholder="Optional signing secret" <?php echo $canUseWebhook ? '' : 'disabled'; ?>>
                     <small class="input-help">Use this to verify webhook signatures on your server.</small>
                   </div>
-                  <button class="pill-btn" type="button" id="saveWebhookBtn" <?php echo $canUseWebhook ? '' : 'disabled'; ?>>Save webhook</button>
+                  <div class="inline-row">
+                    <button class="pill-btn" type="button" id="saveWebhookBtn" <?php echo $canUseWebhook ? '' : 'disabled'; ?>>Save webhook</button>
+                    <button class="ghost-btn" type="button" id="testWebhookBtn" <?php echo $canUseWebhook ? '' : 'disabled'; ?>>Test webhook</button>
+                  </div>
                 </div>
 
                 <div class="security-card">
@@ -2170,52 +2177,20 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
             </div>
 
             <div class="field full">
-              <div class="security-grid integration-reference-grid">
-                <div class="security-card">
-                  <h4>Customer API example</h4>
-                  <code class="api-key-code">curl -H "Authorization: Bearer CUSTOMER_API_KEY" "<?php echo h($customerApiUrl); ?>"</code>
-                </div>
-                <div class="security-card">
-                  <h4>Read-only data endpoints</h4>
-                  <div class="mini-chart">
-                    <?php foreach ([
-                      'customer_api_leads' => 'Leads',
-                      'customer_api_conversations' => 'Conversations',
-                      'customer_api_faqs' => 'FAQs',
-                      'customer_api_wallet' => 'Wallet data',
-                      'customer_api_profile' => 'Profile data',
-                      'customer_api_analytics' => 'Analytics'
-                    ] as $endpoint => $label): ?>
-                      <div class="inline-row" style="justify-content:space-between;border-bottom:1px solid var(--line);padding:8px 0">
-                        <span><?php echo h($label); ?></span>
-                        <code class="api-key-code"><?php echo h($customerApiBaseUrl . $endpoint); ?></code>
-                      </div>
-                    <?php endforeach; ?>
-                  </div>
-                  <small class="input-help">Use limit, offset, date_from, and date_to where supported.</small>
-                </div>
-                <div class="security-card">
-                  <h4>Recent API usage</h4>
-                  <div class="mini-chart" id="apiUsageList">
-                    <?php if (empty($apiUsageRows)): ?><p class="empty">No API usage logged yet.</p><?php endif; ?>
-                    <?php foreach (array_slice($apiUsageRows, 0, 6) as $usageRow): ?>
-                      <div class="inline-row" style="justify-content:space-between;border-bottom:1px solid var(--line);padding:8px 0">
-                        <span><?php echo h(($usageRow['endpoint'] ?? 'API') . ' - ' . ($usageRow['status_code'] ?? '')); ?></span>
-                        <small class="muted"><?php echo h($usageRow['created_at'] ?? ''); ?></small>
-                      </div>
-                    <?php endforeach; ?>
-                  </div>
+              <div class="security-card">
+                <h4>Recent API usage</h4>
+                <div class="mini-chart" id="apiUsageList">
+                  <?php if (empty($apiUsageRows)): ?><p class="empty">No API usage logged yet.</p><?php endif; ?>
+                  <?php foreach (array_slice($apiUsageRows, 0, 6) as $usageRow): ?>
+                    <div class="inline-row" style="justify-content:space-between;border-bottom:1px solid var(--line);padding:8px 0">
+                      <span><?php echo h(($usageRow['endpoint'] ?? 'API') . ' - ' . ($usageRow['status_code'] ?? '')); ?></span>
+                      <small class="muted"><?php echo h($usageRow['created_at'] ?? ''); ?></small>
+                    </div>
+                  <?php endforeach; ?>
                 </div>
               </div>
             </div>
 
-            <div class="field full">
-              <label>Install snippet</label>
-              <div class="embed-box"><code id="embedCode"><?php echo h($embedCode ?: 'Create or select a bot to generate the embed script.'); ?></code></div>
-              <div class="panel-actions">
-                <button class="pill-btn copy-btn" type="button" data-copy="<?php echo h($embedCode); ?>">Copy JS snippet</button>
-              </div>
-            </div>
           </div>
         </div>
       </section>
@@ -4123,6 +4098,27 @@ document.getElementById("saveWebhookBtn")?.addEventListener("click", async event
   });
   button.disabled = false;
   button.textContent = "Save webhook";
+});
+
+document.getElementById("testWebhookBtn")?.addEventListener("click", async event => {
+  if (!businessFeatures.webhook_support) {
+    showToast("Webhook support requires an active paid plan");
+    return;
+  }
+  const customerId = document.getElementById("settingsCustomerId")?.value || "";
+  if (!customerId) return showToast("Select a bot first");
+  const button = event.currentTarget;
+  button.disabled = true;
+  button.textContent = "Testing...";
+  const response = await fetch("/api.php?action=test_webhook", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({customer_id: customerId})
+  });
+  const data = await response.json().catch(() => ({}));
+  button.disabled = false;
+  button.textContent = "Test webhook";
+  showToast(data.message || (data.success ? "Webhook delivered" : "Webhook test failed"));
 });
 
 async function saveLiveChatActionsSettings({live = false} = {}) {

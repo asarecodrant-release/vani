@@ -617,6 +617,69 @@ function authenticated_customer_access(string $customerId): bool {
     return strcasecmp(billing_email_for_customer($customerId), authenticated_email()) === 0;
 }
 
+function webhook_deliver_for_customer(string $customerId, string $event, array $data = []): array {
+    if ($customerId === '') {
+        return ["success" => false, "message" => "Missing customer_id"];
+    }
+    $activePlan = billing_active_plan_from_account(billing_account_for_customer($customerId));
+    if (!billing_feature_enabled($activePlan, 'webhook_support')) {
+        return ["success" => false, "message" => "Webhook support requires an active paid plan"];
+    }
+    $settingsRows = safe_rows(supabase(
+        "GET",
+        "chatbot_settings?select=webhook_url,webhook_secret&customer_id=eq." . urlencode($customerId) . "&limit=1"
+    ));
+    $settings = $settingsRows[0] ?? [];
+    $url = trim((string)($settings['webhook_url'] ?? ''));
+    if ($url === '' || !preg_match('{^https://\S+$}i', $url) || !filter_var($url, FILTER_VALIDATE_URL)) {
+        return ["success" => false, "message" => "Save a valid HTTPS webhook URL first"];
+    }
+
+    $timestamp = gmdate('Y-m-d\TH:i:s\Z');
+    $payload = [
+        "event" => $event,
+        "event_id" => bin2hex(random_bytes(16)),
+        "customer_id" => $customerId,
+        "created_at" => $timestamp,
+        "data" => $data
+    ];
+    $json = json_encode($payload, JSON_UNESCAPED_SLASHES);
+    if ($json === false) {
+        return ["success" => false, "message" => "Webhook payload could not be encoded"];
+    }
+
+    $headers = [
+        "Content-Type: application/json",
+        "User-Agent: Vani-Webhook/1.0",
+        "X-Vani-Event: " . $event,
+        "X-Vani-Timestamp: " . $timestamp
+    ];
+    $secret = trim((string)($settings['webhook_secret'] ?? ''));
+    if ($secret !== '') {
+        $headers[] = "X-Vani-Signature: sha256=" . hash_hmac('sha256', $timestamp . "." . $json, $secret);
+    }
+
+    $context = stream_context_create([
+        "http" => [
+            "method" => "POST",
+            "header" => implode("\r\n", $headers),
+            "content" => $json,
+            "timeout" => 3,
+            "ignore_errors" => true
+        ]
+    ]);
+    $response = @file_get_contents($url, false, $context);
+    $status = 0;
+    if (isset($http_response_header[0]) && preg_match('{HTTP/\S+\s(\d{3})}', $http_response_header[0], $match)) {
+        $status = (int)($match[1] ?? 0);
+    }
+    return [
+        "success" => $response !== false && $status >= 200 && $status < 300,
+        "status_code" => $status,
+        "message" => $response !== false && $status >= 200 && $status < 300 ? "Webhook delivered" : "Webhook endpoint did not return a 2xx response"
+    ];
+}
+
 function customer_api_key_rows(string $customerId): array {
     return safe_rows(supabase(
         "GET",
@@ -1501,6 +1564,21 @@ if ($action === "revoke_customer_api_key") {
         exit;
     }
     echo json_encode(["success" => true, "keys" => customer_api_key_rows($customerId)]);
+    exit;
+}
+
+if ($action === "test_webhook") {
+    $data = getJSON();
+    $customerId = trim((string)($data['customer_id'] ?? $_GET['customer_id'] ?? ''));
+    if (!authenticated_customer_access($customerId)) {
+        echo json_encode(["success" => false, "message" => "Access denied"]);
+        exit;
+    }
+    $result = webhook_deliver_for_customer($customerId, "webhook.test", [
+        "message" => "This is a test webhook from Vani.",
+        "sent_from" => "dashboard"
+    ]);
+    echo json_encode($result);
     exit;
 }
 
