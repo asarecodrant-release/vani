@@ -3194,7 +3194,6 @@ function bindAutoRechargeMandate() {
         customer_id: orderData.razorpay_customer_id,
         recurring: true,
         remember_customer: true,
-        method: {card: true, netbanking: false, wallet: false, upi: false},
         prefill: {
           email: billingEmail,
           contact: orderData.contact || ""
@@ -3505,7 +3504,6 @@ async function startPlanCheckout(planId, button) {
     customer_id: orderData.razorpay_customer_id,
     recurring: true,
     remember_customer: true,
-    method: {card: true, netbanking: false, wallet: false, upi: false},
     prefill: {
       name: autoPayName,
       email: billingEmail,
