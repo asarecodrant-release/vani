@@ -315,6 +315,71 @@ function date_in_range(array $row, string $field, string $from, string $to): boo
     return $date >= $from && $date <= $to;
 }
 
+function analytics_summary_for_period(array $conversationRows, array $leadRows, array $sessionRows, string $from, string $to): array {
+    $periodConversations = array_values(array_filter($conversationRows, fn($row) => date_in_range($row, 'created_at', $from, $to)));
+    $periodLeads = array_values(array_filter($leadRows, fn($row) => date_in_range($row, 'created_at', $from, $to)));
+    $periodSessions = array_values(array_filter($sessionRows, fn($row) => date_in_range($row, 'created_at', $from, $to)));
+    $answered = 0;
+    $responseTimes = [];
+    $visitors = [];
+    $messageTotal = 0;
+
+    foreach ($periodConversations as $row) {
+        if (filter_var($row['is_answered'] ?? false, FILTER_VALIDATE_BOOLEAN) || (string)($row['status'] ?? '') === 'answered') {
+            $answered++;
+        }
+        if (isset($row['response_time_ms']) && is_numeric($row['response_time_ms'])) {
+            $responseTimes[] = (int)$row['response_time_ms'];
+        }
+        $visitor = trim((string)($row['user_id'] ?? $row['session_id'] ?? ''));
+        if ($visitor !== '') {
+            $visitors[$visitor] = true;
+        }
+    }
+
+    foreach ($periodSessions as $session) {
+        $messageTotal += max(0, (int)($session['message_count'] ?? 0));
+        $visitor = trim((string)($session['user_id'] ?? $session['session_id'] ?? ''));
+        if ($visitor !== '') {
+            $visitors[$visitor] = true;
+        }
+    }
+
+    $conversationCount = count($periodConversations);
+    $leadCount = count($periodLeads);
+    $verifiedLeadCount = count(array_filter($periodLeads, function ($lead) {
+        return filter_var($lead['email_otp_verified'] ?? false, FILTER_VALIDATE_BOOLEAN)
+            || filter_var($lead['mobile_otp_verified'] ?? false, FILTER_VALIDATE_BOOLEAN)
+            || (string)($lead['verification_quality'] ?? '') === 'real';
+    }));
+
+    return [
+        'conversations' => $conversationCount,
+        'messages' => max($conversationCount, $messageTotal),
+        'visitors' => count($visitors),
+        'answer_rate' => $conversationCount > 0 ? round(($answered / max(1, $conversationCount)) * 100) : 0,
+        'unanswered_rate' => $conversationCount > 0 ? round((($conversationCount - $answered) / max(1, $conversationCount)) * 100) : 0,
+        'avg_response_time_ms' => !empty($responseTimes) ? round(array_sum($responseTimes) / count($responseTimes)) : 0,
+        'leads' => $leadCount,
+        'verified_leads' => $verifiedLeadCount,
+        'lead_conversion' => $conversationCount > 0 ? round(($leadCount / max(1, $conversationCount)) * 100) : 0
+    ];
+}
+
+function analytics_delta_html(float $current, float $previous, string $suffix = '', bool $lowerIsBetter = false): string {
+    if ($previous <= 0 && $current <= 0) {
+        return '<span class="metric-delta flat">No previous data</span>';
+    }
+    if ($previous <= 0) {
+        return '<span class="metric-delta">+100%' . h($suffix) . ' vs previous</span>';
+    }
+    $change = round((($current - $previous) / max(1, $previous)) * 100);
+    $isGood = $lowerIsBetter ? $change < 0 : $change > 0;
+    $class = $change === 0 ? 'flat' : ($isGood ? 'good' : 'bad');
+    $sign = $change > 0 ? '+' : '';
+    return '<span class="metric-delta ' . h($class) . '">' . h($sign . $change . '%' . $suffix) . ' vs previous</span>';
+}
+
 function analytics_url(string $range, string $selectedBotId, string $from = '', string $to = ''): string {
     $params = ['analytics_range' => $range];
     if ($selectedBotId !== '') {
@@ -497,7 +562,14 @@ $yesterdayAllQueries = count(array_filter($conversationRows, fn($row) => date_in
 $last7AllQueries = count(array_filter($conversationRows, fn($row) => date_in_range($row, 'created_at', gmdate('Y-m-d', time() - (6 * 86400)), $analyticsToday)));
 $last30AllQueries = count(array_filter($conversationRows, fn($row) => date_in_range($row, 'created_at', gmdate('Y-m-d', time() - (29 * 86400)), $analyticsToday)));
 
+$allConversationRows = $conversationRows;
+$allSessionRows = $sessionRows;
 $allLeadRows = $leadRows;
+$analyticsRangeDays = max(1, (int)(((strtotime($analyticsTo) ?: time()) - (strtotime($analyticsFrom) ?: time())) / 86400) + 1);
+$previousAnalyticsTo = gmdate('Y-m-d', strtotime($analyticsFrom . ' -1 day'));
+$previousAnalyticsFrom = gmdate('Y-m-d', strtotime($previousAnalyticsTo . ' -' . ($analyticsRangeDays - 1) . ' days'));
+$analyticsCurrentSummary = analytics_summary_for_period($allConversationRows, $allLeadRows, $allSessionRows, $analyticsFrom, $analyticsTo);
+$analyticsPreviousSummary = analytics_summary_for_period($allConversationRows, $allLeadRows, $allSessionRows, $previousAnalyticsFrom, $previousAnalyticsTo);
 $conversationRows = array_values(array_filter($conversationRows, fn($row) => date_in_range($row, 'created_at', $analyticsFrom, $analyticsTo)));
 $usageRows = array_values(array_filter($usageRows, fn($row) => date_in_range($row, 'created_at', $analyticsFrom, $analyticsTo)));
 $leadRows = array_values(array_filter($leadRows, fn($row) => date_in_range($row, 'created_at', $analyticsFrom, $analyticsTo)));
@@ -1173,6 +1245,9 @@ select:focus,input:focus,textarea:focus{box-shadow:0 0 0 3px rgba(99,102,241,.15
 .metric span{display:block;color:var(--muted);font-size:13px;font-weight:700}
 .metric strong{display:block;font-size:28px;margin-top:8px}
 .metric small{display:block;color:var(--muted);margin-top:7px;line-height:1.4}
+.metric-delta{display:inline-flex;width:fit-content;margin-top:8px;border-radius:999px;padding:4px 8px;font-size:12px;font-weight:900;background:rgba(34,197,94,.12);color:#15803d}
+.metric-delta.bad{background:rgba(239,68,68,.12);color:#b91c1c}
+.metric-delta.flat{background:rgba(148,163,184,.14);color:var(--muted)}
 .chatbot-theme-preview{margin-top:12px;display:grid;gap:10px}
 .chatbot-theme-row{display:flex;align-items:flex-end;gap:9px;min-width:0}
 .chatbot-theme-avatar{width:42px;height:42px;object-fit:contain;border-radius:14px;border:1px solid var(--line);background:var(--panel-strong);padding:6px;flex:0 0 auto}
@@ -1294,6 +1369,11 @@ body.dark .security-card{background:rgba(15,23,42,.44)}
 body.dark .critical-save-note{background:rgba(127,29,29,.22);border-color:rgba(248,113,113,.38);color:#fecaca}
 .analytics-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
 .analytics-grid.two{grid-template-columns:repeat(2,minmax(0,1fr))}
+.analytics-map-panel{grid-column:1/-1}
+.world-map-chart{min-height:420px;width:100%;border:1px solid var(--line);border-radius:18px;background:linear-gradient(180deg,rgba(99,102,241,.08),rgba(6,182,212,.05));margin-top:14px;overflow:hidden}
+.world-map-fallback{display:grid;gap:10px;margin-top:12px}
+.world-map-fallback.compact{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+.world-map-fallback .bar-row{grid-template-columns:minmax(90px,.45fr) minmax(0,1fr) 44px}
 .filter-bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
 .filter-chip{border:1px solid var(--line);background:var(--panel-strong);color:var(--ink);border-radius:999px;padding:8px 12px;font-size:13px;font-weight:700;text-decoration:none}
 .filter-chip.active{background:linear-gradient(135deg,var(--brand),var(--brand-2));border-color:transparent;color:#fff}
@@ -2116,6 +2196,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
               <span class="eyebrow">Analytics</span>
               <h3 style="margin-top:8px">Performance Dashboard</h3>
               <p class="muted" style="margin-top:6px">Showing <?php echo h($analyticsRangeLabel); ?>: <?php echo h($analyticsFrom); ?> to <?php echo h($analyticsTo); ?></p>
+              <p class="muted" style="margin-top:4px;font-size:12px">Compared with previous period: <?php echo h($previousAnalyticsFrom); ?> to <?php echo h($previousAnalyticsTo); ?></p>
             </div>
             <div class="filter-bar">
               <a class="filter-chip <?php echo $analyticsRange === 'today' ? 'active' : ''; ?>" href="<?php echo h(analytics_url('today', $selectedBotId)); ?>">Today: <?php echo h($todayAllQueries); ?></a>
@@ -2159,14 +2240,14 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
         <?php else: ?>
         <div class="analytics-subpanel active" id="analytics-overview">
         <div class="metrics">
-          <div class="panel metric"><span>Total Conversations</span><strong><?php echo h($conversationCount); ?></strong><small>Tracked chat sessions/queries.</small></div>
-          <div class="panel metric"><span>Total Messages</span><strong><?php echo h($totalMessages); ?></strong><small>User messages currently tracked.</small></div>
-          <div class="panel metric"><span>Unique Visitors</span><strong><?php echo h($uniqueVisitorCount); ?></strong><small>Based on widget user IDs.</small></div>
-          <div class="panel metric"><span>Answered Queries</span><strong><?php echo h($accuracy); ?>%</strong><small><?php echo h($answeredCount); ?> answered.</small></div>
-          <div class="panel metric"><span>Unanswered Queries</span><strong><?php echo h($unansweredPercent); ?>%</strong><small><?php echo h($unansweredCount); ?> need FAQ improvement.</small></div>
-          <div class="panel metric"><span>Avg Response Time</span><strong><?php echo $avgResponseTimeMs ? h($avgResponseTimeMs) . 'ms' : 'No data'; ?></strong><small>Measured by the widget API.</small></div>
-          <div class="panel metric"><span>Leads Collected</span><strong><?php echo h($leadCount); ?></strong><small><?php echo h($leadConversionRate); ?>% conversion from conversations.</small></div>
-          <div class="panel metric"><span>OTP Verified Leads</span><strong><?php echo h($verifiedLeadCount); ?></strong><small><?php echo h($otpVerifiedLeadPercent); ?>% of collected leads.</small></div>
+          <div class="panel metric"><span>Total Conversations</span><strong><?php echo h($conversationCount); ?></strong><small>Tracked chat sessions/queries.</small><?php echo analytics_delta_html($analyticsCurrentSummary['conversations'], $analyticsPreviousSummary['conversations']); ?></div>
+          <div class="panel metric"><span>Total Messages</span><strong><?php echo h($totalMessages); ?></strong><small>User messages currently tracked.</small><?php echo analytics_delta_html($analyticsCurrentSummary['messages'], $analyticsPreviousSummary['messages']); ?></div>
+          <div class="panel metric"><span>Unique Visitors</span><strong><?php echo h($uniqueVisitorCount); ?></strong><small>Based on widget user IDs.</small><?php echo analytics_delta_html($analyticsCurrentSummary['visitors'], $analyticsPreviousSummary['visitors']); ?></div>
+          <div class="panel metric"><span>Answered Queries</span><strong><?php echo h($accuracy); ?>%</strong><small><?php echo h($answeredCount); ?> answered.</small><?php echo analytics_delta_html($analyticsCurrentSummary['answer_rate'], $analyticsPreviousSummary['answer_rate']); ?></div>
+          <div class="panel metric"><span>Unanswered Queries</span><strong><?php echo h($unansweredPercent); ?>%</strong><small><?php echo h($unansweredCount); ?> need FAQ improvement.</small><?php echo analytics_delta_html($analyticsCurrentSummary['unanswered_rate'], $analyticsPreviousSummary['unanswered_rate'], '', true); ?></div>
+          <div class="panel metric"><span>Avg Response Time</span><strong><?php echo $avgResponseTimeMs ? h($avgResponseTimeMs) . 'ms' : 'No data'; ?></strong><small>Measured by the widget API.</small><?php echo analytics_delta_html($analyticsCurrentSummary['avg_response_time_ms'], $analyticsPreviousSummary['avg_response_time_ms'], '', true); ?></div>
+          <div class="panel metric"><span>Leads Collected</span><strong><?php echo h($leadCount); ?></strong><small><?php echo h($leadConversionRate); ?>% conversion from conversations.</small><?php echo analytics_delta_html($analyticsCurrentSummary['leads'], $analyticsPreviousSummary['leads']); ?></div>
+          <div class="panel metric"><span>OTP Verified Leads</span><strong><?php echo h($verifiedLeadCount); ?></strong><small><?php echo h($otpVerifiedLeadPercent); ?>% of collected leads.</small><?php echo analytics_delta_html($analyticsCurrentSummary['verified_leads'], $analyticsPreviousSummary['verified_leads']); ?></div>
           <div class="panel metric"><span>Active Chatbots</span><strong><?php echo h($activeChatbotCount); ?></strong><small>Selected bot status.</small></div>
           <div class="panel metric"><span>Most Active Page</span><strong style="font-size:18px"><?php echo h($mostActivePage); ?></strong><small>Highest tracked conversation source.</small></div>
           <div class="panel metric"><span>Returning Users</span><strong><?php echo h($returningUsersPercent); ?>%</strong><small><?php echo h($returningVisitorCount); ?> visitors returned.</small></div>
@@ -2222,14 +2303,16 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
               <?php endforeach; ?>
             </div>
           </div>
-          <div class="panel section-body">
-            <h3>Country / City Analytics</h3>
-            <div class="mini-chart">
+          <div class="panel section-body analytics-map-panel">
+            <h3>Country World Map</h3>
+            <p class="muted" style="margin:10px 0 0">Country-level distribution for tracked widget sessions in the selected range.</p>
+            <div class="world-map-chart" id="analyticsWorldMap" aria-label="World map of country counts"></div>
+            <div class="world-map-fallback compact" id="analyticsWorldMapFallback">
               <?php if (empty($countryCounts) && empty($cityCounts)): ?><p class="empty">No location data yet. Country is estimated from browser locale; city needs geolocation or IP lookup later.</p><?php endif; ?>
-              <?php foreach (array_slice($countryCounts, 0, 4, true) as $country => $count): ?>
+              <?php foreach (array_slice($countryCounts, 0, 8, true) as $country => $count): ?>
                 <div class="bar-row"><span><?php echo h($country); ?></span><div class="bar-track"><div class="bar-fill" style="width:<?php echo h(round(($count / max(1, max($countryCounts))) * 100)); ?>%"></div></div><strong><?php echo h($count); ?></strong></div>
               <?php endforeach; ?>
-              <?php foreach (array_slice($cityCounts, 0, 3, true) as $city => $count): ?>
+              <?php foreach (array_slice($cityCounts, 0, 4, true) as $city => $count): ?>
                 <div class="bar-row"><span><?php echo h($city); ?></span><div class="bar-track"><div class="bar-fill" style="width:<?php echo h(round(($count / max(1, max($cityCounts))) * 100)); ?>%"></div></div><strong><?php echo h($count); ?></strong></div>
               <?php endforeach; ?>
             </div>
@@ -3015,6 +3098,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
 </div>
 <script defer src="https://checkout.razorpay.com/v1/checkout.js"></script>
 <script defer src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 <script>
 const tabs = document.querySelectorAll(".tab-btn");
 const panels = document.querySelectorAll(".tab-panel");
@@ -3061,6 +3145,8 @@ const analyticsReport = <?php echo js_json([
   "range_label" => $analyticsRangeLabel,
   "date_from" => $analyticsFrom,
   "date_to" => $analyticsTo,
+  "previous_date_from" => $previousAnalyticsFrom,
+  "previous_date_to" => $previousAnalyticsTo,
   "summary" => [
     "total_conversations" => $conversationCount,
     "total_messages" => $totalMessages,
@@ -3077,6 +3163,10 @@ const analyticsReport = <?php echo js_json([
     "most_active_page" => $mostActivePage,
     "returning_users_percent" => $returningUsersPercent,
     "avg_conversation_duration" => $avgConversationDuration
+  ],
+  "comparison" => [
+    "current" => $analyticsCurrentSummary,
+    "previous" => $analyticsPreviousSummary
   ],
   "daily_counts" => $dailyChartCounts,
   "hour_counts" => $hourChartCounts,
@@ -3170,6 +3260,7 @@ function openTab(id, updateHash = true) {
   });
   if (updateHash && location.hash !== "#" + id) history.replaceState(null, "", "#" + id);
   closeDrawers();
+  if (id === "analytics") setTimeout(renderAnalyticsWorldMap, 80);
 }
 
 tabs.forEach(tab => tab.addEventListener("click", () => openTab(tab.dataset.tab)));
@@ -3444,6 +3535,123 @@ function csvValue(value) {
 
 function rowsToCsv(rows) {
   return rows.map(row => row.map(csvValue).join(",")).join("\n");
+}
+
+function worldMapCountryName(name) {
+  const aliases = {
+    "usa": "United States of America",
+    "us": "United States of America",
+    "united states": "United States of America",
+    "united states of america": "United States of America",
+    "uk": "United Kingdom",
+    "uae": "United Arab Emirates",
+    "russia": "Russia",
+    "south korea": "Korea",
+    "korea, republic of": "Korea",
+    "north korea": "Dem. Rep. Korea",
+    "vietnam": "Vietnam",
+    "viet nam": "Vietnam",
+    "iran": "Iran",
+    "syria": "Syria",
+    "tanzania": "Tanzania",
+    "democratic republic of the congo": "Dem. Rep. Congo",
+    "congo": "Congo",
+    "czech republic": "Czech Rep.",
+    "laos": "Lao PDR",
+    "brunei": "Brunei",
+    "bolivia": "Bolivia",
+    "venezuela": "Venezuela"
+  };
+  const key = String(name || "").trim().toLowerCase();
+  return aliases[key] || String(name || "").trim();
+}
+
+let analyticsWorldMapChart = null;
+
+async function renderAnalyticsWorldMap() {
+  const mapEl = document.getElementById("analyticsWorldMap");
+  const fallback = document.getElementById("analyticsWorldMapFallback");
+  if (!mapEl) return;
+  if (!mapEl.offsetWidth) return;
+  if (analyticsWorldMapChart) {
+    analyticsWorldMapChart.resize();
+    return;
+  }
+  const countryEntries = Object.entries(analyticsReport.countries || {})
+    .filter(([, count]) => Number(count) > 0)
+    .sort((a, b) => Number(b[1]) - Number(a[1]));
+  if (!countryEntries.length) {
+    mapEl.style.display = "none";
+    return;
+  }
+  if (!window.echarts) {
+    mapEl.innerHTML = '<div class="empty">World map library could not be loaded. Showing country list below.</div>';
+    return;
+  }
+  try {
+    const response = await fetch("https://cdn.jsdelivr.net/npm/echarts@4.9.0/map/json/world.json", {cache: "force-cache"});
+    if (!response.ok) throw new Error("World GeoJSON could not be loaded");
+    const worldJson = await response.json();
+    echarts.registerMap("world", worldJson);
+    const chart = echarts.init(mapEl);
+    analyticsWorldMapChart = chart;
+    const maxValue = Math.max(1, ...countryEntries.map(([, count]) => Number(count) || 0));
+    chart.setOption({
+      backgroundColor: "transparent",
+      tooltip: {
+        trigger: "item",
+        formatter: params => `${htmlEscape(params.name || "Unknown")}: ${htmlEscape(params.value || 0)}`
+      },
+      visualMap: {
+        min: 0,
+        max: maxValue,
+        left: 12,
+        bottom: 12,
+        text: ["High", "Low"],
+        calculable: true,
+        inRange: {color: ["#dbeafe", "#93c5fd", "#6366f1", "#ec4899"]},
+        textStyle: {color: getComputedStyle(document.body).getPropertyValue("--muted").trim() || "#64748b"}
+      },
+      series: [{
+        name: "Country sessions",
+        type: "map",
+        map: "world",
+        roam: true,
+        selectedMode: false,
+        label: {
+          show: true,
+          color: "#0f172a",
+          fontSize: 11,
+          fontWeight: 700,
+          formatter: params => Number(params.value) > 0 ? Number(params.value) : ""
+        },
+        emphasis: {
+          label: {show: true},
+          itemStyle: {areaColor: "#f59e0b"}
+        },
+        itemStyle: {
+          areaColor: "rgba(99,102,241,.08)",
+          borderColor: "rgba(99,102,241,.25)"
+        },
+        data: countryEntries.map(([country, count]) => ({
+          name: worldMapCountryName(country),
+          value: Number(count) || 0,
+          originalName: country
+        }))
+      }]
+    });
+    if (fallback) fallback.classList.remove("compact");
+    window.addEventListener("resize", () => analyticsWorldMapChart?.resize());
+  } catch (error) {
+    console.error("World map render failed", error);
+    mapEl.innerHTML = '<div class="empty">World map could not be loaded. Showing country list below.</div>';
+  }
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", () => setTimeout(renderAnalyticsWorldMap, 0), {once: true});
+} else {
+  setTimeout(renderAnalyticsWorldMap, 0);
 }
 
 function analyticsCsv() {
