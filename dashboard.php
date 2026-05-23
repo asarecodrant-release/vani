@@ -1124,12 +1124,23 @@ body.dark .panel{border-color:var(--line)}
 .eyebrow{font-size:12px;font-weight:800;color:var(--brand);text-transform:uppercase;letter-spacing:.08em}
 .overview-hero h2{font-size:34px;line-height:1.18;margin:9px 0;background:linear-gradient(90deg,var(--brand),var(--brand-2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
 .overview-hero p{color:var(--muted);line-height:1.7}
-.subscription-transfer-card{margin-top:18px;display:grid;grid-template-columns:minmax(0,1.1fr) minmax(260px,.9fr);gap:16px;align-items:end}
-.subscription-transfer-card h3{margin:6px 0 8px}
-.subscription-transfer-card .field{margin:0}
-.subscription-transfer-card .transfer-warning{font-size:13px;color:var(--muted);line-height:1.5}
+.subscription-transfer-card{margin-top:22px;padding:22px;display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,.8fr);gap:22px;align-items:stretch;border-color:rgba(99,102,241,.2);background:linear-gradient(135deg,rgba(99,102,241,.08),rgba(255,255,255,.78))}
+body.dark .subscription-transfer-card{background:linear-gradient(135deg,rgba(99,102,241,.16),rgba(15,23,42,.84))}
+.subscription-transfer-card h3{margin:7px 0 9px;font-size:22px}
+.subscription-transfer-card .transfer-copy{display:flex;flex-direction:column;gap:12px}
+.subscription-transfer-card .transfer-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:auto}
+.subscription-transfer-card .transfer-summary span{display:block;padding:12px;border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.55);color:var(--muted);font-size:13px;line-height:1.4}
+body.dark .subscription-transfer-card .transfer-summary span{background:rgba(15,23,42,.52)}
+.subscription-transfer-card .transfer-summary strong{display:block;margin-top:4px;color:var(--ink);font-size:16px}
+.subscription-transfer-card .transfer-form{display:grid;gap:12px;padding:16px;border:1px solid var(--line);border-radius:18px;background:var(--panel)}
+.subscription-transfer-card .transfer-form .field{margin:0}
+.subscription-transfer-card .transfer-warning{padding:12px 14px;border:1px solid rgba(185,28,28,.18);border-radius:14px;background:rgba(254,226,226,.58);font-size:13px;color:#7f1d1d;line-height:1.55}
 .subscription-transfer-card .transfer-warning strong{color:#b91c1c}
+body.dark .subscription-transfer-card .transfer-warning{background:rgba(127,29,29,.24);color:#fecaca}
 body.dark .subscription-transfer-card .transfer-warning strong{color:#fecaca}
+.subscription-transfer-card .pill-btn{width:100%;min-height:46px}
+.setup-autosave-actions{align-items:center;justify-content:flex-end}
+.setup-autosave-actions .input-help{margin:0}
 .bot-picker{display:grid;gap:10px;padding:18px;border-radius:18px;background:rgba(255,255,255,.58);border:1px solid var(--line)}
 body.dark .bot-picker{background:rgba(15,23,42,.56)}
 .bot-picker-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
@@ -1323,6 +1334,11 @@ body.dark .feature-list .is-excluded{color:#fecaca}
 .wallet-table table{min-width:0}
 .wallet-table th,.wallet-table td{padding:9px 0;font-size:13px}
 .wallet-table th:last-child,.wallet-table td:last-child{text-align:right}
+@media(min-width:721px){
+  .pricing-card{display:flex;flex-direction:column}
+  .pricing-card .billing-plan-btn{margin-top:auto}
+  .pricing-card .billing-plan-btn + .muted{min-height:48px}
+}
 .outside-faq-list{display:grid;gap:14px}
 .outside-faq-card{padding:16px;border:1px solid var(--line);border-radius:18px;background:rgba(255,255,255,.42);display:grid;gap:14px}
 body.dark .outside-faq-card{background:rgba(15,23,42,.44)}
@@ -1464,6 +1480,8 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
   .metrics,.quick-actions,.form-grid,.theme-controls,.outside-faq-grid,.faq-action-grid,.lead-grid,.analytics-grid,.analytics-grid.two,.funnel,.pricing-grid,.security-grid,.bulk-report-summary,.payment-choice-grid{grid-template-columns:1fr}
   .panel-actions{justify-content:stretch}
   .panel-actions .pill-btn,.panel-actions .ghost-btn,.panel-actions .danger-btn{width:100%}
+  .subscription-transfer-card{padding:18px}
+  .subscription-transfer-card .transfer-summary{grid-template-columns:1fr}
   .user-menu{justify-content:space-between}
   select,input,textarea{font-size:16px}
   table{min-width:640px}
@@ -1597,31 +1615,6 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
           </form>
         </div>
 
-        <div class="panel subscription-transfer-card">
-          <div>
-            <span class="eyebrow">Subscription Transfer</span>
-            <h3>Move this plan to another chatbot</h3>
-            <p class="muted">Transfer the current paid plan and wallet balance from this chatbot to another chatbot created under <?php echo h($email); ?>.</p>
-            <p class="transfer-warning"><strong>Important:</strong> this is a transfer, not sharing. After transfer, this chatbot moves to Free service and paid toggles are turned off here.</p>
-          </div>
-          <div class="field">
-            <label for="transferSubscriptionTarget">Transfer to chatbot</label>
-            <select id="transferSubscriptionTarget" <?php echo $activePlanId === 'free' ? 'disabled' : ''; ?>>
-              <option value="">Select target chatbot</option>
-              <?php foreach ($bots as $bot): ?>
-                <?php $cid = (string)($bot['customer_id'] ?? ''); ?>
-                <?php if ($cid === '' || $cid === $selectedBotId) { continue; } ?>
-                <option value="<?php echo h($cid); ?>"><?php echo h(($bot['website_name'] ?? 'Bot') . ' - ' . $cid); ?></option>
-              <?php endforeach; ?>
-            </select>
-            <small class="input-help">
-              Current plan: <?php echo h($activePlan['name']); ?>. Wallet balance: <?php echo h(billing_rupees($billingWalletPaise)); ?>.
-              <?php echo $activePlanId === 'free' ? 'No paid plan is available to transfer.' : 'Target chatbot must be on Free service.'; ?>
-            </small>
-            <button class="pill-btn" type="button" id="transferSubscriptionBtn" <?php echo $activePlanId === 'free' || count($bots) < 2 ? 'disabled' : ''; ?>>Transfer Subscription</button>
-          </div>
-        </div>
-
         <div class="metrics">
           <div class="panel metric">
             <span>Chatbot Status</span>
@@ -1681,6 +1674,38 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
             <button class="pill-btn" type="button" data-jump="bot-settings">Open settings</button>
           </div>
           -->
+        </div>
+
+        <div class="panel subscription-transfer-card">
+          <div class="transfer-copy">
+            <div>
+              <span class="eyebrow">Subscription Transfer</span>
+              <h3>Move this plan to another chatbot</h3>
+              <p class="muted">Transfer the current paid plan and wallet balance from this chatbot to another chatbot created under <?php echo h($email); ?>.</p>
+            </div>
+            <p class="transfer-warning"><strong>Important:</strong> this is a transfer, not sharing. After transfer, this chatbot moves to Free service and paid toggles are turned off here.</p>
+            <div class="transfer-summary">
+              <span>Current plan<strong><?php echo h($activePlan['name']); ?></strong></span>
+              <span>Wallet balance<strong><?php echo h(billing_rupees($billingWalletPaise)); ?></strong></span>
+            </div>
+          </div>
+          <div class="transfer-form">
+            <div class="field">
+              <label for="transferSubscriptionTarget">Transfer to chatbot</label>
+              <select id="transferSubscriptionTarget" <?php echo $activePlanId === 'free' ? 'disabled' : ''; ?>>
+                <option value="">Select target chatbot</option>
+                <?php foreach ($bots as $bot): ?>
+                  <?php $cid = (string)($bot['customer_id'] ?? ''); ?>
+                  <?php if ($cid === '' || $cid === $selectedBotId) { continue; } ?>
+                  <option value="<?php echo h($cid); ?>"><?php echo h(($bot['website_name'] ?? 'Bot') . ' - ' . $cid); ?></option>
+                <?php endforeach; ?>
+              </select>
+              <small class="input-help">
+                <?php echo $activePlanId === 'free' ? 'No paid plan is available to transfer.' : 'Target chatbot must be on Free service.'; ?>
+              </small>
+            </div>
+            <button class="pill-btn" type="button" id="transferSubscriptionBtn" <?php echo $activePlanId === 'free' || count($bots) < 2 ? 'disabled' : ''; ?>>Transfer Subscription</button>
+          </div>
         </div>
       </section>
 
@@ -1750,7 +1775,10 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                 <?php endforeach; ?>
               </div>
             </div>
-            <div class="panel-actions"><button class="pill-btn" type="button" id="saveSetupBtn">Save setup</button></div>
+            <div class="panel-actions setup-autosave-actions">
+              <span class="input-help" id="setupAutosaveStatus">Changes save automatically.</span>
+              <button class="pill-btn" type="button" id="saveSetupBtn" hidden>Save setup</button>
+            </div>
           </div>
         </div>
       </section>
@@ -2729,27 +2757,8 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
             When a customer buys or renews a plan, the plan amount is added to the customer's wallet. The wallet is then used as-you-go for real usage, mainly when new website visitors verify by Email OTP or Mobile OTP, and for paid add-ons such as WhatsApp Redirect.
           </div>
 
-          <div class="active-subscription-banner">
-            <div>
-              <span class="eyebrow">Active subscription</span>
-              <h3><?php echo h($activePlan['name']); ?> Plan</h3>
-              <small>
-                Status: <?php echo h($isCancelledWalletAccess ? 'Auto payment stopped, wallet access active' : ucfirst($subscriptionStatus)); ?>.
-                Wallet balance: <?php echo h(billing_rupees($billingWalletPaise)); ?>.
-                FAQ usage: <?php echo h($faqCount); ?>/<?php echo $planFaqLimit === PHP_INT_MAX ? 'Unlimited' : h($planFaqLimit); ?>.
-              </small>
-              <?php if (!empty($billingAccount['current_period_end'])): ?>
-                <small>Current period ends: <?php echo h((string)$billingAccount['current_period_end']); ?></small>
-              <?php endif; ?>
-            </div>
-            <span class="tag <?php echo $activePlanId === 'free' ? 'bad' : 'good'; ?>">
-              <?php echo h($activePlanId === 'free' ? 'Free service active' : 'Active plan'); ?>
-            </span>
-          </div>
-
           <div class="metrics" style="margin-top:18px">
             <div class="panel metric"><span>Current plan</span><strong><?php echo h($activePlan['name']); ?></strong><small><?php echo h($faqCount); ?>/<?php echo $planFaqLimit === PHP_INT_MAX ? 'Unlimited' : h($planFaqLimit); ?> FAQs used.</small></div>
-            <div class="panel metric"><span>Best default</span><strong>Growth</strong><small>Most local businesses will fit this tier.</small></div>
           </div>
 
           <div class="pricing-grid">
@@ -2779,7 +2788,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
               <div class="pricing-head"><div><span class="eyebrow">Business</span><h3>Business Plan</h3></div><span class="tag">Scale</span></div>
               <?php if ($activePlanId === 'business'): ?><div class="current-plan-note">Current plan</div><?php endif; ?>
               <div class="price">₹999<small>/month</small></div>
-              <div class="feature-list"><span class="is-included">100 FAQ answers for small websites</span><span class="is-included">300 FAQ capacity for growing businesses</span><span class="is-included">Unlimited FAQ capacity for larger businesses</span><span class="is-included">Email and Mobile OTP verification for real leads</span><span class="is-included">Email and Mobile combined widget</span><span class="is-included">Dedicated WhatsApp button and many more action items for FAQs</span><span class="is-included">Webhook support</span><span class="is-included">FAQ Action Suggestions</span><span class="is-included">Live Chat Actions for real-time website reactions</span><span class="is-included">Auto wallet recharge: below ₹200, recharge ₹999</span><span class="is-included">API Integration to migrate or save data in your database</span><span class="is-included">Advanced Analytics: Overview, Conversations, FAQ Insights, Leads, Pages, Real-Time, Reports Download</span><span class="is-included">Chat can run only on allowed domains</span></div>
+              <div class="feature-list"><span class="is-included">Unlimited FAQ capacity for larger businesses</span><span class="is-included">Email and Mobile combined widget</span><span class="is-included">Dedicated WhatsApp button and many more action items for FAQs</span><span class="is-included">Webhook support</span><span class="is-included">FAQ Action Suggestions</span><span class="is-included">Live Chat Actions for real-time website reactions</span><span class="is-included">Auto wallet recharge: below ₹200, recharge ₹999</span><span class="is-included">API Integration to migrate or save data in your database</span><span class="is-included">Advanced Analytics: Overview, Conversations, FAQ Insights, Leads, Pages, Real-Time, Reports Download</span><span class="is-included">Chat can run only on allowed domains</span></div>
               <div class="wallet-table"><table><thead><tr><th>Wallet action</th><th>Charge</th></tr></thead><tbody><tr><td>Fresh Email OTP Lead</td><td>₹5</td></tr><tr><td>Repeat Email OTP Verification</td><td>₹1</td></tr><tr><td>Fresh Mobile OTP Lead</td><td>₹10</td></tr><tr><td>Repeat Mobile OTP Verification</td><td>₹2</td></tr><tr><td>WhatsApp Redirect</td><td>Add-on ₹99, refundable if cancelled within 1 hour</td></tr></tbody></table></div>
               <small class="muted">Validity of Fresh Email and Mobile OTP Leads is 30 days from last user verification.</small>
               <button class="pill-btn billing-plan-btn" type="button" data-plan-id="business">Buy Subscription</button>
@@ -4002,8 +4011,14 @@ document.querySelectorAll(".swatch").forEach(swatch => {
   swatch.addEventListener("click", () => {
     const colorInput = document.getElementById("themeColorInput");
     colorInput.value = rgbToHex(getComputedStyle(swatch).backgroundColor);
+    if (setupAutosaveReady) scheduleSetupAutosave();
   });
 });
+
+let setupAutosaveTimer = null;
+let setupAutosaveReady = false;
+let setupAutosaveSaving = false;
+let setupAutosaveQueued = false;
 
 const themePresets = [
   "#6366f1","#06b6d4","#10b981","#ec4899","#f59e0b","#ef4444","#111827","#7c3aed",
@@ -4030,6 +4045,7 @@ function setThemeValue(value) {
   if (input) input.value = value;
   if (preview) preview.style.background = value;
   document.querySelectorAll(".theme-color-chip").forEach(chip => chip.classList.toggle("active", chip.dataset.theme === value));
+  if (setupAutosaveReady) scheduleSetupAutosave();
 }
 
 function buildGradientTheme() {
@@ -4076,6 +4092,7 @@ function initThemeDesigner() {
       document.getElementById("themePatternInput").value = key;
       document.querySelectorAll(".pattern-chip").forEach(chip => chip.classList.toggle("active", chip.dataset.pattern === key));
       applyPatternPreview(key);
+      if (setupAutosaveReady) scheduleSetupAutosave();
     });
     patternGrid.appendChild(button);
   });
@@ -4099,11 +4116,13 @@ function initThemeDesigner() {
   applyPatternPreview(currentPattern);
 }
 initThemeDesigner();
+setupAutosaveReady = true;
 
 document.querySelectorAll("input[name='dashboardBotImage']").forEach(input => {
   input.addEventListener("change", () => {
     const preview = document.getElementById("selectedBotImagePreview");
     if (preview && input.checked) preview.src = input.value;
+    scheduleSetupAutosave();
   });
 });
 
@@ -4657,26 +4676,75 @@ document.getElementById("saveScheduledFaqActionsBtn")?.addEventListener("click",
   showToast("Scheduled FAQ actions saved");
 });
 
-async function saveDashboardSettings(extraPayload) {
+async function saveDashboardSettings(extraPayload, options = {}) {
+  const {silent = false, successMessage = "Settings saved", errorMessage = "Settings could not be saved"} = options;
   const customerId = document.getElementById("settingsCustomerId")?.value || "";
   if (!customerId) {
-    showToast("Select a bot first");
+    if (!silent) showToast("Select a bot first");
     return false;
   }
 
-  const response = await fetch("/api.php?action=save_dashboard_settings", {
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({customer_id: customerId, ...extraPayload})
-  });
-
-  const data = await response.json().catch(() => ({}));
+  let data = {};
+  try {
+    const response = await fetch("/api.php?action=save_dashboard_settings", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({customer_id: customerId, ...extraPayload})
+    });
+    data = await response.json().catch(() => ({}));
+  } catch (error) {
+    data = {success: false};
+  }
   if (!data.success) {
-    showToast("Settings could not be saved");
+    if (!silent) showToast(errorMessage);
     return false;
   }
-  showToast("Settings saved");
+  if (!silent) showToast(successMessage);
   return true;
+}
+
+function setupSettingsPayload() {
+  return {
+    bot_name: document.getElementById("botNameInput")?.value.trim() || "",
+    welcome_message: document.getElementById("welcomeInput")?.value.trim() || "",
+    theme_color: document.getElementById("themeColorInput")?.value || "#6366f1",
+    theme_pattern: document.getElementById("themePatternInput")?.value || "none",
+    avatar_url: document.querySelector("input[name='dashboardBotImage']:checked")?.value || "",
+    position: document.getElementById("positionInput")?.value || "right",
+    language: document.getElementById("languageInput")?.value || "English"
+  };
+}
+
+function updateSetupAutosaveStatus(text, state = "") {
+  const status = document.getElementById("setupAutosaveStatus");
+  if (!status) return;
+  status.textContent = text;
+  status.classList.toggle("error", state === "error");
+}
+
+async function saveSetupSettingsAutomatically() {
+  if (!setupAutosaveReady) return;
+  if (setupAutosaveSaving) {
+    setupAutosaveQueued = true;
+    return;
+  }
+  setupAutosaveSaving = true;
+  updateSetupAutosaveStatus("Saving changes...");
+  const saved = await saveDashboardSettings(setupSettingsPayload(), {silent: true});
+  setupAutosaveSaving = false;
+  if (setupAutosaveQueued) {
+    setupAutosaveQueued = false;
+    scheduleSetupAutosave();
+    return;
+  }
+  updateSetupAutosaveStatus(saved ? "All changes saved automatically." : "Could not save changes. Please try again.", saved ? "" : "error");
+}
+
+function scheduleSetupAutosave() {
+  if (!setupAutosaveReady) return;
+  clearTimeout(setupAutosaveTimer);
+  updateSetupAutosaveStatus("Changes pending...");
+  setupAutosaveTimer = setTimeout(saveSetupSettingsAutomatically, 650);
 }
 
 function setOverviewActiveUI(isActive) {
@@ -4786,15 +4854,15 @@ document.getElementById("transferSubscriptionBtn")?.addEventListener("click", as
 });
 
 document.getElementById("saveSetupBtn")?.addEventListener("click", () => {
-  saveDashboardSettings({
-    bot_name: document.getElementById("botNameInput").value.trim(),
-    welcome_message: document.getElementById("welcomeInput").value.trim(),
-    theme_color: document.getElementById("themeColorInput").value,
-    theme_pattern: document.getElementById("themePatternInput")?.value || "none",
-    avatar_url: document.querySelector("input[name='dashboardBotImage']:checked")?.value || "",
-    position: document.getElementById("positionInput").value,
-    language: document.getElementById("languageInput").value
-  });
+  saveDashboardSettings(setupSettingsPayload());
+});
+
+["botNameInput", "welcomeInput"].forEach(id => {
+  document.getElementById(id)?.addEventListener("input", scheduleSetupAutosave);
+});
+
+["positionInput", "languageInput"].forEach(id => {
+  document.getElementById(id)?.addEventListener("change", scheduleSetupAutosave);
 });
 
 document.getElementById("saveSettingsBtn")?.addEventListener("click", () => {
