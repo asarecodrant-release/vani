@@ -73,28 +73,120 @@ input[type="text"] {
 }
 
 /* PRESET COLORS */
-.palette {
+.color-widget {
+  margin: 18px 0 20px;
+  padding: 16px;
+  border-radius: 14px;
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.14);
+}
+
+.color-widget-head {
   display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.color-widget-title {
+  display: grid;
+  gap: 4px;
+}
+
+.color-widget-title strong {
+  font-size: 14px;
+}
+
+.color-widget-title span,
+.color-note {
+  color: rgba(255,255,255,0.72);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.selected-color-preview {
+  width: 54px;
+  height: 54px;
+  border-radius: 14px;
+  border: 3px solid rgba(255,255,255,0.72);
+  box-shadow: 0 12px 30px rgba(0,0,0,0.22);
+  flex: 0 0 auto;
+}
+
+.palette {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
   gap: 10px;
-  margin: 15px 0;
-  flex-wrap: wrap;
+  margin: 12px 0 14px;
 }
 
 .color-box {
-  width: 36px;
-  height: 36px;
-  border-radius: 8px;
+  width: 100%;
+  min-height: 58px;
+  border-radius: 12px;
   cursor: pointer;
   transition: 0.2s;
-  border: 2px solid transparent;
+  border: 2px solid rgba(255,255,255,0.16);
+  padding: 0;
+  overflow: hidden;
+  position: relative;
+  box-shadow: inset 0 -22px 34px rgba(0,0,0,0.18);
 }
 
 .color-box:hover {
-  transform: scale(1.1);
+  transform: translateY(-2px);
 }
 
 .color-box.active {
-  border: 2px solid white;
+  border-color: white;
+  box-shadow: 0 0 0 3px rgba(255,255,255,0.18), inset 0 -22px 34px rgba(0,0,0,0.18);
+}
+
+.color-box span {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 7px;
+  color: white;
+  font-size: 11px;
+  font-weight: 700;
+  text-shadow: 0 1px 8px rgba(0,0,0,0.45);
+}
+
+.custom-color-row {
+  display: grid;
+  grid-template-columns: 126px 1fr;
+  gap: 12px;
+  align-items: end;
+}
+
+.native-color-trigger {
+  display: grid;
+  gap: 7px;
+}
+
+.native-color-trigger input[type="color"] {
+  width: 100%;
+  height: 46px;
+  padding: 4px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.22);
+  background: rgba(255,255,255,0.16);
+}
+
+.hex-field label {
+  display: block;
+}
+
+.hex-field input {
+  text-transform: uppercase;
+}
+
+@media(max-width:560px) {
+  .custom-color-row {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* PREVIEW */
@@ -174,26 +266,40 @@ button.loading {
     <h1>🎨 Customize Your Chatbot</h1>
     <p>Choose a color that matches your brand</p>
 
-    <!-- PRESET COLORS -->
-    <div class="palette" id="palette">
-      <div class="color-box" style="background:#4f46e5"></div>
-      <div class="color-box" style="background:#06b6d4"></div>
-      <div class="color-box" style="background:#10b981"></div>
-      <div class="color-box" style="background:#f59e0b"></div>
-      <div class="color-box" style="background:#ef4444"></div>
-      <div class="color-box" style="background:#ec4899"></div>
-      <div class="color-box" style="background:#6366f1"></div>
-      <div class="color-box" style="background:#0ea5e9"></div>
-    </div>
+    <div class="color-widget">
+      <div class="color-widget-head">
+        <div class="color-widget-title">
+          <strong>Chatbot theme color</strong>
+          <span>Select a preset, use the picker, or enter a HEX code.</span>
+        </div>
+        <div class="selected-color-preview" id="selectedColorPreview" aria-hidden="true"></div>
+      </div>
 
-    <div class="form-row">
-      <label>Pick custom color</label>
-      <input type="color" id="colorPicker">
-    </div>
+      <div class="palette" id="palette" aria-label="Theme color presets">
+        <button class="color-box active" type="button" data-color="#4f46e5" style="background:#4f46e5"><span>Indigo</span></button>
+        <button class="color-box" type="button" data-color="#06b6d4" style="background:#06b6d4"><span>Cyan</span></button>
+        <button class="color-box" type="button" data-color="#10b981" style="background:#10b981"><span>Emerald</span></button>
+        <button class="color-box" type="button" data-color="#f59e0b" style="background:#f59e0b"><span>Amber</span></button>
+        <button class="color-box" type="button" data-color="#ef4444" style="background:#ef4444"><span>Red</span></button>
+        <button class="color-box" type="button" data-color="#ec4899" style="background:#ec4899"><span>Pink</span></button>
+        <button class="color-box" type="button" data-color="#7c3aed" style="background:#7c3aed"><span>Violet</span></button>
+        <button class="color-box" type="button" data-color="#0ea5e9" style="background:#0ea5e9"><span>Sky</span></button>
+        <button class="color-box" type="button" data-color="#111827" style="background:#111827"><span>Graphite</span></button>
+        <button class="color-box" type="button" data-color="#16a34a" style="background:#16a34a"><span>Green</span></button>
+      </div>
 
-    <div class="form-row">
-      <label>Or enter HEX</label>
-      <input id="hexInput" placeholder="#6366f1">
+      <div class="custom-color-row">
+        <label class="native-color-trigger">
+          <span>Pick any color</span>
+          <input type="color" id="colorPicker" value="#4f46e5">
+        </label>
+        <div class="hex-field">
+          <label for="hexInput">Enter color code externally</label>
+          <input id="hexInput" value="#4F46E5" placeholder="#6366F1" maxlength="7" spellcheck="false">
+        </div>
+      </div>
+
+      <div class="color-note" id="colorNote">Selected color: #4F46E5</div>
     </div>
 
     <!-- PREVIEW -->
@@ -221,6 +327,8 @@ const preview = document.getElementById("previewBubble");
 const msg = document.getElementById("msg");
 const palette = document.getElementById("palette");
 const saveBtn = document.getElementById("saveBtn");
+const selectedColorPreview = document.getElementById("selectedColorPreview");
+const colorNote = document.getElementById("colorNote");
 
 const cid = localStorage.getItem("cid");
 
@@ -236,9 +344,9 @@ updatePreview(selectedColor);
 // =========================
 palette.querySelectorAll(".color-box").forEach(box => {
   box.addEventListener("click", () => {
-    selectedColor = rgbToHex(box.style.backgroundColor);
+    selectedColor = normalizeHex(box.dataset.color || "#4f46e5");
     picker.value = selectedColor;
-    hexInput.value = selectedColor;
+    hexInput.value = selectedColor.toUpperCase();
 
     document.querySelectorAll(".color-box").forEach(b => b.classList.remove("active"));
     box.classList.add("active");
@@ -251,8 +359,9 @@ palette.querySelectorAll(".color-box").forEach(box => {
 // COLOR PICKER
 // =========================
 picker.addEventListener("input", () => {
-  selectedColor = picker.value;
-  hexInput.value = selectedColor;
+  selectedColor = normalizeHex(picker.value);
+  hexInput.value = selectedColor.toUpperCase();
+  setActiveSwatch(selectedColor);
   updatePreview(selectedColor);
 });
 
@@ -263,9 +372,11 @@ hexInput.addEventListener("input", () => {
   const val = hexInput.value.trim();
 
   if (isValidHex(val)) {
-    selectedColor = val;
-    picker.value = val;
-    updatePreview(val);
+    selectedColor = normalizeHex(val);
+    picker.value = selectedColor;
+    hexInput.value = selectedColor.toUpperCase();
+    setActiveSwatch(selectedColor);
+    updatePreview(selectedColor);
   }
 });
 
@@ -315,11 +426,30 @@ saveBtn.onclick = async () => {
 // HELPERS
 // =========================
 function updatePreview(color) {
-  preview.style.background = color;
+  const normalized = normalizeHex(color);
+  preview.style.background = normalized;
+  if (selectedColorPreview) selectedColorPreview.style.background = normalized;
+  if (colorNote) colorNote.innerText = `Selected color: ${normalized.toUpperCase()}`;
 }
 
 function isValidHex(color) {
   return /^#([0-9A-F]{3}){1,2}$/i.test(color);
+}
+
+function normalizeHex(color) {
+  let value = String(color || "").trim();
+  if (!value.startsWith("#")) value = `#${value}`;
+  if (/^#([0-9A-F]{3})$/i.test(value)) {
+    value = "#" + value.slice(1).split("").map(char => char + char).join("");
+  }
+  return value.toLowerCase();
+}
+
+function setActiveSwatch(color) {
+  const normalized = normalizeHex(color);
+  palette.querySelectorAll(".color-box").forEach(box => {
+    box.classList.toggle("active", normalizeHex(box.dataset.color || "") === normalized);
+  });
 }
 
 function showError(text) {
@@ -332,15 +462,6 @@ function showSuccess(text) {
   msg.className = "message success";
   msg.innerText = text;
   msg.style.display = "block";
-}
-
-// RGB → HEX (for palette clicks)
-function rgbToHex(rgb) {
-  const result = rgb.match(/\d+/g);
-  return "#" + result.map(x => {
-    const hex = parseInt(x).toString(16);
-    return hex.length === 1 ? "0" + hex : hex;
-  }).join('');
 }
 
 </script>

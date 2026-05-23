@@ -86,7 +86,7 @@ function invoice_pdf_binary(array $invoice, array $context): string {
 
     $lines[] = ['From', 48, 680, 12, '0.02 0.06 0.18 rg'];
     $lines[] = ['Codrant', 48, 662, 11, '0.10 0.12 0.18 rg'];
-    $lines[] = ['Behind Golden Care Hospital, Bhumkar Chawak', 48, 646, 10, '0.35 0.40 0.50 rg'];
+    $lines[] = ['Behind Golden Care Hospital, Bhumkar Chowk', 48, 646, 10, '0.35 0.40 0.50 rg'];
     $lines[] = ['Wakad, Pune 411057, Maharashtra, India', 48, 631, 10, '0.35 0.40 0.50 rg'];
     $lines[] = ['info@codrant.com | +91-9579246848', 48, 616, 10, '0.35 0.40 0.50 rg'];
 

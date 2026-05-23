@@ -161,7 +161,7 @@ footer{padding:24px 0 40px;color:#94a3b8;text-align:center;font-size:14px}
       </div>
       <div class="detail">
         <strong>Address</strong>
-        <span>Codrant, Behind Golden Care Hospital, Bhumkar Chawak, Wakad, Pune 411057.</span>
+        <span>Codrant, Behind Golden Care Hospital, Bhumkar Chowk, Wakad, Pune 411057.</span>
       </div>
     </aside>
 
