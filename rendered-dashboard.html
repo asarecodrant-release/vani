@@ -1,1088 +1,3 @@
-<?php
-require_once __DIR__ . '/session-auth.php';
-require_once __DIR__ . '/core.php';
-require_once __DIR__ . '/billing.php';
-
-if (!is_authenticated_user()) {
-    header("Location: login.php");
-    exit;
-}
-
-$email = authenticated_email();
-$accountId = authenticated_user_id();
-$selectedBotId = trim($_GET['bot'] ?? '');
-$scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-$host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-$widgetUrl = $scheme . '://' . $host . rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? ''), '/\\') . '/widget.js';
-$botImages = glob(__DIR__ . '/images/botimg_*') ?: [];
-$botImages = array_values(array_filter($botImages, 'is_file'));
-natcasesort($botImages);
-$botImages = array_map(fn($path) => 'images/' . basename($path), $botImages);
-
-function h($value): string {
-    return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
-}
-
-function js_json($value): string {
-    $json = json_encode(
-        $value,
-        JSON_HEX_TAG
-        | JSON_HEX_AMP
-        | JSON_HEX_APOS
-        | JSON_HEX_QUOT
-        | JSON_UNESCAPED_UNICODE
-        | JSON_INVALID_UTF8_SUBSTITUTE
-        | JSON_PARTIAL_OUTPUT_ON_ERROR
-    );
-    return $json === false ? '{}' : $json;
-}
-
-function safe_data(array $response): array {
-    $data = $response['data'] ?? null;
-    if (!is_array($data)) {
-        return [];
-    }
-    if ($data === []) {
-        return [];
-    }
-    if (array_keys($data) !== range(0, count($data) - 1)) {
-        return [];
-    }
-    return $data;
-}
-
-function first_value(array $row, array $keys, string $fallback = ''): string {
-    foreach ($keys as $key) {
-        if (isset($row[$key]) && $row[$key] !== '') {
-            return (string)$row[$key];
-        }
-    }
-    return $fallback;
-}
-
-function dashboard_theme_color_input_value(string $value): string {
-    return preg_match('/^#[0-9a-f]{6}$/i', trim($value)) ? trim($value) : '#6366f1';
-}
-
-function dashboard_disable_paid_service_toggles(array $bots, string $reason): void {
-    foreach ($bots as $bot) {
-        $customerId = trim((string)($bot['customer_id'] ?? ''));
-        if ($customerId === '') {
-            continue;
-        }
-        supabase("PATCH", "lead_generation_settings?customer_id=eq." . urlencode($customerId), [
-            "verify_email_otp" => false,
-            "verify_mobile_otp" => false,
-            "redirect_whatsapp" => false,
-            "service_tier" => "free",
-            "whatsapp_redirect_stopped_at" => gmdate('Y-m-d\TH:i:s\Z'),
-            "whatsapp_redirect_stopped_reason" => $reason
-        ]);
-        supabase("PATCH", "chatbot_settings?customer_id=eq." . urlencode($customerId), [
-            "handoff_enabled" => false,
-            "allowed_domains_enabled" => false,
-            "live_chat_actions_enabled" => false,
-            "faq_actions_enabled" => false,
-            "faq_category_menu_enabled" => false,
-            "webhook_url" => null,
-            "webhook_secret" => null
-        ]);
-    }
-}
-
-function dashboard_normalize_lead_phone(string $phone): string {
-    return preg_replace('/\D+/', '', $phone) ?: '';
-}
-
-function dashboard_lead_period_count(array $rows, int $days): int {
-    $cutoff = strtotime('-' . max(1, $days - 1) . ' days', strtotime(gmdate('Y-m-d') . ' 00:00:00 UTC'));
-    $seen = [];
-    foreach ($rows as $row) {
-        $createdAt = strtotime((string)($row['created_at'] ?? '')) ?: 0;
-        if ($createdAt < $cutoff) {
-            continue;
-        }
-        $email = strtolower(trim((string)($row['email'] ?? '')));
-        $phone = dashboard_normalize_lead_phone((string)($row['phone_number'] ?? ''));
-        $key = $email !== '' ? 'email:' . $email : ($phone !== '' ? 'phone:' . $phone : 'lead:' . (string)($row['id'] ?? spl_object_id((object)$row)));
-        $seen[$key] = true;
-    }
-    return count($seen);
-}
-
-function dashboard_billing_account_has_value(array $account): bool {
-    return (string)($account['current_plan'] ?? 'free') !== 'free'
-        || (string)($account['subscription_status'] ?? 'free') !== 'free'
-        || (int)($account['wallet_balance_paise'] ?? 0) > 0
-        || trim((string)($account['saved_payment_method_reference'] ?? '')) !== ''
-        || trim((string)($account['saved_payment_method_customer_id'] ?? '')) !== '';
-}
-
-function dashboard_legacy_owner_customer_id(string $email): string {
-    if ($email === '') {
-        return '';
-    }
-    $orders = safe_data(supabase(
-        "GET",
-        "billing_orders?select=customer_id,status,created_at&email=eq." . urlencode($email) . "&customer_id=not.is.null&status=eq.paid&order=created_at.desc&limit=10"
-    ));
-    foreach ($orders as $order) {
-        $customerId = trim((string)($order['customer_id'] ?? ''));
-        if ($customerId !== '') {
-            return $customerId;
-        }
-    }
-    return '';
-}
-
-function dashboard_customer_has_paid_order(string $email, string $customerId): bool {
-    if ($email === '' || $customerId === '') {
-        return false;
-    }
-    return !empty(safe_data(supabase(
-        "GET",
-        "billing_orders?select=id&email=eq." . urlencode($email) . "&customer_id=eq." . urlencode($customerId) . "&status=eq.paid&limit=1"
-    )));
-}
-
-function dashboard_email_has_assigned_paid_account(string $email, string $exceptCustomerId = ''): bool {
-    if ($email === '') {
-        return false;
-    }
-    $rows = safe_data(supabase(
-        "GET",
-        "billing_accounts?select=*&email=eq." . urlencode($email) . "&customer_id=not.is.null&limit=20"
-    ));
-    foreach ($rows as $row) {
-        $rowCustomerId = trim((string)($row['customer_id'] ?? ''));
-        if ($rowCustomerId !== $exceptCustomerId && dashboard_billing_account_has_value($row)) {
-            return true;
-        }
-    }
-    return false;
-}
-
-function dashboard_email_bot_count(string $email): int {
-    if ($email === '') {
-        return 0;
-    }
-    return count(safe_data(supabase(
-        "GET",
-        "chatbot_signups?select=customer_id&email=eq." . urlencode($email) . "&limit=2"
-    )));
-}
-
-function dashboard_adopt_legacy_billing_account(string $customerId, string $email, array $customerAccount = []): array {
-    if ($customerId === '' || $email === '') {
-        return $customerAccount;
-    }
-    $legacyOwnerCustomerId = dashboard_legacy_owner_customer_id($email);
-    if ($legacyOwnerCustomerId !== '' && $legacyOwnerCustomerId !== $customerId) {
-        return $customerAccount;
-    }
-    if ($legacyOwnerCustomerId === '' && dashboard_email_has_assigned_paid_account($email, $customerId)) {
-        return $customerAccount;
-    }
-    if ($legacyOwnerCustomerId === '' && dashboard_email_bot_count($email) > 1) {
-        return $customerAccount;
-    }
-    $legacyRows = safe_data(supabase(
-        "GET",
-        "billing_accounts?select=*&email=eq." . urlencode($email) . "&customer_id=is.null&order=created_at.desc&limit=5"
-    ));
-    $legacy = [];
-    foreach ($legacyRows as $row) {
-        if (dashboard_billing_account_has_value($row)) {
-            $legacy = $row;
-            break;
-        }
-    }
-    if (empty($legacy)) {
-        return $customerAccount;
-    }
-    if (empty($customerAccount)) {
-        $claim = supabase("PATCH", "billing_accounts?id=eq." . urlencode((string)$legacy['id']), [
-            "customer_id" => $customerId
-        ]);
-        if ($claim['status'] >= 200 && $claim['status'] < 300 && !empty($claim['data'][0])) {
-            $customerAccount = $claim['data'][0];
-        }
-    } elseif (!dashboard_billing_account_has_value($customerAccount)) {
-        $payload = ["email" => $email];
-        foreach ([
-            "wallet_balance_paise",
-            "current_plan",
-            "subscription_status",
-            "auto_recharge_enabled",
-            "auto_recharge_threshold_paise",
-            "auto_recharge_amount_paise",
-            "saved_payment_method_status",
-            "saved_payment_method_reference",
-            "saved_payment_method_customer_id",
-            "saved_payment_method_contact",
-            "last_auto_recharge_attempt_at",
-            "current_period_start",
-            "current_period_end"
-        ] as $field) {
-            if (array_key_exists($field, $legacy)) {
-                $payload[$field] = $legacy[$field];
-            }
-        }
-        $copy = supabase("PATCH", "billing_accounts?customer_id=eq." . urlencode($customerId), $payload);
-        if ($copy['status'] >= 200 && $copy['status'] < 300 && !empty($copy['data'][0])) {
-            $customerAccount = $copy['data'][0];
-        }
-    }
-    supabase("PATCH", "wallet_transactions?email=eq." . urlencode($email) . "&customer_id=is.null", [
-        "customer_id" => $customerId
-    ]);
-    supabase("PATCH", "billing_orders?email=eq." . urlencode($email) . "&customer_id=is.null", [
-        "customer_id" => $customerId
-    ]);
-    return $customerAccount;
-}
-
-function dashboard_free_billing_snapshot(string $customerId, string $email): array {
-    return [
-        "customer_id" => $customerId,
-        "email" => $email,
-        "wallet_balance_paise" => 0,
-        "current_plan" => "free",
-        "subscription_status" => "free",
-        "auto_recharge_enabled" => false,
-        "saved_payment_method_status" => "missing"
-    ];
-}
-
-function dashboard_repair_misassigned_billing_account(string $customerId, string $email, array $account): array {
-    if ($customerId === '' || $email === '' || !dashboard_billing_account_has_value($account)) {
-        return $account;
-    }
-    $ownerCustomerId = dashboard_legacy_owner_customer_id($email);
-    if ($ownerCustomerId === '' || $ownerCustomerId === $customerId) {
-        return $account;
-    }
-    if (dashboard_customer_has_paid_order($email, $customerId)) {
-        return $account;
-    }
-    $payload = ["customer_id" => $ownerCustomerId, "email" => $email];
-    foreach ([
-        "wallet_balance_paise",
-        "current_plan",
-        "subscription_status",
-        "auto_recharge_enabled",
-        "auto_recharge_threshold_paise",
-        "auto_recharge_amount_paise",
-        "saved_payment_method_status",
-        "saved_payment_method_reference",
-        "saved_payment_method_customer_id",
-        "saved_payment_method_contact",
-        "last_auto_recharge_attempt_at",
-        "current_period_start",
-        "current_period_end"
-    ] as $field) {
-        if (array_key_exists($field, $account)) {
-            $payload[$field] = $account[$field];
-        }
-    }
-    $ownerRows = safe_data(supabase("GET", "billing_accounts?select=*&customer_id=eq." . urlencode($ownerCustomerId) . "&limit=1"));
-    if (empty($ownerRows[0])) {
-        supabase("POST", "billing_accounts", [$payload]);
-    } elseif (!dashboard_billing_account_has_value($ownerRows[0])) {
-        supabase("PATCH", "billing_accounts?customer_id=eq." . urlencode($ownerCustomerId), $payload);
-    }
-    supabase("PATCH", "billing_accounts?customer_id=eq." . urlencode($customerId), [
-        "wallet_balance_paise" => 0,
-        "current_plan" => "free",
-        "subscription_status" => "free",
-        "auto_recharge_enabled" => false,
-        "auto_recharge_threshold_paise" => 0,
-        "auto_recharge_amount_paise" => 0,
-        "saved_payment_method_status" => "missing",
-        "saved_payment_method_reference" => null,
-        "saved_payment_method_customer_id" => null,
-        "saved_payment_method_contact" => null
-    ]);
-    dashboard_disable_paid_service_toggles([["customer_id" => $customerId]], 'subscription_owner_mismatch');
-    return dashboard_free_billing_snapshot($customerId, $email);
-}
-
-function date_in_range(array $row, string $field, string $from, string $to): bool {
-    $date = substr((string)($row[$field] ?? ''), 0, 10);
-    if ($date === '') {
-        return false;
-    }
-    return $date >= $from && $date <= $to;
-}
-
-function analytics_summary_for_period(array $conversationRows, array $leadRows, array $sessionRows, string $from, string $to): array {
-    $conversations = array_values(array_filter($conversationRows, fn($row) => date_in_range($row, 'created_at', $from, $to)));
-    $leads = array_values(array_filter($leadRows, fn($row) => date_in_range($row, 'created_at', $from, $to)));
-    $sessions = array_values(array_filter($sessionRows, fn($row) => date_in_range($row, 'created_at', $from, $to)));
-    $answered = 0;
-    $responseTimes = [];
-    $visitors = [];
-    $messageTotal = 0;
-    foreach ($conversations as $row) {
-        if (filter_var($row['is_answered'] ?? false, FILTER_VALIDATE_BOOLEAN) || (string)($row['status'] ?? '') === 'answered') {
-            $answered++;
-        }
-        if (isset($row['response_time_ms']) && is_numeric($row['response_time_ms'])) {
-            $responseTimes[] = (int)$row['response_time_ms'];
-        }
-        $visitor = trim((string)($row['user_id'] ?? $row['session_id'] ?? ''));
-        if ($visitor !== '') {
-            $visitors[$visitor] = true;
-        }
-    }
-    foreach ($sessions as $session) {
-        $messageTotal += (int)($session['message_count'] ?? 0);
-        $visitor = trim((string)($session['user_id'] ?? $session['session_id'] ?? ''));
-        if ($visitor !== '') {
-            $visitors[$visitor] = true;
-        }
-    }
-    $conversationCount = count($conversations);
-    $leadCount = count($leads);
-    $verifiedLeadCount = count(array_filter($leads, function ($lead) {
-        return filter_var($lead['email_otp_verified'] ?? false, FILTER_VALIDATE_BOOLEAN)
-            || filter_var($lead['mobile_otp_verified'] ?? false, FILTER_VALIDATE_BOOLEAN)
-            || (string)($lead['verification_quality'] ?? '') === 'real';
-    }));
-    return [
-        'conversations' => $conversationCount,
-        'messages' => max($conversationCount, $messageTotal),
-        'answer_rate' => $conversationCount > 0 ? round(($answered / max(1, $conversationCount)) * 100) : 0,
-        'unanswered' => max(0, $conversationCount - $answered),
-        'leads' => $leadCount,
-        'verified_leads' => $verifiedLeadCount,
-        'lead_conversion' => $conversationCount > 0 ? round(($leadCount / max(1, $conversationCount)) * 100) : 0,
-        'visitors' => count($visitors),
-        'avg_response_time_ms' => !empty($responseTimes) ? round(array_sum($responseTimes) / count($responseTimes)) : 0
-    ];
-}
-
-function analytics_url(string $range, string $selectedBotId, string $from = '', string $to = ''): string {
-    $params = ['analytics_range' => $range];
-    if ($selectedBotId !== '') {
-        $params['bot'] = $selectedBotId;
-    }
-    if ($range === 'custom') {
-        if ($from !== '') {
-            $params['date_from'] = $from;
-        }
-        if ($to !== '') {
-            $params['date_to'] = $to;
-        }
-    }
-    return 'dashboard.php?' . http_build_query($params) . '#analytics';
-}
-
-$allowedAnalyticsRanges = ['today', 'yesterday', '7_days', '30_days', 'custom'];
-$analyticsRange = in_array($_GET['analytics_range'] ?? '', $allowedAnalyticsRanges, true)
-    ? $_GET['analytics_range']
-    : '30_days';
-$analyticsToday = gmdate('Y-m-d');
-$analyticsYesterday = gmdate('Y-m-d', time() - 86400);
-$analyticsFrom = gmdate('Y-m-d', time() - (29 * 86400));
-$analyticsTo = $analyticsToday;
-
-if ($analyticsRange === 'today') {
-    $analyticsFrom = $analyticsToday;
-} elseif ($analyticsRange === 'yesterday') {
-    $analyticsFrom = $analyticsYesterday;
-    $analyticsTo = $analyticsYesterday;
-} elseif ($analyticsRange === '7_days') {
-    $analyticsFrom = gmdate('Y-m-d', time() - (6 * 86400));
-} elseif ($analyticsRange === 'custom') {
-    $customFrom = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['date_from'] ?? '') ? $_GET['date_from'] : $analyticsFrom;
-    $customTo = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['date_to'] ?? '') ? $_GET['date_to'] : $analyticsToday;
-    $analyticsFrom = min($customFrom, $customTo);
-    $analyticsTo = max($customFrom, $customTo);
-}
-
-$bots = safe_data(supabase(
-    "GET",
-    "chatbot_signups?select=*&email=eq." . urlencode($email) . "&order=created_at.desc"
-));
-
-if (!$selectedBotId && !empty($bots[0]['customer_id'])) {
-    $selectedBotId = (string)$bots[0]['customer_id'];
-}
-
-$selectedBot = [];
-foreach ($bots as $bot) {
-    if (($bot['customer_id'] ?? '') === $selectedBotId) {
-        $selectedBot = $bot;
-        break;
-    }
-}
-
-if (empty($selectedBot) && $selectedBotId) {
-    $fallbackBot = safe_data(supabase(
-        "GET",
-        "chatbot_signups?select=*&customer_id=eq." . urlencode($selectedBotId) . "&limit=1"
-    ));
-    $selectedBot = $fallbackBot[0] ?? [];
-}
-
-$faqs = $selectedBotId
-    ? safe_data(supabase(
-        "GET",
-        "faq_questions?select=*&customer_id=eq." . urlencode($selectedBotId) . "&order=id.desc"
-    ))
-    : [];
-
-$usageRows = $selectedBotId
-    ? safe_data(supabase(
-        "GET",
-        "faq_usage?select=*&customer_id=eq." . urlencode($selectedBotId)
-    ))
-    : [];
-
-$conversationRows = $selectedBotId
-    ? safe_data(supabase(
-        "GET",
-        "chatbot_conversations?select=*&customer_id=eq." . urlencode($selectedBotId) . "&order=created_at.desc&limit=500"
-    ))
-    : [];
-
-$sessionRows = $selectedBotId
-    ? safe_data(supabase(
-        "GET",
-        "chatbot_sessions?select=*&customer_id=eq." . urlencode($selectedBotId) . "&order=last_seen_at.desc&limit=500"
-    ))
-    : [];
-
-$settingsRows = $selectedBotId
-    ? safe_data(supabase(
-        "GET",
-        "chatbot_settings?select=*&customer_id=eq." . urlencode($selectedBotId) . "&limit=1"
-    ))
-    : [];
-
-$leadSettingsRows = $selectedBotId
-    ? safe_data(supabase(
-        "GET",
-        "lead_generation_settings?select=*&customer_id=eq." . urlencode($selectedBotId) . "&limit=1"
-    ))
-    : [];
-
-$leadRows = $selectedBotId
-    ? safe_data(supabase(
-        "GET",
-        "lead_generation_leads?select=*&customer_id=eq." . urlencode($selectedBotId) . "&order=created_at.desc&limit=5000"
-    ))
-    : [];
-
-$profileRows = safe_data(supabase(
-    "GET",
-    "customer_profiles?select=*&email=eq." . urlencode($email) . "&limit=1"
-));
-
-$billingAccountRows = $selectedBotId
-    ? safe_data(supabase(
-        "GET",
-        "billing_accounts?select=*&customer_id=eq." . urlencode($selectedBotId) . "&limit=1"
-    ))
-    : [];
-
-if ($selectedBotId) {
-    $existingBillingAccount = $billingAccountRows[0] ?? [];
-    if (empty($existingBillingAccount) || !dashboard_billing_account_has_value($existingBillingAccount)) {
-        $adoptedBillingAccount = dashboard_adopt_legacy_billing_account($selectedBotId, $email, $existingBillingAccount);
-        if (!empty($adoptedBillingAccount)) {
-            $billingAccountRows = [$adoptedBillingAccount];
-        }
-    }
-    if (!empty($billingAccountRows[0])) {
-        $billingAccountRows[0] = dashboard_repair_misassigned_billing_account($selectedBotId, $email, $billingAccountRows[0]);
-    }
-}
-
-$walletTransactionRows = $selectedBotId
-    ? safe_data(supabase(
-        "GET",
-        "wallet_transactions?select=*&customer_id=eq." . urlencode($selectedBotId) . "&order=created_at.desc&limit=100"
-    ))
-    : [];
-
-$apiKeyRows = $selectedBotId
-    ? safe_data(supabase(
-        "GET",
-        "customer_api_keys?select=*&customer_id=eq." . urlencode($selectedBotId) . "&order=created_at.desc"
-    ))
-    : [];
-
-$apiUsageRows = $selectedBotId
-    ? safe_data(supabase(
-        "GET",
-        "customer_api_usage_logs?select=*&customer_id=eq." . urlencode($selectedBotId) . "&order=created_at.desc&limit=50"
-    ))
-    : [];
-
-$faqActionRows = $selectedBotId
-    ? safe_data(supabase(
-        "GET",
-        "faq_action_suggestions?select=*&customer_id=eq." . urlencode($selectedBotId) . "&order=display_order.asc,created_at.desc"
-    ))
-    : [];
-
-$scheduledFaqActionRows = $selectedBotId
-    ? safe_data(supabase(
-        "GET",
-        "faq_scheduled_action_suggestions?select=*&customer_id=eq." . urlencode($selectedBotId) . "&order=slot_no.asc"
-    ))
-    : [];
-$scheduledFaqActionsBySlot = [];
-foreach ($scheduledFaqActionRows as $row) {
-    $scheduledFaqActionsBySlot[(int)($row['slot_no'] ?? 0)] = $row;
-}
-
-$todayAllQueries = count(array_filter($conversationRows, fn($row) => date_in_range($row, 'created_at', $analyticsToday, $analyticsToday)));
-$yesterdayAllQueries = count(array_filter($conversationRows, fn($row) => date_in_range($row, 'created_at', $analyticsYesterday, $analyticsYesterday)));
-$last7AllQueries = count(array_filter($conversationRows, fn($row) => date_in_range($row, 'created_at', gmdate('Y-m-d', time() - (6 * 86400)), $analyticsToday)));
-$last30AllQueries = count(array_filter($conversationRows, fn($row) => date_in_range($row, 'created_at', gmdate('Y-m-d', time() - (29 * 86400)), $analyticsToday)));
-
-$allConversationRows = $conversationRows;
-$allUsageRows = $usageRows;
-$allLeadRows = $leadRows;
-$allSessionRows = $sessionRows;
-$analyticsRangeDays = max(1, ((strtotime($analyticsTo) - strtotime($analyticsFrom)) / 86400) + 1);
-$previousAnalyticsTo = gmdate('Y-m-d', strtotime($analyticsFrom . ' -1 day'));
-$previousAnalyticsFrom = gmdate('Y-m-d', strtotime($previousAnalyticsTo . ' -' . ((int)$analyticsRangeDays - 1) . ' days'));
-$analyticsCurrentSummary = analytics_summary_for_period($allConversationRows, $allLeadRows, $allSessionRows, $analyticsFrom, $analyticsTo);
-$analyticsPreviousSummary = analytics_summary_for_period($allConversationRows, $allLeadRows, $allSessionRows, $previousAnalyticsFrom, $previousAnalyticsTo);
-$conversationRows = array_values(array_filter($conversationRows, fn($row) => date_in_range($row, 'created_at', $analyticsFrom, $analyticsTo)));
-$usageRows = array_values(array_filter($usageRows, fn($row) => date_in_range($row, 'created_at', $analyticsFrom, $analyticsTo)));
-$leadRows = array_values(array_filter($leadRows, fn($row) => date_in_range($row, 'created_at', $analyticsFrom, $analyticsTo)));
-$sessionRows = array_values(array_filter($sessionRows, fn($row) => date_in_range($row, 'created_at', $analyticsFrom, $analyticsTo)));
-
-$settings = $settingsRows[0] ?? [];
-$leadSettings = $leadSettingsRows[0] ?? [];
-$profile = $profileRows[0] ?? [];
-$billingAccount = $billingAccountRows[0] ?? [];
-$billingStatus = (string)($billingAccount['subscription_status'] ?? 'free');
-$billingPeriodEnd = (string)($billingAccount['current_period_end'] ?? '');
-$billingWalletRaw = (int)($billingAccount['wallet_balance_paise'] ?? 0);
-if (
-    ($billingStatus === 'cancelled' && $billingWalletRaw <= 0) ||
-    ($billingStatus === 'active' && $billingPeriodEnd !== '' && strtotime($billingPeriodEnd) < time())
-) {
-    $transitionReason = $billingStatus === 'cancelled' ? 'wallet_empty' : 'plan_expired';
-    supabase("PATCH", "billing_accounts?customer_id=eq." . urlencode($selectedBotId), [
-        "current_plan" => "free",
-        "subscription_status" => "free",
-        "auto_recharge_enabled" => false,
-        "saved_payment_method_status" => "failed",
-        "saved_payment_method_reference" => null
-    ]);
-    dashboard_disable_paid_service_toggles($selectedBot ? [$selectedBot] : [], $transitionReason);
-    $billingAccountRows = safe_data(supabase("GET", "billing_accounts?select=*&customer_id=eq." . urlencode($selectedBotId) . "&limit=1"));
-    $billingAccount = $billingAccountRows[0] ?? $billingAccount;
-    if ($selectedBotId) {
-        $settingsRows = safe_data(supabase("GET", "chatbot_settings?select=*&customer_id=eq." . urlencode($selectedBotId) . "&limit=1"));
-        $leadSettingsRows = safe_data(supabase("GET", "lead_generation_settings?select=*&customer_id=eq." . urlencode($selectedBotId) . "&limit=1"));
-        $settings = $settingsRows[0] ?? [];
-        $leadSettings = $leadSettingsRows[0] ?? [];
-    }
-}
-$activePlanId = billing_active_plan_from_account($billingAccount);
-$activePlan = billing_plan($activePlanId);
-$billingWalletPaise = (int)($billingAccount['wallet_balance_paise'] ?? 0);
-$subscriptionStatus = (string)($billingAccount['subscription_status'] ?? 'free');
-$isCancelledWalletAccess = $subscriptionStatus === 'cancelled' && $activePlanId !== 'free' && $billingWalletPaise > 0;
-$planFaqLimit = billing_faq_limit($activePlanId);
-$canUseAdvancedAnalytics = billing_feature_enabled($activePlanId, 'advanced_analytics');
-$canUsePartialAnalytics = billing_feature_enabled($activePlanId, 'partial_analytics') || $canUseAdvancedAnalytics;
-$canExportReports = billing_feature_enabled($activePlanId, 'export_reports');
-$canUseEmailOtp = billing_feature_enabled($activePlanId, 'email_otp');
-$canUseMobileOtp = billing_feature_enabled($activePlanId, 'mobile_otp');
-$canUseWhatsappRedirect = billing_feature_enabled($activePlanId, 'whatsapp_redirect');
-$canUseBusinessApi = billing_feature_enabled($activePlanId, 'api_access');
-$canUseWebhook = billing_feature_enabled($activePlanId, 'webhook_support');
-$canUseHumanHandoff = billing_feature_enabled($activePlanId, 'human_handoff');
-$canUseAllowedDomains = billing_feature_enabled($activePlanId, 'allowed_domains');
-$canUseLiveChatActions = billing_feature_enabled($activePlanId, 'live_chat_actions');
-$canUseFaqActionSuggestions = billing_feature_enabled($activePlanId, 'faq_action_suggestions');
-$autoRechargeRule = billing_auto_recharge_rule($activePlanId);
-$autoRechargeThresholdPaise = (int)($billingAccount['auto_recharge_threshold_paise'] ?? 0) ?: (int)$autoRechargeRule['threshold_paise'];
-$autoRechargeAmountPaise = (int)($billingAccount['auto_recharge_amount_paise'] ?? 0) ?: (int)$autoRechargeRule['amount_paise'];
-$autoRechargeEnabled = filter_var($billingAccount['auto_recharge_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
-$savedPaymentMethodStatus = (string)($billingAccount['saved_payment_method_status'] ?? 'missing');
-$savedPaymentCustomerId = (string)($billingAccount['saved_payment_method_customer_id'] ?? '');
-$savedPaymentContact = (string)($billingAccount['saved_payment_method_contact'] ?? '');
-$savedPaymentMethodReference = (string)($billingAccount['saved_payment_method_reference'] ?? '');
-$walletCreditPaise = array_sum(array_map(fn($row) => ($row['transaction_type'] ?? '') === 'credit' ? (int)($row['amount_paise'] ?? 0) : 0, $walletTransactionRows));
-$walletDebitPaise = array_sum(array_map(fn($row) => ($row['transaction_type'] ?? '') === 'debit' ? (int)($row['amount_paise'] ?? 0) : 0, $walletTransactionRows));
-$faqCount = count($faqs);
-$freeFaqLimit = $planFaqLimit === PHP_INT_MAX ? 999999 : $planFaqLimit;
-$displayFaqLimit = $planFaqLimit === PHP_INT_MAX ? $faqCount : $planFaqLimit;
-$faqActiveIds = [];
-foreach (array_slice(array_values(array_reverse($faqs)), 0, $displayFaqLimit) as $activeFaqRow) {
-    $faqActiveIds[(string)($activeFaqRow['id'] ?? '')] = true;
-}
-$frozenFaqCount = $planFaqLimit === PHP_INT_MAX ? 0 : max(0, $faqCount - $planFaqLimit);
-$faqFreezeActive = $frozenFaqCount > 0;
-$conversationCount = count($conversationRows);
-$today = gmdate('Y-m-d');
-$todayQueries = 0;
-$lastActivity = '';
-$answeredCount = 0;
-$unansweredCount = 0;
-$dailyCounts = [];
-$hourCounts = [];
-$topQuestionCounts = [];
-$faqById = [];
-$topFaqQuestionCounts = [];
-$outsideFaqQuestions = [];
-$sourcePageStats = [];
-$uniqueVisitors = [];
-$returningVisitors = [];
-$deviceCounts = [];
-$browserCounts = [];
-$countryCounts = [];
-$cityCounts = [];
-$responseTimes = [];
-$sessionDurations = [];
-$sessionMessageTotal = 0;
-$yesterdayQueries = 0;
-$last7Queries = 0;
-$last30Queries = 0;
-$chatOpenedCount = count($conversationRows);
-$nowTs = time();
-$yesterday = gmdate('Y-m-d', $nowTs - 86400);
-$last7Cutoff = gmdate('Y-m-d', $nowTs - (6 * 86400));
-$last30Cutoff = gmdate('Y-m-d', $nowTs - (29 * 86400));
-
-foreach ($faqs as $faq) {
-    if (isset($faq['id'])) {
-        $faqById[(string)$faq['id']] = (string)($faq['question'] ?? '');
-    }
-}
-
-foreach ($conversationRows as $row) {
-    $created = (string)($row['created_at'] ?? '');
-    if ($created && substr($created, 0, 10) === $today) {
-        $todayQueries++;
-    }
-    if ($created && substr($created, 0, 10) === $yesterday) {
-        $yesterdayQueries++;
-    }
-    if ($created) {
-        $createdDay = substr($created, 0, 10);
-        if ($createdDay >= $last7Cutoff) {
-            $last7Queries++;
-        }
-        if ($createdDay >= $last30Cutoff) {
-            $last30Queries++;
-        }
-    }
-    if (!$lastActivity || strcmp($created, $lastActivity) > 0) {
-        $lastActivity = $created;
-    }
-    $status = strtolower((string)($row['status'] ?? ''));
-    $answered = ($status === 'answered') || !empty($row['is_answered']);
-    if ($answered) {
-        $answeredCount++;
-    } else {
-        $unansweredCount++;
-    }
-    if ($created) {
-        $day = substr($created, 0, 10);
-        $hour = substr($created, 11, 2);
-        $dailyCounts[$day] = ($dailyCounts[$day] ?? 0) + 1;
-        if ($hour !== '') {
-            $hourCounts[$hour] = ($hourCounts[$hour] ?? 0) + 1;
-        }
-    }
-    $question = trim((string)($row['user_question'] ?? $row['question'] ?? ''));
-    $sourceUrl = trim((string)($row['source_url'] ?? ''));
-    $sourceLabel = $sourceUrl !== '' ? parse_url($sourceUrl, PHP_URL_PATH) : '';
-    $sourceLabel = $sourceLabel ?: ($sourceUrl ?: 'Unknown page');
-    if (!isset($sourcePageStats[$sourceLabel])) {
-        $sourcePageStats[$sourceLabel] = [
-            'page' => $sourceLabel,
-            'conversations' => 0,
-            'leads' => 0,
-            'answered' => 0
-        ];
-    }
-    $sourcePageStats[$sourceLabel]['conversations']++;
-    if ($answered) {
-        $sourcePageStats[$sourceLabel]['answered']++;
-    }
-    $visitorId = trim((string)($row['user_id'] ?? ''));
-    if ($visitorId !== '') {
-        $uniqueVisitors[$visitorId] = true;
-        $returningVisitors[$visitorId] = ($returningVisitors[$visitorId] ?? 0) + 1;
-    }
-    $device = first_value($row, ['device_type'], '');
-    if ($device !== '') {
-        $deviceCounts[$device] = ($deviceCounts[$device] ?? 0) + 1;
-    }
-    $browser = first_value($row, ['browser_name'], '');
-    if ($browser !== '') {
-        $browserCounts[$browser] = ($browserCounts[$browser] ?? 0) + 1;
-    }
-    $country = first_value($row, ['country_name', 'country_code'], '');
-    if ($country !== '') {
-        $countryCounts[$country] = ($countryCounts[$country] ?? 0) + 1;
-    }
-    $city = first_value($row, ['city'], '');
-    if ($city !== '') {
-        $cityCounts[$city] = ($cityCounts[$city] ?? 0) + 1;
-    }
-    $responseTime = (int)($row['response_time_ms'] ?? 0);
-    if ($responseTime > 0) {
-        $responseTimes[] = $responseTime;
-    }
-    if ($question !== '') {
-        $key = strtolower($question);
-        $topQuestionCounts[$key] = [
-            'question' => $question,
-            'count' => ($topQuestionCounts[$key]['count'] ?? 0) + 1,
-            'answered' => ($topQuestionCounts[$key]['answered'] ?? 0) + ($answered ? 1 : 0)
-        ];
-        if (!$answered) {
-            $outsideFaqQuestions[] = [
-                'question' => $question,
-                'source_page' => $sourceLabel,
-                'bot_response' => (string)($row['bot_response'] ?? $row['response'] ?? ''),
-                'created_at' => (string)($row['created_at'] ?? '')
-            ];
-        }
-    }
-    $matchedFaqId = (string)($row['matched_faq_id'] ?? $row['question_id'] ?? '');
-    if ($matchedFaqId !== '' && isset($faqById[$matchedFaqId])) {
-        $faqQuestion = $faqById[$matchedFaqId];
-        $topFaqQuestionCounts[$matchedFaqId] = [
-            'question' => $faqQuestion,
-            'count' => ($topFaqQuestionCounts[$matchedFaqId]['count'] ?? 0)
-        ];
-    }
-}
-
-foreach ($leadRows as $lead) {
-    $sourceUrl = trim((string)($lead['source_url'] ?? ''));
-    $sourceLabel = $sourceUrl !== '' ? parse_url($sourceUrl, PHP_URL_PATH) : '';
-    $sourceLabel = $sourceLabel ?: ($sourceUrl ?: 'Unknown page');
-    if (!isset($sourcePageStats[$sourceLabel])) {
-        $sourcePageStats[$sourceLabel] = [
-            'page' => $sourceLabel,
-            'conversations' => 0,
-            'leads' => 0,
-            'answered' => 0
-        ];
-    }
-    $sourcePageStats[$sourceLabel]['leads']++;
-}
-
-foreach ($sessionRows as $session) {
-    $sessionId = trim((string)($session['session_id'] ?? ''));
-    $visitorId = trim((string)($session['user_id'] ?? ''));
-    if ($visitorId !== '') {
-        $uniqueVisitors[$visitorId] = true;
-    }
-    $duration = (int)($session['duration_seconds'] ?? 0);
-    if ($duration > 0) {
-        $sessionDurations[] = $duration;
-    }
-    $sessionMessageTotal += max(0, (int)($session['message_count'] ?? 0));
-    $device = first_value($session, ['device_type'], '');
-    if ($device !== '') {
-        $deviceCounts[$device] = ($deviceCounts[$device] ?? 0) + 1;
-    }
-    $browser = first_value($session, ['browser_name'], '');
-    if ($browser !== '') {
-        $browserCounts[$browser] = ($browserCounts[$browser] ?? 0) + 1;
-    }
-    $country = first_value($session, ['country_name', 'country_code'], '');
-    if ($country !== '') {
-        $countryCounts[$country] = ($countryCounts[$country] ?? 0) + 1;
-    }
-    $city = first_value($session, ['city'], '');
-    if ($city !== '') {
-        $cityCounts[$city] = ($cityCounts[$city] ?? 0) + 1;
-    }
-}
-
-if (!$conversationCount && !empty($usageRows)) {
-    $conversationCount = count($usageRows);
-    $answeredCount = count($usageRows);
-    foreach ($usageRows as $row) {
-        $created = (string)($row['created_at'] ?? '');
-        if ($created && substr($created, 0, 10) === $today) {
-            $todayQueries++;
-        }
-        if ($created && (!$lastActivity || strcmp($created, $lastActivity) > 0)) {
-            $lastActivity = $created;
-        }
-    }
-}
-
-if (!empty($usageRows)) {
-    foreach ($usageRows as $row) {
-        $questionId = (string)($row['question_id'] ?? '');
-        if ($questionId !== '' && isset($faqById[$questionId])) {
-            $topFaqQuestionCounts[$questionId] = [
-                'question' => $faqById[$questionId],
-                'count' => ($topFaqQuestionCounts[$questionId]['count'] ?? 0) + 1
-            ];
-        }
-    }
-}
-
-$accuracy = $conversationCount > 0
-    ? round(($answeredCount / max(1, $conversationCount)) * 100)
-    : ($faqCount > 0 ? 100 : 0);
-
-$unansweredPercent = $conversationCount > 0
-    ? round(($unansweredCount / max(1, $conversationCount)) * 100)
-    : 0;
-
-uasort($topQuestionCounts, fn($a, $b) => $b['count'] <=> $a['count']);
-uasort($topFaqQuestionCounts, fn($a, $b) => $b['count'] <=> $a['count']);
-uasort($sourcePageStats, fn($a, $b) => $b['conversations'] <=> $a['conversations']);
-arsort($deviceCounts);
-arsort($browserCounts);
-arsort($countryCounts);
-arsort($cityCounts);
-$dailyChartCounts = $dailyCounts;
-ksort($dailyChartCounts);
-$hourChartCounts = $hourCounts;
-ksort($hourChartCounts);
-arsort($hourCounts);
-$peakUsage = !empty($hourCounts) ? array_key_first($hourCounts) . ":00" : "Not enough data";
-$uniqueVisitorCount = count($uniqueVisitors);
-$returningVisitorCount = count(array_filter($returningVisitors, fn($count) => $count > 1));
-$returningUsersPercent = $uniqueVisitorCount > 0 ? round(($returningVisitorCount / max(1, $uniqueVisitorCount)) * 100) : 0;
-$totalMessages = max($conversationCount, $sessionMessageTotal);
-$leadCount = count($leadRows);
-$verifiedLeadCount = 0;
-$emailLeadCount = 0;
-$phoneLeadCount = 0;
-$mostActivePage = !empty($sourcePageStats) ? array_values($sourcePageStats)[0]['page'] : 'No data yet';
-$activeChatbotCount = filter_var($settings['is_active'] ?? true, FILTER_VALIDATE_BOOLEAN) ? 1 : 0;
-
-foreach ($leadRows as $lead) {
-    $emailVerified = filter_var($lead['email_otp_verified'] ?? false, FILTER_VALIDATE_BOOLEAN);
-    $mobileVerified = filter_var($lead['mobile_otp_verified'] ?? false, FILTER_VALIDATE_BOOLEAN);
-    if ($emailVerified || $mobileVerified || (string)($lead['verification_quality'] ?? '') === 'real') {
-        $verifiedLeadCount++;
-    }
-    if (!empty($lead['email'])) {
-        $emailLeadCount++;
-    }
-    if (!empty($lead['phone_number'])) {
-        $phoneLeadCount++;
-    }
-}
-
-$leadPeriodStats = [
-    ['label' => 'Weekly', 'days' => 7, 'count' => dashboard_lead_period_count($allLeadRows, 7)],
-    ['label' => 'Monthly', 'days' => 30, 'count' => dashboard_lead_period_count($allLeadRows, 30)],
-    ['label' => 'Quarterly', 'days' => 90, 'count' => dashboard_lead_period_count($allLeadRows, 90)],
-    ['label' => 'Six months', 'days' => 182, 'count' => dashboard_lead_period_count($allLeadRows, 182)],
-    ['label' => 'Yearly', 'days' => 365, 'count' => dashboard_lead_period_count($allLeadRows, 365)]
-];
-
-$uniqueLeadMap = [];
-$leadEmailIndex = [];
-$leadPhoneIndex = [];
-foreach ($leadRows as $lead) {
-    $email = strtolower(trim((string)($lead['email'] ?? '')));
-    $phone = dashboard_normalize_lead_phone((string)($lead['phone_number'] ?? ''));
-    $emailKey = $email !== '' && isset($leadEmailIndex[$email]) ? $leadEmailIndex[$email] : '';
-    $phoneKey = $phone !== '' && isset($leadPhoneIndex[$phone]) ? $leadPhoneIndex[$phone] : '';
-    if ($emailKey !== '' && $phoneKey !== '' && $emailKey !== $phoneKey && isset($uniqueLeadMap[$emailKey], $uniqueLeadMap[$phoneKey])) {
-        $uniqueLeadMap[$emailKey]['email'] = $uniqueLeadMap[$emailKey]['email'] ?: $uniqueLeadMap[$phoneKey]['email'];
-        $uniqueLeadMap[$emailKey]['phone_number'] = $uniqueLeadMap[$emailKey]['phone_number'] ?: $uniqueLeadMap[$phoneKey]['phone_number'];
-        $uniqueLeadMap[$emailKey]['email_otp_count'] += (int)$uniqueLeadMap[$phoneKey]['email_otp_count'];
-        $uniqueLeadMap[$emailKey]['mobile_otp_count'] += (int)$uniqueLeadMap[$phoneKey]['mobile_otp_count'];
-        $uniqueLeadMap[$emailKey]['total_records'] += (int)$uniqueLeadMap[$phoneKey]['total_records'];
-        $uniqueLeadMap[$emailKey]['whatsapp_redirect_count'] += (int)$uniqueLeadMap[$phoneKey]['whatsapp_redirect_count'];
-        $uniqueLeadMap[$emailKey]['source_pages'] = array_replace($uniqueLeadMap[$emailKey]['source_pages'], $uniqueLeadMap[$phoneKey]['source_pages']);
-        $uniqueLeadMap[$emailKey]['location'] = $uniqueLeadMap[$emailKey]['location'] ?: $uniqueLeadMap[$phoneKey]['location'];
-        $uniqueLeadMap[$emailKey]['lead_type'] = ($uniqueLeadMap[$emailKey]['lead_type'] === 'Real' || $uniqueLeadMap[$phoneKey]['lead_type'] === 'Real') ? 'Real' : 'Weak';
-        if ($uniqueLeadMap[$emailKey]['first_seen'] === '' || ($uniqueLeadMap[$phoneKey]['first_seen'] !== '' && strcmp($uniqueLeadMap[$phoneKey]['first_seen'], $uniqueLeadMap[$emailKey]['first_seen']) < 0)) {
-            $uniqueLeadMap[$emailKey]['first_seen'] = $uniqueLeadMap[$phoneKey]['first_seen'];
-        }
-        if ($uniqueLeadMap[$emailKey]['last_seen'] === '' || ($uniqueLeadMap[$phoneKey]['last_seen'] !== '' && strcmp($uniqueLeadMap[$phoneKey]['last_seen'], $uniqueLeadMap[$emailKey]['last_seen']) > 0)) {
-            $uniqueLeadMap[$emailKey]['last_seen'] = $uniqueLeadMap[$phoneKey]['last_seen'];
-        }
-        foreach ($leadPhoneIndex as $indexedPhone => $indexedKey) {
-            if ($indexedKey === $phoneKey) {
-                $leadPhoneIndex[$indexedPhone] = $emailKey;
-            }
-        }
-        unset($uniqueLeadMap[$phoneKey]);
-        $phoneKey = $emailKey;
-    }
-    $key = $emailKey !== '' ? $emailKey : $phoneKey;
-    if ($key === '') {
-        $key = $email !== '' ? 'email:' . $email : ($phone !== '' ? 'phone:' . $phone : 'lead:' . (string)($lead['id'] ?? count($uniqueLeadMap)));
-        $uniqueLeadMap[$key] = [
-            'lead_type' => 'Weak',
-            'email' => '',
-            'phone_number' => '',
-            'email_otp_count' => 0,
-            'mobile_otp_count' => 0,
-            'total_records' => 0,
-            'whatsapp_redirect_count' => 0,
-            'source_pages' => [],
-            'location' => '',
-            'first_seen' => '',
-            'last_seen' => ''
-        ];
-    }
-    if ($email !== '') {
-        $leadEmailIndex[$email] = $key;
-        $uniqueLeadMap[$key]['email'] = $uniqueLeadMap[$key]['email'] ?: (string)($lead['email'] ?? '');
-    }
-    if ($phone !== '') {
-        $leadPhoneIndex[$phone] = $key;
-        $uniqueLeadMap[$key]['phone_number'] = $uniqueLeadMap[$key]['phone_number'] ?: (string)($lead['phone_number'] ?? '');
-    }
-    $emailVerified = filter_var($lead['email_otp_verified'] ?? false, FILTER_VALIDATE_BOOLEAN);
-    $mobileVerified = filter_var($lead['mobile_otp_verified'] ?? false, FILTER_VALIDATE_BOOLEAN);
-    if ($emailVerified) {
-        $uniqueLeadMap[$key]['email_otp_count']++;
-    }
-    if ($mobileVerified) {
-        $uniqueLeadMap[$key]['mobile_otp_count']++;
-    }
-    if ($emailVerified || $mobileVerified || (string)($lead['verification_quality'] ?? '') === 'real') {
-        $uniqueLeadMap[$key]['lead_type'] = 'Real';
-    }
-    if (filter_var($lead['whatsapp_redirected'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
-        $uniqueLeadMap[$key]['whatsapp_redirect_count']++;
-    }
-    $sourceUrl = trim((string)($lead['source_url'] ?? ''));
-    $sourceLabel = $sourceUrl !== '' ? (parse_url($sourceUrl, PHP_URL_PATH) ?: $sourceUrl) : '';
-    if ($sourceLabel !== '') {
-        $uniqueLeadMap[$key]['source_pages'][$sourceLabel] = true;
-    }
-    $location = first_value($lead, ['location_text', 'city', 'country_name'], '');
-    if ($location !== '' && $uniqueLeadMap[$key]['location'] === '') {
-        $uniqueLeadMap[$key]['location'] = $location;
-    }
-    $created = (string)($lead['created_at'] ?? '');
-    if ($created !== '') {
-        if ($uniqueLeadMap[$key]['first_seen'] === '' || strcmp($created, $uniqueLeadMap[$key]['first_seen']) < 0) {
-            $uniqueLeadMap[$key]['first_seen'] = $created;
-        }
-        if ($uniqueLeadMap[$key]['last_seen'] === '' || strcmp($created, $uniqueLeadMap[$key]['last_seen']) > 0) {
-            $uniqueLeadMap[$key]['last_seen'] = $created;
-        }
-    }
-    $uniqueLeadMap[$key]['total_records']++;
-}
-$uniqueLeadRows = array_values($uniqueLeadMap);
-usort($uniqueLeadRows, fn($a, $b) => strcmp((string)($b['last_seen'] ?? ''), (string)($a['last_seen'] ?? '')));
-$uniqueLeadCount = count($uniqueLeadRows);
-$weakLeadCount = count(array_filter($uniqueLeadRows, fn($row) => ($row['lead_type'] ?? '') === 'Weak'));
-$realUniqueLeadCount = $uniqueLeadCount - $weakLeadCount;
-
-$leadConversionRate = $conversationCount > 0 ? round(($leadCount / max(1, $conversationCount)) * 100) : 0;
-$otpVerifiedLeadPercent = $leadCount > 0 ? round(($verifiedLeadCount / max(1, $leadCount)) * 100) : 0;
-$avgResponseTimeMs = !empty($responseTimes) ? round(array_sum($responseTimes) / count($responseTimes)) : 0;
-$avgConversationDurationSeconds = !empty($sessionDurations) ? round(array_sum($sessionDurations) / count($sessionDurations)) : 0;
-$avgConversationDuration = $avgConversationDurationSeconds > 0
-    ? gmdate($avgConversationDurationSeconds >= 3600 ? 'H:i:s' : 'i:s', $avgConversationDurationSeconds)
-    : 'No data yet';
-$activeUsersNow = 0;
-$now = time();
-foreach ($sessionRows as $session) {
-    $lastSeen = strtotime((string)($session['last_seen_at'] ?? '')) ?: 0;
-    $endedAt = (string)($session['ended_at'] ?? '');
-    if ($lastSeen && ($now - $lastSeen) <= 300 && $endedAt === '') {
-        $activeUsersNow++;
-    }
-}
-$sessionsOpened = count(array_filter($sessionRows, fn($session) => !empty($session['opened_at'])));
-$sessionsStarted = count(array_filter($sessionRows, fn($session) => !empty($session['started_at']) || (int)($session['message_count'] ?? 0) > 0));
-$chatOpenedCount = $sessionsOpened ?: $chatOpenedCount;
-$bounceAfterOpenRate = $sessionsOpened > 0 ? round((($sessionsOpened - $sessionsStarted) / max(1, $sessionsOpened)) * 100) : 0;
-$fallbackRate = $unansweredPercent;
-$escalationRate = 0;
-$handoffRate = 0;
-$abandonmentRate = 0;
-$satisfactionPercent = $accuracy;
-$avgMessagesPerConversation = $sessionsStarted > 0
-    ? round($sessionMessageTotal / max(1, $sessionsStarted), 1)
-    : ($conversationCount > 0 ? round($totalMessages / max(1, $conversationCount), 1) : 0);
-$chatOpenRate = $uniqueVisitorCount > 0 ? round(($sessionsOpened / max(1, $uniqueVisitorCount)) * 100) : 0;
-$maxDailyCount = !empty($dailyChartCounts) ? max($dailyChartCounts) : 0;
-$maxHourCount = !empty($hourChartCounts) ? max($hourChartCounts) : 0;
-$themeColor = first_value($selectedBot, ['theme_color'], '#6366f1');
-$themeColor = first_value($settings, ['theme_color'], $themeColor);
-$themeColorInputValue = dashboard_theme_color_input_value($themeColor);
-$themePattern = first_value($settings, ['theme_pattern'], 'none');
-$chatbotImage = first_value($settings, ['avatar_url'], $botImages[0] ?? '');
-$botName = first_value($settings, ['bot_name'], first_value($selectedBot, ['website_name'], 'Vani Bot'));
-$welcomeMessage = first_value($settings, ['welcome_message'], 'Hi, how can I help you today?');
-$position = first_value($settings, ['position'], 'right');
-$language = first_value($settings, ['language'], 'English');
-$rawActive = $settings['is_active'] ?? true;
-$isActive = is_bool($rawActive) ? $rawActive : ((string)$rawActive !== 'false');
-$websiteVerificationEnabled = filter_var($settings['website_verification_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
-$allowedDomainsEnabled = filter_var($settings['allowed_domains_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
-$allowedDomains = first_value($settings, ['allowed_domains'], '');
-$handoffEnabled = filter_var($settings['handoff_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
-$handoffEmail = first_value($settings, ['handoff_email'], $email);
-$liveChatActionsEnabled = filter_var($settings['live_chat_actions_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
-$faqActionsEnabled = filter_var($settings['faq_actions_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
-$faqCategoryMenuEnabled = filter_var($settings['faq_category_menu_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
-$verificationStatus = first_value($settings, ['verification_status'], 'Pending');
-$faqById = [];
-foreach ($faqs as $faq) {
-    $faqById[(string)($faq['id'] ?? '')] = $faq;
-}
-$websiteName = first_value($selectedBot, ['website_name'], '');
-$leadEnabled = filter_var($leadSettings['is_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
-$leadCollectLocation = filter_var($leadSettings['collect_location'] ?? false, FILTER_VALIDATE_BOOLEAN);
-$leadCollectEmail = filter_var($leadSettings['collect_email'] ?? false, FILTER_VALIDATE_BOOLEAN);
-$leadCollectMobile = filter_var($leadSettings['collect_mobile'] ?? false, FILTER_VALIDATE_BOOLEAN);
-$leadVerifyEmailOtp = filter_var($leadSettings['verify_email_otp'] ?? false, FILTER_VALIDATE_BOOLEAN);
-$leadNotifyByEmail = filter_var($leadSettings['notify_lead_by_email'] ?? false, FILTER_VALIDATE_BOOLEAN);
-$leadRedirectWhatsapp = filter_var($leadSettings['redirect_whatsapp'] ?? false, FILTER_VALIDATE_BOOLEAN);
-$leadVerifyMobileOtp = filter_var($leadSettings['verify_mobile_otp'] ?? false, FILTER_VALIDATE_BOOLEAN);
-$leadNotificationEmail = first_value($leadSettings, ['notification_email'], $email);
-$leadWhatsappNumber = first_value($leadSettings, ['whatsapp_mobile_number'], '');
-$nowTimestamp = time();
-$todayInIndia = (new DateTimeImmutable('now', new DateTimeZone('Asia/Kolkata')))->format('Y-m-d');
-$whatsappToggleDate = (string)($leadSettings['whatsapp_redirect_toggle_date'] ?? '');
-$whatsappToggleCount = $whatsappToggleDate === $todayInIndia ? (int)($leadSettings['whatsapp_redirect_toggle_count'] ?? 0) : 0;
-$whatsappLockedUntil = (string)($leadSettings['whatsapp_redirect_locked_until'] ?? '');
-$whatsappLockedUntilTime = $whatsappLockedUntil !== '' ? (strtotime($whatsappLockedUntil) ?: 0) : 0;
-$whatsappRedirectLocked = $whatsappLockedUntilTime > $nowTimestamp;
-$whatsappRedirectLockedOn = $leadRedirectWhatsapp && $whatsappRedirectLocked;
-$whatsappLockSecondsRemaining = $whatsappRedirectLocked ? max(0, $whatsappLockedUntilTime - $nowTimestamp) : 0;
-$whatsappChargePaise = billing_wallet_charge_paise($activePlanId, 'whatsapp_redirect_addon');
-$whatsappWalletCanEnable = $billingWalletPaise >= $whatsappChargePaise;
-$whatsappStoppedReason = (string)($leadSettings['whatsapp_redirect_stopped_reason'] ?? '');
-$whatsappFailedChargePaise = (int)($leadSettings['whatsapp_redirect_failed_charge_amount_paise'] ?? 0);
-$embedCode = $selectedBotId ? '<script src="' . $widgetUrl . '" data-id="' . $selectedBotId . '"></script>' : '';
-$profileFirstName = first_value($profile, ['first_name'], '');
-$profileLastName = first_value($profile, ['last_name'], '');
-$displayName = trim($profileFirstName . ' ' . $profileLastName);
-$razorpayCustomerName = $displayName ?: $email;
-$profileContactValue = preg_replace('/[^\d+]/', '', (string)($profile['country_code'] ?? '+91') . (string)($profile['mobile_number'] ?? ''));
-if ($profileContactValue !== '' && $profileContactValue[0] !== '+') {
-    $profileContactValue = '+91' . ltrim($profileContactValue, '0');
-}
-$razorpayCustomerContact = $savedPaymentContact ?: $profileContactValue;
-$initialSource = $profileFirstName ?: $email;
-$initials = strtoupper(substr($initialSource, 0, 1));
-$analyticsRangeLabel = [
-    'today' => 'Today',
-    'yesterday' => 'Yesterday',
-    '7_days' => 'Last 7 days',
-    '30_days' => 'Last 30 days',
-    'custom' => 'Custom range'
-][$analyticsRange] ?? 'Last 30 days';
-?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1695,13 +610,13 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
       <button class="tab-btn" data-tab="subscription">Subscription</button>
       <button class="tab-btn" data-tab="profile">Profile</button>
       <button class="tab-btn" data-tab="billing">Billing</button>
-      <a class="tab-btn" href="test-chatbot.php?bot=<?php echo h(urlencode($selectedBotId)); ?>">Test Chatbot</a>
+      <a class="tab-btn" href="test-chatbot.php?bot=">Test Chatbot</a>
     </div>
     <div class="sidebar-footer">
       <small>Current bot</small>
-      <strong id="sidebarBotNameText"><?php echo h($botName); ?></strong>
+      <strong id="sidebarBotNameText">Vani Bot</strong>
       <!-- Bot ID hidden for now; keep this code for later.
-      <small>ID: <?php echo h($selectedBotId ?: 'No bot found'); ?></small>
+      <small>ID: No bot found</small>
       -->
     </div>
   </aside>
@@ -1722,10 +637,10 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
         <a class="ghost-btn" href="#profile" data-jump="profile">Profile</a>
         <a class="pill-btn" href="index.php">Create New bot</a>
         <div class="user-menu">
-          <div class="avatar"><?php echo h($initials); ?></div>
+          <div class="avatar">C</div>
           <div class="user-text">
-            <strong><?php echo h($displayName ?: $email); ?></strong>
-            <!--<span><?php echo h($accountId ?: 'Customer'); ?></span>-->
+            <strong>codex@test.local</strong>
+            <!--<span>codex</span>-->
           </div>
           <a class="ghost-btn" href="logout.php">Logout</a>
         </div>
@@ -1733,69 +648,58 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
     </header>
 
     <div class="content">
-      <?php if (!$selectedBotId): ?>
-        <section class="panel empty">
+              <section class="panel empty">
           <h2>No chatbot found yet</h2>
           <p class="muted">Create your first chatbot to unlock the dashboard overview and quick actions.</p>
           <div style="margin-top:18px"><a class="pill-btn" href="freebot.php">Create chatbot</a></div>
         </section>
-      <?php endif; ?>
-
+      
       <section class="tab-panel active" id="overview">
         <div class="panel overview-hero">
           <div>
             <span class="eyebrow">Your Chatbot</span>
-            <h2 id="overviewBotNameText"><?php echo h($botName); ?></h2>
+            <h2 id="overviewBotNameText">Vani Bot</h2>
             <p>You are currently configuring the bot for the mentioned website.</p>
           </div>
           <form class="bot-picker" method="get" action="dashboard.php">
             <div class="bot-picker-head">
               <label for="bot">Select Website bot</label>
-              <button class="danger-btn delete-bot-mini" type="button" id="deleteChatbotBtn" data-bot-name="<?php echo h($botName); ?>">Delete</button>
+              <button class="danger-btn delete-bot-mini" type="button" id="deleteChatbotBtn" data-bot-name="Vani Bot">Delete</button>
             </div>
             <select id="bot" name="bot" onchange="this.form.submit()">
-              <?php if (empty($bots)): ?>
-                <option value="">No bots available</option>
-              <?php endif; ?>
-              <?php foreach ($bots as $bot): ?>
-                <?php $cid = (string)($bot['customer_id'] ?? ''); ?>
-                <option value="<?php echo h($cid); ?>" <?php echo $cid === $selectedBotId ? 'selected' : ''; ?>>
-                  <?php echo h(($bot['website_name'] ?? 'Bot') . ' - ' . "🤖 "); ?>
-                </option>
-              <?php endforeach; ?>
-            </select>
-            <small class="muted">Select the appropriate chatbot from those created by: <?php echo h($email); ?></small>
+                              <option value="">No bots available</option>
+                                        </select>
+            <small class="muted">Select the appropriate chatbot from those created by: codex@test.local</small>
           </form>
         </div>
 
         <div class="metrics">
           <div class="panel metric">
             <span>Chatbot Status</span>
-            <strong id="overviewStatusText" class="status-dot <?php echo $isActive ? '' : 'inactive'; ?>"><?php echo $isActive ? 'Active' : 'Inactive'; ?></strong>
+            <strong id="overviewStatusText" class="status-dot ">Active</strong>
             <div class="status-toggle-row">
-              <small id="overviewStatusHelp"><?php echo $isActive ? 'Chatbot is on for customers.' : 'Chatbot is off for customers.'; ?></small>
+              <small id="overviewStatusHelp">Chatbot is on for customers.</small>
               <label class="switch" title="Turn chatbot on or off">
-                <input id="overviewActiveSwitch" type="checkbox" <?php echo $isActive ? 'checked' : ''; ?> aria-label="Turn chatbot on or off">
+                <input id="overviewActiveSwitch" type="checkbox" checked aria-label="Turn chatbot on or off">
                 <span class="switch-slider"></span>
               </label>
             </div>
           </div>
-          <div class="panel metric"><span>Total FAQs</span><strong><?php echo h($faqCount); ?></strong><small>Free plan limit: <?php echo h($freeFaqLimit); ?> FAQs.</small></div>
-          <div class="panel metric"><span>Total Conversations</span><strong><?php echo h($conversationCount); ?></strong><small>Meaning: Total number of chat sessions started by users</small></div>
-          <div class="panel metric"><span>Today's Queries</span><strong><?php echo h($todayQueries); ?></strong><small><?php echo h(gmdate('M d, Y')); ?> UTC</small></div>
-          <div class="panel metric"><span>Response Accuracy</span><strong><?php echo h($accuracy); ?>%</strong><small>Basic answered vs total estimate.</small></div>
-          <div class="panel metric"><span>Last Activity</span><strong id="lastActivityText" data-last-activity="<?php echo h($lastActivity); ?>" style="font-size:18px"><?php echo h($lastActivity ?: 'No activity yet'); ?></strong><small id="lastActivityZone">Latest tracked conversation.</small></div>
+          <div class="panel metric"><span>Total FAQs</span><strong>0</strong><small>Free plan limit: 25 FAQs.</small></div>
+          <div class="panel metric"><span>Total Conversations</span><strong>0</strong><small>Meaning: Total number of chat sessions started by users</small></div>
+          <div class="panel metric"><span>Today's Queries</span><strong>0</strong><small>May 23, 2026 UTC</small></div>
+          <div class="panel metric"><span>Response Accuracy</span><strong>0%</strong><small>Basic answered vs total estimate.</small></div>
+          <div class="panel metric"><span>Last Activity</span><strong id="lastActivityText" data-last-activity="" style="font-size:18px">No activity yet</strong><small id="lastActivityZone">Latest tracked conversation.</small></div>
           <div class="panel metric">
             <span>Chatbot Theme</span>
             <div class="chatbot-theme-preview" aria-label="Selected chatbot theme preview">
               <div class="chatbot-theme-row">
-                <?php if ($chatbotImage): ?><img class="chatbot-theme-avatar" id="overviewBotImagePreview" src="<?php echo h($chatbotImage); ?>" alt="Selected chatbot image"><?php endif; ?>
-                <div class="chatbot-theme-bubble" id="overviewThemeBubble" style="background:<?php echo h($themeColor); ?>">
-                  <div id="overviewThemeMessage"><?php echo h($welcomeMessage); ?></div>
+                <img class="chatbot-theme-avatar" id="overviewBotImagePreview" src="images/botimg_1.png" alt="Selected chatbot image">                <div class="chatbot-theme-bubble" id="overviewThemeBubble" style="background:#6366f1">
+                  <div id="overviewThemeMessage">Hi, how can I help you today?</div>
                 </div>
               </div>
               <div class="chatbot-theme-row" style="padding-left:51px">
-                <div class="chatbot-theme-bubble" id="overviewThemeTyping" style="background:<?php echo h($themeColor); ?>">
+                <div class="chatbot-theme-bubble" id="overviewThemeTyping" style="background:#6366f1">
                   <span class="chatbot-theme-dots" aria-hidden="true"><i></i><i></i><i></i></span>
                 </div>
               </div>
@@ -1804,11 +708,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
           </div>
           <div class="panel metric popular-questions-metric">
             <span>Popular Questions</span>
-            <?php if (empty($topFaqQuestionCounts)): ?><p class="empty">No repeated FAQ questions yet.</p><?php endif; ?>
-            <?php foreach (array_slice($topFaqQuestionCounts, 0, 5) as $item): ?>
-              <div class="popular-question-row"><em><?php echo h($item['question']); ?></em><strong><?php echo h($item['count']); ?></strong></div>
-            <?php endforeach; ?>
-          </div>
+            <p class="empty">No repeated FAQ questions yet.</p>                      </div>
         </div>
 
         <div class="panel subscription-transfer-card">
@@ -1816,30 +716,24 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
             <div>
               <span class="eyebrow">Subscription Transfer</span>
               <h3>Move this plan to another chatbot</h3>
-              <p class="muted">Transfer the current paid plan and wallet balance from this chatbot to another chatbot created under <?php echo h($email); ?>.</p>
+              <p class="muted">Transfer the current paid plan and wallet balance from this chatbot to another chatbot created under codex@test.local.</p>
             </div>
             <p class="transfer-warning"><strong>Important:</strong> this is a transfer, not sharing. After transfer, this chatbot moves to Free service and paid toggles are turned off here.</p>
             <div class="transfer-summary">
-              <span>Current plan<strong><?php echo h($activePlan['name']); ?></strong></span>
-              <span>Wallet balance<strong><?php echo h(billing_rupees($billingWalletPaise)); ?></strong></span>
+              <span>Current plan<strong>Free</strong></span>
+              <span>Wallet balance<strong>₹0</strong></span>
             </div>
           </div>
           <div class="transfer-form">
             <div class="field">
               <label for="transferSubscriptionTarget">Transfer to chatbot</label>
-              <select id="transferSubscriptionTarget" <?php echo $activePlanId === 'free' ? 'disabled' : ''; ?>>
+              <select id="transferSubscriptionTarget" disabled>
                 <option value="">Select target chatbot</option>
-                <?php foreach ($bots as $bot): ?>
-                  <?php $cid = (string)($bot['customer_id'] ?? ''); ?>
-                  <?php if ($cid === '' || $cid === $selectedBotId) { continue; } ?>
-                  <option value="<?php echo h($cid); ?>"><?php echo h(($bot['website_name'] ?? 'Bot') . ' - ' . $cid); ?></option>
-                <?php endforeach; ?>
-              </select>
+                              </select>
               <small class="input-help">
-                <?php echo $activePlanId === 'free' ? 'No paid plan is available to transfer.' : 'Target chatbot must be on Free service.'; ?>
-              </small>
+                No paid plan is available to transfer.              </small>
             </div>
-            <button class="pill-btn" type="button" id="transferSubscriptionBtn" <?php echo $activePlanId === 'free' || count($bots) < 2 ? 'disabled' : ''; ?>>Transfer Subscription</button>
+            <button class="pill-btn" type="button" id="transferSubscriptionBtn" disabled>Transfer Subscription</button>
           </div>
         </div>
       </section>
@@ -1848,21 +742,21 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
         <div class="panel">
           <div class="section-head"><h3>Chatbot Setup</h3></div>
           <div class="section-body form-grid">
-            <input type="hidden" id="settingsCustomerId" value="<?php echo h($selectedBotId); ?>">
-            <div class="field"><label>Bot Name</label><input id="botNameInput" value="<?php echo h($botName); ?>"></div>
-            <div class="field"><label>Position</label><select id="positionInput"><option <?php echo $position === 'right' ? 'selected' : ''; ?>>right</option><option <?php echo $position === 'left' ? 'selected' : ''; ?>>left</option></select></div>
-            <div class="field full"><label>Welcome Message</label><textarea id="welcomeInput"><?php echo h($welcomeMessage); ?></textarea></div>
-            <div class="field"><label>Language</label><select id="languageInput"><option><?php echo h($language); ?></option><option>English</option><option>Hindi</option><option>Spanish</option><option>French</option></select></div>
+            <input type="hidden" id="settingsCustomerId" value="">
+            <div class="field"><label>Bot Name</label><input id="botNameInput" value="Vani Bot"></div>
+            <div class="field"><label>Position</label><select id="positionInput"><option selected>right</option><option >left</option></select></div>
+            <div class="field full"><label>Welcome Message</label><textarea id="welcomeInput">Hi, how can I help you today?</textarea></div>
+            <div class="field"><label>Language</label><select id="languageInput"><option>English</option><option>English</option><option>Hindi</option><option>Spanish</option><option>French</option></select></div>
             <div class="field full">
               <label>Theme color</label>
               <div class="theme-designer">
-                <input id="themeColorInput" type="hidden" value="<?php echo h($themeColor); ?>">
-                <input id="themePatternInput" type="hidden" value="<?php echo h($themePattern); ?>">
-                <div class="theme-preview-box" id="themePreviewBox" style="background:<?php echo h($themeColor); ?>">Selected theme</div>
+                <input id="themeColorInput" type="hidden" value="#6366f1">
+                <input id="themePatternInput" type="hidden" value="none">
+                <div class="theme-preview-box" id="themePreviewBox" style="background:#6366f1">Selected theme</div>
                 <div class="theme-controls">
                   <div class="field">
                     <label>Solid color</label>
-                    <input id="themeSolidColorInput" type="color" value="<?php echo h($themeColorInputValue); ?>">
+                    <input id="themeSolidColorInput" type="color" value="#6366f1">
                   </div>
                   <div class="field">
                     <label>Gradient type</label>
@@ -1898,17 +792,65 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
             </div>
             <div class="field full">
               <label>Chatbot image</label>
-              <?php if ($chatbotImage): ?>
-                <img class="selected-bot-image" id="selectedBotImagePreview" src="<?php echo h($chatbotImage); ?>" alt="Selected chatbot image">
-              <?php endif; ?>
-              <div class="bot-image-grid" id="dashboardBotImageGrid">
-                <?php foreach ($botImages as $index => $image): ?>
-                  <label class="bot-image-option" title="Chatbot image <?php echo h($index + 1); ?>">
-                    <input type="radio" name="dashboardBotImage" value="<?php echo h($image); ?>" <?php echo $image === $chatbotImage || (!$chatbotImage && $index === 0) ? 'checked' : ''; ?>>
-                    <img src="<?php echo h($image); ?>" alt="Chatbot image <?php echo h($index + 1); ?>">
+                              <img class="selected-bot-image" id="selectedBotImagePreview" src="images/botimg_1.png" alt="Selected chatbot image">
+                            <div class="bot-image-grid" id="dashboardBotImageGrid">
+                                  <label class="bot-image-option" title="Chatbot image 1">
+                    <input type="radio" name="dashboardBotImage" value="images/botimg_1.png" checked>
+                    <img src="images/botimg_1.png" alt="Chatbot image 1">
                   </label>
-                <?php endforeach; ?>
-              </div>
+                                  <label class="bot-image-option" title="Chatbot image 7">
+                    <input type="radio" name="dashboardBotImage" value="images/botimg_2.png" >
+                    <img src="images/botimg_2.png" alt="Chatbot image 7">
+                  </label>
+                                  <label class="bot-image-option" title="Chatbot image 8">
+                    <input type="radio" name="dashboardBotImage" value="images/botimg_3.png" >
+                    <img src="images/botimg_3.png" alt="Chatbot image 8">
+                  </label>
+                                  <label class="bot-image-option" title="Chatbot image 9">
+                    <input type="radio" name="dashboardBotImage" value="images/botimg_4.png" >
+                    <img src="images/botimg_4.png" alt="Chatbot image 9">
+                  </label>
+                                  <label class="bot-image-option" title="Chatbot image 10">
+                    <input type="radio" name="dashboardBotImage" value="images/botimg_5.png" >
+                    <img src="images/botimg_5.png" alt="Chatbot image 10">
+                  </label>
+                                  <label class="bot-image-option" title="Chatbot image 11">
+                    <input type="radio" name="dashboardBotImage" value="images/botimg_6.png" >
+                    <img src="images/botimg_6.png" alt="Chatbot image 11">
+                  </label>
+                                  <label class="bot-image-option" title="Chatbot image 12">
+                    <input type="radio" name="dashboardBotImage" value="images/botimg_7.png" >
+                    <img src="images/botimg_7.png" alt="Chatbot image 12">
+                  </label>
+                                  <label class="bot-image-option" title="Chatbot image 13">
+                    <input type="radio" name="dashboardBotImage" value="images/botimg_8.png" >
+                    <img src="images/botimg_8.png" alt="Chatbot image 13">
+                  </label>
+                                  <label class="bot-image-option" title="Chatbot image 14">
+                    <input type="radio" name="dashboardBotImage" value="images/botimg_9.png" >
+                    <img src="images/botimg_9.png" alt="Chatbot image 14">
+                  </label>
+                                  <label class="bot-image-option" title="Chatbot image 2">
+                    <input type="radio" name="dashboardBotImage" value="images/botimg_10.png" >
+                    <img src="images/botimg_10.png" alt="Chatbot image 2">
+                  </label>
+                                  <label class="bot-image-option" title="Chatbot image 3">
+                    <input type="radio" name="dashboardBotImage" value="images/botimg_11.gif" >
+                    <img src="images/botimg_11.gif" alt="Chatbot image 3">
+                  </label>
+                                  <label class="bot-image-option" title="Chatbot image 4">
+                    <input type="radio" name="dashboardBotImage" value="images/botimg_12.gif" >
+                    <img src="images/botimg_12.gif" alt="Chatbot image 4">
+                  </label>
+                                  <label class="bot-image-option" title="Chatbot image 5">
+                    <input type="radio" name="dashboardBotImage" value="images/botimg_13.gif" >
+                    <img src="images/botimg_13.gif" alt="Chatbot image 5">
+                  </label>
+                                  <label class="bot-image-option" title="Chatbot image 6">
+                    <input type="radio" name="dashboardBotImage" value="images/botimg_14.gif" >
+                    <img src="images/botimg_14.gif" alt="Chatbot image 6">
+                  </label>
+                              </div>
             </div>
             <div class="panel-actions setup-autosave-actions">
               <span class="input-help" id="setupAutosaveStatus">Changes save automatically.</span>
@@ -1919,7 +861,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
 
       <section class="tab-panel" id="faqs">
         <div class="panel">
-          <div class="section-head"><h3>FAQ Management</h3><span class="tag" id="faqCountTag"><?php echo h($faqCount); ?>/<?php echo h($freeFaqLimit); ?> FAQs</span></div>
+          <div class="section-head"><h3>FAQ Management</h3><span class="tag" id="faqCountTag">0/25 FAQs</span></div>
           <div class="faq-subtabs" role="tablist" aria-label="FAQ Management sections">
             <button class="faq-subtab-btn active" type="button" data-faq-subtab="faq-subpanel-options">Options</button>
             <button class="faq-subtab-btn" type="button" data-faq-subtab="faq-subpanel-qa">FAQ Q&amp;A</button>
@@ -1932,7 +874,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                 <small class="input-help">When ON, the chatbot first shows FAQ categories so visitors can browse by category before asking a question.</small>
               </div>
               <label class="switch" title="Enable FAQ category public menu">
-                <input id="faqCategoryMenuToggle" type="checkbox" <?php echo $faqCategoryMenuEnabled ? 'checked' : ''; ?> aria-label="Enable FAQ category public menu">
+                <input id="faqCategoryMenuToggle" type="checkbox"  aria-label="Enable FAQ category public menu">
                 <span class="switch-slider"></span>
               </label>
             </div>
@@ -1940,33 +882,29 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
               <div>
                 <h3>FAQ Action Suggestions</h3>
                 <small class="input-help">Show action buttons after a matched FAQ answer, such as call, email, WhatsApp, booking, coupon, map, form, or related FAQ category.</small>
-                <?php if (!$canUseFaqActionSuggestions): ?><small class="input-help error">Starter, Growth, or Business plan required.</small><?php endif; ?>
-              </div>
+                <small class="input-help error">Starter, Growth, or Business plan required.</small>              </div>
               <label class="switch" title="Enable FAQ action suggestions">
-                <input id="faqActionsToggle" type="checkbox" <?php echo $faqActionsEnabled && $canUseFaqActionSuggestions ? 'checked' : ''; ?> <?php echo $canUseFaqActionSuggestions ? '' : 'disabled'; ?> aria-label="Enable FAQ action suggestions">
+                <input id="faqActionsToggle" type="checkbox"  disabled aria-label="Enable FAQ action suggestions">
                 <span class="switch-slider"></span>
               </label>
             </div>
 
             <form id="faqActionForm" class="faq-action-card">
-              <input type="hidden" id="faqActionCustomerId" value="<?php echo h($selectedBotId); ?>">
+              <input type="hidden" id="faqActionCustomerId" value="">
               <div class="faq-action-grid">
                 <div class="field">
                   <label>FAQ</label>
-                  <select id="faqActionFaqId" <?php echo $canUseFaqActionSuggestions ? '' : 'disabled'; ?>>
+                  <select id="faqActionFaqId" disabled>
                     <option value="">Select FAQ</option>
-                    <?php foreach ($faqs as $faq): ?>
-                      <option value="<?php echo h($faq['id'] ?? ''); ?>"><?php echo h($faq['question'] ?? ''); ?></option>
-                    <?php endforeach; ?>
-                  </select>
+                                      </select>
                 </div>
                 <div class="field">
                   <label>Button label</label>
-                  <input id="faqActionLabel" placeholder="Book demo" maxlength="80" <?php echo $canUseFaqActionSuggestions ? '' : 'disabled'; ?>>
+                  <input id="faqActionLabel" placeholder="Book demo" maxlength="80" disabled>
                 </div>
                 <div class="field">
                   <label>Action type</label>
-                  <select id="faqActionType" <?php echo $canUseFaqActionSuggestions ? '' : 'disabled'; ?>>
+                  <select id="faqActionType" disabled>
                     <option value="link">Open page / product page</option>
                     <option value="whatsapp">Open WhatsApp</option>
                     <option value="call">Call now</option>
@@ -1983,34 +921,19 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                 </div>
                 <div class="field">
                   <label>Order</label>
-                  <input id="faqActionOrder" type="number" min="0" max="999" value="0" <?php echo $canUseFaqActionSuggestions ? '' : 'disabled'; ?>>
+                  <input id="faqActionOrder" type="number" min="0" max="999" value="0" disabled>
                 </div>
-                <button class="pill-btn" type="submit" <?php echo $canUseFaqActionSuggestions ? '' : 'disabled'; ?>>Add action</button>
+                <button class="pill-btn" type="submit" disabled>Add action</button>
                 <div class="field full" style="grid-column:1/-1">
                   <label>Action value</label>
-                  <input id="faqActionValue" placeholder="https://example.com/demo, +919876543210, or customEventName" <?php echo $canUseFaqActionSuggestions ? '' : 'disabled'; ?>>
+                  <input id="faqActionValue" placeholder="https://example.com/demo, +919876543210, or customEventName" disabled>
                   <small class="input-help" id="faqActionValueHelp">Choose an action type to see the required value format.</small>
                 </div>
               </div>
             </form>
 
             <div class="faq-action-list" id="faqActionList">
-              <?php if (empty($faqActionRows)): ?><p class="empty">No FAQ actions configured yet.</p><?php endif; ?>
-              <?php foreach ($faqActionRows as $actionRow): ?>
-                <?php $linkedFaq = $faqById[(string)($actionRow['faq_id'] ?? '')] ?? []; ?>
-                <?php $actionActive = filter_var($actionRow['is_active'] ?? true, FILTER_VALIDATE_BOOLEAN); ?>
-                <div class="faq-action-card" data-faq-action-id="<?php echo h($actionRow['id'] ?? ''); ?>">
-                  <div class="faq-action-grid">
-                    <div><label>FAQ</label><strong><?php echo h($linkedFaq['question'] ?? 'Deleted FAQ'); ?></strong></div>
-                    <div><label>Label</label><span><?php echo h($actionRow['label'] ?? ''); ?></span></div>
-                    <div><label>Type</label><span class="tag"><?php echo h($actionRow['action_type'] ?? 'link'); ?></span></div>
-                    <div><label>Status</label><span class="tag <?php echo $actionActive ? 'good' : 'bad'; ?>"><?php echo $actionActive ? 'Active' : 'Off'; ?></span></div>
-                    <button class="danger-btn faq-action-delete-btn" type="button">Delete</button>
-                    <div style="grid-column:1/-1"><small class="input-help"><?php echo h($actionRow['action_value'] ?? ''); ?></small></div>
-                  </div>
-                </div>
-              <?php endforeach; ?>
-            </div>
+              <p class="empty">No FAQ actions configured yet.</p>                          </div>
 
           </div>
 
@@ -2021,59 +944,139 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                   <h3>Scheduled FAQ Action Suggestions <span class="help-tip" tabindex="0" aria-label="How scheduled FAQ action suggestions work" data-tip="Use this when you want to promote an action after a visitor asks a set number of questions. Set three slots, such as 3, 5, and 5. After the 3rd answer the first action appears. After 5 more questions the second action appears. After 5 more questions the third action appears. Then the cycle starts again. If the visitor ignores the action and asks another question, it disappears.">?</span></h3>
                   <small class="input-help">Show one customer action after a visitor completes a configured number of questions. The three slots repeat in order, for example 3, then 5, then 5 questions.</small>
                   <small class="input-help">Available for Starter, Growth, and Business plans.</small>
-                  <?php if (!$canUseFaqActionSuggestions): ?><small class="input-help error">Starter, Growth, or Business plan required.</small><?php endif; ?>
-                </div>
-                <button class="pill-btn" type="button" id="saveScheduledFaqActionsBtn" <?php echo $canUseFaqActionSuggestions ? '' : 'disabled'; ?>>Save schedule</button>
+                  <small class="input-help error">Starter, Growth, or Business plan required.</small>                </div>
+                <button class="pill-btn" type="button" id="saveScheduledFaqActionsBtn" disabled>Save schedule</button>
               </div>
               <div class="faq-action-list" id="scheduledFaqActionList">
-                <?php for ($slot = 1; $slot <= 3; $slot++): ?>
-                  <?php $scheduled = $scheduledFaqActionsBySlot[$slot] ?? []; ?>
-                  <div class="faq-action-card scheduled-faq-action-card" data-slot-no="<?php echo h($slot); ?>">
+                                                    <div class="faq-action-card scheduled-faq-action-card" data-slot-no="1">
                     <div class="faq-action-grid">
                       <div class="field">
-                        <label>Option <?php echo h($slot); ?> after questions</label>
-                        <input class="scheduledActionAfter" type="number" min="1" max="50" value="<?php echo h($scheduled['trigger_after_questions'] ?? ($slot === 1 ? 3 : 5)); ?>" <?php echo $canUseFaqActionSuggestions ? '' : 'disabled'; ?>>
+                        <label>Option 1 after questions</label>
+                        <input class="scheduledActionAfter" type="number" min="1" max="50" value="3" disabled>
                       </div>
                       <div class="field">
                         <label>Button label</label>
-                        <input class="scheduledActionLabel" maxlength="80" placeholder="Book demo" value="<?php echo h($scheduled['label'] ?? ''); ?>" <?php echo $canUseFaqActionSuggestions ? '' : 'disabled'; ?>>
+                        <input class="scheduledActionLabel" maxlength="80" placeholder="Book demo" value="" disabled>
                       </div>
                       <div class="field">
                         <label>Action type</label>
-                        <select class="scheduledActionType" <?php echo $canUseFaqActionSuggestions ? '' : 'disabled'; ?>>
-                          <?php $scheduledType = (string)($scheduled['action_type'] ?? 'link'); ?>
-                          <?php foreach (['link' => 'Open page / product page', 'whatsapp' => 'Open WhatsApp', 'call' => 'Call now', 'email' => 'Send email', 'download' => 'Download file', 'coupon' => 'Copy coupon/code', 'booking' => 'Book appointment', 'map' => 'Open map location', 'form' => 'Show enquiry form', 'track_order' => 'Track order / status link', 'category' => 'Show FAQ category', 'event' => 'Website event'] as $type => $label): ?>
-                            <option value="<?php echo h($type); ?>" <?php echo $scheduledType === $type ? 'selected' : ''; ?>><?php echo h($label); ?></option>
-                          <?php endforeach; ?>
-                        </select>
+                        <select class="scheduledActionType" disabled>
+                                                                                <option value="link" selected>Open page / product page</option>
+                                                      <option value="whatsapp" >Open WhatsApp</option>
+                                                      <option value="call" >Call now</option>
+                                                      <option value="email" >Send email</option>
+                                                      <option value="download" >Download file</option>
+                                                      <option value="coupon" >Copy coupon/code</option>
+                                                      <option value="booking" >Book appointment</option>
+                                                      <option value="map" >Open map location</option>
+                                                      <option value="form" >Show enquiry form</option>
+                                                      <option value="track_order" >Track order / status link</option>
+                                                      <option value="category" >Show FAQ category</option>
+                                                      <option value="event" >Website event</option>
+                                                  </select>
                       </div>
                       <div class="field">
                         <label>Status</label>
                         <label class="switch" title="Enable this scheduled action">
-                          <input class="scheduledActionActive" type="checkbox" <?php echo filter_var($scheduled['is_active'] ?? false, FILTER_VALIDATE_BOOLEAN) ? 'checked' : ''; ?> <?php echo $canUseFaqActionSuggestions ? '' : 'disabled'; ?> aria-label="Enable scheduled action <?php echo h($slot); ?>">
+                          <input class="scheduledActionActive" type="checkbox"  disabled aria-label="Enable scheduled action 1">
                           <span class="switch-slider"></span>
                         </label>
                       </div>
                       <div class="field full" style="grid-column:1/-1">
                         <label>Action value</label>
-                        <input class="scheduledActionValue" placeholder="https://example.com/demo, +919876543210, or coupon code" value="<?php echo h($scheduled['action_value'] ?? ''); ?>" <?php echo $canUseFaqActionSuggestions ? '' : 'disabled'; ?>>
+                        <input class="scheduledActionValue" placeholder="https://example.com/demo, +919876543210, or coupon code" value="" disabled>
                         <small class="input-help">If enabled, label and value are required. The visitor sees this action after the configured question count.</small>
                       </div>
                     </div>
                   </div>
-                <?php endfor; ?>
-              </div>
+                                                    <div class="faq-action-card scheduled-faq-action-card" data-slot-no="2">
+                    <div class="faq-action-grid">
+                      <div class="field">
+                        <label>Option 2 after questions</label>
+                        <input class="scheduledActionAfter" type="number" min="1" max="50" value="5" disabled>
+                      </div>
+                      <div class="field">
+                        <label>Button label</label>
+                        <input class="scheduledActionLabel" maxlength="80" placeholder="Book demo" value="" disabled>
+                      </div>
+                      <div class="field">
+                        <label>Action type</label>
+                        <select class="scheduledActionType" disabled>
+                                                                                <option value="link" selected>Open page / product page</option>
+                                                      <option value="whatsapp" >Open WhatsApp</option>
+                                                      <option value="call" >Call now</option>
+                                                      <option value="email" >Send email</option>
+                                                      <option value="download" >Download file</option>
+                                                      <option value="coupon" >Copy coupon/code</option>
+                                                      <option value="booking" >Book appointment</option>
+                                                      <option value="map" >Open map location</option>
+                                                      <option value="form" >Show enquiry form</option>
+                                                      <option value="track_order" >Track order / status link</option>
+                                                      <option value="category" >Show FAQ category</option>
+                                                      <option value="event" >Website event</option>
+                                                  </select>
+                      </div>
+                      <div class="field">
+                        <label>Status</label>
+                        <label class="switch" title="Enable this scheduled action">
+                          <input class="scheduledActionActive" type="checkbox"  disabled aria-label="Enable scheduled action 2">
+                          <span class="switch-slider"></span>
+                        </label>
+                      </div>
+                      <div class="field full" style="grid-column:1/-1">
+                        <label>Action value</label>
+                        <input class="scheduledActionValue" placeholder="https://example.com/demo, +919876543210, or coupon code" value="" disabled>
+                        <small class="input-help">If enabled, label and value are required. The visitor sees this action after the configured question count.</small>
+                      </div>
+                    </div>
+                  </div>
+                                                    <div class="faq-action-card scheduled-faq-action-card" data-slot-no="3">
+                    <div class="faq-action-grid">
+                      <div class="field">
+                        <label>Option 3 after questions</label>
+                        <input class="scheduledActionAfter" type="number" min="1" max="50" value="5" disabled>
+                      </div>
+                      <div class="field">
+                        <label>Button label</label>
+                        <input class="scheduledActionLabel" maxlength="80" placeholder="Book demo" value="" disabled>
+                      </div>
+                      <div class="field">
+                        <label>Action type</label>
+                        <select class="scheduledActionType" disabled>
+                                                                                <option value="link" selected>Open page / product page</option>
+                                                      <option value="whatsapp" >Open WhatsApp</option>
+                                                      <option value="call" >Call now</option>
+                                                      <option value="email" >Send email</option>
+                                                      <option value="download" >Download file</option>
+                                                      <option value="coupon" >Copy coupon/code</option>
+                                                      <option value="booking" >Book appointment</option>
+                                                      <option value="map" >Open map location</option>
+                                                      <option value="form" >Show enquiry form</option>
+                                                      <option value="track_order" >Track order / status link</option>
+                                                      <option value="category" >Show FAQ category</option>
+                                                      <option value="event" >Website event</option>
+                                                  </select>
+                      </div>
+                      <div class="field">
+                        <label>Status</label>
+                        <label class="switch" title="Enable this scheduled action">
+                          <input class="scheduledActionActive" type="checkbox"  disabled aria-label="Enable scheduled action 3">
+                          <span class="switch-slider"></span>
+                        </label>
+                      </div>
+                      <div class="field full" style="grid-column:1/-1">
+                        <label>Action value</label>
+                        <input class="scheduledActionValue" placeholder="https://example.com/demo, +919876543210, or coupon code" value="" disabled>
+                        <small class="input-help">If enabled, label and value are required. The visitor sees this action after the configured question count.</small>
+                      </div>
+                    </div>
+                  </div>
+                              </div>
             </div>
           </div>
           <div class="faq-subpanel" id="faq-subpanel-qa">
           <div class="section-body">
-            <?php if ($faqFreezeActive): ?>
-              <div class="notice" style="margin-bottom:16px">
-                <strong><?php echo h($activePlan['name']); ?> FAQ limit active:</strong><br>
-                Your first <?php echo h($displayFaqLimit); ?> FAQs are active. <?php echo h($frozenFaqCount); ?> extra FAQs are frozen and saved here. Starter unfreezes 100, Growth unfreezes 300, and Business unfreezes all FAQs.
-              </div>
-            <?php endif; ?>
-            <div class="bulk-faq-card">
+                        <div class="bulk-faq-card">
               <div class="inline-row" style="justify-content:space-between;gap:16px">
                 <div>
                   <h3>Bulk Upload FAQs</h3>
@@ -2088,7 +1091,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
               </div>
             </div>
             <form id="faqForm" class="form-grid">
-              <input type="hidden" id="faqCustomerId" value="<?php echo h($selectedBotId); ?>">
+              <input type="hidden" id="faqCustomerId" value="">
               <div class="field"><label>Question</label><input id="faqQuestion" placeholder="What do you want customers to ask?"></div>
               <div class="field"><label>Category</label><input id="faqCategory" placeholder="General"></div>
               <div class="field full"><label>Answer</label><textarea id="faqAnswer" placeholder="Write a helpful answer"></textarea></div>
@@ -2103,32 +1106,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
               <table id="faqTable">
                 <thead><tr><th>Question</th><th>Answer</th><th>Category</th><th>Actions</th></tr></thead>
                 <tbody>
-                  <?php foreach ($faqs as $faq): ?>
-                    <?php $faqFrozen = $faqFreezeActive && empty($faqActiveIds[(string)($faq['id'] ?? '')]); ?>
-                    <tr data-faq-id="<?php echo h($faq['id'] ?? ''); ?>" <?php echo $faqFrozen ? 'data-frozen="true"' : ''; ?>>
-                      <td>
-                        <span class="faq-display"><?php echo h($faq['question'] ?? ''); ?> <?php if ($faqFrozen): ?><span class="tag bad">Frozen</span><?php endif; ?></span>
-                        <textarea class="faq-edit-field faq-question-input" aria-label="FAQ question"><?php echo h($faq['question'] ?? ''); ?></textarea>
-                      </td>
-                      <td>
-                        <span class="faq-display"><?php echo h($faq['answer'] ?? ''); ?></span>
-                        <textarea class="faq-edit-field faq-answer-input" aria-label="FAQ answer"><?php echo h($faq['answer'] ?? ''); ?></textarea>
-                      </td>
-                      <td>
-                        <span class="tag faq-display"><?php echo h($faq['category'] ?? 'General'); ?></span>
-                        <input class="faq-edit-field faq-category-input" value="<?php echo h($faq['category'] ?? 'General'); ?>" aria-label="FAQ category">
-                      </td>
-                      <td>
-                        <div class="faq-actions">
-                          <button class="ghost-btn faq-edit-btn" type="button">Edit</button>
-                          <button class="pill-btn faq-save-btn faq-edit-field" type="button">Save</button>
-                          <button class="ghost-btn faq-cancel-btn faq-edit-field" type="button">Cancel</button>
-                          <button class="danger-btn faq-delete-btn" type="button">Delete</button>
-                        </div>
-                      </td>
-                    </tr>
-                  <?php endforeach; ?>
-                </tbody>
+                                  </tbody>
               </table>
             </div>
           </div>
@@ -2143,7 +1121,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
               <h3>Questions Outside FAQs</h3>
               <p class="muted">Review questions the chatbot could not answer, edit the question if needed, write the right answer, and save it into FAQs.</p>
             </div>
-            <span class="tag bad"><?php echo h($unansweredCount); ?> unanswered</span>
+            <span class="tag bad">0 unanswered</span>
           </div>
           <div class="section-body">
             <div class="notice" style="margin-bottom:16px">
@@ -2151,85 +1129,37 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                 <div>
                   <strong>Human handoff / ticket creation</strong><br>
                   <span class="muted">When the bot cannot answer, create a support ticket and email the question to your team.</span>
-                  <?php if (!$canUseHumanHandoff): ?><br><small class="input-help error">Growth or Business plan required.</small><?php endif; ?>
-                </div>
+                  <br><small class="input-help error">Growth or Business plan required.</small>                </div>
                 <label class="switch" title="Enable human handoff">
-                  <input id="humanHandoffToggle" type="checkbox" <?php echo $handoffEnabled && $canUseHumanHandoff ? 'checked' : ''; ?> aria-label="Enable human handoff">
+                  <input id="humanHandoffToggle" type="checkbox"  aria-label="Enable human handoff">
                   <span class="switch-slider"></span>
                 </label>
               </div>
               <div class="field" style="margin-top:12px">
                 <label>Support email</label>
                 <div class="inline-row">
-                  <input id="humanHandoffEmailInput" type="email" value="<?php echo h($handoffEmail); ?>" placeholder="<?php echo h($email); ?>" <?php echo $canUseHumanHandoff ? '' : 'disabled'; ?>>
-                  <button class="pill-btn" type="button" id="saveHumanHandoffBtn" <?php echo $canUseHumanHandoff ? '' : 'disabled'; ?>>Save handoff</button>
+                  <input id="humanHandoffEmailInput" type="email" value="codex@test.local" placeholder="codex@test.local" disabled>
+                  <button class="pill-btn" type="button" id="saveHumanHandoffBtn" disabled>Save handoff</button>
                 </div>
                 <small class="input-help">Tickets are created only for unanswered chatbot questions and only while this switch is ON.</small>
               </div>
             </div>
-            <?php if (empty($outsideFaqQuestions)): ?>
-              <p class="empty">No outside-FAQ questions yet.</p>
-            <?php else: ?>
-              <div class="outside-faq-list">
-                <?php foreach ($outsideFaqQuestions as $index => $item): ?>
-                  <form class="outside-faq-card outsideFaqForm">
-                    <div class="outside-faq-meta">
-                      <span class="tag bad">Needs answer</span>
-                      <small class="muted"><?php echo h($item['created_at'] ?: 'Time not recorded'); ?></small>
-                    </div>
-                    <?php if (!empty($item['bot_response'])): ?>
-                      <div class="notice"><strong>Bot response:</strong><br><?php echo h($item['bot_response']); ?></div>
-                    <?php endif; ?>
-                    <div class="outside-faq-grid">
-                      <input type="hidden" class="outsideCustomerId" value="<?php echo h($selectedBotId); ?>">
-                      <div class="field full">
-                        <label>Edit question</label>
-                        <input class="outsideQuestion" value="<?php echo h($item['question']); ?>" aria-label="Edit unanswered customer question">
+                          <p class="empty">No outside-FAQ questions yet.</p>
                       </div>
-                      <div class="field full">
-                        <label>Answer for this question</label>
-                        <textarea class="outsideAnswer" placeholder="Write the answer customers should receive next time"></textarea>
-                      </div>
-                      <div class="field">
-                        <label>Category</label>
-                        <input class="outsideCategory" value="General">
-                      </div>
-                      <div class="field">
-                        <label>&nbsp;</label>
-                        <button class="pill-btn" type="submit">Add to FAQs</button>
-                      </div>
-                    </div>
-                  </form>
-                <?php endforeach; ?>
-              </div>
-            <?php endif; ?>
-          </div>
         </div>
       </section>
 
       <!-- Conversations tab content hidden for now; keep this code for later.
       <section class="tab-panel" id="logs">
         <div class="panel">
-          <div class="section-head"><h3>Conversations / Logs</h3><span class="tag"><?php echo h($conversationCount); ?> total</span></div>
+          <div class="section-head"><h3>Conversations / Logs</h3><span class="tag">0 total</span></div>
           <div class="section-body">
             <div class="table-wrap">
               <table>
                 <thead><tr><th>User Question</th><th>Bot Response</th><th>Timestamp</th><th>Status</th><th>Action</th></tr></thead>
                 <tbody>
-                  <?php if (empty($conversationRows)): ?>
-                    <tr><td colspan="5" class="empty">No conversation logs yet. Run the SQL script and update chat logging to begin storing unanswered queries.</td></tr>
-                  <?php endif; ?>
-                  <?php foreach ($conversationRows as $row): ?>
-                    <?php $answered = strtolower((string)($row['status'] ?? '')) === 'answered' || !empty($row['is_answered']); ?>
-                    <tr>
-                      <td><?php echo h($row['user_question'] ?? $row['question'] ?? ''); ?></td>
-                      <td><?php echo h($row['bot_response'] ?? $row['response'] ?? ''); ?></td>
-                      <td><?php echo h($row['created_at'] ?? ''); ?></td>
-                      <td><span class="tag <?php echo $answered ? 'good' : 'bad'; ?>"><?php echo $answered ? 'Answered' : 'Unanswered'; ?></span></td>
-                      <td><button class="ghost-btn" type="button" data-question="<?php echo h($row['user_question'] ?? $row['question'] ?? ''); ?>" data-jump="faqs">Add this as FAQ</button></td>
-                    </tr>
-                  <?php endforeach; ?>
-                </tbody>
+                                      <tr><td colspan="5" class="empty">No conversation logs yet. Run the SQL script and update chat logging to begin storing unanswered queries.</td></tr>
+                                                    </tbody>
               </table>
             </div>
           </div>
@@ -2243,26 +1173,25 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
             <div>
               <span class="eyebrow">Analytics</span>
               <h3 style="margin-top:8px">Performance Dashboard</h3>
-              <p class="muted" style="margin-top:6px">Showing <?php echo h($analyticsRangeLabel); ?>: <?php echo h($analyticsFrom); ?> to <?php echo h($analyticsTo); ?></p>
+              <p class="muted" style="margin-top:6px">Showing Last 30 days: 2026-04-24 to 2026-05-23</p>
             </div>
             <div class="filter-bar">
-              <a class="filter-chip <?php echo $analyticsRange === 'today' ? 'active' : ''; ?>" href="<?php echo h(analytics_url('today', $selectedBotId)); ?>">Today: <?php echo h($todayAllQueries); ?></a>
-              <a class="filter-chip <?php echo $analyticsRange === 'yesterday' ? 'active' : ''; ?>" href="<?php echo h(analytics_url('yesterday', $selectedBotId)); ?>">Yesterday: <?php echo h($yesterdayAllQueries); ?></a>
-              <a class="filter-chip <?php echo $analyticsRange === '7_days' ? 'active' : ''; ?>" href="<?php echo h(analytics_url('7_days', $selectedBotId)); ?>">7 days: <?php echo h($last7AllQueries); ?></a>
-              <a class="filter-chip <?php echo $analyticsRange === '30_days' ? 'active' : ''; ?>" href="<?php echo h(analytics_url('30_days', $selectedBotId)); ?>">30 days: <?php echo h($last30AllQueries); ?></a>
-              <a class="filter-chip <?php echo $analyticsRange === 'custom' ? 'active' : ''; ?>" href="<?php echo h(analytics_url('custom', $selectedBotId, $analyticsFrom, $analyticsTo)); ?>">Custom range</a>
+              <a class="filter-chip " href="dashboard.php?analytics_range=today#analytics">Today: 0</a>
+              <a class="filter-chip " href="dashboard.php?analytics_range=yesterday#analytics">Yesterday: 0</a>
+              <a class="filter-chip " href="dashboard.php?analytics_range=7_days#analytics">7 days: 0</a>
+              <a class="filter-chip active" href="dashboard.php?analytics_range=30_days#analytics">30 days: 0</a>
+              <a class="filter-chip " href="dashboard.php?analytics_range=custom&amp;date_from=2026-04-24&amp;date_to=2026-05-23#analytics">Custom range</a>
             </div>
           </div>
           <form class="analytics-filter-form" method="get" action="dashboard.php">
-            <?php if ($selectedBotId): ?><input type="hidden" name="bot" value="<?php echo h($selectedBotId); ?>"><?php endif; ?>
-            <input type="hidden" name="analytics_range" value="custom">
+                        <input type="hidden" name="analytics_range" value="custom">
             <div class="field">
               <label>From</label>
-              <input type="date" name="date_from" value="<?php echo h($analyticsFrom); ?>">
+              <input type="date" name="date_from" value="2026-04-24">
             </div>
             <div class="field">
               <label>To</label>
-              <input type="date" name="date_to" value="<?php echo h($analyticsTo); ?>">
+              <input type="date" name="date_to" value="2026-05-23">
             </div>
             <button class="pill-btn" type="submit">Apply</button>
           </form>
@@ -2270,325 +1199,20 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
 
         <div class="panel section-body">
           <div class="analytics-tabs" role="tablist" aria-label="Analytics sections">
-            <button class="analytics-tab-btn active" type="button" data-analytics-tab="analytics-overview" <?php echo $canUsePartialAnalytics ? '' : 'data-premium-lock="Growth subscription required"'; ?>>Overview</button>
-            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-conversations" <?php echo $canUsePartialAnalytics ? '' : 'data-premium-lock="Growth subscription required"'; ?>>Conversations</button>
-            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-faq" <?php echo $canUsePartialAnalytics ? '' : 'data-premium-lock="Growth subscription required"'; ?>>FAQ Insights</button>
-            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-leads" <?php echo $canUsePartialAnalytics ? '' : 'data-premium-lock="Growth subscription required"'; ?>>Leads</button>
-            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-pages" <?php echo $canUseAdvancedAnalytics ? '' : 'data-premium-lock="Business subscription required"'; ?>>Pages</button>
-            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-realtime" <?php echo $canUseAdvancedAnalytics ? '' : 'data-premium-lock="Business subscription required"'; ?>>Real-Time</button>
-            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-reports" <?php echo $canExportReports ? '' : 'data-premium-lock="Business subscription required"'; ?>>Reports</button>
+            <button class="analytics-tab-btn active" type="button" data-analytics-tab="analytics-overview" data-premium-lock="Growth subscription required">Overview</button>
+            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-conversations" data-premium-lock="Growth subscription required">Conversations</button>
+            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-faq" data-premium-lock="Growth subscription required">FAQ Insights</button>
+            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-leads" data-premium-lock="Growth subscription required">Leads</button>
+            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-pages" data-premium-lock="Business subscription required">Pages</button>
+            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-realtime" data-premium-lock="Business subscription required">Real-Time</button>
+            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-reports" data-premium-lock="Business subscription required">Reports</button>
           </div>
         </div>
 
-        <?php if (!$canUsePartialAnalytics): ?>
-        <div class="panel section-body">
+                <div class="panel section-body">
           <div class="notice"><strong>Growth subscription required:</strong><br>Analytics access starts on Growth. Upgrade to view Overview, Conversations, FAQ Insights, and Leads.</div>
         </div>
-        <?php else: ?>
-        <div class="analytics-subpanel active" id="analytics-overview">
-        <div class="panel bi-hero">
-          <div>
-            <span class="eyebrow">Command Center</span>
-            <h3><?php echo h($botName); ?> analytics</h3>
-            <p class="muted" style="margin-top:8px">Executive view for <?php echo h($analyticsRangeLabel); ?>, combining traffic, answer quality, lead conversion, and page performance.</p>
-          </div>
-          <span class="tag <?php echo $isActive ? 'good' : 'bad'; ?>"><?php echo h($isActive ? 'Live bot' : 'Inactive bot'); ?></span>
-        </div>
-
-        <div class="bi-kpi-grid">
-          <div class="bi-kpi" data-kpi="conversations" data-drill="conversations"><span>Conversations</span><strong><?php echo h($conversationCount); ?></strong><small>Tracked sessions and queries</small><em class="bi-delta flat">Comparing...</em></div>
-          <div class="bi-kpi" data-kpi="messages" data-drill="conversations"><span>Messages</span><strong><?php echo h($totalMessages); ?></strong><small>User messages in range</small><em class="bi-delta flat"><?php echo h($avgMessagesPerConversation); ?> avg/chat</em></div>
-          <div class="bi-kpi" data-kpi="answer_rate" data-drill="answered"><span>Answer Rate</span><strong><?php echo h($accuracy); ?>%</strong><small><?php echo h($answeredCount); ?> answered</small><em class="bi-delta <?php echo $accuracy >= 70 ? '' : ($accuracy >= 40 ? 'flat' : 'down'); ?>"><?php echo h($unansweredCount); ?> gaps</em></div>
-          <div class="bi-kpi" data-kpi="leads" data-drill="leads"><span>Leads</span><strong><?php echo h($uniqueLeadCount); ?></strong><small><?php echo h($leadConversionRate); ?>% conversion</small><em class="bi-delta flat"><?php echo h($realUniqueLeadCount); ?> verified</em></div>
-          <div class="bi-kpi" data-kpi="visitors" data-drill="countries"><span>Visitors</span><strong><?php echo h($uniqueVisitorCount); ?></strong><small><?php echo h($returningVisitorCount); ?> returning</small><em class="bi-delta flat"><?php echo h($returningUsersPercent); ?>% return</em></div>
-          <div class="bi-kpi" data-kpi="avg_response_time_ms" data-drill="slow"><span>Response Time</span><strong><?php echo $avgResponseTimeMs ? h($avgResponseTimeMs) . 'ms' : 'No data'; ?></strong><small><?php echo h($avgConversationDuration); ?> avg duration</small><em class="bi-delta <?php echo $avgResponseTimeMs && $avgResponseTimeMs > 1500 ? 'down' : ''; ?>"><?php echo h($peakUsage); ?></em></div>
-        </div>
-
-        <div class="bi-layout">
-          <div class="panel bi-panel">
-            <div class="bi-panel-head">
-              <div>
-                <h3>Conversation Trend</h3>
-                <small><?php echo h($analyticsFrom); ?> to <?php echo h($analyticsTo); ?></small>
-              </div>
-              <span class="tag"><?php echo h($conversationCount); ?> total</span>
-            </div>
-            <div class="bi-chart" id="biConversationTrend"></div>
-          </div>
-          <div class="panel bi-panel">
-            <div class="bi-panel-head">
-              <div>
-                <h3>Channel Mix</h3>
-                <small>Device, browser, and country signals</small>
-              </div>
-            </div>
-            <div class="bi-chart" id="biDeviceMix"></div>
-          </div>
-        </div>
-
-        <div class="panel bi-panel">
-          <div class="bi-panel-head">
-            <div>
-              <h3>Lead Funnel</h3>
-              <small>Visitor progression through chatbot engagement and verification</small>
-            </div>
-            <span class="tag"><?php echo h($leadConversionRate); ?>% conversion</span>
-          </div>
-          <div class="bi-funnel">
-            <div class="bi-funnel-step" style="--fill:100%"><span>Visitors</span><strong><?php echo h($uniqueVisitorCount); ?></strong><small>Unique users</small></div>
-            <div class="bi-funnel-step" style="--fill:<?php echo h(min(100, round(($chatOpenedCount / max(1, $uniqueVisitorCount)) * 100))); ?>%"><span>Chat Opened</span><strong><?php echo h($chatOpenedCount); ?></strong><small><?php echo h($chatOpenRate); ?>% open rate</small></div>
-            <div class="bi-funnel-step" style="--fill:<?php echo h(min(100, round(($conversationCount / max(1, $uniqueVisitorCount)) * 100))); ?>%"><span>Started Chat</span><strong><?php echo h($conversationCount); ?></strong><small><?php echo h($avgMessagesPerConversation); ?> msg avg</small></div>
-            <div class="bi-funnel-step" style="--fill:<?php echo h(min(100, round(($uniqueLeadCount / max(1, $uniqueVisitorCount)) * 100))); ?>%"><span>Shared Contact</span><strong><?php echo h($uniqueLeadCount); ?></strong><small>Unique leads</small></div>
-            <div class="bi-funnel-step" style="--fill:<?php echo h(min(100, round(($realUniqueLeadCount / max(1, $uniqueVisitorCount)) * 100))); ?>%"><span>Verified</span><strong><?php echo h($realUniqueLeadCount); ?></strong><small><?php echo h($otpVerifiedLeadPercent); ?>% of leads</small></div>
-          </div>
-        </div>
-
-        <div class="panel bi-panel bi-map-card">
-          <div class="bi-panel-head">
-            <div>
-              <h3>World Map</h3>
-              <small>Country-level visitor distribution from tracked widget sessions</small>
-            </div>
-            <span class="tag"><?php echo h(array_sum($countryCounts)); ?> located</span>
-          </div>
-          <div class="bi-world-map" id="biCountryMap"></div>
-          <div class="bi-map-legend" id="biCountryMapLegend"></div>
-        </div>
-
-        <div class="analytics-grid two">
-          <div class="panel bi-panel">
-            <div class="bi-panel-head"><h3>Top Questions</h3><small>Ranked by ask volume</small></div>
-            <div class="bi-side-list">
-              <?php if (empty($topQuestionCounts)): ?><p class="empty">No asked questions yet.</p><?php endif; ?>
-              <?php foreach (array_slice($topQuestionCounts, 0, 6) as $index => $item): ?>
-                <?php $questionSuccess = $item['count'] > 0 ? round((($item['answered'] ?? 0) / max(1, $item['count'])) * 100) : 0; ?>
-                <div class="bi-rank-row" data-drill="question" data-value="<?php echo h($item['question']); ?>"><b><?php echo h($index + 1); ?></b><span><?php echo h($item['question']); ?></span><strong><?php echo h($item['count']); ?> - <?php echo h($questionSuccess); ?>%</strong></div>
-              <?php endforeach; ?>
-            </div>
-          </div>
-          <div class="panel bi-panel">
-            <div class="bi-panel-head"><h3>Page Performance</h3><small>Conversations and lead contribution</small></div>
-            <div class="table-wrap bi-table-card">
-              <table>
-                <thead><tr><th>Page</th><th>Chats</th><th>Leads</th><th>Success</th></tr></thead>
-                <tbody>
-                  <?php if (empty($sourcePageStats)): ?><tr><td colspan="4" class="empty">No source page data yet.</td></tr><?php endif; ?>
-                  <?php foreach (array_slice($sourcePageStats, 0, 6) as $page): ?>
-                    <?php $pageSuccess = $page['conversations'] > 0 ? round(($page['answered'] / max(1, $page['conversations'])) * 100) : 0; ?>
-                    <tr data-drill="page" data-value="<?php echo h($page['page']); ?>"><td><?php echo h($page['page']); ?></td><td><?php echo h($page['conversations']); ?></td><td><?php echo h($page['leads']); ?></td><td><?php echo h($pageSuccess); ?>%</td></tr>
-                  <?php endforeach; ?>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-        </div>
-
-        <div class="analytics-subpanel" id="analytics-conversations">
-        <div class="analytics-grid two">
-          <div class="panel section-body">
-            <h3>Conversations Trend</h3>
-            <p class="muted" style="margin:10px 0 0">Date vs conversations.</p>
-            <?php if (empty($dailyChartCounts)): ?><p class="empty">No conversation trend data yet.</p><?php endif; ?>
-            <?php if (!empty($dailyChartCounts)): ?>
-              <div class="trend-line">
-                <?php foreach (array_slice($dailyChartCounts, -14, null, true) as $day => $count): ?>
-                  <div class="trend-column">
-                    <div class="trend-bar" style="height:<?php echo h(max(4, round(($count / max(1, $maxDailyCount)) * 150))); ?>px"></div>
-                    <span class="trend-label"><?php echo h(substr($day, 5)); ?></span>
-                  </div>
-                <?php endforeach; ?>
-              </div>
-            <?php endif; ?>
-          </div>
-          <div class="panel section-body">
-            <h3>Peak Usage Hours</h3>
-            <p class="muted" style="margin:10px 0 0">Hour vs number of queries. Peak: <?php echo h($peakUsage); ?>.</p>
-            <div class="mini-chart">
-              <?php if (empty($hourChartCounts)): ?><p class="empty">No hourly usage data yet.</p><?php endif; ?>
-              <?php foreach (array_slice($hourChartCounts, 0, 12, true) as $hour => $count): ?>
-                <div class="bar-row"><span><?php echo h($hour); ?>:00</span><div class="bar-track"><div class="bar-fill" style="width:<?php echo h(round(($count / max(1, $maxHourCount)) * 100)); ?>%"></div></div><strong><?php echo h($count); ?></strong></div>
-              <?php endforeach; ?>
-            </div>
-          </div>
-        </div>
-
-        <div class="analytics-grid">
-          <div class="panel section-body">
-            <h3>Device Analytics</h3>
-            <div class="mini-chart">
-              <?php if (empty($deviceCounts)): ?><p class="empty">No device data yet. New widget sessions will populate this.</p><?php endif; ?>
-              <?php foreach (array_slice($deviceCounts, 0, 5, true) as $device => $count): ?>
-                <div class="bar-row"><span><?php echo h($device); ?></span><div class="bar-track"><div class="bar-fill" style="width:<?php echo h(round(($count / max(1, max($deviceCounts))) * 100)); ?>%"></div></div><strong><?php echo h($count); ?></strong></div>
-              <?php endforeach; ?>
-            </div>
-          </div>
-          <div class="panel section-body">
-            <h3>Browser Analytics</h3>
-            <div class="mini-chart">
-              <?php if (empty($browserCounts)): ?><p class="empty">No browser data yet. New widget sessions will populate this.</p><?php endif; ?>
-              <?php foreach (array_slice($browserCounts, 0, 5, true) as $browser => $count): ?>
-                <div class="bar-row"><span><?php echo h($browser); ?></span><div class="bar-track"><div class="bar-fill" style="width:<?php echo h(round(($count / max(1, max($browserCounts))) * 100)); ?>%"></div></div><strong><?php echo h($count); ?></strong></div>
-              <?php endforeach; ?>
-            </div>
-          </div>
-          <div class="panel section-body">
-            <h3>Country / City Analytics</h3>
-            <div class="mini-chart">
-              <?php if (empty($countryCounts) && empty($cityCounts)): ?><p class="empty">No location data yet. Country is estimated from browser locale; city needs geolocation or IP lookup later.</p><?php endif; ?>
-              <?php foreach (array_slice($countryCounts, 0, 4, true) as $country => $count): ?>
-                <div class="bar-row"><span><?php echo h($country); ?></span><div class="bar-track"><div class="bar-fill" style="width:<?php echo h(round(($count / max(1, max($countryCounts))) * 100)); ?>%"></div></div><strong><?php echo h($count); ?></strong></div>
-              <?php endforeach; ?>
-              <?php foreach (array_slice($cityCounts, 0, 3, true) as $city => $count): ?>
-                <div class="bar-row"><span><?php echo h($city); ?></span><div class="bar-track"><div class="bar-fill" style="width:<?php echo h(round(($count / max(1, max($cityCounts))) * 100)); ?>%"></div></div><strong><?php echo h($count); ?></strong></div>
-              <?php endforeach; ?>
-            </div>
-          </div>
-        </div>
-        </div>
-
-        <div class="analytics-subpanel" id="analytics-faq">
-        <div class="analytics-grid two">
-          <div class="panel">
-            <div class="section-head"><h3>Most Asked Questions</h3><span class="tag"><?php echo h(count($topQuestionCounts)); ?> tracked</span></div>
-            <div class="table-wrap">
-              <table>
-                <thead><tr><th>Question</th><th>Count</th><th>Success Rate</th></tr></thead>
-                <tbody>
-                  <?php if (empty($topQuestionCounts)): ?><tr><td colspan="3" class="empty">No asked questions yet.</td></tr><?php endif; ?>
-                  <?php foreach (array_slice($topQuestionCounts, 0, 8) as $item): ?>
-                    <?php $questionSuccess = $item['count'] > 0 ? round((($item['answered'] ?? 0) / max(1, $item['count'])) * 100) : 0; ?>
-                    <tr><td><?php echo h($item['question']); ?></td><td><?php echo h($item['count']); ?></td><td><?php echo h($questionSuccess); ?>%</td></tr>
-                  <?php endforeach; ?>
-                </tbody>
-              </table>
-            </div>
-          </div>
-          <div class="panel">
-            <div class="section-head"><h3>Unanswered Questions</h3><span class="tag bad"><?php echo h($unansweredCount); ?> open</span></div>
-            <div class="table-wrap">
-              <table>
-                <thead><tr><th>User Question</th><th>Source Page</th><th>Date</th><th>Action</th></tr></thead>
-                <tbody>
-                  <?php if (empty($outsideFaqQuestions)): ?><tr><td colspan="4" class="empty">No unanswered questions yet.</td></tr><?php endif; ?>
-                  <?php foreach (array_slice($outsideFaqQuestions, 0, 8) as $item): ?>
-                    <tr>
-                      <td><?php echo h($item['question']); ?></td>
-                      <td><?php echo h($item['source_page'] ?? 'Unknown page'); ?></td>
-                      <td><?php echo h(substr((string)($item['created_at'] ?? ''), 0, 10)); ?></td>
-                      <td><button class="ghost-btn" type="button" data-question="<?php echo h($item['question']); ?>" data-jump="faqs">Add to FAQ</button></td>
-                    </tr>
-                  <?php endforeach; ?>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-        </div>
-
-        <div class="analytics-subpanel" id="analytics-leads">
-        <div class="metrics">
-          <div class="panel metric"><span>Unique Leads</span><strong><?php echo h($uniqueLeadCount); ?></strong><small>Deduplicated by email or mobile number for the selected date range.</small></div>
-          <div class="panel metric"><span>Real Leads</span><strong><?php echo h($realUniqueLeadCount); ?></strong><small>Email or mobile OTP verified.</small></div>
-          <div class="panel metric"><span>Weak Leads</span><strong><?php echo h($weakLeadCount); ?></strong><small>Contact captured without OTP verification.</small></div>
-          <div class="panel metric"><span>Email Contacts</span><strong><?php echo h($emailLeadCount); ?></strong><small>Raw email captures in selected range.</small></div>
-          <div class="panel metric"><span>Mobile Contacts</span><strong><?php echo h($phoneLeadCount); ?></strong><small>Raw mobile captures in selected range.</small></div>
-          <div class="panel metric"><span>Lead Conversion</span><strong><?php echo h($leadConversionRate); ?>%</strong><small>Raw leads from conversations.</small></div>
-        </div>
-
-        <div class="panel section-body">
-          <h3>Lead Generated Data</h3>
-          <p class="muted" style="margin:10px 0 14px">Duplicate emails and mobile numbers are merged here. Use the date filter above to change the selected range.</p>
-          <div class="table-wrap">
-            <table>
-              <thead><tr><th>Lead type</th><th>Email</th><th>Mobile Number</th><th>Email OTP Count</th><th>Mobile OTP Count</th><th>Total Captures</th><th>WhatsApp Clicks</th><th>Source Pages</th><th>Location</th><th>First Seen</th><th>Last Seen</th></tr></thead>
-              <tbody>
-                <?php if (empty($uniqueLeadRows)): ?><tr><td colspan="11" class="empty">No leads captured in this date range.</td></tr><?php endif; ?>
-                <?php foreach ($uniqueLeadRows as $lead): ?>
-                  <tr>
-                    <td><span class="tag <?php echo ($lead['lead_type'] ?? '') === 'Real' ? 'good' : 'bad'; ?>"><?php echo h($lead['lead_type'] ?? 'Weak'); ?></span></td>
-                    <td><?php echo h($lead['email'] ?: '-'); ?></td>
-                    <td><?php echo h($lead['phone_number'] ?: '-'); ?></td>
-                    <td><?php echo h($lead['email_otp_count'] ?? 0); ?></td>
-                    <td><?php echo h($lead['mobile_otp_count'] ?? 0); ?></td>
-                    <td><?php echo h($lead['total_records'] ?? 0); ?></td>
-                    <td><?php echo h($lead['whatsapp_redirect_count'] ?? 0); ?></td>
-                    <td><?php echo h(implode(', ', array_keys($lead['source_pages'] ?? [])) ?: '-'); ?></td>
-                    <td><?php echo h($lead['location'] ?: '-'); ?></td>
-                    <td><?php echo h(substr((string)($lead['first_seen'] ?? ''), 0, 10) ?: '-'); ?></td>
-                    <td><?php echo h(substr((string)($lead['last_seen'] ?? ''), 0, 10) ?: '-'); ?></td>
-                  </tr>
-                <?php endforeach; ?>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div class="analytics-grid two">
-          <div class="panel section-body">
-            <h3>Lead Generation Periods</h3>
-            <div class="mini-chart">
-              <?php foreach ($leadPeriodStats as $period): ?>
-                <div class="bar-row"><span><?php echo h($period['label']); ?></span><div class="bar-track"><div class="bar-fill" style="width:<?php echo h(round(($period['count'] / max(1, max(array_column($leadPeriodStats, 'count')))) * 100)); ?>%"></div></div><strong><?php echo h($period['count']); ?></strong></div>
-              <?php endforeach; ?>
-            </div>
-          </div>
-          <div class="panel section-body">
-            <h3>Lead Generation Funnel</h3>
-            <div class="funnel">
-              <div class="funnel-step"><span>Visitors</span><strong><?php echo h($uniqueVisitorCount); ?></strong></div>
-              <div class="funnel-step"><span>Chat Opened</span><strong><?php echo h($chatOpenedCount); ?></strong></div>
-              <div class="funnel-step"><span>Started Chat</span><strong><?php echo h($conversationCount); ?></strong></div>
-              <div class="funnel-step"><span>Shared Contact</span><strong><?php echo h($uniqueLeadCount); ?></strong></div>
-              <div class="funnel-step"><span>OTP Verified</span><strong><?php echo h($realUniqueLeadCount); ?></strong></div>
-            </div>
-          </div>
-        </div>
-        </div>
-
-        <div class="analytics-subpanel" id="analytics-pages">
-        <div class="analytics-grid two">
-          <div class="panel section-body">
-            <h3>User Engagement</h3>
-            <div class="mini-chart">
-              <div class="inline-row" style="justify-content:space-between;border-bottom:1px solid var(--line);padding:10px 0"><span>Avg messages per conversation</span><strong><?php echo h($avgMessagesPerConversation); ?></strong></div>
-              <div class="inline-row" style="justify-content:space-between;border-bottom:1px solid var(--line);padding:10px 0"><span>Returning visitors</span><strong><?php echo h($returningUsersPercent); ?>%</strong></div>
-              <div class="inline-row" style="justify-content:space-between;border-bottom:1px solid var(--line);padding:10px 0"><span>Chat open rate</span><strong><?php echo h($chatOpenRate); ?>%</strong></div>
-              <div class="inline-row" style="justify-content:space-between;border-bottom:1px solid var(--line);padding:10px 0"><span>Bounce after chatbot open</span><strong><?php echo h($bounceAfterOpenRate); ?>%</strong></div>
-            </div>
-          </div>
-          <div class="panel">
-            <div class="section-head"><h3>Source Page Analytics</h3><span class="tag"><?php echo h(count($sourcePageStats)); ?> pages</span></div>
-            <div class="table-wrap">
-              <table>
-                <thead><tr><th>Page URL</th><th>Conversations</th><th>Leads</th><th>Success %</th></tr></thead>
-                <tbody>
-                  <?php if (empty($sourcePageStats)): ?><tr><td colspan="4" class="empty">No source page data yet.</td></tr><?php endif; ?>
-                  <?php foreach (array_slice($sourcePageStats, 0, 8) as $page): ?>
-                    <?php $pageSuccess = $page['conversations'] > 0 ? round(($page['answered'] / max(1, $page['conversations'])) * 100) : 0; ?>
-                    <tr><td><?php echo h($page['page']); ?></td><td><?php echo h($page['conversations']); ?></td><td><?php echo h($page['leads']); ?></td><td><?php echo h($pageSuccess); ?>%</td></tr>
-                  <?php endforeach; ?>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-        </div>
-
-        <div class="analytics-subpanel" id="analytics-realtime">
-        <div class="analytics-grid">
-          <div class="panel section-body"><h3>Real-Time Analytics</h3><p class="muted" style="margin-top:10px">Active users currently chatting: <strong><?php echo h($activeUsersNow); ?></strong></p><p class="muted">Current page: <strong><?php echo h($mostActivePage); ?></strong></p></div>
-        </div>
-        </div>
-
-        <div class="analytics-subpanel" id="analytics-reports">
-        <div class="analytics-grid two">
-          <div class="panel section-body"><h3>Export & Reports</h3><?php if (!$canExportReports): ?><div class="notice" style="margin-top:12px"><strong>Subscription required:</strong><br>CSV export and downloadable reports are available on Business plan and higher.</div><?php else: ?><div class="report-actions" style="margin-top:12px"><button class="ghost-btn" type="button" id="exportAnalyticsCsvBtn">Export CSV</button><button class="ghost-btn" type="button" id="downloadAnalyticsReportBtn">Download report</button><button class="ghost-btn" type="button" id="printAnalyticsReportBtn">Print / Save PDF</button><button class="ghost-btn" type="button" id="downloadWeeklyReportBtn">Weekly report</button><button class="ghost-btn" type="button" id="downloadMonthlyReportBtn">Monthly report</button></div><?php endif; ?></div>
-          <div class="panel section-body"><h3>Notifications / Alerts</h3><div class="mini-chart"><div class="notice">Fallback rate: <?php echo h($fallbackRate); ?>%</div><div class="notice">Trending unanswered questions: <?php echo h($unansweredCount); ?></div><div class="notice">Lead conversion: <?php echo h($leadConversionRate); ?>%</div></div></div>
-        </div>
-        </div>
-        <?php endif; ?>
-      </section>
+              </section>
 
       <section class="tab-panel" id="install">
         <div class="panel">
@@ -2601,9 +1225,9 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
           <div class="section-body form-grid integration-subpanel active" id="integration-subpanel-install">
             <div class="field full">
               <label>Install snippet</label>
-              <div class="embed-box"><code id="embedCode"><?php echo h($embedCode ?: 'Create or select a bot to generate the embed script.'); ?></code></div>
+              <div class="embed-box"><code id="embedCode">Create or select a bot to generate the embed script.</code></div>
               <div class="panel-actions">
-                <button class="pill-btn copy-btn" type="button" data-copy="<?php echo h($embedCode); ?>">Copy JS snippet</button>
+                <button class="pill-btn copy-btn" type="button" data-copy="">Copy JS snippet</button>
               </div>
             </div>
 
@@ -2614,14 +1238,13 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                   <small class="input-help">When enabled, this bot only loads on the website connected with this bot.</small>
                 </div>
                 <label class="switch" title="Enable website verification">
-                  <input id="websiteVerificationToggle" type="checkbox" <?php echo $websiteVerificationEnabled ? 'checked' : ''; ?> aria-label="Enable website verification">
+                  <input id="websiteVerificationToggle" type="checkbox"  aria-label="Enable website verification">
                   <span class="switch-slider"></span>
                 </label>
               </div>
               <div class="notice" style="margin-top:12px">
-                <strong>Status:</strong> <span id="verificationStatusText"><?php echo h($verificationStatus); ?></span><br>
-                <strong>Bot website:</strong> <?php echo h($websiteName ?: 'Not set'); ?>
-              </div>
+                <strong>Status:</strong> <span id="verificationStatusText">Pending</span><br>
+                <strong>Bot website:</strong> Not set              </div>
             </div>
 
             <div class="field full">
@@ -2629,14 +1252,13 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                 <div>
                   <label>Allowed domains</label>
                   <small class="input-help">When enabled, this bot only works on the domains listed below.</small>
-                  <?php if (!$canUseAllowedDomains): ?><small class="input-help error">Business plan required.</small><?php endif; ?>
-                </div>
+                  <small class="input-help error">Business plan required.</small>                </div>
                 <label class="switch" title="Enable allowed domains">
-                  <input id="allowedDomainsToggle" type="checkbox" <?php echo $allowedDomainsEnabled && $canUseAllowedDomains ? 'checked' : ''; ?> <?php echo $canUseAllowedDomains ? '' : 'disabled'; ?> aria-label="Enable allowed domains">
+                  <input id="allowedDomainsToggle" type="checkbox"  disabled aria-label="Enable allowed domains">
                   <span class="switch-slider"></span>
                 </label>
               </div>
-              <textarea id="allowedDomainsInput" placeholder="example.com&#10;www.example.com" <?php echo $canUseAllowedDomains ? '' : 'disabled'; ?>><?php echo h($allowedDomains); ?></textarea>
+              <textarea id="allowedDomainsInput" placeholder="example.com&#10;www.example.com" disabled></textarea>
               <small class="input-help">Add one domain per line. You can also separate domains with commas.</small>
             </div>
 
@@ -2652,45 +1274,39 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                   <h3>Customer API Security</h3>
                   <p class="muted">Create customer-safe API keys, restrict where they can be used, and rotate them without exposing admin secrets.</p>
                 </div>
-                <span class="tag <?php echo $canUseBusinessApi ? 'good' : 'bad'; ?>"><?php echo $canUseBusinessApi ? 'Business API enabled' : 'Business API required'; ?></span>
+                <span class="tag bad">Business API required</span>
               </div>
-              <?php if (!$canUseBusinessApi): ?>
-                <div class="notice"><strong>Business plan required:</strong><br>API keys can be created after upgrading to Business. Webhooks are still available on paid plans.</div>
-              <?php endif; ?>
-
+                              <div class="notice"><strong>Business plan required:</strong><br>API keys can be created after upgrading to Business. Webhooks are still available on paid plans.</div>
+              
               <div class="security-grid">
                 <div class="security-card">
                   <h4>API integration guide</h4>
                   <p class="muted">Step-by-step reference for API keys, endpoints, filters, sample requests, webhooks, errors, and security.</p>
-                  <?php if ($canUseBusinessApi): ?>
-                    <a class="pill-btn" href="api_integration.php?bot=<?php echo h(urlencode($selectedBotId)); ?>">Open API guide</a>
-                  <?php else: ?>
-                    <button class="pill-btn" type="button" disabled>Business plan required</button>
-                  <?php endif; ?>
-                </div>
+                                      <button class="pill-btn" type="button" disabled>Business plan required</button>
+                                  </div>
 
                 <div class="security-card">
                   <h4>Create API key</h4>
                   <p class="muted">The full key is shown once. Only a hash is stored after creation.</p>
                   <div class="field">
                     <label>Key label</label>
-                    <input id="apiKeyNameInput" value="Production key" maxlength="80" <?php echo $canUseBusinessApi ? '' : 'disabled'; ?>>
+                    <input id="apiKeyNameInput" value="Production key" maxlength="80" disabled>
                   </div>
                   <div class="field">
                     <label>Daily rate limit</label>
-                    <input id="apiKeyRateLimitInput" type="number" min="1" max="100000" value="<?php echo h(first_value($settings, ['rate_limit'], '1000')); ?>" <?php echo $canUseBusinessApi ? '' : 'disabled'; ?>>
+                    <input id="apiKeyRateLimitInput" type="number" min="1" max="100000" value="1000" disabled>
                   </div>
                   <div class="field">
                     <label>Allowed server IPs</label>
-                    <textarea id="apiKeyAllowedIpsInput" placeholder="203.0.113.10&#10;198.51.100.24" <?php echo $canUseBusinessApi ? '' : 'disabled'; ?>></textarea>
+                    <textarea id="apiKeyAllowedIpsInput" placeholder="203.0.113.10&#10;198.51.100.24" disabled></textarea>
                     <small class="input-help">Optional. Add one IP per line or separate with commas.</small>
                   </div>
                   <div class="field">
                     <label>Allowed origins</label>
-                    <textarea id="apiKeyAllowedOriginsInput" placeholder="https://example.com&#10;https://app.example.com" <?php echo $canUseBusinessApi ? '' : 'disabled'; ?>></textarea>
+                    <textarea id="apiKeyAllowedOriginsInput" placeholder="https://example.com&#10;https://app.example.com" disabled></textarea>
                     <small class="input-help">Optional. Use this when calls come from a browser app.</small>
                   </div>
-                  <button class="pill-btn" type="button" id="createApiKeyBtn" <?php echo $canUseBusinessApi ? '' : 'disabled'; ?>>Create API key</button>
+                  <button class="pill-btn" type="button" id="createApiKeyBtn" disabled>Create API key</button>
                   <div class="api-key-reveal" id="newApiKeyReveal">
                     <small class="input-help">Copy this now. It will not be shown again.</small>
                     <code class="api-key-code" id="newApiKeyCode"></code>
@@ -2711,19 +1327,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                 <table>
                   <thead><tr><th>Name</th><th>Prefix</th><th>Rate limit</th><th>Last used</th><th>Status</th><th>Action</th></tr></thead>
                   <tbody id="apiKeysTableBody">
-                    <?php if (empty($apiKeyRows)): ?><tr><td colspan="6" class="empty">No API keys created yet.</td></tr><?php endif; ?>
-                    <?php foreach ($apiKeyRows as $keyRow): ?>
-                      <?php $revoked = !empty($keyRow['revoked_at']); ?>
-                      <tr data-api-key-id="<?php echo h($keyRow['id'] ?? ''); ?>">
-                        <td><?php echo h($keyRow['name'] ?? 'API key'); ?></td>
-                        <td><code class="api-key-code"><?php echo h(($keyRow['key_prefix'] ?? '') . '...'); ?></code></td>
-                        <td><?php echo h($keyRow['rate_limit_per_day'] ?? ''); ?>/day</td>
-                        <td><?php echo h($keyRow['last_used_at'] ?? 'Never'); ?></td>
-                        <td><span class="tag <?php echo $revoked ? 'bad' : 'good'; ?>"><span class="status-dot <?php echo $revoked ? 'off' : ''; ?>"></span><?php echo $revoked ? 'Revoked' : 'Active'; ?></span></td>
-                        <td><?php if (!$revoked): ?><button class="danger-btn revoke-api-key-btn" type="button">Revoke</button><?php else: ?><span class="muted">No action</span><?php endif; ?></td>
-                      </tr>
-                    <?php endforeach; ?>
-                  </tbody>
+                    <tr><td colspan="6" class="empty">No API keys created yet.</td></tr>                                      </tbody>
                 </table>
               </div>
             </div>
@@ -2732,14 +1336,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
               <div class="security-card">
                 <h4>Recent API usage</h4>
                 <div class="mini-chart" id="apiUsageList">
-                  <?php if (empty($apiUsageRows)): ?><p class="empty">No API usage logged yet.</p><?php endif; ?>
-                  <?php foreach (array_slice($apiUsageRows, 0, 6) as $usageRow): ?>
-                    <div class="inline-row" style="justify-content:space-between;border-bottom:1px solid var(--line);padding:8px 0">
-                      <span><?php echo h(($usageRow['endpoint'] ?? 'API') . ' - ' . ($usageRow['status_code'] ?? '')); ?></span>
-                      <small class="muted"><?php echo h($usageRow['created_at'] ?? ''); ?></small>
-                    </div>
-                  <?php endforeach; ?>
-                </div>
+                  <p class="empty">No API usage logged yet.</p>                                  </div>
               </div>
             </div>
           </div>
@@ -2750,19 +1347,18 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                 <div class="security-card">
                   <h4>Webhook destination</h4>
                   <p class="muted">Send verified leads and important events to your customer's system.</p>
-                  <?php if (!$canUseWebhook): ?><small class="input-help error">Active paid plan required.</small><?php endif; ?>
-                  <div class="field">
+                  <small class="input-help error">Active paid plan required.</small>                  <div class="field">
                     <label>Webhook URL</label>
-                    <input id="webhookUrlInput" value="<?php echo h(first_value($settings, ['webhook_url'], '')); ?>" placeholder="https://example.com/webhooks/vani" <?php echo $canUseWebhook ? '' : 'disabled'; ?>>
+                    <input id="webhookUrlInput" value="" placeholder="https://example.com/webhooks/vani" disabled>
                   </div>
                   <div class="field">
                     <label>Webhook secret</label>
-                    <input id="webhookSecretInput" value="<?php echo h(first_value($settings, ['webhook_secret'], '')); ?>" placeholder="Optional signing secret" <?php echo $canUseWebhook ? '' : 'disabled'; ?>>
+                    <input id="webhookSecretInput" value="" placeholder="Optional signing secret" disabled>
                     <small class="input-help">Use this to verify webhook signatures on your server.</small>
                   </div>
                   <div class="inline-row">
-                    <button class="pill-btn" type="button" id="saveWebhookBtn" <?php echo $canUseWebhook ? '' : 'disabled'; ?>>Save webhook</button>
-                    <button class="ghost-btn" type="button" id="testWebhookBtn" <?php echo $canUseWebhook ? '' : 'disabled'; ?>>Test webhook</button>
+                    <button class="pill-btn" type="button" id="saveWebhookBtn" disabled>Save webhook</button>
+                    <button class="ghost-btn" type="button" id="testWebhookBtn" disabled>Test webhook</button>
                   </div>
                 </div>
 
@@ -2771,15 +1367,14 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                     <div>
                       <h4>Live Chat Actions</h4>
                       <p class="muted">Let the customer's website react instantly to chatbot events such as chat open, messages, FAQ answers, unknown questions, lead capture, and WhatsApp clicks.</p>
-                      <?php if (!$canUseLiveChatActions): ?><small class="input-help error">Business plan required.</small><?php endif; ?>
-                    </div>
+                      <small class="input-help error">Business plan required.</small>                    </div>
                     <label class="switch" title="Enable Live Chat Actions">
-                      <input id="liveChatActionsToggle" type="checkbox" <?php echo $liveChatActionsEnabled && $canUseLiveChatActions ? 'checked' : ''; ?> <?php echo $canUseLiveChatActions ? '' : 'disabled'; ?> aria-label="Enable Live Chat Actions">
+                      <input id="liveChatActionsToggle" type="checkbox"  disabled aria-label="Enable Live Chat Actions">
                       <span class="switch-slider"></span>
                     </label>
                   </div>
                   <small class="input-help">When ON, the widget dispatches safe browser events on the customer's website. When OFF, no live website events are emitted.</small>
-                  <button class="pill-btn" type="button" id="saveLiveChatActionsBtn" <?php echo $canUseLiveChatActions ? '' : 'disabled'; ?>>Save Live Chat Actions</button>
+                  <button class="pill-btn" type="button" id="saveLiveChatActionsBtn" disabled>Save Live Chat Actions</button>
                 </div>
               </div>
             </div>
@@ -2792,11 +1387,11 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
         <div class="panel">
           <div class="section-head"><h3>Bot Settings</h3></div>
           <div class="section-body form-grid">
-            <div class="field"><label>API key</label><input id="apiKeyInput" value="<?php echo h(first_value($settings, ['api_key'], '')); ?>" placeholder="Not required for free plan"></div>
-            <div class="field"><label>Rate limit</label><input id="rateLimitInput" type="number" min="1" value="<?php echo h(first_value($settings, ['rate_limit'], '100')); ?>"></div>
-            <div class="field"><label>Enable chatbot</label><select id="activeInput"><option value="true" <?php echo $isActive ? 'selected' : ''; ?>>Enabled</option><option value="false" <?php echo !$isActive ? 'selected' : ''; ?>>Disabled</option></select></div>
+            <div class="field"><label>API key</label><input id="apiKeyInput" value="" placeholder="Not required for free plan"></div>
+            <div class="field"><label>Rate limit</label><input id="rateLimitInput" type="number" min="1" value="100"></div>
+            <div class="field"><label>Enable chatbot</label><select id="activeInput"><option value="true" selected>Enabled</option><option value="false" >Disabled</option></select></div>
             <div class="field"><label>Notification preferences</label><select id="notificationInput"><option value="weekly_summary">Email weekly summary</option><option value="unanswered_only">Important unanswered queries only</option><option value="off">Off</option></select></div>
-            <div class="field full"><label>Allowed domains</label><textarea id="domainsInput" placeholder="example.com"><?php echo h(first_value($settings, ['allowed_domains'], '')); ?></textarea></div>
+            <div class="field full"><label>Allowed domains</label><textarea id="domainsInput" placeholder="example.com"></textarea></div>
             <div class="field full"><button class="danger-btn" type="button" data-save-note="Delete data request">Delete data</button></div>
             <div class="panel-actions"><button class="pill-btn" type="button" id="saveSettingsBtn">Save bot settings</button></div>
           </div>
@@ -2821,7 +1416,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                 <p class="muted">Turn this on when you want the chatbot to collect contact details from users.</p>
               </div>
               <label class="switch" title="Enable lead generation">
-                <input id="leadGenerationEnabled" class="lead-toggle" type="checkbox" <?php echo $leadEnabled ? 'checked' : ''; ?> aria-label="Enable lead generation">
+                <input id="leadGenerationEnabled" class="lead-toggle" type="checkbox"  aria-label="Enable lead generation">
                 <span class="switch-slider"></span>
               </label>
             </div>
@@ -2843,7 +1438,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                       <small>Ask users for their location during the chat flow.</small>
                     </div>
                     <label class="switch" title="Get user location">
-                      <input id="leadCollectLocationToggle" class="lead-toggle" type="checkbox" <?php echo $leadCollectLocation ? 'checked' : ''; ?> aria-label="Get user location">
+                      <input id="leadCollectLocationToggle" class="lead-toggle" type="checkbox"  aria-label="Get user location">
                       <span class="switch-slider"></span>
                     </label>
                   </div>
@@ -2856,7 +1451,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                       <small>Ask users for an email address and save it without sending a verification code.</small>
                     </div>
                     <label class="switch" title="Collect email without OTP">
-                      <input id="leadCollectEmailToggle" class="lead-toggle" type="checkbox" <?php echo $leadCollectEmail ? 'checked' : ''; ?> aria-label="Collect email without OTP">
+                      <input id="leadCollectEmailToggle" class="lead-toggle" type="checkbox"  aria-label="Collect email without OTP">
                       <span class="switch-slider"></span>
                     </label>
                   </div>
@@ -2869,7 +1464,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                       <small>Ask users for a phone number and save it without OTP verification.</small>
                     </div>
                     <label class="switch" title="Collect mobile without OTP">
-                      <input id="leadCollectMobileToggle" class="lead-toggle" type="checkbox" <?php echo $leadCollectMobile ? 'checked' : ''; ?> aria-label="Collect mobile without OTP">
+                      <input id="leadCollectMobileToggle" class="lead-toggle" type="checkbox"  aria-label="Collect mobile without OTP">
                       <span class="switch-slider"></span>
                     </label>
                   </div>
@@ -2882,13 +1477,13 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                       <small>Send an email notification when lead details are captured.</small>
                     </div>
                     <label class="switch" title="Notify lead by email">
-                      <input id="leadEmailNotifyToggle" class="lead-toggle" type="checkbox" <?php echo $leadNotifyByEmail ? 'checked' : ''; ?> aria-label="Notify lead by email">
+                      <input id="leadEmailNotifyToggle" class="lead-toggle" type="checkbox"  aria-label="Notify lead by email">
                       <span class="switch-slider"></span>
                     </label>
                   </div>
                   <div class="field">
                     <label>Notification email</label>
-                    <input id="leadNotificationEmail" type="email" value="<?php echo h($leadNotificationEmail); ?>" placeholder="<?php echo h($email); ?>" autocomplete="email">
+                    <input id="leadNotificationEmail" type="email" value="codex@test.local" placeholder="codex@test.local" autocomplete="email">
                     <small class="input-help" id="leadNotificationEmailHelp">Lead notifications can be sent to this email address.</small>
                   </div>
                 </div>
@@ -2910,10 +1505,9 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                     <div>
                       <h4>Collect email with OTP</h4>
                       <small>Verify the lead with an OTP sent to the user's email address.</small>
-                      <?php if (!$canUseEmailOtp): ?><small class="input-help error">Subscription required.</small><?php endif; ?>
-                    </div>
+                      <small class="input-help error">Subscription required.</small>                    </div>
                     <label class="switch" title="Collect email with OTP">
-                      <input id="leadEmailOtpToggle" class="lead-toggle" type="checkbox" <?php echo $leadVerifyEmailOtp ? 'checked' : ''; ?> aria-label="Collect email with OTP">
+                      <input id="leadEmailOtpToggle" class="lead-toggle" type="checkbox"  aria-label="Collect email with OTP">
                       <span class="switch-slider"></span>
                     </label>
                   </div>
@@ -2924,10 +1518,9 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                     <div>
                       <h4>Mobile OTP verification</h4>
                       <small>Verify the lead with an OTP sent to the user's mobile number.</small>
-                      <?php if (!$canUseMobileOtp): ?><small class="input-help error">Active paid plan required.</small><?php endif; ?>
-                    </div>
+                      <small class="input-help error">Active paid plan required.</small>                    </div>
                     <label class="switch" title="Mobile OTP verification">
-                      <input id="leadMobileOtpToggle" class="lead-toggle" type="checkbox" <?php echo $leadVerifyMobileOtp ? 'checked' : ''; ?> aria-label="Mobile OTP verification">
+                      <input id="leadMobileOtpToggle" class="lead-toggle" type="checkbox"  aria-label="Mobile OTP verification">
                       <span class="switch-slider"></span>
                     </label>
                   </div>
@@ -2938,19 +1531,18 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                     <div>
                       <h4>Redirect to WhatsApp Business</h4>
                       <small>Send users to the customer's WhatsApp Business account after lead capture.</small>
-                      <small class="input-help <?php echo $whatsappRedirectLocked ? 'error' : ''; ?>">WhatsApp redirection can be turned ON or OFF only 3 times per day. <?php echo $whatsappRedirectLocked ? 'It will be activated again after ' : h((string)max(0, 3 - $whatsappToggleCount)) . ' changes left today.'; ?><span id="whatsappLockTimer" data-remaining-seconds="<?php echo h((string)$whatsappLockSecondsRemaining); ?>"></span></small>
-                      <small class="input-help <?php echo !$whatsappWalletCanEnable || $whatsappStoppedReason === 'insufficient_wallet_balance' ? 'error' : ''; ?>">WhatsApp Redirect costs ₹99 for 30 days. <?php echo !$whatsappWalletCanEnable ? 'Wallet balance must be at least ₹99 to turn this ON.' : 'Renewal deducts ₹99 every 30 days while ON.'; ?> <?php if ($whatsappStoppedReason === 'insufficient_wallet_balance'): ?>Last renewal charge was ₹0 and the service was turned OFF due to insufficient wallet balance.<?php endif; ?></small>
-                      <?php if (!$canUseWhatsappRedirect): ?><small class="input-help error">Active paid plan required.</small><?php endif; ?>
-                    </div>
+                      <small class="input-help ">WhatsApp redirection can be turned ON or OFF only 3 times per day. 3 changes left today.<span id="whatsappLockTimer" data-remaining-seconds="0"></span></small>
+                      <small class="input-help ">WhatsApp Redirect costs ₹99 for 30 days. Renewal deducts ₹99 every 30 days while ON. </small>
+                      <small class="input-help error">Active paid plan required.</small>                    </div>
                     <label class="switch" title="Redirect to WhatsApp Business">
-                      <input id="whatsappLeadToggle" class="lead-toggle" type="checkbox" <?php echo $leadRedirectWhatsapp ? 'checked' : ''; ?> <?php echo ($whatsappRedirectLockedOn || (!$leadRedirectWhatsapp && !$whatsappWalletCanEnable)) ? 'disabled' : ''; ?> aria-label="Redirect to WhatsApp Business">
+                      <input id="whatsappLeadToggle" class="lead-toggle" type="checkbox"   aria-label="Redirect to WhatsApp Business">
                       <span class="switch-slider"></span>
                     </label>
                   </div>
                   <div class="field">
                     <label>WhatsApp Business mobile number</label>
                     <div class="inline-row">
-                      <input id="whatsappLeadNumber" type="tel" inputmode="tel" value="<?php echo h($leadWhatsappNumber); ?>" placeholder="+919876543210" autocomplete="tel" maxlength="16">
+                      <input id="whatsappLeadNumber" type="tel" inputmode="tel" value="" placeholder="+919876543210" autocomplete="tel" maxlength="16">
                       <button class="pill-btn" type="button" id="saveLeadSetupBtn">Save WhatsApp number</button>
                     </div>
                     <small class="input-help" id="whatsappLeadHelp">Use country code and digits only, for example +919876543210.</small>
@@ -2974,14 +1566,13 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
           </div>
 
           <div class="metrics" style="margin-top:18px">
-            <div class="panel metric"><span>Current plan</span><strong><?php echo h($activePlan['name']); ?></strong><small><?php echo h($faqCount); ?>/<?php echo $planFaqLimit === PHP_INT_MAX ? 'Unlimited' : h($planFaqLimit); ?> FAQs used.</small></div>
+            <div class="panel metric"><span>Current plan</span><strong>Free</strong><small>0/25 FAQs used.</small></div>
           </div>
 
           <div class="pricing-grid">
-            <div class="panel pricing-card <?php echo $activePlanId === 'starter' ? 'current-plan' : ''; ?>">
+            <div class="panel pricing-card ">
               <div class="pricing-head"><div><span class="eyebrow">Starter</span><h3>Starter Plan</h3></div><span class="tag">Small</span></div>
-              <?php if ($activePlanId === 'starter'): ?><div class="current-plan-note">Current plan</div><?php endif; ?>
-              <div class="price">₹199<small>/month</small></div>
+                            <div class="price">₹199<small>/month</small></div>
               <div class="feature-list"><span class="is-included">100 FAQ answers for small websites</span><span class="is-included">Email and Mobile OTP verification for real leads</span><span class="is-included">Dedicated WhatsApp button and many more action items for FAQs</span><span class="is-included">Webhook support</span><span class="is-included">FAQ Action Suggestions</span><span class="is-included">Auto wallet recharge: below ₹50, recharge ₹199</span><span class="is-excluded">Live Chat Actions for real-time website reactions</span><span class="is-excluded">API Integration to migrate or save data in your database</span><span class="is-excluded">Analytics dashboard access</span><span class="is-excluded">Chat can run only on allowed domains</span></div>
               <div class="wallet-table"><table><thead><tr><th>Wallet action</th><th>Charge</th></tr></thead><tbody><tr><td>Fresh Email OTP Lead</td><td>₹6</td></tr><tr><td>Repeat Email OTP Verification</td><td>₹2</td></tr><tr><td>Fresh Mobile OTP Lead</td><td>₹12</td></tr><tr><td>Repeat Mobile OTP Verification</td><td>₹3</td></tr><tr><td>WhatsApp Redirect</td><td>Add-on ₹99, refundable if cancelled within 1 hour</td></tr></tbody></table></div>
               <small class="muted">Validity of Fresh Email and Mobile OTP Leads is 30 days from last user verification.</small>
@@ -2989,10 +1580,9 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
               <small class="muted">Best for portfolios, coaches, and small businesses.</small>
             </div>
 
-            <div class="panel pricing-card featured <?php echo $activePlanId === 'growth' ? 'current-plan' : ''; ?>">
+            <div class="panel pricing-card featured ">
               <div class="pricing-head"><div><span class="eyebrow">Growth</span><h3>Growth Plan</h3></div><span class="tag good">Popular</span></div>
-              <?php if ($activePlanId === 'growth'): ?><div class="current-plan-note">Current plan</div><?php endif; ?>
-              <div class="price">₹499<small>/month</small></div>
+                            <div class="price">₹499<small>/month</small></div>
               <div class="feature-list"><span class="is-included">300 FAQ capacity for growing businesses</span><span class="is-included">Email and Mobile OTP verification for real leads</span><span class="is-included">Dedicated WhatsApp button and many more action items for FAQs</span><span class="is-included">Webhook support</span><span class="is-included">FAQ Action Suggestions</span><span class="is-included">Auto wallet recharge: below ₹100, recharge ₹499</span><span class="is-included">Analytics access: Overview, Conversations, FAQ Insights, Leads</span><span class="is-included">Better wallet rates than Starter on email and mobile leads</span><span class="is-excluded">Live Chat Actions for real-time website reactions</span><span class="is-excluded">API Integration to migrate or save data in your database</span><span class="is-excluded">Chat can run only on allowed domains</span></div>
               <div class="wallet-table"><table><thead><tr><th>Wallet action</th><th>Charge</th></tr></thead><tbody><tr><td>Fresh Email OTP Lead</td><td>₹5</td></tr><tr><td>Repeat Email OTP Verification</td><td>₹1</td></tr><tr><td>Fresh Mobile OTP Lead</td><td>₹10</td></tr><tr><td>Repeat Mobile OTP Verification</td><td>₹2</td></tr><tr><td>WhatsApp Redirect</td><td>Add-on ₹99, refundable if cancelled within 1 hour</td></tr></tbody></table></div>
               <small class="muted">Validity of Fresh Email and Mobile OTP Leads is 30 days from last user verification.</small>
@@ -3000,10 +1590,9 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
               <small class="muted">Best for local businesses, agencies, and service providers.</small>
             </div>
 
-            <div class="panel pricing-card <?php echo $activePlanId === 'business' ? 'current-plan' : ''; ?>">
+            <div class="panel pricing-card ">
               <div class="pricing-head"><div><span class="eyebrow">Business</span><h3>Business Plan</h3></div><span class="tag">Scale</span></div>
-              <?php if ($activePlanId === 'business'): ?><div class="current-plan-note">Current plan</div><?php endif; ?>
-              <div class="price">₹999<small>/month</small></div>
+                            <div class="price">₹999<small>/month</small></div>
               <div class="feature-list"><span class="is-included">Unlimited FAQ capacity for larger businesses</span><span class="is-included">Email and Mobile combined widget</span><span class="is-included">Dedicated WhatsApp button and many more action items for FAQs</span><span class="is-included">Webhook support</span><span class="is-included">FAQ Action Suggestions</span><span class="is-included">Live Chat Actions for real-time website reactions</span><span class="is-included">Auto wallet recharge: below ₹200, recharge ₹999</span><span class="is-included">API Integration to migrate or save data in your database</span><span class="is-included">Advanced Analytics: Overview, Conversations, FAQ Insights, Leads, Pages, Real-Time, Reports Download</span><span class="is-included">Chat can run only on allowed domains</span></div>
               <div class="wallet-table"><table><thead><tr><th>Wallet action</th><th>Charge</th></tr></thead><tbody><tr><td>Fresh Email OTP Lead</td><td>₹5</td></tr><tr><td>Repeat Email OTP Verification</td><td>₹1</td></tr><tr><td>Fresh Mobile OTP Lead</td><td>₹10</td></tr><tr><td>Repeat Mobile OTP Verification</td><td>₹2</td></tr><tr><td>WhatsApp Redirect</td><td>Add-on ₹99, refundable if cancelled within 1 hour</td></tr></tbody></table></div>
               <small class="muted">Validity of Fresh Email and Mobile OTP Leads is 30 days from last user verification.</small>
@@ -3036,11 +1625,11 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
             <div class="form-grid" style="margin-top:14px">
               <div class="field">
                 <label for="subscriptionAutoPayNameInput">Customer name</label>
-                <input id="subscriptionAutoPayNameInput" value="<?php echo h($razorpayCustomerName); ?>" autocomplete="name">
+                <input id="subscriptionAutoPayNameInput" value="codex@test.local" autocomplete="name">
               </div>
               <div class="field">
                 <label for="subscriptionAutoPayContactInput">Mobile number with country code</label>
-                <input id="subscriptionAutoPayContactInput" value="<?php echo h($razorpayCustomerContact); ?>" placeholder="+919876543210" autocomplete="tel">
+                <input id="subscriptionAutoPayContactInput" value="+91" placeholder="+919876543210" autocomplete="tel">
               </div>
             </div>
             <div class="panel-actions">
@@ -3054,17 +1643,14 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                 <strong>Stop automatic payment</strong><br>
                 <span class="muted">Unsubscribe from future auto payments. Remaining wallet balance stays usable on your current plan until it reaches zero.</span>
               </div>
-              <span class="tag <?php echo $activePlanId === 'free' ? 'bad' : 'good'; ?>" id="subscriptionServiceStatusTag"><?php echo h($isCancelledWalletAccess ? 'Wallet Active' : ($activePlanId === 'free' ? 'Free' : 'Active')); ?></span>
+              <span class="tag bad" id="subscriptionServiceStatusTag">Free</span>
             </div>
             <p class="muted" style="margin-top:12px">
-              Associated plan: <?php echo h($activePlan['name']); ?>. Wallet balance: <?php echo h(billing_rupees($billingWalletPaise)); ?>. Auto payment status: <?php echo h($isCancelledWalletAccess ? 'Stopped' : ucfirst($savedPaymentMethodStatus)); ?>.
-              <?php if ($activePlanId !== 'free' && $savedPaymentMethodStatus !== 'active' && !$isCancelledWalletAccess): ?>This plan was purchased without automatic payment, so there is no auto payment to unsubscribe.<?php endif; ?>
-              <?php if ($isCancelledWalletAccess): ?>You will continue on <?php echo h($activePlan['name']); ?> until the wallet reaches zero, then the account will move to Free service.<?php endif; ?>
-            </p>
+              Associated plan: Free. Wallet balance: ₹0. Auto payment status: Missing.
+                                        </p>
             <div class="panel-actions">
-              <button class="danger-btn" type="button" id="cancelSubscriptionBtn" <?php echo $activePlanId === 'free' || $isCancelledWalletAccess || $savedPaymentMethodStatus !== 'active' ? 'disabled' : ''; ?>>
-                <?php echo h($isCancelledWalletAccess ? 'Auto Payment Stopped' : ($activePlanId === 'free' ? 'Free Service Active' : ($savedPaymentMethodStatus !== 'active' ? 'No Auto Payment Saved' : 'Unsubscribe Auto Payment'))); ?>
-              </button>
+              <button class="danger-btn" type="button" id="cancelSubscriptionBtn" disabled>
+                Free Service Active              </button>
             </div>
           </div>
         </div>
@@ -3081,32 +1667,27 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
           <div class="section-body profile-grid">
             <div class="profile-photo">
               <div class="profile-avatar" id="profileAvatarPreview">
-                <?php if (!empty($profile['avatar_url'])): ?>
-                  <img src="<?php echo h($profile['avatar_url']); ?>" alt="Profile avatar">
-                <?php else: ?>
-                  <?php echo h($initials); ?>
-                <?php endif; ?>
-              </div>
+                                  C                              </div>
               <div class="field">
                 <label>Image URL or avatar</label>
-                <input id="profileAvatarInput" value="<?php echo h($profile['avatar_url'] ?? ''); ?>" placeholder="https://example.com/photo.jpg">
+                <input id="profileAvatarInput" value="" placeholder="https://example.com/photo.jpg">
                 <button class="ghost-btn" type="button" id="generateAvatarBtn">Create avatar</button>
               </div>
             </div>
 
             <div class="form-grid">
-              <div class="field"><label>First name</label><input id="firstNameInput" value="<?php echo h($profileFirstName); ?>" autocomplete="given-name"></div>
-              <div class="field"><label>Last name</label><input id="lastNameInput" value="<?php echo h($profileLastName); ?>" autocomplete="family-name"></div>
-              <div class="field full"><label>Account email</label><input id="profileEmailInput" value="<?php echo h($email); ?>" readonly></div>
-              <div class="field"><label>Country code</label><input id="countryCodeInput" list="countryCodeList" value="<?php echo h($profile['country_code'] ?? '+91'); ?>" placeholder="+91" title="Type any country calling code"></div>
-              <div class="field"><label>Mobile number</label><input id="mobileInput" value="<?php echo h($profile['mobile_number'] ?? ''); ?>" placeholder="9876543210" autocomplete="tel"></div>
-              <div class="field full"><label>Address line 1</label><input id="address1Input" value="<?php echo h($profile['address_line1'] ?? ''); ?>" autocomplete="address-line1"></div>
-              <div class="field full"><label>Address line 2</label><input id="address2Input" value="<?php echo h($profile['address_line2'] ?? ''); ?>" autocomplete="address-line2"></div>
-              <div class="field"><label>City</label><input id="cityInput" value="<?php echo h($profile['city'] ?? ''); ?>" autocomplete="address-level2"></div>
-              <div class="field"><label>State / Region</label><input id="stateInput" value="<?php echo h($profile['state_region'] ?? ''); ?>" autocomplete="address-level1"></div>
-              <div class="field"><label>Country</label><input id="countryInput" value="<?php echo h($profile['country'] ?? 'India'); ?>" autocomplete="country-name"></div>
-              <div class="field"><label>Postal code</label><input id="postalInput" value="<?php echo h($profile['postal_code'] ?? ''); ?>" autocomplete="postal-code"></div>
-              <div class="field full"><label>Location notes</label><textarea id="locationInput" placeholder="Office, branch, timezone, preferred contact hours"><?php echo h($profile['location_notes'] ?? ''); ?></textarea></div>
+              <div class="field"><label>First name</label><input id="firstNameInput" value="" autocomplete="given-name"></div>
+              <div class="field"><label>Last name</label><input id="lastNameInput" value="" autocomplete="family-name"></div>
+              <div class="field full"><label>Account email</label><input id="profileEmailInput" value="codex@test.local" readonly></div>
+              <div class="field"><label>Country code</label><input id="countryCodeInput" list="countryCodeList" value="+91" placeholder="+91" title="Type any country calling code"></div>
+              <div class="field"><label>Mobile number</label><input id="mobileInput" value="" placeholder="9876543210" autocomplete="tel"></div>
+              <div class="field full"><label>Address line 1</label><input id="address1Input" value="" autocomplete="address-line1"></div>
+              <div class="field full"><label>Address line 2</label><input id="address2Input" value="" autocomplete="address-line2"></div>
+              <div class="field"><label>City</label><input id="cityInput" value="" autocomplete="address-level2"></div>
+              <div class="field"><label>State / Region</label><input id="stateInput" value="" autocomplete="address-level1"></div>
+              <div class="field"><label>Country</label><input id="countryInput" value="India" autocomplete="country-name"></div>
+              <div class="field"><label>Postal code</label><input id="postalInput" value="" autocomplete="postal-code"></div>
+              <div class="field full"><label>Location notes</label><textarea id="locationInput" placeholder="Office, branch, timezone, preferred contact hours"></textarea></div>
               <div class="field"><label>New password</label><input id="newPasswordInput" type="password" placeholder="Minimum 8 characters" autocomplete="new-password"></div>
               <div class="field"><label>Confirm password</label><input id="confirmPasswordInput" type="password" placeholder="Repeat new password" autocomplete="new-password"></div>
             </div>
@@ -3130,18 +1711,18 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
               <p class="muted">Complete summary of wallet credits and deductions for subscription payments, OTP verifications, leads, WhatsApp redirects, and other paid usage.</p>
             </div>
             <div class="panel-actions" style="margin:0">
-              <a class="ghost-btn" href="invoices.php?bot=<?php echo urlencode($selectedBotId); ?>">Invoices</a>
+              <a class="ghost-btn" href="invoices.php?bot=">Invoices</a>
               <button class="ghost-btn" type="button" id="refreshBillingBtn">Refresh Billing</button>
             </div>
           </div>
 
           <div class="metrics" style="margin-top:18px">
-            <div class="panel metric"><span>Wallet balance</span><strong><?php echo h(billing_rupees($billingWalletPaise)); ?></strong><small>Available for paid usage.</small></div>
-            <div class="panel metric"><span>Current plan</span><strong><?php echo h($activePlan['name']); ?></strong><small>Subscription status: <?php echo h($isCancelledWalletAccess ? 'cancelled, wallet access active' : $subscriptionStatus); ?></small></div>
+            <div class="panel metric"><span>Wallet balance</span><strong>₹0</strong><small>Available for paid usage.</small></div>
+            <div class="panel metric"><span>Current plan</span><strong>Free</strong><small>Subscription status: free</small></div>
             <div class="panel metric"><span>Billing model</span><strong>Hybrid</strong><small>Monthly subscription plus usage wallet.</small></div>
-            <div class="panel metric"><span>Total credited</span><strong><?php echo h(billing_rupees($walletCreditPaise)); ?></strong><small>Money added to wallet.</small></div>
-            <div class="panel metric"><span>Total deducted</span><strong><?php echo h(billing_rupees($walletDebitPaise)); ?></strong><small>Paid feature usage.</small></div>
-            <div class="panel metric"><span>Transactions</span><strong><?php echo h(count($walletTransactionRows)); ?></strong><small>Latest wallet activity.</small></div>
+            <div class="panel metric"><span>Total credited</span><strong>₹0</strong><small>Money added to wallet.</small></div>
+            <div class="panel metric"><span>Total deducted</span><strong>₹0</strong><small>Paid feature usage.</small></div>
+            <div class="panel metric"><span>Transactions</span><strong>0</strong><small>Latest wallet activity.</small></div>
           </div>
 
           <div class="split" style="margin-top:18px">
@@ -3150,34 +1731,21 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
           </div>
           <div class="notice" style="margin-top:18px">
             <strong>Auto wallet recharge:</strong><br>
-            <?php if ($activePlanId === 'free'): ?>
-              Auto recharge starts after a paid plan is active.
-            <?php else: ?>
-              <?php echo h($activePlan['name']); ?> rule: when wallet balance is below <?php echo h(billing_rupees($autoRechargeThresholdPaise)); ?>, recharge <?php echo h(billing_rupees($autoRechargeAmountPaise)); ?> automatically.
-              Status: <?php echo h($autoRechargeEnabled ? 'Enabled' : 'Disabled'); ?>.
-              Saved payment method: <?php echo h(ucfirst($savedPaymentMethodStatus)); ?>.
-              <?php if ($savedPaymentMethodStatus !== 'active'): ?>Mandatory auto charging is not ready until a Razorpay recurring token/mandate is saved. Paid wallet deductions will fail if the balance is insufficient.<?php endif; ?>
-            <?php endif; ?>
-          </div>
-          <?php if ($whatsappStoppedReason === 'insufficient_wallet_balance'): ?>
-            <div class="notice" style="margin-top:18px">
-              <strong>WhatsApp Redirect stopped:</strong><br>
-              Renewal charge shown as <?php echo h(billing_rupees(0)); ?> because wallet balance was below <?php echo h(billing_rupees($whatsappFailedChargePaise ?: $whatsappChargePaise)); ?>. WhatsApp redirection is OFF until you recharge wallet and turn it ON again.
-            </div>
-          <?php endif; ?>
-
+                          Auto recharge starts after a paid plan is active.
+                      </div>
+          
           <div class="notice" style="margin-top:18px">
             <div class="section-head" style="padding:0;align-items:flex-start">
               <div>
                 <strong>Automatic payment authorization</strong><br>
-                Customer ID: <?php echo h($savedPaymentCustomerId ?: 'Not created'); ?>.
-                Contact: <?php echo h($savedPaymentContact ?: 'Not linked'); ?>.<br>
+                Customer ID: Not created.
+                Contact: Not linked.<br>
                 Token status:
-                <span id="autoRechargeMandateStatusText"><?php echo h(ucfirst($savedPaymentMethodStatus)); ?></span>.
+                <span id="autoRechargeMandateStatusText">Missing</span>.
                 Token:
-                <span id="autoRechargeTokenText"><?php echo h($savedPaymentMethodReference ? substr($savedPaymentMethodReference, 0, 10) . '...' : 'Not authorized'); ?></span>.
+                <span id="autoRechargeTokenText">Not authorized</span>.
               </div>
-              <span class="tag <?php echo $savedPaymentMethodStatus === 'active' ? 'good' : 'bad'; ?>" id="autoRechargeMandateStatusTag"><?php echo h($savedPaymentMethodStatus === 'active' ? 'Ready' : 'Authorize'); ?></span>
+              <span class="tag bad" id="autoRechargeMandateStatusTag">Authorize</span>
             </div>
             <p class="muted" style="margin-top:12px">
               Automatic payment is optional during plan purchase. Choose Starter, Growth, or Business from the Subscription tab, then select one-time payment or auto payment before checkout.
@@ -3188,21 +1756,8 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
             <table>
               <thead><tr><th>Date</th><th>Type</th><th>Description</th><th>Amount</th><th>Balance After</th><th>Reference</th></tr></thead>
               <tbody>
-                <?php if (empty($walletTransactionRows)): ?>
-                  <tr><td colspan="6" class="empty">No wallet transactions yet.</td></tr>
-                <?php endif; ?>
-                <?php foreach ($walletTransactionRows as $txn): ?>
-                  <?php $type = (string)($txn['transaction_type'] ?? ''); ?>
-                  <tr>
-                    <td><?php echo h($txn['created_at'] ?? ''); ?></td>
-                    <td><span class="tag <?php echo $type === 'credit' ? 'good' : 'bad'; ?>"><?php echo h(ucfirst($type)); ?></span></td>
-                    <td><?php echo h($txn['description'] ?? ''); ?></td>
-                    <td><?php echo h(($type === 'debit' ? '-' : '+') . billing_rupees((int)($txn['amount_paise'] ?? 0))); ?></td>
-                    <td><?php echo h(billing_rupees((int)($txn['balance_after_paise'] ?? 0))); ?></td>
-                    <td><?php echo h(($txn['reference_type'] ?? '') . ' ' . ($txn['reference_id'] ?? '')); ?></td>
-                  </tr>
-                <?php endforeach; ?>
-              </tbody>
+                                  <tr><td colspan="6" class="empty">No wallet transactions yet.</td></tr>
+                                              </tbody>
             </table>
           </div>
         </div>
@@ -3236,38 +1791,8 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
     <div class="bulk-report-body" id="bulkFaqReportBody"></div>
   </div>
 </div>
-<script>
-document.addEventListener("click", function(event) {
-  var tab = event.target && event.target.closest ? event.target.closest(".tab-btn[data-tab]") : null;
-  if (!tab) return;
-  var id = tab.getAttribute("data-tab");
-  if (!id) return;
-  event.preventDefault();
-  event.stopImmediatePropagation();
-  document.querySelectorAll(".tab-btn[data-tab]").forEach(function(item) {
-    item.classList.toggle("active", item.getAttribute("data-tab") === id);
-  });
-  document.querySelectorAll(".tab-panel").forEach(function(panel) {
-    panel.classList.toggle("active", panel.id === id);
-  });
-  if (location.hash !== "#" + id) history.replaceState(null, "", "#" + id);
-  document.body.classList.remove("nav-open", "account-open");
-  var overlay = document.getElementById("drawerOverlay");
-  if (overlay) overlay.classList.remove("show");
-});
-document.addEventListener("click", function(event) {
-  var button = event.target && event.target.closest ? event.target.closest("#themeToggle") : null;
-  if (!button) return;
-  event.preventDefault();
-  event.stopImmediatePropagation();
-  var dark = !document.body.classList.contains("dark");
-  document.body.classList.toggle("dark", dark);
-  button.textContent = dark ? "Bright" : "Dark";
-  try { localStorage.setItem("vani_dashboard_theme", dark ? "dark" : "bright"); } catch (error) {}
-});
-</script>
-<script defer src="https://checkout.razorpay.com/v1/checkout.js"></script>
-<script defer src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <script>
 const tabs = document.querySelectorAll(".tab-btn");
 const panels = document.querySelectorAll(".tab-panel");
@@ -3277,116 +1802,20 @@ const navToggle = document.getElementById("navToggle");
 const accountToggle = document.getElementById("accountToggle");
 const drawerOverlay = document.getElementById("drawerOverlay");
 const accountToggleText = accountToggle?.textContent || "";
-let currentFaqCount = <?php echo js_json($faqCount); ?>;
-const freeFaqLimit = <?php echo js_json($freeFaqLimit); ?>;
-const faqLimitIsUnlimited = <?php echo js_json($planFaqLimit === PHP_INT_MAX); ?>;
-const faqLimitLabel = <?php echo js_json($planFaqLimit === PHP_INT_MAX ? 'Unlimited' : (string)$planFaqLimit); ?>;
-const selectedCustomerId = <?php echo js_json($selectedBotId); ?>;
-const billingEmail = <?php echo js_json($email); ?>;
-const leadPaidFeatures = <?php echo js_json([
-  "email_otp" => $canUseEmailOtp,
-  "mobile_otp" => $canUseMobileOtp,
-  "whatsapp_redirect" => $canUseWhatsappRedirect
-]); ?>;
-const businessFeatures = <?php echo js_json([
-  "api_access" => $canUseBusinessApi,
-  "webhook_support" => $canUseWebhook,
-  "human_handoff" => $canUseHumanHandoff,
-  "allowed_domains" => $canUseAllowedDomains,
-  "live_chat_actions" => $canUseLiveChatActions,
-  "faq_action_suggestions" => $canUseFaqActionSuggestions
-]); ?>;
-const leadWalletCharges = <?php echo js_json([
-  "fresh_email_lead" => billing_wallet_charge_paise($activePlanId, "fresh_email_lead"),
-  "repeat_email_lead" => billing_wallet_charge_paise($activePlanId, "repeat_email_lead"),
-  "reactivated_email_lead" => billing_wallet_charge_paise($activePlanId, "reactivated_email_lead"),
-  "fresh_mobile_lead" => billing_wallet_charge_paise($activePlanId, "fresh_mobile_lead"),
-  "repeat_mobile_lead" => billing_wallet_charge_paise($activePlanId, "repeat_mobile_lead"),
-  "reactivated_mobile_lead" => billing_wallet_charge_paise($activePlanId, "reactivated_mobile_lead"),
-  "whatsapp_redirect_addon" => billing_wallet_charge_paise($activePlanId, "whatsapp_redirect_addon")
-]); ?>;
-const whatsappRedirectLockedOn = <?php echo js_json($whatsappRedirectLockedOn); ?>;
-const whatsappRedirectLocked = <?php echo js_json($whatsappRedirectLocked); ?>;
-const walletBalancePaise = <?php echo js_json($billingWalletPaise); ?>;
-const whatsappRedirectChargePaise = <?php echo js_json($whatsappChargePaise); ?>;
-const analyticsReport = <?php echo js_json([
-  "bot_name" => $botName,
-  "range_label" => $analyticsRangeLabel,
-  "date_from" => $analyticsFrom,
-  "date_to" => $analyticsTo,
-  "previous_date_from" => $previousAnalyticsFrom,
-  "previous_date_to" => $previousAnalyticsTo,
-  "summary" => [
-    "total_conversations" => $conversationCount,
-    "total_messages" => $totalMessages,
-    "unique_visitors" => $uniqueVisitorCount,
-    "answered_queries_percent" => $accuracy,
-    "unanswered_queries_percent" => $unansweredPercent,
-    "avg_response_time_ms" => $avgResponseTimeMs,
-    "leads_collected" => $leadCount,
-    "unique_leads" => $uniqueLeadCount,
-    "real_unique_leads" => $realUniqueLeadCount,
-    "weak_unique_leads" => $weakLeadCount,
-    "otp_verified_leads" => $verifiedLeadCount,
-    "active_chatbots" => $activeChatbotCount,
-    "most_active_page" => $mostActivePage,
-    "returning_users_percent" => $returningUsersPercent,
-    "avg_conversation_duration" => $avgConversationDuration
-  ],
-  "comparison" => [
-    "current" => $analyticsCurrentSummary,
-    "previous" => $analyticsPreviousSummary
-  ],
-  "daily_counts" => $dailyChartCounts,
-  "hour_counts" => $hourChartCounts,
-  "devices" => $deviceCounts,
-  "browsers" => $browserCounts,
-  "countries" => $countryCounts,
-  "cities" => $cityCounts,
-  "lead_periods" => $leadPeriodStats,
-  "unique_leads" => array_values(array_map(fn($lead) => [
-    "lead_type" => $lead["lead_type"] ?? "Weak",
-    "email" => $lead["email"] ?? "",
-    "phone_number" => $lead["phone_number"] ?? "",
-    "email_otp_count" => $lead["email_otp_count"] ?? 0,
-    "mobile_otp_count" => $lead["mobile_otp_count"] ?? 0,
-    "total_records" => $lead["total_records"] ?? 0,
-    "whatsapp_redirect_count" => $lead["whatsapp_redirect_count"] ?? 0,
-    "source_pages" => implode(", ", array_keys($lead["source_pages"] ?? [])),
-    "location" => $lead["location"] ?? "",
-    "first_seen" => substr((string)($lead["first_seen"] ?? ""), 0, 10),
-    "last_seen" => substr((string)($lead["last_seen"] ?? ""), 0, 10)
-  ], array_slice($uniqueLeadRows, 0, 500))),
-  "top_questions" => array_values(array_map(fn($item) => [
-    "question" => $item["question"] ?? "",
-    "count" => $item["count"] ?? 0,
-    "success_rate" => !empty($item["count"]) ? round((($item["answered"] ?? 0) / max(1, $item["count"])) * 100) : 0
-  ], array_slice($topQuestionCounts, 0, 25))),
-  "unanswered_questions" => array_values(array_map(fn($item) => [
-    "question" => $item["question"] ?? "",
-    "source_page" => $item["source_page"] ?? "Unknown page",
-    "date" => substr((string)($item["created_at"] ?? ""), 0, 10)
-  ], array_slice($outsideFaqQuestions, 0, 25))),
-  "conversations" => array_values(array_map(fn($row) => [
-    "question" => $row["user_question"] ?? "",
-    "response" => $row["bot_response"] ?? "",
-    "status" => $row["status"] ?? "",
-    "answered" => !empty($row["is_answered"]),
-    "source_page" => ($row["source_url"] ?? "") !== "" ? (parse_url((string)$row["source_url"], PHP_URL_PATH) ?: (string)$row["source_url"]) : "Unknown page",
-    "device" => $row["device_type"] ?? "",
-    "browser" => $row["browser_name"] ?? "",
-    "country" => $row["country_name"] ?? "",
-    "city" => $row["city"] ?? "",
-    "response_time_ms" => $row["response_time_ms"] ?? "",
-    "created_at" => substr((string)($row["created_at"] ?? ""), 0, 19)
-  ], array_slice($conversationRows, 0, 300))),
-  "source_pages" => array_values(array_map(fn($page) => [
-    "page" => $page["page"] ?? "",
-    "conversations" => $page["conversations"] ?? 0,
-    "leads" => $page["leads"] ?? 0,
-    "success_rate" => !empty($page["conversations"]) ? round((($page["answered"] ?? 0) / max(1, $page["conversations"])) * 100) : 0
-  ], array_slice($sourcePageStats, 0, 25)))
-]); ?>;
+let currentFaqCount = 0;
+const freeFaqLimit = 25;
+const faqLimitIsUnlimited = false;
+const faqLimitLabel = "25";
+const selectedCustomerId = "";
+const billingEmail = "codex@test.local";
+const leadPaidFeatures = {"email_otp":false,"mobile_otp":false,"whatsapp_redirect":false};
+const businessFeatures = {"api_access":false,"webhook_support":false,"human_handoff":false,"allowed_domains":false,"live_chat_actions":false,"faq_action_suggestions":false};
+const leadWalletCharges = {"fresh_email_lead":0,"repeat_email_lead":0,"reactivated_email_lead":0,"fresh_mobile_lead":0,"repeat_mobile_lead":0,"reactivated_mobile_lead":0,"whatsapp_redirect_addon":0};
+const whatsappRedirectLockedOn = false;
+const whatsappRedirectLocked = false;
+const walletBalancePaise = 0;
+const whatsappRedirectChargePaise = 0;
+const analyticsReport = {"bot_name":"Vani Bot","range_label":"Last 30 days","date_from":"2026-04-24","date_to":"2026-05-23","previous_date_from":"2026-03-23","previous_date_to":"2026-04-22","summary":{"total_conversations":0,"total_messages":0,"unique_visitors":0,"answered_queries_percent":0,"unanswered_queries_percent":0,"avg_response_time_ms":0,"leads_collected":0,"unique_leads":0,"real_unique_leads":0,"weak_unique_leads":0,"otp_verified_leads":0,"active_chatbots":1,"most_active_page":"No data yet","returning_users_percent":0,"avg_conversation_duration":"No data yet"},"comparison":{"current":{"conversations":0,"messages":0,"answer_rate":0,"unanswered":0,"leads":0,"verified_leads":0,"lead_conversion":0,"visitors":0,"avg_response_time_ms":0},"previous":{"conversations":0,"messages":0,"answer_rate":0,"unanswered":0,"leads":0,"verified_leads":0,"lead_conversion":0,"visitors":0,"avg_response_time_ms":0}},"daily_counts":[],"hour_counts":[],"devices":[],"browsers":[],"countries":[],"cities":[],"lead_periods":[{"label":"Weekly","days":7,"count":0},{"label":"Monthly","days":30,"count":0},{"label":"Quarterly","days":90,"count":0},{"label":"Six months","days":182,"count":0},{"label":"Yearly","days":365,"count":0}],"unique_leads":[],"top_questions":[],"unanswered_questions":[],"conversations":[],"source_pages":[]};
 analyticsReport.summary = analyticsReport.summary || {};
 analyticsReport.comparison = analyticsReport.comparison || {current: {}, previous: {}};
 analyticsReport.daily_counts = analyticsReport.daily_counts || {};
@@ -4264,16 +2693,16 @@ document.getElementById("cancelSubscriptionBtn")?.addEventListener("click", asyn
   }
 });
 
-themeToggle?.addEventListener("click", () => {
+themeToggle.addEventListener("click", () => {
   const dark = !document.body.classList.contains("dark");
   document.body.classList.toggle("dark", dark);
-  if (themeToggle) themeToggle.textContent = dark ? "Bright" : "Dark";
+  themeToggle.textContent = dark ? "Bright" : "Dark";
   localStorage.setItem("vani_dashboard_theme", dark ? "dark" : "bright");
 });
 
 if (localStorage.getItem("vani_dashboard_theme") === "dark") {
   document.body.classList.add("dark");
-  if (themeToggle) themeToggle.textContent = "Bright";
+  themeToggle.textContent = "Bright";
 }
 
 function formatLastActivityForBrowser() {
