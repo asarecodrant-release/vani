@@ -18,6 +18,15 @@ $botImages = glob(__DIR__ . '/images/botimg_*') ?: [];
 $botImages = array_values(array_filter($botImages, 'is_file'));
 natcasesort($botImages);
 $botImages = array_map(fn($path) => 'images/' . basename($path), $botImages);
+$brandLogoDataUri = '';
+foreach ([__DIR__ . '/images/logo.png', __DIR__ . '/images/logo_img.png'] as $logoPath) {
+    if (is_readable($logoPath)) {
+        $extension = strtolower(pathinfo($logoPath, PATHINFO_EXTENSION));
+        $mime = $extension === 'svg' ? 'image/svg+xml' : ($extension === 'webp' ? 'image/webp' : ($extension === 'jpg' || $extension === 'jpeg' ? 'image/jpeg' : 'image/png'));
+        $brandLogoDataUri = 'data:' . $mime . ';base64,' . base64_encode((string)file_get_contents($logoPath));
+        break;
+    }
+}
 
 function h($value): string {
     return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
@@ -2564,7 +2573,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
 
         <div class="analytics-subpanel" id="analytics-reports">
         <div class="analytics-grid two">
-          <div class="panel section-body"><h3>Export & Reports</h3><?php if (!$canExportReports): ?><div class="notice" style="margin-top:12px"><strong>Subscription required:</strong><br>CSV export and downloadable reports are available on Business plan and higher.</div><?php else: ?><div class="report-actions" style="margin-top:12px"><button class="ghost-btn" type="button" id="exportAnalyticsCsvBtn">Export CSV</button><button class="ghost-btn" type="button" id="downloadAnalyticsReportBtn">Download report</button><button class="ghost-btn" type="button" id="printAnalyticsReportBtn">Print / Save PDF</button><button class="ghost-btn" type="button" id="downloadWeeklyReportBtn">Weekly report</button><button class="ghost-btn" type="button" id="downloadMonthlyReportBtn">Monthly report</button></div><?php endif; ?></div>
+          <div class="panel section-body"><h3>Export & Reports</h3><?php if (!$canExportReports): ?><div class="notice" style="margin-top:12px"><strong>Subscription required:</strong><br>CSV export and downloadable reports are available on Business plan and higher.</div><?php else: ?><div class="report-actions" style="margin-top:12px"><button class="ghost-btn" type="button" id="exportAnalyticsCsvBtn">Export CSV</button><button class="ghost-btn" type="button" id="downloadAnalyticsReportBtn">Download branded report</button><button class="ghost-btn" type="button" id="printAnalyticsReportBtn">Print / Save PDF</button><button class="ghost-btn" type="button" id="downloadWeeklyReportBtn">Weekly report</button><button class="ghost-btn" type="button" id="downloadMonthlyReportBtn">Monthly report</button></div><?php endif; ?></div>
           <div class="panel section-body"><h3>Notifications / Alerts</h3><div class="mini-chart"><div class="notice">Fallback rate: <?php echo h($fallbackRate); ?>%</div><div class="notice">Trending unanswered questions: <?php echo h($unansweredCount); ?></div><div class="notice">Lead conversion: <?php echo h($leadConversionRate); ?>%</div></div></div>
         </div>
         </div>
@@ -3258,6 +3267,7 @@ const whatsappRedirectLockedOn = <?php echo js_json($whatsappRedirectLockedOn); 
 const whatsappRedirectLocked = <?php echo js_json($whatsappRedirectLocked); ?>;
 const walletBalancePaise = <?php echo js_json($billingWalletPaise); ?>;
 const whatsappRedirectChargePaise = <?php echo js_json($whatsappChargePaise); ?>;
+const vaniBrandLogo = <?php echo js_json($brandLogoDataUri); ?>;
 const analyticsReport = <?php echo js_json([
   "bot_name" => $botName,
   "range_label" => $analyticsRangeLabel,
@@ -4059,24 +4069,94 @@ function analyticsCsv() {
 
 function analyticsReportHtml() {
   const esc = value => String(value ?? "").replace(/[&<>"']/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[char]));
-  const summaryRows = Object.entries(analyticsReport.summary || {})
-    .map(([key, value]) => `<tr><th>${esc(key.replace(/_/g, " "))}</th><td>${esc(value)}</td></tr>`).join("");
+  const label = value => String(value || "").replace(/_/g, " ").replace(/\b\w/g, char => char.toUpperCase());
+  const number = value => Number(value || 0).toLocaleString("en-IN");
+  const percent = value => `${number(value)}%`;
+  const summary = analyticsReport.summary || {};
+  const comparison = analyticsReport.comparison || {};
+  const current = comparison.current || {};
+  const previous = comparison.previous || {};
+  const generatedAt = new Date().toLocaleString();
+  const daily = analyticsDateSeries();
+  const maxDaily = Math.max(1, ...daily.conversations, ...daily.leads);
+  const logo = vaniBrandLogo ? `<img src="${vaniBrandLogo}" alt="Vani AI">` : `<strong>Vani AI</strong>`;
+  const card = (title, value, note = "") => `<div class="kpi"><span>${esc(title)}</span><strong>${esc(value)}</strong><small>${esc(note)}</small></div>`;
+  const summaryRows = Object.entries(summary)
+    .map(([key, value]) => `<tr><th>${esc(label(key))}</th><td>${esc(value)}</td></tr>`).join("");
+  const comparisonRows = Object.keys(current).map(key => {
+    const currentValue = Number(current[key] || 0);
+    const previousValue = Number(previous[key] || 0);
+    const change = previousValue > 0 ? Math.round(((currentValue - previousValue) / Math.max(1, previousValue)) * 100) : (currentValue > 0 ? 100 : 0);
+    const changeClass = change > 0 ? "good" : (change < 0 ? "bad" : "");
+    return `<tr><td>${esc(label(key))}</td><td>${esc(currentValue)}</td><td>${esc(previousValue)}</td><td><span class="delta ${changeClass}">${change > 0 ? "+" : ""}${esc(change)}%</span></td></tr>`;
+  }).join("");
+  const trendBars = daily.dates.length
+    ? daily.dates.map((date, index) => {
+        const conversations = daily.conversations[index] || 0;
+        const leads = daily.leads[index] || 0;
+        return `<div class="trend-item"><div class="trend-stack"><i style="height:${Math.max(4, Math.round((conversations / maxDaily) * 120))}px"></i><b style="height:${leads ? Math.max(4, Math.round((leads / maxDaily) * 120)) : 0}px"></b></div><span>${esc(date.slice(5))}</span></div>`;
+      }).join("")
+    : `<p class="empty">No trend data available for this period.</p>`;
+  const funnel = (analyticsReport.funnel || []).map((item, index, items) => {
+    const first = Math.max(1, Number(items[0]?.value || 0));
+    const width = Math.max(12, Math.round((Number(item.value || 0) / first) * 100));
+    return `<div class="funnel-row"><span>${esc(item.label)}</span><div><i style="width:${width}%"></i></div><strong>${esc(number(item.value))}</strong></div>`;
+  }).join("");
+  const breakdown = (title, objectValue) => {
+    const rows = analyticsEntries(objectValue, 8);
+    const maxValue = Math.max(1, ...rows.map(item => item.value));
+    return `<section class="panel"><h2>${esc(title)}</h2>${rows.length ? rows.map(item => `<div class="bar-row"><span>${esc(item.name)}</span><div><i style="width:${Math.round((item.value / maxValue) * 100)}%"></i></div><strong>${esc(number(item.value))}</strong></div>`).join("") : `<p class="empty">No data</p>`}</section>`;
+  };
   const table = (title, headers, rows) => `
-    <h2>${esc(title)}</h2>
+    <section class="panel page-break-avoid"><h2>${esc(title)}</h2>
     <table><thead><tr>${headers.map(header => `<th>${esc(header)}</th>`).join("")}</tr></thead>
-    <tbody>${rows.length ? rows.join("") : `<tr><td colspan="${headers.length}">No data</td></tr>`}</tbody></table>`;
+    <tbody>${rows.length ? rows.join("") : `<tr><td colspan="${headers.length}" class="empty-cell">No data</td></tr>`}</tbody></table></section>`;
   return `<!doctype html>
 <html><head><meta charset="utf-8"><title>Vani Analytics Report</title>
-<style>body{font-family:Arial,sans-serif;margin:32px;color:#111827}h1{margin-bottom:4px}p{color:#4b5563}table{width:100%;border-collapse:collapse;margin:16px 0 28px}th,td{text-align:left;border:1px solid #e5e7eb;padding:9px 10px;font-size:13px}th{background:#f8fafc}.muted{color:#64748b}</style>
+<style>
+@page{size:A4;margin:16mm}
+*{box-sizing:border-box}body{font-family:Inter,Segoe UI,Arial,sans-serif;margin:0;color:#111827;background:#f8fafc;line-height:1.45}
+.report{max-width:1120px;margin:0 auto;padding:28px}.cover{color:#fff;border-radius:24px;padding:28px;background:linear-gradient(135deg,#111827,#4338ca 58%,#0891b2);display:grid;gap:22px;box-shadow:0 18px 45px rgba(15,23,42,.18)}
+.brand{display:flex;align-items:center;gap:14px}.brand img{width:54px;height:54px;object-fit:contain;border-radius:14px;background:#fff;padding:6px}.brand strong{font-size:22px}.brand span{display:block;font-size:12px;color:rgba(255,255,255,.78);font-weight:700;text-transform:uppercase;letter-spacing:.08em}
+.cover h1{font-size:34px;margin:0}.cover p{margin:0;color:rgba(255,255,255,.82)}.meta{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.meta div{padding:12px;border:1px solid rgba(255,255,255,.18);border-radius:14px;background:rgba(255,255,255,.1)}.meta span{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:rgba(255,255,255,.7)}.meta strong{display:block;margin-top:4px}
+.section-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:18px 0}.kpi,.panel{background:#fff;border:1px solid #e2e8f0;border-radius:18px;box-shadow:0 8px 24px rgba(15,23,42,.06)}.kpi{padding:16px;display:grid;gap:7px}.kpi span{font-size:11px;color:#64748b;text-transform:uppercase;font-weight:800;letter-spacing:.05em}.kpi strong{font-size:25px;color:#111827}.kpi small{color:#64748b}
+.panel{padding:18px;margin:16px 0}.panel h2{font-size:18px;margin:0 0 14px}.two{display:grid;grid-template-columns:1.25fr .75fr;gap:16px}.three{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}.empty{color:#64748b;padding:18px;text-align:center}.empty-cell{text-align:center;color:#64748b}
+.trend{height:190px;display:flex;align-items:end;gap:8px;border-left:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;padding:12px 8px 0}.trend-item{flex:1;display:grid;gap:7px;min-width:0;text-align:center}.trend-stack{height:130px;display:flex;align-items:end;justify-content:center;gap:3px}.trend-stack i,.trend-stack b{display:block;width:10px;border-radius:8px 8px 0 0}.trend-stack i{background:#4f46e5}.trend-stack b{background:#06b6d4}.trend-item span{font-size:10px;color:#64748b;white-space:nowrap}
+.funnel-row,.bar-row{display:grid;grid-template-columns:120px 1fr 58px;gap:10px;align-items:center;margin:10px 0;font-size:12px;color:#475569}.funnel-row div,.bar-row div{height:13px;border-radius:999px;background:#e2e8f0;overflow:hidden}.funnel-row i,.bar-row i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#4f46e5,#06b6d4)}.funnel-row strong,.bar-row strong{text-align:right;color:#111827}
+table{width:100%;border-collapse:separate;border-spacing:0;margin-top:8px;overflow:hidden;border:1px solid #e2e8f0;border-radius:14px}th,td{text-align:left;border-bottom:1px solid #e2e8f0;padding:9px 10px;font-size:12px;vertical-align:top;word-break:break-word}th{background:#f1f5f9;color:#475569;text-transform:uppercase;font-size:10px;letter-spacing:.05em}tr:last-child td{border-bottom:0}.delta{font-weight:800;color:#64748b}.delta.good{color:#15803d}.delta.bad{color:#b91c1c}
+.footer{display:flex;justify-content:space-between;gap:16px;color:#64748b;font-size:11px;margin-top:20px}.legend{display:flex;gap:14px;color:#64748b;font-size:12px}.legend i{display:inline-block;width:10px;height:10px;border-radius:999px;margin-right:5px}.legend .c{background:#4f46e5}.legend .l{background:#06b6d4}
+@media print{body{background:#fff}.report{padding:0}.cover,.kpi,.panel{box-shadow:none}.page-break-avoid{break-inside:avoid}.two,.three,.section-grid,.meta{break-inside:avoid}}
+</style>
 </head><body>
-<h1>Vani Analytics Report</h1>
-<p>${esc(analyticsReport.bot_name)} | ${esc(analyticsReport.range_label)} | ${esc(analyticsReport.date_from)} to ${esc(analyticsReport.date_to)}</p>
-<h2>Summary</h2><table><tbody>${summaryRows}</tbody></table>
+<main class="report">
+<section class="cover">
+  <div class="brand">${logo}<div><strong>Vani AI</strong><span>Analytics report</span></div></div>
+  <div><h1>Performance Dashboard Report</h1><p>BI-style snapshot generated from the dashboard data currently loaded in your browser.</p></div>
+  <div class="meta"><div><span>Chatbot</span><strong>${esc(analyticsReport.bot_name)}</strong></div><div><span>Range</span><strong>${esc(analyticsReport.range_label)}</strong></div><div><span>Period</span><strong>${esc(analyticsReport.date_from)} to ${esc(analyticsReport.date_to)}</strong></div><div><span>Generated</span><strong>${esc(generatedAt)}</strong></div></div>
+</section>
+<section class="section-grid">
+${card("Conversations", number(summary.total_conversations), "Tracked chat sessions and queries")}
+${card("Answer Rate", percent(summary.answered_queries_percent), `${number(summary.unanswered_queries_percent)}% unanswered`)}
+${card("Leads", number(summary.leads_collected), `${number(summary.unique_leads)} unique leads`)}
+${card("Avg Response", summary.avg_response_time_ms ? `${number(summary.avg_response_time_ms)}ms` : "No data", "Widget API response time")}
+</section>
+<section class="two">
+  <div class="panel"><h2>Conversation, Answer and Lead Trend</h2><div class="legend"><span><i class="c"></i>Conversations</span><span><i class="l"></i>Leads</span></div><div class="trend">${trendBars}</div></div>
+  <div class="panel"><h2>Conversion Funnel</h2>${funnel || `<p class="empty">No funnel data</p>`}</div>
+</section>
+<section class="three">
+  ${breakdown("Device Mix", analyticsReport.devices)}
+  ${breakdown("Browser Breakdown", analyticsReport.browsers)}
+  ${breakdown("Country Distribution", analyticsReport.countries)}
+</section>
+<section class="panel page-break-avoid"><h2>Previous Period Comparison</h2><table><thead><tr><th>Metric</th><th>Current</th><th>Previous</th><th>Change</th></tr></thead><tbody>${comparisonRows || `<tr><td colspan="4" class="empty-cell">No comparison data</td></tr>`}</tbody></table></section>
+<section class="panel page-break-avoid"><h2>Complete Summary</h2><table><tbody>${summaryRows}</tbody></table></section>
 ${table("Top Questions", ["Question", "Count", "Success Rate"], (analyticsReport.top_questions || []).map(item => `<tr><td>${esc(item.question)}</td><td>${esc(item.count)}</td><td>${esc(item.success_rate)}%</td></tr>`))}
 ${table("Unanswered Questions", ["Question", "Source Page", "Date"], (analyticsReport.unanswered_questions || []).map(item => `<tr><td>${esc(item.question)}</td><td>${esc(item.source_page)}</td><td>${esc(item.date)}</td></tr>`))}
-${table("Unique Leads", ["Type", "Email", "Mobile", "Email OTP", "Mobile OTP", "Captures", "WhatsApp", "Source Pages", "First Seen", "Last Seen"], (analyticsReport.unique_leads || []).map(item => `<tr><td>${esc(item.lead_type)}</td><td>${esc(item.email)}</td><td>${esc(item.phone_number)}</td><td>${esc(item.email_otp_count)}</td><td>${esc(item.mobile_otp_count)}</td><td>${esc(item.total_records)}</td><td>${esc(item.whatsapp_redirect_count)}</td><td>${esc(item.source_pages)}</td><td>${esc(item.first_seen)}</td><td>${esc(item.last_seen)}</td></tr>`))}
+${table("Unique Leads", ["Type", "Email", "Mobile", "Email OTP", "Mobile OTP", "Captures", "WhatsApp", "Source Pages", "Location", "First Seen", "Last Seen"], (analyticsReport.unique_leads || []).map(item => `<tr><td>${esc(item.lead_type)}</td><td>${esc(item.email)}</td><td>${esc(item.phone_number)}</td><td>${esc(item.email_otp_count)}</td><td>${esc(item.mobile_otp_count)}</td><td>${esc(item.total_records)}</td><td>${esc(item.whatsapp_redirect_count)}</td><td>${esc(item.source_pages)}</td><td>${esc(item.location)}</td><td>${esc(item.first_seen)}</td><td>${esc(item.last_seen)}</td></tr>`))}
 ${table("Source Pages", ["Page", "Conversations", "Leads", "Success Rate"], (analyticsReport.source_pages || []).map(item => `<tr><td>${esc(item.page)}</td><td>${esc(item.conversations)}</td><td>${esc(item.leads)}</td><td>${esc(item.success_rate)}%</td></tr>`))}
-<p class="muted">Generated from the dashboard data currently loaded in your browser.</p>
+<div class="footer"><span>Vani AI Analytics</span><span>${esc(reportFileBase())}</span></div>
+</main>
 </body></html>`;
 }
 
@@ -4087,7 +4167,7 @@ document.getElementById("exportAnalyticsCsvBtn")?.addEventListener("click", () =
 
 document.getElementById("downloadAnalyticsReportBtn")?.addEventListener("click", () => {
   downloadBlob(`${reportFileBase()}.html`, analyticsReportHtml(), "text/html;charset=utf-8");
-  showToast("Report downloaded");
+  showToast("Branded report downloaded");
 });
 
 document.getElementById("downloadWeeklyReportBtn")?.addEventListener("click", () => {
@@ -4106,7 +4186,7 @@ document.getElementById("printAnalyticsReportBtn")?.addEventListener("click", ()
   reportWindow.document.write(analyticsReportHtml());
   reportWindow.document.close();
   reportWindow.focus();
-  reportWindow.print();
+  setTimeout(() => reportWindow.print(), 350);
 });
 
 async function startPlanCheckout(planId, button) {
