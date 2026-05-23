@@ -1565,7 +1565,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
             <div class="inline-row" style="justify-content:space-between;gap:16px;margin-bottom:14px">
               <div>
                 <h3>FAQ Action Suggestions</h3>
-                <small class="input-help">Show action buttons after a matched FAQ answer, such as open a page, WhatsApp, or trigger a website event.</small>
+                <small class="input-help">Show action buttons after a matched FAQ answer, such as call, email, WhatsApp, booking, coupon, map, form, or related FAQ category.</small>
                 <?php if (!$canUseFaqActionSuggestions): ?><small class="input-help error">Growth or Business plan required.</small><?php endif; ?>
               </div>
               <label class="switch" title="Enable FAQ action suggestions">
@@ -1593,8 +1593,17 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                 <div class="field">
                   <label>Action type</label>
                   <select id="faqActionType" <?php echo $canUseFaqActionSuggestions ? '' : 'disabled'; ?>>
-                    <option value="link">Open link</option>
+                    <option value="link">Open page / product page</option>
                     <option value="whatsapp">Open WhatsApp</option>
+                    <option value="call">Call now</option>
+                    <option value="email">Send email</option>
+                    <option value="download">Download file</option>
+                    <option value="coupon">Copy coupon/code</option>
+                    <option value="booking">Book appointment</option>
+                    <option value="map">Open map location</option>
+                    <option value="form">Show enquiry form</option>
+                    <option value="track_order">Track order / status link</option>
+                    <option value="category">Show FAQ category</option>
                     <option value="event">Website event</option>
                   </select>
                 </div>
@@ -1606,7 +1615,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                 <div class="field full" style="grid-column:1/-1">
                   <label>Action value</label>
                   <input id="faqActionValue" placeholder="https://example.com/demo, +919876543210, or customEventName" <?php echo $canUseFaqActionSuggestions ? '' : 'disabled'; ?>>
-                  <small class="input-help">For links use https:// URLs. For WhatsApp use country code. For website events, enter an event name such as openPricing.</small>
+                  <small class="input-help" id="faqActionValueHelp">Choose an action type to see the required value format.</small>
                 </div>
               </div>
             </form>
@@ -4077,6 +4086,33 @@ async function saveFaqActionsToggle({live = false} = {}) {
 document.getElementById("faqActionsToggle")?.addEventListener("change", () => {
   saveFaqActionsToggle({live: true});
 });
+
+const faqActionHelp = {
+  link: ["https://example.com/product", "Use a secure https:// page, service, or product URL."],
+  whatsapp: ["+919876543210", "Use a WhatsApp number with country code."],
+  call: ["+919876543210", "Use a phone number with country code. The visitor's phone dialer will open."],
+  email: ["support@example.com", "Use the email address where the visitor should send the message."],
+  download: ["https://example.com/brochure.pdf", "Use a secure https:// file URL for PDF, catalog, menu, brochure, or price list."],
+  coupon: ["WELCOME10", "Enter the coupon or code. The widget will copy it to the visitor's clipboard."],
+  booking: ["https://calendly.com/your-business/demo", "Use a secure https:// booking link."],
+  map: ["https://maps.google.com/?q=Your+Store or full address", "Use a Google Maps link or a full address."],
+  form: ["Callback request", "Enter the form title or purpose. The widget will show name, email, mobile, and message fields."],
+  track_order: ["https://example.com/track-order", "Use a secure https:// tracking or status page URL."],
+  category: ["Pricing", "Enter the FAQ category name to show related FAQs in the chatbot."],
+  event: ["openPricing", "Enter a website event name. Your site can listen for window event vani:openPricing."]
+};
+
+function updateFaqActionHelp() {
+  const type = document.getElementById("faqActionType")?.value || "link";
+  const valueInput = document.getElementById("faqActionValue");
+  const help = document.getElementById("faqActionValueHelp");
+  const info = faqActionHelp[type] || faqActionHelp.link;
+  if (valueInput) valueInput.placeholder = info[0];
+  if (help) help.textContent = info[1];
+}
+
+document.getElementById("faqActionType")?.addEventListener("change", updateFaqActionHelp);
+updateFaqActionHelp();
 
 document.getElementById("faqActionForm")?.addEventListener("submit", async event => {
   event.preventDefault();

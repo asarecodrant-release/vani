@@ -1726,6 +1726,20 @@ if ($action === "get_top_faqs") {
     widget_json_response(["success" => true, "data" => $questions]);
 }
 
+if ($action === "get_faqs_by_category") {
+    $customerId = widget_customer_id();
+    $category = trim((string)($_GET['category'] ?? ''));
+    if (!$customerId || $category === '') {
+        widget_json_response(["success" => false, "message" => "Missing customer_id or category"], 400);
+    }
+
+    $res = supabase(
+        "GET",
+        "faq_questions?select=id,question,category&customer_id=eq." . urlencode($customerId) . "&category=eq." . urlencode($category) . widget_faq_active_query_suffix($customerId) . "&limit=6"
+    );
+    widget_json_response(["success" => true, "data" => widget_safe_rows($res)]);
+}
+
 if ($action === "track_widget_session") {
     $data = widget_get_json();
     $res = widget_save_session($data);
@@ -1733,6 +1747,51 @@ if ($action === "track_widget_session") {
         "success" => ($res['status'] >= 200 && $res['status'] < 300),
         "debug" => $res
     ]);
+}
+
+if ($action === "submit_faq_action_form") {
+    $data = widget_get_json();
+    $customerId = widget_customer_id($data);
+    $name = trim((string)($data['name'] ?? ''));
+    $email = trim((string)($data['email'] ?? ''));
+    $phone = trim((string)($data['phone'] ?? ''));
+    $message = trim((string)($data['message'] ?? ''));
+    $actionLabel = trim((string)($data['action_label'] ?? 'FAQ action form'));
+    $sourceUrl = trim((string)($data['source_url'] ?? ''));
+    $userId = trim((string)($data['user_id'] ?? ''));
+
+    if (!$customerId || $message === '') {
+        widget_json_response(["success" => false, "message" => "Message is required"], 400);
+    }
+    if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        widget_json_response(["success" => false, "message" => "Enter a valid email"], 400);
+    }
+
+    $ticketPayload = [
+        "customer_id" => $customerId,
+        "user_id" => $userId !== '' ? $userId : null,
+        "user_question" => $message,
+        "bot_response" => $actionLabel,
+        "source_url" => $sourceUrl !== '' ? $sourceUrl : null,
+        "status" => "open",
+        "email_sent" => false,
+        "metadata" => (object)[
+            "created_by" => "faq_action_form",
+            "name" => $name,
+            "email" => $email,
+            "phone" => $phone,
+            "action_id" => $data['action_id'] ?? null,
+            "faq_id" => $data['faq_id'] ?? null
+        ]
+    ];
+    $res = supabase("POST", "support_tickets", [$ticketPayload]);
+    $ok = $res['status'] >= 200 && $res['status'] < 300;
+    if ($ok) {
+        widget_webhook_deliver($customerId, "faq_action.form_submitted", [
+            "ticket" => $res['data'][0] ?? $ticketPayload
+        ]);
+    }
+    widget_json_response(["success" => $ok, "ticket" => $res['data'][0] ?? null]);
 }
 
 // Create a lead record (generic) - used for location or simple lead saves

@@ -595,12 +595,181 @@
     });
   }
 
+  function cleanPhone(value) {
+    return String(value || "").replace(/[^\d+]/g, "").replace(/(?!^)\+/g, "").replace(/\D+/g, "");
+  }
+
+  function openHttps(value) {
+    if (/^https:\/\//i.test(value)) window.open(value, "_blank", "noopener,noreferrer");
+  }
+
+  function showInlineActionNotice(suggestionsBox, text, tone = "success") {
+    if (!suggestionsBox) return;
+    suggestionsBox.innerHTML = "";
+    suggestionsBox.style.display = "grid";
+    const notice = document.createElement("div");
+    notice.textContent = text;
+    css(notice, {
+      padding: "11px 12px",
+      borderRadius: "14px",
+      background: tone === "success" ? "rgba(34,197,94,.12)" : "rgba(239,68,68,.1)",
+      border: tone === "success" ? "1px solid rgba(34,197,94,.22)" : "1px solid rgba(239,68,68,.2)",
+      color: tone === "success" ? "#166534" : "#991b1b",
+      fontWeight: "700",
+      fontSize: "12px",
+      lineHeight: "1.45"
+    });
+    suggestionsBox.appendChild(notice);
+  }
+
+  async function copyText(value, suggestionsBox) {
+    try {
+      await navigator.clipboard.writeText(value);
+      showInlineActionNotice(suggestionsBox, "Code copied. You can paste it at checkout.");
+    } catch (e) {
+      showInlineActionNotice(suggestionsBox, `Copy this code: ${value}`);
+    }
+  }
+
+  async function showFaqCategory(value, suggestionsBox, input) {
+    if (!suggestionsBox || !input) return;
+    const response = await api("get_faqs_by_category", "GET", null, `&customer_id=${encodeURIComponent(customerId)}&category=${encodeURIComponent(value)}`);
+    const items = Array.isArray(response.data) ? response.data : [];
+    activeFaqActions = [];
+    activeFaqActionContext = {};
+    if (!items.length) {
+      showInlineActionNotice(suggestionsBox, "No active FAQs found in this category.", "error");
+      return;
+    }
+    renderSuggestions(suggestionsBox, input, items);
+  }
+
+  function renderFaqActionForm(action, context, suggestionsBox) {
+    if (!suggestionsBox) return;
+    activeFaqActions = [];
+    activeFaqActionContext = {};
+    suggestionsBox.innerHTML = "";
+    suggestionsBox.style.display = "grid";
+    const panel = document.createElement("form");
+    panel.className = "vani-action-panel";
+    css(panel, {
+      display: "grid",
+      gap: "8px",
+      padding: "11px",
+      borderRadius: "16px",
+      background: "rgba(255,255,255,.94)",
+      border: "1px solid rgba(199,210,254,.75)",
+      boxShadow: "0 14px 34px rgba(15,23,42,.10)"
+    });
+    const title = document.createElement("strong");
+    title.textContent = action.action_value || action.label || "Send request";
+    css(title, {fontSize: "13px", color: "#0f172a"});
+    const nameInput = document.createElement("input");
+    const emailInput = document.createElement("input");
+    const phoneInput = document.createElement("input");
+    const messageInput = document.createElement("textarea");
+    [
+      [nameInput, "Your name"],
+      [emailInput, "Email address"],
+      [phoneInput, "Mobile number"],
+      [messageInput, "Message"]
+    ].forEach(([field, placeholder]) => {
+      field.placeholder = placeholder;
+      css(field, {
+        width: "100%",
+        boxSizing: "border-box",
+        border: "1px solid #e2e8f0",
+        borderRadius: "12px",
+        padding: "9px 10px",
+        font: "inherit",
+        fontSize: "12px",
+        outline: "none",
+        resize: "vertical"
+      });
+    });
+    emailInput.type = "email";
+    phoneInput.type = "tel";
+    messageInput.rows = 2;
+    const submit = document.createElement("button");
+    submit.type = "submit";
+    submit.textContent = "Send request";
+    css(submit, {
+      border: "0",
+      borderRadius: "12px",
+      background: themeBackground(),
+      color: "#fff",
+      cursor: "pointer",
+      fontWeight: "800",
+      padding: "10px 12px"
+    });
+    const status = document.createElement("div");
+    css(status, {
+      display: "none",
+      padding: "8px 10px",
+      borderRadius: "10px",
+      fontSize: "12px",
+      fontWeight: "700",
+      lineHeight: "1.4"
+    });
+    const setStatus = (text, ok = false) => {
+      status.textContent = text;
+      status.style.display = "block";
+      status.style.background = ok ? "rgba(34,197,94,.12)" : "rgba(239,68,68,.1)";
+      status.style.color = ok ? "#166534" : "#991b1b";
+      status.style.border = ok ? "1px solid rgba(34,197,94,.22)" : "1px solid rgba(239,68,68,.2)";
+    };
+    panel.onsubmit = async event => {
+      event.preventDefault();
+      const message = messageInput.value.trim();
+      if (!message) {
+        setStatus("Please enter a message before sending.");
+        return;
+      }
+      submit.disabled = true;
+      submit.textContent = "Sending...";
+      const response = await api("submit_faq_action_form", "POST", {
+        customer_id: customerId,
+        user_id: userId,
+        action_id: action.id || null,
+        faq_id: action.faq_id || context.matched_faq_id || null,
+        action_label: action.label || "FAQ action form",
+        name: nameInput.value.trim(),
+        email: emailInput.value.trim(),
+        phone: phoneInput.value.trim(),
+        message,
+        source_url: window.location.href
+      });
+      if (response.success) {
+        setStatus("Request sent. The business team can follow up from their dashboard.", true);
+        submit.textContent = "Sent";
+        nameInput.disabled = true;
+        emailInput.disabled = true;
+        phoneInput.disabled = true;
+        messageInput.disabled = true;
+      } else {
+        submit.disabled = false;
+        submit.textContent = "Send request";
+        setStatus(response.message || "Request could not be sent.");
+      }
+    };
+    panel.appendChild(title);
+    panel.appendChild(nameInput);
+    panel.appendChild(emailInput);
+    panel.appendChild(phoneInput);
+    panel.appendChild(messageInput);
+    panel.appendChild(submit);
+    panel.appendChild(status);
+    suggestionsBox.appendChild(panel);
+  }
+
   function handleFaqAction(action, context = {}, suggestionsBox = null, input = null) {
     const actionType = action.action_type || "link";
     const value = String(action.action_value || "").trim();
-    activeFaqActions = [];
-    activeFaqActionContext = {};
-    if (suggestionsBox && input) {
+    if (actionType !== "form" && actionType !== "category") {
+      activeFaqActions = [];
+      activeFaqActionContext = {};
+    }
+    if (suggestionsBox && input && !["form", "category", "coupon"].includes(actionType)) {
       suggestionsBox.style.transition = "opacity .16s ease, transform .16s ease";
       suggestionsBox.style.opacity = "0";
       suggestionsBox.style.transform = "translateY(4px)";
@@ -618,13 +787,42 @@
       action_value: value,
       message: context.message || ""
     });
-    if (actionType === "link") {
-      if (/^https:\/\//i.test(value)) window.open(value, "_blank", "noopener,noreferrer");
+    if (["link", "download", "booking", "track_order"].includes(actionType)) {
+      openHttps(value);
       return;
     }
     if (actionType === "whatsapp") {
-      const phone = value.replace(/[^\d+]/g, "").replace(/(?!^)\+/g, "").replace(/\D+/g, "");
+      const phone = cleanPhone(value);
       if (/^[1-9][0-9]{7,14}$/.test(phone)) window.open(`https://wa.me/${phone}`, "_blank", "noopener,noreferrer");
+      return;
+    }
+    if (actionType === "call") {
+      const phone = cleanPhone(value);
+      if (/^[1-9][0-9]{7,14}$/.test(phone)) window.location.href = `tel:+${phone}`;
+      return;
+    }
+    if (actionType === "email") {
+      if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) window.location.href = `mailto:${value}`;
+      return;
+    }
+    if (actionType === "coupon") {
+      copyText(value, suggestionsBox);
+      return;
+    }
+    if (actionType === "map") {
+      if (/^https:\/\//i.test(value)) {
+        openHttps(value);
+      } else {
+        window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(value)}`, "_blank", "noopener,noreferrer");
+      }
+      return;
+    }
+    if (actionType === "form") {
+      renderFaqActionForm(action, context, suggestionsBox);
+      return;
+    }
+    if (actionType === "category") {
+      showFaqCategory(value, suggestionsBox, input);
       return;
     }
     if (actionType === "event") {

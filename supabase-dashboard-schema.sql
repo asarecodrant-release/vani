@@ -106,13 +106,20 @@ create table if not exists public.faq_action_suggestions (
   customer_id uuid not null references public.chatbot_signups(customer_id) on delete cascade,
   faq_id bigint not null references public.faq_questions(id) on delete cascade,
   label text not null,
-  action_type text not null default 'link' check (action_type in ('link', 'whatsapp', 'event')),
+  action_type text not null default 'link' check (action_type in ('link', 'whatsapp', 'event', 'call', 'email', 'download', 'coupon', 'booking', 'map', 'form', 'track_order', 'category')),
   action_value text,
   is_active boolean not null default true,
   display_order integer not null default 0,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.faq_action_suggestions
+  drop constraint if exists faq_action_suggestions_action_type_check;
+
+alter table public.faq_action_suggestions
+  add constraint faq_action_suggestions_action_type_check
+  check (action_type in ('link', 'whatsapp', 'event', 'call', 'email', 'download', 'coupon', 'booking', 'map', 'form', 'track_order', 'category'));
 
 create table if not exists public.chatbot_sessions (
   id bigserial primary key,

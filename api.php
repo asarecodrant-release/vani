@@ -3052,20 +3052,33 @@ if ($action === "save_faq_action") {
         exit;
     }
 
-    if (!in_array($action_type, ['link', 'whatsapp', 'event'], true)) {
+    $allowedActionTypes = ['link', 'whatsapp', 'event', 'call', 'email', 'download', 'coupon', 'booking', 'map', 'form', 'track_order', 'category'];
+    if (!in_array($action_type, $allowedActionTypes, true)) {
         echo json_encode(["success" => false, "message" => "Invalid action type"]);
         exit;
     }
-    if ($action_type === 'link' && !preg_match('{^https://\S+$}i', $action_value)) {
-        echo json_encode(["success" => false, "message" => "Link actions must start with https://"]);
+    if (in_array($action_type, ['link', 'download', 'booking', 'track_order'], true) && !preg_match('{^https://\S+$}i', $action_value)) {
+        echo json_encode(["success" => false, "message" => "This action must use a secure https:// URL"]);
         exit;
     }
     if ($action_type === 'whatsapp' && !preg_match('/^\+?[1-9]\d{7,15}$/', $action_value)) {
         echo json_encode(["success" => false, "message" => "WhatsApp number must include country code"]);
         exit;
     }
+    if ($action_type === 'call' && !preg_match('/^\+?[1-9]\d{7,15}$/', $action_value)) {
+        echo json_encode(["success" => false, "message" => "Call number must include country code"]);
+        exit;
+    }
+    if ($action_type === 'email' && !filter_var($action_value, FILTER_VALIDATE_EMAIL)) {
+        echo json_encode(["success" => false, "message" => "Enter a valid email address"]);
+        exit;
+    }
     if ($action_type === 'event' && !preg_match('/^[a-zA-Z][a-zA-Z0-9_.:-]{1,80}$/', $action_value)) {
         echo json_encode(["success" => false, "message" => "Event name can use letters, numbers, dash, dot, underscore, or colon"]);
+        exit;
+    }
+    if (in_array($action_type, ['coupon', 'form', 'category', 'map'], true) && strlen($action_value) > 300) {
+        echo json_encode(["success" => false, "message" => "Action value is too long"]);
         exit;
     }
 
