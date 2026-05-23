@@ -1292,7 +1292,13 @@ if ($action === "get_widget_config" || $action === "get_theme") {
         );
     }
     $themeColor = $settings['theme_color'] ?? $signup['theme_color'] ?? '#6366f1';
-    $botName = $settings['bot_name'] ?? $signup['website_name'] ?? 'Chat Support';
+    $botName = trim((string)($settings['bot_name'] ?? ''));
+    if ($botName === '') {
+        $botName = trim((string)($signup['website_name'] ?? ''));
+    }
+    if ($botName === '') {
+        $botName = 'Chat Support';
+    }
 
     widget_json_response([
         "success" => true,
