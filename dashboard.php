@@ -2217,7 +2217,10 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
               <h2 style="margin:8px 0 10px">Wallet Transactions</h2>
               <p class="muted">Complete summary of wallet credits and deductions for subscription payments, OTP verifications, leads, WhatsApp redirects, and other paid usage.</p>
             </div>
-            <button class="ghost-btn" type="button" id="refreshBillingBtn">Refresh Billing</button>
+            <div class="panel-actions" style="margin:0">
+              <a class="ghost-btn" href="invoices.php?bot=<?php echo urlencode($selectedBotId); ?>">Invoices</a>
+              <button class="ghost-btn" type="button" id="refreshBillingBtn">Refresh Billing</button>
+            </div>
           </div>
 
           <div class="metrics" style="margin-top:18px">

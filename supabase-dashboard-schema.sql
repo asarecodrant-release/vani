@@ -330,6 +330,28 @@ create table if not exists public.wallet_transactions (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.customer_invoices (
+  id bigserial primary key,
+  invoice_number text not null unique,
+  customer_id uuid not null references public.chatbot_signups(customer_id) on delete cascade,
+  email text not null,
+  plan_id text not null,
+  invoice_type text not null default 'subscription' check (invoice_type in ('subscription', 'auto_recharge', 'manual', 'refund')),
+  status text not null default 'paid' check (status in ('paid', 'refunded', 'void')),
+  currency text not null default 'INR',
+  subtotal_paise integer not null default 0,
+  tax_paise integer not null default 0,
+  total_paise integer not null default 0,
+  payment_reference text,
+  order_reference text,
+  billing_period_start timestamptz,
+  billing_period_end timestamptz,
+  pdf_filename text,
+  emailed_at timestamptz,
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
 create table if not exists public.customer_api_keys (
   id bigserial primary key,
   customer_id uuid not null references public.chatbot_signups(customer_id) on delete cascade,
@@ -445,6 +467,12 @@ create index if not exists idx_wallet_transactions_email_created_at
 create index if not exists idx_wallet_transactions_customer_created_at
   on public.wallet_transactions(customer_id, created_at desc);
 
+create index if not exists idx_customer_invoices_customer_created_at
+  on public.customer_invoices(customer_id, created_at desc);
+
+create index if not exists idx_customer_invoices_payment_reference
+  on public.customer_invoices(payment_reference);
+
 create or replace function public.set_updated_at()
 returns trigger
 language plpgsql
@@ -494,6 +522,7 @@ alter table public.lead_generation_leads enable row level security;
 alter table public.billing_accounts enable row level security;
 alter table public.billing_orders enable row level security;
 alter table public.wallet_transactions enable row level security;
+alter table public.customer_invoices enable row level security;
 alter table public.customer_api_keys enable row level security;
 alter table public.customer_api_usage_logs enable row level security;
 alter table public.support_tickets enable row level security;
@@ -687,6 +716,28 @@ for insert
 to anon, authenticated
 with check (true);
 
+drop policy if exists "customer invoices readable" on public.customer_invoices;
+create policy "customer invoices readable"
+on public.customer_invoices
+for select
+to anon, authenticated
+using (true);
+
+drop policy if exists "customer invoices insertable" on public.customer_invoices;
+create policy "customer invoices insertable"
+on public.customer_invoices
+for insert
+to anon, authenticated
+with check (true);
+
+drop policy if exists "customer invoices updatable" on public.customer_invoices;
+create policy "customer invoices updatable"
+on public.customer_invoices
+for update
+to anon, authenticated
+using (true)
+with check (true);
+
 drop policy if exists "customer api keys readable" on public.customer_api_keys;
 create policy "customer api keys readable"
 on public.customer_api_keys
@@ -792,6 +843,7 @@ grant select, insert, update, delete on public.lead_generation_leads to anon, au
 grant select, insert, update, delete on public.billing_accounts to anon, authenticated;
 grant select, insert, update, delete on public.billing_orders to anon, authenticated;
 grant select, insert on public.wallet_transactions to anon, authenticated;
+grant select, insert, update on public.customer_invoices to anon, authenticated;
 grant select, insert, update on public.customer_api_keys to anon, authenticated;
 grant select, insert on public.customer_api_usage_logs to anon, authenticated;
 grant select, insert, update on public.support_tickets to anon, authenticated;
@@ -805,6 +857,7 @@ grant usage, select on sequence public.lead_generation_leads_id_seq to anon, aut
 grant usage, select on sequence public.billing_accounts_id_seq to anon, authenticated;
 grant usage, select on sequence public.billing_orders_id_seq to anon, authenticated;
 grant usage, select on sequence public.wallet_transactions_id_seq to anon, authenticated;
+grant usage, select on sequence public.customer_invoices_id_seq to anon, authenticated;
 grant usage, select on sequence public.customer_api_keys_id_seq to anon, authenticated;
 grant usage, select on sequence public.customer_api_usage_logs_id_seq to anon, authenticated;
 grant usage, select on sequence public.support_tickets_id_seq to anon, authenticated;

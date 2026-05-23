@@ -14,6 +14,7 @@ error_reporting(E_ALL);
 
 require_once __DIR__ . '/widget_core.php';
 require_once __DIR__ . '/billing.php';
+require_once __DIR__ . '/invoice_helpers.php';
 
 $action = $_GET['action'] ?? '';
 $MSG91_WIDGET_ID = $_ENV['MSG91_WIDGET_ID'] ?? getenv('MSG91_WIDGET_ID') ?: '';
@@ -373,6 +374,20 @@ function widget_auto_recharge_wallet(string $email, string $customerId, array $a
         "razorpay_payment_id" => $paymentId,
         "paid_at" => gmdate('Y-m-d\TH:i:s\Z')
     ]);
+
+    $invoice = create_customer_invoice(
+        $customerId,
+        $email,
+        $planId,
+        $amountPaise,
+        $paymentId,
+        (string)$order['data']['id'],
+        'auto_recharge',
+        ["source" => "widget_wallet_auto_recharge", "threshold_paise" => $thresholdPaise]
+    );
+    if (!empty($invoice)) {
+        send_customer_invoice_email($invoice);
+    }
 
     return ["success" => true, "amount_paise" => $amountPaise, "balance_after_paise" => $newBalance, "payment_id" => $paymentId];
 }

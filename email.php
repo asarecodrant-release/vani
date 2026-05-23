@@ -20,7 +20,7 @@ function brevoApiKey() {
     return $apiKey ?: '';
 }
 
-function sendBrevoEmail($toEmail, $subject, $htmlContent) {
+function sendBrevoEmail($toEmail, $subject, $htmlContent, array $attachments = []) {
     $apiKey = brevoApiKey();
 
     if (!$apiKey) {
@@ -46,6 +46,23 @@ function sendBrevoEmail($toEmail, $subject, $htmlContent) {
         'subject' => $subject,
         'htmlContent' => $htmlContent
     ];
+
+    if (!empty($attachments)) {
+        $payload['attachment'] = [];
+        foreach ($attachments as $attachment) {
+            $name = trim((string)($attachment['name'] ?? 'attachment.pdf'));
+            $content = (string)($attachment['content'] ?? '');
+            if ($name !== '' && $content !== '') {
+                $payload['attachment'][] = [
+                    'name' => $name,
+                    'content' => $content
+                ];
+            }
+        }
+        if (empty($payload['attachment'])) {
+            unset($payload['attachment']);
+        }
+    }
 
     $context = stream_context_create([
         'http' => [

@@ -149,6 +149,8 @@ function safe_rows(array $response): array {
     return is_array($data) ? $data : [];
 }
 
+require_once __DIR__ . "/invoice_helpers.php";
+
 function is_uuid_value(string $value): bool {
     return (bool)preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $value);
 }
@@ -963,6 +965,20 @@ function razorpay_auto_recharge_wallet(string $email, string $customerId, array 
         "paid_at" => gmdate('Y-m-d\TH:i:s\Z')
     ]);
 
+    $invoice = create_customer_invoice(
+        $customerId,
+        $email,
+        $planId,
+        $amountPaise,
+        $paymentId,
+        (string)$order['data']['id'],
+        'auto_recharge',
+        ["source" => "wallet_auto_recharge", "threshold_paise" => $autoRecharge['threshold_paise']]
+    );
+    if (!empty($invoice)) {
+        send_customer_invoice_email($invoice);
+    }
+
     return ["success" => true, "amount_paise" => $amountPaise, "balance_after_paise" => $newBalance, "payment_id" => $paymentId];
 }
 
@@ -1732,11 +1748,29 @@ if ($action === "verify_auto_recharge_mandate") {
         ]
     ]);
 
+    $invoice = [];
+    if ($credited) {
+        $invoice = create_customer_invoice(
+            $customerId,
+            $email,
+            $planId,
+            $amountPaise,
+            $paymentId,
+            $orderId,
+            !empty(((array)($order['metadata'] ?? []))['initial_plan_purchase']) ? 'subscription' : 'auto_recharge',
+            ["source" => "razorpay_mandate_authorization", "token_id" => $tokenId]
+        );
+        if (!empty($invoice)) {
+            send_customer_invoice_email($invoice);
+        }
+    }
+
     echo json_encode([
         "success" => true,
         "message" => "Auto recharge mandate authorized",
         "token_id" => $tokenId,
         "wallet_credited" => $credited,
+        "invoice" => !empty($invoice) ? ["invoice_number" => $invoice['invoice_number'] ?? null] : null,
         "account" => $customerId !== '' ? billing_account_for_customer($customerId) : billing_account_for_email($email)
     ]);
     exit;
