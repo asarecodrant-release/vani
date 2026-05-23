@@ -65,6 +65,7 @@ function dashboard_disable_paid_service_toggles(array $bots, string $reason): vo
         supabase("PATCH", "chatbot_settings?customer_id=eq." . urlencode($customerId), [
             "handoff_enabled" => false,
             "allowed_domains_enabled" => false,
+            "live_chat_actions_enabled" => false,
             "webhook_url" => null,
             "webhook_secret" => null
         ]);
@@ -490,6 +491,7 @@ $canUseBusinessApi = billing_feature_enabled($activePlanId, 'api_access');
 $canUseWebhook = billing_feature_enabled($activePlanId, 'webhook_support');
 $canUseHumanHandoff = billing_feature_enabled($activePlanId, 'human_handoff');
 $canUseAllowedDomains = billing_feature_enabled($activePlanId, 'allowed_domains');
+$canUseLiveChatActions = billing_feature_enabled($activePlanId, 'live_chat_actions');
 $autoRechargeRule = billing_auto_recharge_rule($activePlanId);
 $autoRechargeThresholdPaise = (int)($billingAccount['auto_recharge_threshold_paise'] ?? 0) ?: (int)$autoRechargeRule['threshold_paise'];
 $autoRechargeAmountPaise = (int)($billingAccount['auto_recharge_amount_paise'] ?? 0) ?: (int)$autoRechargeRule['amount_paise'];
@@ -808,6 +810,7 @@ $allowedDomainsEnabled = filter_var($settings['allowed_domains_enabled'] ?? fals
 $allowedDomains = first_value($settings, ['allowed_domains'], '');
 $handoffEnabled = filter_var($settings['handoff_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
 $handoffEmail = first_value($settings, ['handoff_email'], $email);
+$liveChatActionsEnabled = filter_var($settings['live_chat_actions_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
 $verificationStatus = first_value($settings, ['verification_status'], 'Pending');
 $websiteName = first_value($selectedBot, ['website_name'], '');
 $leadEnabled = filter_var($leadSettings['is_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
@@ -1900,7 +1903,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                   <h4>API integration guide</h4>
                   <p class="muted">Step-by-step reference for API keys, endpoints, filters, sample requests, webhooks, errors, and security.</p>
                   <?php if ($canUseBusinessApi): ?>
-                    <a class="pill-btn" href="api_integration.php">Open API guide</a>
+                    <a class="pill-btn" href="api_integration.php?bot=<?php echo h(urlencode($selectedBotId)); ?>">Open API guide</a>
                   <?php else: ?>
                     <button class="pill-btn" type="button" disabled>Business plan required</button>
                   <?php endif; ?>
@@ -1949,6 +1952,22 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                     <small class="input-help">Use this to verify webhook signatures on your server.</small>
                   </div>
                   <button class="pill-btn" type="button" id="saveWebhookBtn" <?php echo $canUseWebhook ? '' : 'disabled'; ?>>Save webhook</button>
+                </div>
+
+                <div class="security-card">
+                  <div class="inline-row" style="justify-content:space-between;gap:14px">
+                    <div>
+                      <h4>Live Chat Actions</h4>
+                      <p class="muted">Let the customer's website react instantly to chatbot events such as chat open, messages, FAQ answers, unknown questions, lead capture, and WhatsApp clicks.</p>
+                      <?php if (!$canUseLiveChatActions): ?><small class="input-help error">Business plan required.</small><?php endif; ?>
+                    </div>
+                    <label class="switch" title="Enable Live Chat Actions">
+                      <input id="liveChatActionsToggle" type="checkbox" <?php echo $liveChatActionsEnabled && $canUseLiveChatActions ? 'checked' : ''; ?> <?php echo $canUseLiveChatActions ? '' : 'disabled'; ?> aria-label="Enable Live Chat Actions">
+                      <span class="switch-slider"></span>
+                    </label>
+                  </div>
+                  <small class="input-help">When ON, the widget dispatches safe browser events on the customer's website. When OFF, no live website events are emitted.</small>
+                  <button class="pill-btn" type="button" id="saveLiveChatActionsBtn" <?php echo $canUseLiveChatActions ? '' : 'disabled'; ?>>Save Live Chat Actions</button>
                 </div>
               </div>
             </div>
@@ -2260,7 +2279,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
               <div class="pricing-head"><div><span class="eyebrow">Business</span><h3>Business Plan</h3></div><span class="tag">Scale</span></div>
               <?php if ($activePlanId === 'business'): ?><div class="current-plan-note">Current plan</div><?php endif; ?>
               <div class="price">₹999<small>/month</small></div>
-              <div class="feature-list"><span>Unlimited FAQ capacity for larger businesses</span><span>Email and Mobile combined OTP verification for real leads</span><span>WhatsApp Redirect add-on billed at ₹99 / 30 days</span><span>Webhook support</span><span>Auto wallet recharge: below ₹200, recharge ₹999</span><span>Complete Analytics dashboard for tracking captured contacts</span><span>Access for API Integration, Migrate or save data in your database via API</span><span>Advanced Analytics: Overview, Conversations, FAQ Insights, Leads, Pages, Real-Time, Reports Download</span><span>Chat can run only allowed domains</span></div>
+              <div class="feature-list"><span>Unlimited FAQ capacity for larger businesses</span><span>Email and Mobile combined OTP verification for real leads</span><span>WhatsApp Redirect add-on billed at ₹99 / 30 days</span><span>Webhook support</span><span>Live Chat Actions for real-time website reactions</span><span>Auto wallet recharge: below ₹200, recharge ₹999</span><span>Complete Analytics dashboard for tracking captured contacts</span><span>Access for API Integration, Migrate or save data in your database via API</span><span>Advanced Analytics: Overview, Conversations, FAQ Insights, Leads, Pages, Real-Time, Reports Download</span><span>Chat can run only allowed domains</span></div>
               <div class="wallet-table"><table><thead><tr><th>Wallet action</th><th>Charge</th></tr></thead><tbody><tr><td>Fresh Email OTP Lead</td><td>₹5</td></tr><tr><td>Repeat Email OTP Verification</td><td>₹1</td></tr><tr><td>Fresh Mobile OTP Lead</td><td>₹10</td></tr><tr><td>Repeat Mobile OTP Verification</td><td>₹2</td></tr><tr><td>WhatsApp Redirect</td><td>Add-on ₹99, refundable if cancelled within 1 hour</td></tr></tbody></table></div>
               <small class="muted">Validity of Fresh Email and Mobile OTP Leads is 30 days from last user verification.</small>
               <button class="pill-btn billing-plan-btn" type="button" data-plan-id="business">Start Auto Payment</button>
@@ -2454,7 +2473,8 @@ const businessFeatures = <?php echo json_encode([
   "api_access" => $canUseBusinessApi,
   "webhook_support" => $canUseWebhook,
   "human_handoff" => $canUseHumanHandoff,
-  "allowed_domains" => $canUseAllowedDomains
+  "allowed_domains" => $canUseAllowedDomains,
+  "live_chat_actions" => $canUseLiveChatActions
 ]); ?>;
 const leadWalletCharges = <?php echo json_encode([
   "fresh_email_lead" => billing_wallet_charge_paise($activePlanId, "fresh_email_lead"),
@@ -3683,6 +3703,31 @@ document.getElementById("saveWebhookBtn")?.addEventListener("click", async event
   });
   button.disabled = false;
   button.textContent = "Save webhook";
+});
+
+async function saveLiveChatActionsSettings({live = false} = {}) {
+  const toggle = document.getElementById("liveChatActionsToggle");
+  if (!toggle) return;
+  if (toggle.checked && !businessFeatures.live_chat_actions) {
+    toggle.checked = false;
+    alert("Live Chat Actions requires Business plan");
+    openTab("subscription");
+    return;
+  }
+  const saved = await saveDashboardSettings({
+    live_chat_actions_enabled: businessFeatures.live_chat_actions && !!toggle.checked
+  });
+  if (saved && live) {
+    showToast(toggle.checked ? "Live Chat Actions enabled" : "Live Chat Actions disabled");
+  }
+}
+
+document.getElementById("liveChatActionsToggle")?.addEventListener("change", () => {
+  saveLiveChatActionsSettings({live: true});
+});
+
+document.getElementById("saveLiveChatActionsBtn")?.addEventListener("click", () => {
+  saveLiveChatActionsSettings();
 });
 
 function apiKeyRowsHtml(keys) {

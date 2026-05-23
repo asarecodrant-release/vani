@@ -60,6 +60,17 @@
       if (!response.ok) {
         console.warn("Vani widget API returned an error:", action, payload);
       }
+      if (payload?.success && payload?.lead && [
+        "create_lead",
+        "create_lead_send_email_otp",
+        "verify_lead_email_otp",
+        "verify_lead_mobile_msg91"
+      ].includes(action)) {
+        emitLiveAction("leadCaptured", {
+          action,
+          lead: safeLeadPayload(payload.lead)
+        });
+      }
       return payload;
     } catch (error) {
       console.error("Vani widget API error:", error);
@@ -102,6 +113,38 @@
 
   function isEnabled(value) {
     return value === true || value === 1 || value === "1" || value === "true";
+  }
+
+  function liveActionsEnabled() {
+    return isEnabled(config.live_chat_actions_enabled) && isEnabled(config.billing?.live_chat_actions);
+  }
+
+  function emitLiveAction(name, detail = {}) {
+    if (!liveActionsEnabled()) return;
+    const payload = {
+      customer_id: customerId,
+      user_id: userId,
+      session_id: sessionId,
+      source_url: window.location.href,
+      timestamp: new Date().toISOString(),
+      ...detail
+    };
+    window.dispatchEvent(new CustomEvent(`vani:${name}`, {detail: payload}));
+    window.dispatchEvent(new CustomEvent("vani:liveAction", {
+      detail: {event: `vani:${name}`, ...payload}
+    }));
+  }
+
+  function safeLeadPayload(lead = {}) {
+    return {
+      id: lead.id || null,
+      email: lead.email || "",
+      phone_number: lead.phone_number || "",
+      email_otp_verified: isEnabled(lead.email_otp_verified),
+      mobile_otp_verified: isEnabled(lead.mobile_otp_verified),
+      source_url: lead.source_url || "",
+      created_at: lead.created_at || ""
+    };
   }
 
   function sessionStorageKey(customerId) {
@@ -228,44 +271,151 @@
   }
 
   function addMessage(messages, text, type) {
+    const isUser = type === "user";
+    const row = document.createElement("div");
+    row.className = `vani-message-row ${isUser ? "vani-message-user" : "vani-message-bot"}`;
+    const avatar = document.createElement("span");
+    const botAvatarUrl = resolveAssetUrl(config.avatar_url);
+    if (isUser || !botAvatarUrl) {
+      avatar.textContent = isUser ? "You" : "AI";
+    } else {
+      const avatarImage = document.createElement("img");
+      avatarImage.src = botAvatarUrl;
+      avatarImage.alt = "";
+      css(avatarImage, {
+        width: "100%",
+        height: "100%",
+        objectFit: "contain",
+        display: "block"
+      });
+      avatarImage.onerror = () => {
+        avatarImage.remove();
+        avatar.textContent = "AI";
+      };
+      avatar.appendChild(avatarImage);
+    }
     const bubble = document.createElement("div");
     bubble.textContent = text;
+    bubble.className = "vani-message-bubble";
+    css(row, {
+      display: "flex",
+      alignItems: "flex-end",
+      gap: "8px",
+      margin: "9px 0",
+      justifyContent: isUser ? "flex-end" : "flex-start",
+      animation: "vaniMessageIn .24s ease both"
+    });
+    css(avatar, {
+      width: "26px",
+      height: "26px",
+      borderRadius: "999px",
+      display: isUser ? "none" : "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      flex: "0 0 auto",
+      overflow: "hidden",
+      padding: botAvatarUrl && !isUser ? "3px" : "0",
+      fontSize: "10px",
+      fontWeight: "800",
+      color: "#fff",
+      background: botAvatarUrl && !isUser ? "#fff" : `linear-gradient(135deg,${config.theme_color || "#6366f1"},#06b6d4)`,
+      border: botAvatarUrl && !isUser ? "1px solid #e2e8f0" : "0",
+      boxShadow: "0 8px 18px rgba(15,23,42,.16)"
+    });
     css(bubble, {
-      margin: "7px 0",
       padding: "10px 12px",
-      borderRadius: "12px",
+      borderRadius: isUser ? "16px 16px 5px 16px" : "16px 16px 16px 5px",
       maxWidth: "82%",
       fontSize: "14px",
-      lineHeight: "1.45",
+      lineHeight: "1.5",
       whiteSpace: "pre-wrap",
       wordBreak: "break-word",
-      background: type === "user" ? (config.theme_color || "#6366f1") : "#eef2ff",
-      color: type === "user" ? "#fff" : "#0f172a",
-      marginLeft: type === "user" ? "auto" : "0"
+      background: isUser ? `linear-gradient(135deg,${config.theme_color || "#6366f1"},#06b6d4)` : "rgba(255,255,255,.96)",
+      color: isUser ? "#fff" : "#0f172a",
+      border: isUser ? "0" : "1px solid #e2e8f0",
+      boxShadow: isUser ? "0 10px 24px rgba(79,70,229,.22)" : "0 10px 26px rgba(15,23,42,.07)"
     });
-    messages.appendChild(bubble);
+    if (!isUser) row.appendChild(avatar);
+    row.appendChild(bubble);
+    messages.appendChild(row);
     messages.scrollTop = messages.scrollHeight;
   }
 
   function renderSuggestions(suggestionsBox, input, items) {
     suggestionsBox.innerHTML = "";
-    items.forEach(item => {
+    suggestionsBox.style.display = items.length ? "grid" : "none";
+    items.forEach((item, index) => {
       const option = document.createElement("button");
       option.type = "button";
-      option.textContent = item.question;
+      option.className = "vani-suggestion-card";
+      option.style.animationDelay = `${Math.min(index * 35, 180)}ms`;
+      const icon = document.createElement("span");
+      icon.textContent = "?";
+      css(icon, {
+        display: "inline-flex",
+        width: "22px",
+        height: "22px",
+        borderRadius: "999px",
+        background: `linear-gradient(135deg,${config.theme_color || "#6366f1"},#06b6d4)`,
+        color: "#fff",
+        alignItems: "center",
+        justifyContent: "center",
+        fontSize: "12px",
+        fontWeight: "800",
+        flex: "0 0 auto"
+      });
+      const content = document.createElement("span");
+      css(content, { flex: "1", minWidth: "0" });
+      const title = document.createElement("span");
+      title.textContent = item.question || "";
+      css(title, {
+        display: "block",
+        color: "#0f172a",
+        fontWeight: "700",
+        fontSize: "13px",
+        lineHeight: "1.35"
+      });
+      const hint = document.createElement("span");
+      hint.textContent = "Suggested answer";
+      css(hint, {
+        display: "block",
+        color: "#64748b",
+        fontSize: "11px",
+        lineHeight: "1.35",
+        marginTop: "2px"
+      });
+      content.appendChild(title);
+      content.appendChild(hint);
+      option.appendChild(icon);
+      option.appendChild(content);
       css(option, {
         width: "100%",
-        border: "0",
-        borderBottom: "1px solid #e5e7eb",
-        background: "transparent",
+        border: "1px solid #e2e8f0",
+        borderRadius: "13px",
+        background: "rgba(255,255,255,.92)",
         color: "#0f172a",
         padding: "9px 10px",
         textAlign: "left",
         cursor: "pointer",
-        fontSize: "13px"
+        fontSize: "13px",
+        display: "flex",
+        alignItems: "center",
+        gap: "9px",
+        boxShadow: "0 8px 22px rgba(15,23,42,.06)",
+        transition: "transform .16s ease, box-shadow .16s ease, border-color .16s ease, background .16s ease"
       });
-      option.onmouseenter = () => option.style.background = "#f8fafc";
-      option.onmouseleave = () => option.style.background = "transparent";
+      option.onmouseenter = () => {
+        option.style.background = "#fff";
+        option.style.borderColor = config.theme_color || "#6366f1";
+        option.style.boxShadow = "0 12px 28px rgba(15,23,42,.12)";
+        option.style.transform = "translateY(-1px)";
+      };
+      option.onmouseleave = () => {
+        option.style.background = "rgba(255,255,255,.92)";
+        option.style.borderColor = "#e2e8f0";
+        option.style.boxShadow = "0 8px 22px rgba(15,23,42,.06)";
+        option.style.transform = "translateY(0)";
+      };
       option.onclick = async () => {
         input.value = item.question;
         await trackUsage(item.id);
@@ -322,6 +472,17 @@
       .vani-breathing-greeting {
         animation: breathing 3s ease-in-out infinite;
       }
+      @keyframes vaniMessageIn {
+        from { opacity: 0; transform: translateY(10px) scale(.98); }
+        to { opacity: 1; transform: translateY(0) scale(1); }
+      }
+      @keyframes vaniSuggestionIn {
+        from { opacity: 0; transform: translateY(8px) scale(.98); }
+        to { opacity: 1; transform: translateY(0) scale(1); }
+      }
+      .vani-suggestion-card {
+        animation: vaniSuggestionIn .22s ease both;
+      }
     `;
     document.head.appendChild(style);
 
@@ -343,8 +504,8 @@
       alignItems: "center",
       justifyContent: "center",
       fontWeight: "700",
-      overflow: "hidden",
-      padding: avatarUrl ? "0" : "0",
+      overflow: "visible",
+      padding: avatarUrl ? "5px" : "0",
       zIndex: "999999",
       boxShadow: "0 12px 28px rgba(255, 255, 255, 0)"
     });
@@ -355,9 +516,9 @@
       iconImage.src = avatarUrl;
       iconImage.alt = "";
       css(iconImage, {
-        width: "80%",
+        width: "100%",
         height: "100%",
-        borderRadius: "0%",
+        borderRadius: "0",
         objectFit: "contain",
         display: "block",
         background: "transparent",
@@ -369,6 +530,7 @@
         css(icon, {
           background: color,
           color: "#fff",
+          overflow: "hidden",
           padding: "0"
         });
       };
@@ -420,11 +582,12 @@
     css(box, sideStyles);
 
     box.innerHTML = `
-      <div data-vani-header style="padding:13px 14px;color:#fff;background:${color};font-weight:700;display:flex;align-items:center;gap:10px;">
-        <span data-vani-title></span>
+      <div data-vani-header style="padding:11px 12px 11px 14px;color:#fff;background:${color};font-weight:700;display:flex;align-items:center;gap:10px;">
+        <span data-vani-title style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+        <button data-vani-close type="button" aria-label="Close chat" title="Close chat" style="width:30px;height:30px;border:1px solid rgba(255,255,255,.38);border-radius:999px;background:rgba(255,255,255,.16);color:#fff;cursor:pointer;font-size:20px;line-height:1;display:flex;align-items:center;justify-content:center;padding:0;">×</button>
       </div>
-      <div data-vani-messages style="flex:1;overflow:auto;padding:12px;background:#f8fafc;"></div>
-      <div data-vani-suggestions style="max-height:132px;overflow:auto;background:#fff;border-top:1px solid #e5e7eb;"></div>
+      <div data-vani-messages style="flex:1;overflow:auto;padding:14px;background:linear-gradient(180deg,#f8fafc 0%,#eef2ff 100%);scroll-behavior:smooth;"></div>
+      <div data-vani-suggestions style="max-height:160px;overflow:auto;background:linear-gradient(180deg,#ffffff 0%,#f8fafc 100%);border-top:1px solid #e5e7eb;padding:8px;display:grid;gap:7px;"></div>
       <div data-vani-lead-prompt style="display:none;padding:10px;border-top:1px solid #e5e7eb;background:#fff;"></div>
       <div data-vani-whatsapp-action style="display:none;padding:10px;border-top:1px solid #e5e7eb;background:#fff;"></div>
       <div style="display:flex;border-top:1px solid #e5e7eb;background:#fff;">
@@ -440,6 +603,7 @@
     const messages = box.querySelector("[data-vani-messages]");
     const input = box.querySelector("[data-vani-input]");
     const sendBtn = box.querySelector("[data-vani-send]");
+    const closeBtn = box.querySelector("[data-vani-close]");
     const suggestionsBox = box.querySelector("[data-vani-suggestions]");
     const whatsappAction = box.querySelector("[data-vani-whatsapp-action]");
     box.querySelector("[data-vani-title]").textContent = config.bot_name || "Chat Support";
@@ -663,11 +827,15 @@
       button.onmouseenter = () => button.style.background = "#1ebe5d";
       button.onmouseleave = () => button.style.background = "#25D366";
       button.onclick = async () => {
-        await api("create_lead", "POST", {
+        const leadRes = await api("create_lead", "POST", {
           customer_id: customerId,
           user_id: userId,
           source_url: window.location.href,
           whatsapp_redirected: true
+        });
+        emitLiveAction("whatsappClicked", {
+          phone_number: phone,
+          lead_id: leadRes?.lead?.id || null
         });
 
         if (isMobileDevice()) {
@@ -1497,6 +1665,10 @@
 
       // proceed with normal chat
       addMessage(messages, message, "user");
+      emitLiveAction("messageSent", {
+        message,
+        faq_id: selectedFaqId || null
+      });
       input.value = "";
       delete input.dataset.selectedFaqId;
       suggestionsBox.innerHTML = "";
@@ -1520,25 +1692,45 @@
       });
 
       addMessage(messages, response.reply || "No response", "bot");
+      emitLiveAction(response.answered ? "faqAnswered" : "unknownQuestion", {
+        message,
+        reply: response.reply || "",
+        answered: !!response.answered,
+        matched_faq_id: response.matched_faq_id || null
+      });
       trackWidgetSessionSoon({started_at: sessionChatStartedAt});
     };
 
+    function openChat() {
+      box.style.display = "flex";
+      greeting.style.display = "none";
+      icon.setAttribute("aria-label", "Close chat");
+      sessionOpenedAt = sessionOpenedAt || new Date().toISOString();
+      emitLiveAction("chatOpened", {opened_at: sessionOpenedAt});
+      trackWidgetSessionSoon({opened_at: sessionOpenedAt});
+      input.focus();
+      loadTop();
+      renderWhatsAppAction();
+      renderLeadPrompt();
+    }
+
+    function closeChat() {
+      box.style.display = "none";
+      greeting.style.display = "block";
+      icon.setAttribute("aria-label", "Open chat");
+      trackWidgetSessionSoon();
+    }
+
     icon.onclick = () => {
       const open = box.style.display === "flex";
-      box.style.display = open ? "none" : "flex";
-      greeting.style.display = open ? "block" : "none";
-      if (!open) {
-        sessionOpenedAt = sessionOpenedAt || new Date().toISOString();
-        trackWidgetSessionSoon({opened_at: sessionOpenedAt});
-        input.focus();
-        loadTop();
-        renderWhatsAppAction();
-        renderLeadPrompt();
+      if (open) {
+        closeChat();
       } else {
-        trackWidgetSessionSoon();
+        openChat();
       }
     };
     greeting.onclick = icon.onclick;
+    closeBtn.onclick = closeChat;
 
     input.addEventListener("focus", loadTop);
     input.addEventListener("input", () => {

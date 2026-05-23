@@ -1595,7 +1595,7 @@ if ($action === "customer_api_profile") {
     ));
     $settings = safe_rows(supabase(
         "GET",
-        "chatbot_settings?select=bot_name,welcome_message,theme_color,position,avatar_url,language,is_active,website_verification_enabled,allowed_domains_enabled,allowed_domains,webhook_url,verification_status,created_at,updated_at&customer_id=eq." . urlencode($customerId) . "&limit=1"
+        "chatbot_settings?select=bot_name,welcome_message,theme_color,position,avatar_url,language,is_active,website_verification_enabled,allowed_domains_enabled,allowed_domains,live_chat_actions_enabled,webhook_url,verification_status,created_at,updated_at&customer_id=eq." . urlencode($customerId) . "&limit=1"
     ));
     customer_api_json($validation, "profile", [
         "profile" => $profile[0] ?? null,
@@ -2804,6 +2804,13 @@ if ($action === "save_dashboard_settings") {
         echo json_encode(["success" => false, "message" => "Enter a valid support email"]);
         exit;
     }
+    if (!billing_feature_enabled($activePlan, 'live_chat_actions')) {
+        if (!empty($data['live_chat_actions_enabled'])) {
+            echo json_encode(["success" => false, "requires_business" => true, "message" => "Live Chat Actions requires Business plan"]);
+            exit;
+        }
+        unset($data['live_chat_actions_enabled']);
+    }
 
     $allowed = [
         "bot_name",
@@ -2823,6 +2830,7 @@ if ($action === "save_dashboard_settings") {
         "webhook_secret",
         "handoff_enabled",
         "handoff_email",
+        "live_chat_actions_enabled",
         "verification_status"
     ];
 

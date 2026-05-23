@@ -334,6 +334,7 @@ function widget_disable_paid_service_toggles_for_email(string $email, string $re
         supabase("PATCH", "chatbot_settings?customer_id=eq." . urlencode($customerId), [
             "handoff_enabled" => false,
             "allowed_domains_enabled" => false,
+            "live_chat_actions_enabled" => false,
             "webhook_url" => null,
             "webhook_secret" => null
         ]);
@@ -362,6 +363,7 @@ function widget_downgrade_account_to_free(string $customerId, string $reason = '
     supabase("PATCH", "chatbot_settings?customer_id=eq." . urlencode($customerId), [
         "handoff_enabled" => false,
         "allowed_domains_enabled" => false,
+        "live_chat_actions_enabled" => false,
         "webhook_url" => null,
         "webhook_secret" => null
     ]);
@@ -1306,11 +1308,13 @@ if ($action === "get_widget_config" || $action === "get_theme") {
             "email_otp" => billing_feature_enabled($activePlan, 'email_otp'),
             "mobile_otp" => billing_feature_enabled($activePlan, 'mobile_otp'),
             "whatsapp_redirect" => billing_feature_enabled($activePlan, 'whatsapp_redirect'),
-            "allowed_domains" => billing_feature_enabled($activePlan, 'allowed_domains')
+            "allowed_domains" => billing_feature_enabled($activePlan, 'allowed_domains'),
+            "live_chat_actions" => billing_feature_enabled($activePlan, 'live_chat_actions')
         ],
         "website_verification_enabled" => widget_bool($settings['website_verification_enabled'] ?? false),
         "allowed_domains_enabled" => widget_bool($settings['allowed_domains_enabled'] ?? false) && billing_feature_enabled($activePlan, 'allowed_domains'),
         "allowed_domains" => $settings['allowed_domains'] ?? '',
+        "live_chat_actions_enabled" => widget_bool($settings['live_chat_actions_enabled'] ?? false) && billing_feature_enabled($activePlan, 'live_chat_actions'),
         "verification_status" => $access['status'],
         "access_allowed" => $access['allowed'],
         "access_message" => $access['message'],

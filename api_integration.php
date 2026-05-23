@@ -27,9 +27,24 @@ function api_doc_rows(array $response): array {
 }
 
 $email = authenticated_email();
+$selectedBotId = trim((string)($_GET['bot'] ?? ''));
+
+if ($selectedBotId === '') {
+    deny_api_integration_access();
+}
+
+$botRows = api_doc_rows(supabase(
+    "GET",
+    "chatbot_signups?select=customer_id,email,website_name&customer_id=eq." . urlencode($selectedBotId) . "&email=eq." . urlencode($email) . "&limit=1"
+));
+
+if (empty($botRows[0])) {
+    deny_api_integration_access();
+}
+
 $billingRows = api_doc_rows(supabase(
     "GET",
-    "billing_accounts?select=*&email=eq." . urlencode($email) . "&limit=1"
+    "billing_accounts?select=*&customer_id=eq." . urlencode($selectedBotId) . "&limit=1"
 ));
 $billingAccount = $billingRows[0] ?? [];
 $activePlanId = billing_active_plan_from_account($billingAccount);
@@ -42,7 +57,7 @@ $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' :
 $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
 $basePath = rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? ''), '/\\');
 $apiBase = $scheme . '://' . $host . $basePath . '/api.php?action=';
-$dashboardUrl = 'dashboard.php#install';
+$dashboardUrl = 'dashboard.php?bot=' . urlencode($selectedBotId) . '#install';
 
 $endpoints = [
     ['action' => 'customer_api_ping', 'name' => 'API key test', 'access' => 'Key validity, customer ID, active plan'],
@@ -121,6 +136,7 @@ td{font-size:14px;color:var(--ink);line-height:1.55}
       <a href="#filters">Filters</a>
       <a href="#examples">Examples</a>
       <a href="#webhooks">Webhooks</a>
+      <a href="#live-actions">Live Chat Actions</a>
       <a href="#errors">Errors</a>
       <a href="#security">Security Checklist</a>
     </nav>
@@ -242,8 +258,54 @@ const data = await res.json();</code>
         <div class="callout">Webhook URLs must use HTTPS. Customers should verify the secret before trusting the payload.</div>
       </section>
 
+      <section class="panel" id="live-actions">
+        <h2>8. Live Chat Actions</h2>
+        <p>Use Live Chat Actions when the customer's website should react immediately while a visitor is chatting. This is a Business Plan feature and works only when the switch is ON in <strong>Dashboard → Integration</strong>.</p>
+        <ol>
+          <li>Open <strong>Dashboard → Integration</strong>.</li>
+          <li>Turn ON <strong>Live Chat Actions</strong>.</li>
+          <li>Save the setting.</li>
+          <li>Add JavaScript event listeners on the customer's website after the Vani widget script.</li>
+          <li>Use the event payload to show forms, highlight sections, trigger CRM logic, track conversions, or open custom UI.</li>
+        </ol>
+        <h3>Available browser events</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Event</th><th>When it fires</th><th>Common use</th></tr></thead>
+            <tbody>
+              <tr><td><span class="inline-code">vani:chatOpened</span></td><td>Visitor opens the chat widget.</td><td>Start engagement tracking or show page help.</td></tr>
+              <tr><td><span class="inline-code">vani:messageSent</span></td><td>Visitor sends a message or selects a suggested FAQ.</td><td>React to keywords, show relevant page sections.</td></tr>
+              <tr><td><span class="inline-code">vani:faqAnswered</span></td><td>Vani answers using a matched FAQ.</td><td>Track solved questions or move the visitor deeper into the funnel.</td></tr>
+              <tr><td><span class="inline-code">vani:unknownQuestion</span></td><td>Vani cannot find an answer.</td><td>Open support form, ticket form, or human handoff prompt.</td></tr>
+              <tr><td><span class="inline-code">vani:leadCaptured</span></td><td>Email, mobile, location, OTP, or WhatsApp lead data is saved.</td><td>Trigger conversion tracking or update the page state.</td></tr>
+              <tr><td><span class="inline-code">vani:whatsappClicked</span></td><td>Visitor clicks the WhatsApp redirect button.</td><td>Track WhatsApp intent or show a fallback message.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Copy-paste example</h3>
+        <code>window.addEventListener("vani:unknownQuestion", function(event) {
+  console.log("Unanswered question:", event.detail.message);
+  document.querySelector("#support-form")?.classList.add("show");
+});
+
+window.addEventListener("vani:leadCaptured", function(event) {
+  console.log("Lead captured:", event.detail.lead);
+});
+
+window.addEventListener("vani:liveAction", function(event) {
+  console.log("Any Vani live event:", event.detail.event, event.detail);
+});</code>
+        <h3>Payload fields</h3>
+        <ul>
+          <li><span class="inline-code">customer_id</span>, <span class="inline-code">user_id</span>, <span class="inline-code">session_id</span>, <span class="inline-code">source_url</span>, and <span class="inline-code">timestamp</span> are included on every event.</li>
+          <li>Message events include <span class="inline-code">message</span>, <span class="inline-code">reply</span>, <span class="inline-code">answered</span>, and <span class="inline-code">matched_faq_id</span> where available.</li>
+          <li>Lead events include safe lead fields such as email, phone number, OTP verification flags, source URL, and created date.</li>
+        </ul>
+        <div class="callout">These are browser events. They are best for front-end website behavior. For secure backend automation, use webhooks or server-side API calls.</div>
+      </section>
+
       <section class="panel" id="errors">
-        <h2>8. Error Codes</h2>
+        <h2>9. Error Codes</h2>
         <div class="table-wrap">
           <table>
             <thead><tr><th>Status</th><th>Meaning</th><th>Fix</th></tr></thead>
@@ -258,7 +320,7 @@ const data = await res.json();</code>
       </section>
 
       <section class="panel" id="security">
-        <h2>9. Security Checklist</h2>
+        <h2>10. Security Checklist</h2>
         <ul>
           <li>Keep API keys on the customer’s backend, not in public frontend code.</li>
           <li>Use HTTPS only.</li>

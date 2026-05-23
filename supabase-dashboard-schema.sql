@@ -23,6 +23,7 @@ create table if not exists public.chatbot_settings (
   webhook_secret text,
   handoff_enabled boolean not null default false,
   handoff_email text,
+  live_chat_actions_enabled boolean not null default false,
   verification_status text default 'Pending',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -45,6 +46,9 @@ alter table public.chatbot_settings
 
 alter table public.chatbot_settings
   add column if not exists handoff_email text;
+
+alter table public.chatbot_settings
+  add column if not exists live_chat_actions_enabled boolean not null default false;
 
 create table if not exists public.chatbot_conversations (
   id bigserial primary key,

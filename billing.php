@@ -61,7 +61,8 @@ function billing_plans(): array {
                 'webhook_support' => true,
                 'human_handoff' => true,
                 'combined_widget' => true,
-                'allowed_domains' => true
+                'allowed_domains' => true,
+                'live_chat_actions' => true
             ]
         ]
     ];
