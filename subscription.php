@@ -56,7 +56,7 @@ td:last-child,th:last-child{text-align:right;font-weight:800}
 <body>
 <nav>
   <div class="container nav-inner">
-    <a class="logo" href="index.php"><img src="images/logo_img.png" alt="Vani AI Logo"><span>VANI AI</span></a>
+    <a class="logo" href="index.php"><img src="images/logo_img.png" alt="Vani AI Logo"><span>Vani AI</span></a>
     <div class="nav-actions">
       <a class="nav-link" href="index.php">Home</a>
       <a class="nav-link" href="login.php">Login</a>

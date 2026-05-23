@@ -55,7 +55,7 @@ footer{padding:24px 0 40px;color:#94a3b8;text-align:center;font-size:14px}
 <body>
 <nav>
   <div class="container nav-inner">
-    <a class="brand" href="index.php"><img src="images/logo_img.png" alt="Vani AI"><span>VANI AI</span></a>
+    <a class="brand" href="index.php"><img src="images/logo_img.png" alt="Vani AI"><span>Vani AI</span></a>
     <div class="nav-actions">
       <button class="site-menu-trigger" type="button" aria-label="Open menu" aria-expanded="false">
         <span></span>

@@ -286,7 +286,7 @@ nav .site-menu-trigger{
     <!-- LOGO -->
     <a class="logo" href="index.php" aria-label="Vani AI home">
       <img src="images/logo_img.png" alt="Vani AI Logo">
-      <span>VANI AI</span>
+      <span>Vani AI</span>
     </a>
 
     <!-- RIGHT SIDE -->

@@ -72,10 +72,10 @@ footer{padding:24px 0 40px;color:#94a3b8;text-align:center;font-size:14px}
 }
 </style>
 </head>
-<body class="dark">
+<body>
 <nav>
   <div class="container nav-inner">
-    <a class="brand" href="index.php"><img src="images/logo_img.png" alt="Vani AI"><span>VANI AI</span></a>
+    <a class="brand" href="index.php"><img src="images/logo_img.png" alt="Vani AI"><span>Vani AI</span></a>
     <div class="nav-actions">
       <button class="theme-btn" type="button" id="themeToggle">Bright Mode</button>
       <button class="site-menu-trigger" type="button" aria-label="Open menu" aria-expanded="false"><span></span><span></span><span></span></button>
@@ -200,7 +200,7 @@ function setTheme(mode) {
   }
   localStorage.setItem("vani-index-theme", dark ? "dark" : "bright");
 }
-setTheme(localStorage.getItem("vani-index-theme") || "dark");
+setTheme(localStorage.getItem("vani-index-theme") || "bright");
 themeToggle?.addEventListener("click", () => setTheme(document.body.classList.contains("dark") ? "bright" : "dark"));
 </script>
 </body>

@@ -1252,7 +1252,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
   <aside class="sidebar">
     <a class="brand" href="index.php">
       <img src="images/logo_img.png" alt="Vani AI">
-      <strong>VANI AI</strong>
+      <strong>Vani AI</strong>
     </a>
     <div class="nav-tabs" role="tablist">
       <button class="tab-btn active" data-tab="overview">Dashboard</button>

@@ -116,6 +116,9 @@
     <button class="site-menu-close" type="button" id="siteMenuClose" aria-label="Close menu">×</button>
   </div>
   <div class="site-side-menu-links">
+    <?php if (function_exists('is_authenticated_user') && is_authenticated_user()): ?>
+      <a class="site-side-menu-link primary" href="dashboard.php">Dashboard <span>→</span></a>
+    <?php endif; ?>
     <a class="site-side-menu-link primary" href="index.php">Home <span>→</span></a>
     <a class="site-side-menu-link" href="subscription.php">Subscription Plans <span>→</span></a>
     <a class="site-side-menu-link" href="terms.php">Terms & Conditions <span>→</span></a>
@@ -123,7 +126,6 @@
     <a class="site-side-menu-link" href="cancellation-refund-policy.php">Cancellation & Refund <span>→</span></a>
     <a class="site-side-menu-link" href="contact.php">Contact <span>→</span></a>
     <?php if (function_exists('is_authenticated_user') && is_authenticated_user()): ?>
-      <a class="site-side-menu-link" href="dashboard.php">Dashboard <span>→</span></a>
       <a class="site-side-menu-link" href="logout.php">Logout <span>→</span></a>
     <?php else: ?>
       <a class="site-side-menu-link" href="login.php">Login <span>→</span></a>

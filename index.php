@@ -906,7 +906,7 @@ body.dark .side-menu-link.secondary{
 </style>
 </head>
 
-<body class="dark">
+<body>
 <nav>
 
   <div class="container nav-inner">
@@ -915,7 +915,7 @@ body.dark .side-menu-link.secondary{
       <img class="logo-light" src="images/logo.png" alt="Vani AI Logo">
       <span class="logo-dark" aria-hidden="true">
         <img src="images/logo_img.png" alt="">
-        <span>VANI AI</span>
+        <span>Vani AI</span>
       </span>
     </a>
 
@@ -965,6 +965,9 @@ body.dark .side-menu-link.secondary{
   </div>
   <div class="side-menu-links">
     <button class="theme-btn" type="button" id="themeToggle">Dark / Bright</button>
+    <?php if(is_authenticated_user()): ?>
+      <a class="side-menu-link" href="dashboard.php">Dashboard <span>→</span></a>
+    <?php endif; ?>
     <a class="side-menu-link secondary" href="index.php">Home <span>→</span></a>
     <a class="side-menu-link" href="subscription.php">Subscription Plans <span>→</span></a>
     <a class="side-menu-link secondary" href="#products">Products <span>→</span></a>
@@ -973,7 +976,6 @@ body.dark .side-menu-link.secondary{
     <a class="side-menu-link secondary" href="cancellation-refund-policy.php">Cancellation & Refund <span>→</span></a>
     <a class="side-menu-link secondary" href="contact.php">Contact <span>→</span></a>
     <?php if(is_authenticated_user()): ?>
-      <a class="side-menu-link secondary" href="dashboard.php">Dashboard <span>→</span></a>
       <a class="side-menu-link secondary" href="logout.php">Logout <span>→</span></a>
     <?php else: ?>
       <a class="side-menu-link secondary" href="login.php">Login <span>→</span></a>
@@ -1129,7 +1131,7 @@ function setTheme(mode) {
   localStorage.setItem("vani-index-theme", dark ? "dark" : "bright");
 }
 
-setTheme(localStorage.getItem("vani-index-theme") || "dark");
+setTheme(localStorage.getItem("vani-index-theme") || "bright");
 
 menuToggle?.addEventListener("click", () => setMenu(true));
 menuClose?.addEventListener("click", () => setMenu(false));

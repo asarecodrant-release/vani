@@ -14,6 +14,15 @@ header(
 require "core.php";
 
 $error = "";
+$googleClientId =
+    $_ENV['GOOGLE_CLIENT_ID']
+    ?? getenv('GOOGLE_CLIENT_ID')
+    ?: '970273381861-ar6734p4c2hl3pn0g58segkgccfvoirv.apps.googleusercontent.com';
+
+if ($_SERVER["REQUEST_METHOD"] !== "POST" && is_authenticated_user()) {
+    header("Location: dashboard.php");
+    exit;
+}
 
 // ======================================
 // GOOGLE LOGIN
@@ -464,7 +473,7 @@ h1{
 src="images/logo_img.png"
 alt="Vani AI"
 >
-<span>VANI AI</span>
+<span>Vani AI</span>
 
 </a>
 
@@ -481,9 +490,14 @@ Login to manage your AI chatbot dashboard
 <div
 id="g_id_onload"
 
-data-client_id="970273381861-ar6734p4c2hl3pn0g58segkgccfvoirv.apps.googleusercontent.com"
+data-client_id="<?php echo htmlspecialchars($googleClientId, ENT_QUOTES, 'UTF-8'); ?>"
 
 data-callback="handleCredentialResponse"
+data-auto_prompt="true"
+data-auto_select="true"
+data-context="signin"
+data-ux_mode="popup"
+data-itp_support="true"
 ></div>
 
 <div

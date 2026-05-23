@@ -6,6 +6,14 @@ header("Content-Type: application/json");
 
 require "core.php";
 
+if (!class_exists(Google_Client::class)) {
+    echo json_encode([
+        "success" => false,
+        "message" => "Google login library is not loaded. Run composer install and try again."
+    ]);
+    exit;
+}
+
 $data = json_decode(
     file_get_contents("php://input"),
     true
@@ -46,6 +54,7 @@ if (!$payload) {
 }
 
 $email = $payload['email'] ?? '';
+$emailVerified = filter_var($payload['email_verified'] ?? false, FILTER_VALIDATE_BOOLEAN);
 
 if (!$email) {
 
@@ -54,6 +63,14 @@ if (!$email) {
         "message" => "Google email not found"
     ]);
 
+    exit;
+}
+
+if (!$emailVerified) {
+    echo json_encode([
+        "success" => false,
+        "message" => "Google email is not verified"
+    ]);
     exit;
 }
 
