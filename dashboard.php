@@ -301,6 +301,53 @@ function date_in_range(array $row, string $field, string $from, string $to): boo
     return $date >= $from && $date <= $to;
 }
 
+function analytics_summary_for_period(array $conversationRows, array $leadRows, array $sessionRows, string $from, string $to): array {
+    $conversations = array_values(array_filter($conversationRows, fn($row) => date_in_range($row, 'created_at', $from, $to)));
+    $leads = array_values(array_filter($leadRows, fn($row) => date_in_range($row, 'created_at', $from, $to)));
+    $sessions = array_values(array_filter($sessionRows, fn($row) => date_in_range($row, 'created_at', $from, $to)));
+    $answered = 0;
+    $responseTimes = [];
+    $visitors = [];
+    $messageTotal = 0;
+    foreach ($conversations as $row) {
+        if (filter_var($row['is_answered'] ?? false, FILTER_VALIDATE_BOOLEAN) || (string)($row['status'] ?? '') === 'answered') {
+            $answered++;
+        }
+        if (isset($row['response_time_ms']) && is_numeric($row['response_time_ms'])) {
+            $responseTimes[] = (int)$row['response_time_ms'];
+        }
+        $visitor = trim((string)($row['user_id'] ?? $row['session_id'] ?? ''));
+        if ($visitor !== '') {
+            $visitors[$visitor] = true;
+        }
+    }
+    foreach ($sessions as $session) {
+        $messageTotal += (int)($session['message_count'] ?? 0);
+        $visitor = trim((string)($session['user_id'] ?? $session['session_id'] ?? ''));
+        if ($visitor !== '') {
+            $visitors[$visitor] = true;
+        }
+    }
+    $conversationCount = count($conversations);
+    $leadCount = count($leads);
+    $verifiedLeadCount = count(array_filter($leads, function ($lead) {
+        return filter_var($lead['email_otp_verified'] ?? false, FILTER_VALIDATE_BOOLEAN)
+            || filter_var($lead['mobile_otp_verified'] ?? false, FILTER_VALIDATE_BOOLEAN)
+            || (string)($lead['verification_quality'] ?? '') === 'real';
+    }));
+    return [
+        'conversations' => $conversationCount,
+        'messages' => max($conversationCount, $messageTotal),
+        'answer_rate' => $conversationCount > 0 ? round(($answered / max(1, $conversationCount)) * 100) : 0,
+        'unanswered' => max(0, $conversationCount - $answered),
+        'leads' => $leadCount,
+        'verified_leads' => $verifiedLeadCount,
+        'lead_conversion' => $conversationCount > 0 ? round(($leadCount / max(1, $conversationCount)) * 100) : 0,
+        'visitors' => count($visitors),
+        'avg_response_time_ms' => !empty($responseTimes) ? round(array_sum($responseTimes) / count($responseTimes)) : 0
+    ];
+}
+
 function analytics_url(string $range, string $selectedBotId, string $from = '', string $to = ''): string {
     $params = ['analytics_range' => $range];
     if ($selectedBotId !== '') {
@@ -483,7 +530,15 @@ $yesterdayAllQueries = count(array_filter($conversationRows, fn($row) => date_in
 $last7AllQueries = count(array_filter($conversationRows, fn($row) => date_in_range($row, 'created_at', gmdate('Y-m-d', time() - (6 * 86400)), $analyticsToday)));
 $last30AllQueries = count(array_filter($conversationRows, fn($row) => date_in_range($row, 'created_at', gmdate('Y-m-d', time() - (29 * 86400)), $analyticsToday)));
 
+$allConversationRows = $conversationRows;
+$allUsageRows = $usageRows;
 $allLeadRows = $leadRows;
+$allSessionRows = $sessionRows;
+$analyticsRangeDays = max(1, ((strtotime($analyticsTo) - strtotime($analyticsFrom)) / 86400) + 1);
+$previousAnalyticsTo = gmdate('Y-m-d', strtotime($analyticsFrom . ' -1 day'));
+$previousAnalyticsFrom = gmdate('Y-m-d', strtotime($previousAnalyticsTo . ' -' . ((int)$analyticsRangeDays - 1) . ' days'));
+$analyticsCurrentSummary = analytics_summary_for_period($allConversationRows, $allLeadRows, $allSessionRows, $analyticsFrom, $analyticsTo);
+$analyticsPreviousSummary = analytics_summary_for_period($allConversationRows, $allLeadRows, $allSessionRows, $previousAnalyticsFrom, $previousAnalyticsTo);
 $conversationRows = array_values(array_filter($conversationRows, fn($row) => date_in_range($row, 'created_at', $analyticsFrom, $analyticsTo)));
 $usageRows = array_values(array_filter($usageRows, fn($row) => date_in_range($row, 'created_at', $analyticsFrom, $analyticsTo)));
 $leadRows = array_values(array_filter($leadRows, fn($row) => date_in_range($row, 'created_at', $analyticsFrom, $analyticsTo)));
@@ -1280,6 +1335,63 @@ body.dark .security-card{background:rgba(15,23,42,.44)}
 body.dark .critical-save-note{background:rgba(127,29,29,.22);border-color:rgba(248,113,113,.38);color:#fecaca}
 .analytics-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
 .analytics-grid.two{grid-template-columns:repeat(2,minmax(0,1fr))}
+.bi-hero{padding:22px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px;align-items:start;border-color:rgba(99,102,241,.24);background:linear-gradient(135deg,rgba(99,102,241,.11),rgba(255,255,255,.82) 48%,rgba(6,182,212,.09))}
+body.dark .bi-hero{background:linear-gradient(135deg,rgba(99,102,241,.2),rgba(15,23,42,.86) 48%,rgba(6,182,212,.14))}
+.bi-hero h3{font-size:24px;margin-top:7px}
+.bi-hero p{max-width:780px}
+.bi-kpi-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px}
+.bi-kpi{padding:15px;border:1px solid var(--line);border-radius:16px;background:var(--panel);display:grid;gap:8px;min-width:0}
+.bi-kpi[data-drill]{cursor:pointer}
+.bi-kpi[data-drill]:hover,.bi-rank-row[data-drill]:hover,tr[data-drill]:hover{border-color:rgba(99,102,241,.45);box-shadow:0 10px 24px rgba(99,102,241,.1)}
+.bi-kpi span{color:var(--muted);font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.04em}
+.bi-kpi strong{font-size:26px;line-height:1.05;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bi-kpi small{color:var(--muted);font-size:12px;line-height:1.35}
+.bi-delta{display:inline-flex;align-items:center;width:fit-content;border-radius:999px;padding:4px 8px;font-size:12px;font-weight:900;background:rgba(34,197,94,.12);color:#15803d}
+.bi-kpi em{font-style:normal}
+.bi-delta.down{background:rgba(239,68,68,.12);color:#b91c1c}
+.bi-delta.flat{background:rgba(148,163,184,.14);color:var(--muted)}
+.bi-layout{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(320px,.8fr);gap:16px;align-items:stretch}
+.bi-panel{padding:18px;display:grid;gap:14px;align-content:start}
+.bi-panel-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.bi-panel-head h3{font-size:17px}
+.bi-panel-head small{color:var(--muted);line-height:1.4}
+.bi-chart{height:280px;width:100%;min-width:0}
+.bi-chart svg{width:100%;height:100%;display:block;overflow:visible}
+.bi-chart text{font-size:11px;fill:var(--muted);font-weight:700}
+.bi-chart .axis{stroke:rgba(148,163,184,.35);stroke-width:1}
+.bi-chart .grid{stroke:rgba(148,163,184,.18);stroke-width:1}
+.bi-chart .area{fill:url(#biAreaGradient)}
+.bi-chart .line{fill:none;stroke:url(#biLineGradient);stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+.bi-chart .bar{fill:url(#biBarGradient);rx:7}
+.bi-chart .point{fill:var(--panel-strong);stroke:var(--brand);stroke-width:2}
+.bi-chart-empty{height:100%;display:grid;place-items:center;color:var(--muted);text-align:center;border:1px dashed var(--line);border-radius:16px}
+.bi-map-card{min-height:380px}
+.bi-world-map{min-height:300px;width:100%;border:1px solid var(--line);border-radius:18px;background:linear-gradient(180deg,rgba(6,182,212,.1),rgba(99,102,241,.04));overflow:hidden}
+.bi-world-map svg{width:100%;height:100%;min-height:300px;display:block}
+.bi-world-map .land{fill:rgba(99,102,241,.16);stroke:rgba(99,102,241,.26);stroke-width:1}
+.bi-world-map .map-grid{stroke:rgba(148,163,184,.22);stroke-width:1}
+.bi-world-map .map-bubble{fill:rgba(236,72,153,.82);stroke:#fff;stroke-width:2;filter:drop-shadow(0 7px 12px rgba(15,23,42,.22))}
+.bi-world-map text{font-size:11px;fill:var(--ink);font-weight:900;paint-order:stroke;stroke:var(--panel);stroke-width:4px;stroke-linejoin:round}
+.bi-map-legend{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+.bi-map-legend span{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:6px 9px;font-size:12px;color:var(--muted);background:var(--panel-strong)}
+.bi-map-legend span[data-drill]{cursor:pointer}
+.bi-map-legend i{width:9px;height:9px;border-radius:999px;background:#ec4899}
+.bi-side-list{display:grid;gap:10px}
+.bi-rank-row{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px;border:1px solid var(--line);border-radius:13px;background:rgba(255,255,255,.38)}
+.bi-rank-row[data-drill],tr[data-drill]{cursor:pointer}
+body.dark .bi-rank-row{background:rgba(15,23,42,.38)}
+.bi-rank-row b{display:grid;place-items:center;width:24px;height:24px;border-radius:8px;background:rgba(99,102,241,.12);color:var(--brand);font-size:12px}
+.bi-rank-row span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
+.bi-rank-row strong{font-size:13px}
+.bi-funnel{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
+.bi-funnel-step{position:relative;min-height:94px;padding:13px;border:1px solid var(--line);border-radius:16px;background:linear-gradient(135deg,rgba(99,102,241,.1),rgba(6,182,212,.07));overflow:hidden}
+.bi-funnel-step:before{content:"";position:absolute;left:0;right:0;bottom:0;height:var(--fill,0%);background:linear-gradient(180deg,rgba(99,102,241,.18),rgba(6,182,212,.16));z-index:0}
+.bi-funnel-step span,.bi-funnel-step strong,.bi-funnel-step small{position:relative;z-index:1;display:block}
+.bi-funnel-step span{font-size:12px;color:var(--muted);font-weight:800}
+.bi-funnel-step strong{font-size:24px;margin-top:8px}
+.bi-funnel-step small{font-size:12px;color:var(--muted);margin-top:5px}
+.bi-table-card{overflow:hidden}
+.bi-table-card table{min-width:0}
 .filter-bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
 .filter-chip{border:1px solid var(--line);background:var(--panel-strong);color:var(--ink);border-radius:999px;padding:8px 12px;font-size:13px;font-weight:700;text-decoration:none}
 .filter-chip.active{background:linear-gradient(135deg,var(--brand),var(--brand-2));border-color:transparent;color:#fff}
@@ -1375,6 +1487,20 @@ body.dark .bulk-faq-card{background:rgba(15,23,42,.44)}
 .bulk-faq-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .bulk-faq-actions input[type=file]{max-width:360px}
 .bulk-report-backdrop{position:fixed;inset:0;background:rgba(15,23,42,.5);backdrop-filter:blur(8px);z-index:70;display:none;align-items:center;justify-content:center;padding:20px}
+.analytics-drill-backdrop{position:fixed;inset:0;background:rgba(15,23,42,.34);backdrop-filter:blur(6px);z-index:65;display:none;justify-content:flex-end}
+.analytics-drill-backdrop.active{display:flex}
+.analytics-drill-panel{width:min(720px,100%);height:100%;background:var(--panel-strong);border-left:1px solid var(--line);box-shadow:-24px 0 70px rgba(15,23,42,.25);display:grid;grid-template-rows:auto 1fr;min-width:0}
+.analytics-drill-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:18px;border-bottom:1px solid var(--line)}
+.analytics-drill-head h3{font-size:20px}
+.analytics-drill-body{padding:18px;overflow:auto;display:grid;gap:14px;align-content:start}
+.drill-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.drill-summary span{padding:12px;border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.38);color:var(--muted);font-size:12px}
+body.dark .drill-summary span{background:rgba(15,23,42,.38)}
+.drill-summary strong{display:block;color:var(--ink);font-size:20px;margin-top:4px}
+.drill-list{display:grid;gap:10px}
+.drill-item{padding:12px;border:1px solid var(--line);border-radius:14px;background:var(--panel);display:grid;gap:7px}
+.drill-item strong{font-size:14px;line-height:1.35}
+.drill-item small{color:var(--muted);line-height:1.45}
 .bulk-report-backdrop.active{display:flex}
 .bulk-report-modal{width:min(980px,100%);max-height:88vh;overflow:auto;background:var(--panel-strong);color:var(--ink);border:1px solid var(--line);border-radius:20px;box-shadow:0 24px 70px rgba(15,23,42,.28)}
 .bulk-report-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:18px;border-bottom:1px solid var(--line)}
@@ -1408,6 +1534,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
   .pill-btn,.ghost-btn,.danger-btn{padding:0 12px}
   .content{padding:22px}
   .metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .bi-kpi-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
 }
 @media(max-width:1180px){
   .dashboard-shell{grid-template-columns:1fr}
@@ -1474,6 +1601,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
   .page-title{min-width:0}
   .page-title p{display:none}
   .metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .bi-layout{grid-template-columns:1fr}
   .overview-hero,.subscription-transfer-card,.split,.profile-grid{grid-template-columns:1fr}
   .profile-photo{justify-items:start;grid-template-columns:auto 1fr;align-items:center}
 }
@@ -1488,7 +1616,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
   .faq-subtabs,.integration-subtabs{display:grid;grid-template-columns:1fr;padding:0 16px 16px}
   .faq-subtab-btn,.integration-subtab-btn{width:100%}
   .overview-hero h2{font-size:28px}
-  .metrics,.form-grid,.theme-controls,.outside-faq-grid,.faq-action-grid,.lead-grid,.analytics-grid,.analytics-grid.two,.funnel,.pricing-grid,.security-grid,.bulk-report-summary,.payment-choice-grid{grid-template-columns:1fr}
+  .metrics,.form-grid,.theme-controls,.outside-faq-grid,.faq-action-grid,.lead-grid,.analytics-grid,.analytics-grid.two,.bi-hero,.bi-kpi-grid,.bi-layout,.bi-funnel,.funnel,.pricing-grid,.security-grid,.bulk-report-summary,.payment-choice-grid,.drill-summary{grid-template-columns:1fr}
   .panel-actions{justify-content:stretch}
   .panel-actions .pill-btn,.panel-actions .ghost-btn,.panel-actions .danger-btn{width:100%}
   .subscription-transfer-card{padding:18px}
@@ -2144,19 +2272,101 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
         </div>
         <?php else: ?>
         <div class="analytics-subpanel active" id="analytics-overview">
-        <div class="metrics">
-          <div class="panel metric"><span>Total Conversations</span><strong><?php echo h($conversationCount); ?></strong><small>Tracked chat sessions/queries.</small></div>
-          <div class="panel metric"><span>Total Messages</span><strong><?php echo h($totalMessages); ?></strong><small>User messages currently tracked.</small></div>
-          <div class="panel metric"><span>Unique Visitors</span><strong><?php echo h($uniqueVisitorCount); ?></strong><small>Based on widget user IDs.</small></div>
-          <div class="panel metric"><span>Answered Queries</span><strong><?php echo h($accuracy); ?>%</strong><small><?php echo h($answeredCount); ?> answered.</small></div>
-          <div class="panel metric"><span>Unanswered Queries</span><strong><?php echo h($unansweredPercent); ?>%</strong><small><?php echo h($unansweredCount); ?> need FAQ improvement.</small></div>
-          <div class="panel metric"><span>Avg Response Time</span><strong><?php echo $avgResponseTimeMs ? h($avgResponseTimeMs) . 'ms' : 'No data'; ?></strong><small>Measured by the widget API.</small></div>
-          <div class="panel metric"><span>Leads Collected</span><strong><?php echo h($leadCount); ?></strong><small><?php echo h($leadConversionRate); ?>% conversion from conversations.</small></div>
-          <div class="panel metric"><span>OTP Verified Leads</span><strong><?php echo h($verifiedLeadCount); ?></strong><small><?php echo h($otpVerifiedLeadPercent); ?>% of collected leads.</small></div>
-          <div class="panel metric"><span>Active Chatbots</span><strong><?php echo h($activeChatbotCount); ?></strong><small>Selected bot status.</small></div>
-          <div class="panel metric"><span>Most Active Page</span><strong style="font-size:18px"><?php echo h($mostActivePage); ?></strong><small>Highest tracked conversation source.</small></div>
-          <div class="panel metric"><span>Returning Users</span><strong><?php echo h($returningUsersPercent); ?>%</strong><small><?php echo h($returningVisitorCount); ?> visitors returned.</small></div>
-          <div class="panel metric"><span>Avg Conversation Duration</span><strong><?php echo h($avgConversationDuration); ?></strong><small>Based on widget session duration.</small></div>
+        <div class="panel bi-hero">
+          <div>
+            <span class="eyebrow">Command Center</span>
+            <h3><?php echo h($botName); ?> analytics</h3>
+            <p class="muted" style="margin-top:8px">Executive view for <?php echo h($analyticsRangeLabel); ?>, combining traffic, answer quality, lead conversion, and page performance.</p>
+          </div>
+          <span class="tag <?php echo $isActive ? 'good' : 'bad'; ?>"><?php echo h($isActive ? 'Live bot' : 'Inactive bot'); ?></span>
+        </div>
+
+        <div class="bi-kpi-grid">
+          <div class="bi-kpi" data-kpi="conversations" data-drill="conversations"><span>Conversations</span><strong><?php echo h($conversationCount); ?></strong><small>Tracked sessions and queries</small><em class="bi-delta flat">Comparing...</em></div>
+          <div class="bi-kpi" data-kpi="messages" data-drill="conversations"><span>Messages</span><strong><?php echo h($totalMessages); ?></strong><small>User messages in range</small><em class="bi-delta flat"><?php echo h($avgMessagesPerConversation); ?> avg/chat</em></div>
+          <div class="bi-kpi" data-kpi="answer_rate" data-drill="answered"><span>Answer Rate</span><strong><?php echo h($accuracy); ?>%</strong><small><?php echo h($answeredCount); ?> answered</small><em class="bi-delta <?php echo $accuracy >= 70 ? '' : ($accuracy >= 40 ? 'flat' : 'down'); ?>"><?php echo h($unansweredCount); ?> gaps</em></div>
+          <div class="bi-kpi" data-kpi="leads" data-drill="leads"><span>Leads</span><strong><?php echo h($uniqueLeadCount); ?></strong><small><?php echo h($leadConversionRate); ?>% conversion</small><em class="bi-delta flat"><?php echo h($realUniqueLeadCount); ?> verified</em></div>
+          <div class="bi-kpi" data-kpi="visitors" data-drill="countries"><span>Visitors</span><strong><?php echo h($uniqueVisitorCount); ?></strong><small><?php echo h($returningVisitorCount); ?> returning</small><em class="bi-delta flat"><?php echo h($returningUsersPercent); ?>% return</em></div>
+          <div class="bi-kpi" data-kpi="avg_response_time_ms" data-drill="slow"><span>Response Time</span><strong><?php echo $avgResponseTimeMs ? h($avgResponseTimeMs) . 'ms' : 'No data'; ?></strong><small><?php echo h($avgConversationDuration); ?> avg duration</small><em class="bi-delta <?php echo $avgResponseTimeMs && $avgResponseTimeMs > 1500 ? 'down' : ''; ?>"><?php echo h($peakUsage); ?></em></div>
+        </div>
+
+        <div class="bi-layout">
+          <div class="panel bi-panel">
+            <div class="bi-panel-head">
+              <div>
+                <h3>Conversation Trend</h3>
+                <small><?php echo h($analyticsFrom); ?> to <?php echo h($analyticsTo); ?></small>
+              </div>
+              <span class="tag"><?php echo h($conversationCount); ?> total</span>
+            </div>
+            <div class="bi-chart" id="biConversationTrend"></div>
+          </div>
+          <div class="panel bi-panel">
+            <div class="bi-panel-head">
+              <div>
+                <h3>Channel Mix</h3>
+                <small>Device, browser, and country signals</small>
+              </div>
+            </div>
+            <div class="bi-chart" id="biDeviceMix"></div>
+          </div>
+        </div>
+
+        <div class="panel bi-panel">
+          <div class="bi-panel-head">
+            <div>
+              <h3>Lead Funnel</h3>
+              <small>Visitor progression through chatbot engagement and verification</small>
+            </div>
+            <span class="tag"><?php echo h($leadConversionRate); ?>% conversion</span>
+          </div>
+          <div class="bi-funnel">
+            <div class="bi-funnel-step" style="--fill:100%"><span>Visitors</span><strong><?php echo h($uniqueVisitorCount); ?></strong><small>Unique users</small></div>
+            <div class="bi-funnel-step" style="--fill:<?php echo h(min(100, round(($chatOpenedCount / max(1, $uniqueVisitorCount)) * 100))); ?>%"><span>Chat Opened</span><strong><?php echo h($chatOpenedCount); ?></strong><small><?php echo h($chatOpenRate); ?>% open rate</small></div>
+            <div class="bi-funnel-step" style="--fill:<?php echo h(min(100, round(($conversationCount / max(1, $uniqueVisitorCount)) * 100))); ?>%"><span>Started Chat</span><strong><?php echo h($conversationCount); ?></strong><small><?php echo h($avgMessagesPerConversation); ?> msg avg</small></div>
+            <div class="bi-funnel-step" style="--fill:<?php echo h(min(100, round(($uniqueLeadCount / max(1, $uniqueVisitorCount)) * 100))); ?>%"><span>Shared Contact</span><strong><?php echo h($uniqueLeadCount); ?></strong><small>Unique leads</small></div>
+            <div class="bi-funnel-step" style="--fill:<?php echo h(min(100, round(($realUniqueLeadCount / max(1, $uniqueVisitorCount)) * 100))); ?>%"><span>Verified</span><strong><?php echo h($realUniqueLeadCount); ?></strong><small><?php echo h($otpVerifiedLeadPercent); ?>% of leads</small></div>
+          </div>
+        </div>
+
+        <div class="panel bi-panel bi-map-card">
+          <div class="bi-panel-head">
+            <div>
+              <h3>World Map</h3>
+              <small>Country-level visitor distribution from tracked widget sessions</small>
+            </div>
+            <span class="tag"><?php echo h(array_sum($countryCounts)); ?> located</span>
+          </div>
+          <div class="bi-world-map" id="biCountryMap"></div>
+          <div class="bi-map-legend" id="biCountryMapLegend"></div>
+        </div>
+
+        <div class="analytics-grid two">
+          <div class="panel bi-panel">
+            <div class="bi-panel-head"><h3>Top Questions</h3><small>Ranked by ask volume</small></div>
+            <div class="bi-side-list">
+              <?php if (empty($topQuestionCounts)): ?><p class="empty">No asked questions yet.</p><?php endif; ?>
+              <?php foreach (array_slice($topQuestionCounts, 0, 6) as $index => $item): ?>
+                <?php $questionSuccess = $item['count'] > 0 ? round((($item['answered'] ?? 0) / max(1, $item['count'])) * 100) : 0; ?>
+                <div class="bi-rank-row" data-drill="question" data-value="<?php echo h($item['question']); ?>"><b><?php echo h($index + 1); ?></b><span><?php echo h($item['question']); ?></span><strong><?php echo h($item['count']); ?> - <?php echo h($questionSuccess); ?>%</strong></div>
+              <?php endforeach; ?>
+            </div>
+          </div>
+          <div class="panel bi-panel">
+            <div class="bi-panel-head"><h3>Page Performance</h3><small>Conversations and lead contribution</small></div>
+            <div class="table-wrap bi-table-card">
+              <table>
+                <thead><tr><th>Page</th><th>Chats</th><th>Leads</th><th>Success</th></tr></thead>
+                <tbody>
+                  <?php if (empty($sourcePageStats)): ?><tr><td colspan="4" class="empty">No source page data yet.</td></tr><?php endif; ?>
+                  <?php foreach (array_slice($sourcePageStats, 0, 6) as $page): ?>
+                    <?php $pageSuccess = $page['conversations'] > 0 ? round(($page['answered'] / max(1, $page['conversations'])) * 100) : 0; ?>
+                    <tr data-drill="page" data-value="<?php echo h($page['page']); ?>"><td><?php echo h($page['page']); ?></td><td><?php echo h($page['conversations']); ?></td><td><?php echo h($page['leads']); ?></td><td><?php echo h($pageSuccess); ?>%</td></tr>
+                  <?php endforeach; ?>
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
         </div>
 
@@ -2987,6 +3197,19 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
   </main>
 </div>
 <div class="toast" id="toast">Copied</div>
+<div class="analytics-drill-backdrop" id="analyticsDrillDrawer" aria-hidden="true">
+  <div class="analytics-drill-panel" role="dialog" aria-modal="true" aria-labelledby="analyticsDrillTitle">
+    <div class="analytics-drill-head">
+      <div>
+        <span class="eyebrow" id="analyticsDrillEyebrow">Drill down</span>
+        <h3 id="analyticsDrillTitle">Analytics details</h3>
+        <p class="muted" id="analyticsDrillSubtitle" style="margin-top:6px"></p>
+      </div>
+      <button class="ghost-btn" type="button" id="closeAnalyticsDrillBtn">Close</button>
+    </div>
+    <div class="analytics-drill-body" id="analyticsDrillBody"></div>
+  </div>
+</div>
 <div class="bulk-report-backdrop" id="bulkFaqReportModal" aria-hidden="true">
   <div class="bulk-report-modal" role="dialog" aria-modal="true" aria-labelledby="bulkFaqReportTitle">
     <div class="bulk-report-head">
@@ -3047,6 +3270,8 @@ const analyticsReport = <?php echo json_encode([
   "range_label" => $analyticsRangeLabel,
   "date_from" => $analyticsFrom,
   "date_to" => $analyticsTo,
+  "previous_date_from" => $previousAnalyticsFrom,
+  "previous_date_to" => $previousAnalyticsTo,
   "summary" => [
     "total_conversations" => $conversationCount,
     "total_messages" => $totalMessages,
@@ -3063,6 +3288,10 @@ const analyticsReport = <?php echo json_encode([
     "most_active_page" => $mostActivePage,
     "returning_users_percent" => $returningUsersPercent,
     "avg_conversation_duration" => $avgConversationDuration
+  ],
+  "comparison" => [
+    "current" => $analyticsCurrentSummary,
+    "previous" => $analyticsPreviousSummary
   ],
   "daily_counts" => $dailyChartCounts,
   "hour_counts" => $hourChartCounts,
@@ -3094,6 +3323,19 @@ const analyticsReport = <?php echo json_encode([
     "source_page" => $item["source_page"] ?? "Unknown page",
     "date" => substr((string)($item["created_at"] ?? ""), 0, 10)
   ], array_slice($outsideFaqQuestions, 0, 25))),
+  "conversations" => array_values(array_map(fn($row) => [
+    "question" => $row["user_question"] ?? "",
+    "response" => $row["bot_response"] ?? "",
+    "status" => $row["status"] ?? "",
+    "answered" => !empty($row["is_answered"]),
+    "source_page" => ($row["source_url"] ?? "") !== "" ? (parse_url((string)$row["source_url"], PHP_URL_PATH) ?: (string)$row["source_url"]) : "Unknown page",
+    "device" => $row["device_type"] ?? "",
+    "browser" => $row["browser_name"] ?? "",
+    "country" => $row["country_name"] ?? "",
+    "city" => $row["city"] ?? "",
+    "response_time_ms" => $row["response_time_ms"] ?? "",
+    "created_at" => substr((string)($row["created_at"] ?? ""), 0, 19)
+  ], array_slice($conversationRows, 0, 300))),
   "source_pages" => array_values(array_map(fn($page) => [
     "page" => $page["page"] ?? "",
     "conversations" => $page["conversations"] ?? 0,
@@ -3379,6 +3621,282 @@ if (analyticsHash) {
   openTab("analytics", false);
   openAnalyticsTab("analytics-" + analyticsHash, false);
 }
+
+function analyticsEntries(objectValue) {
+  return Object.entries(objectValue || {}).filter(([, value]) => Number(value) > 0);
+}
+
+function formatDelta(current, previous) {
+  if (!previous && !current) return {text: "No trend yet", state: "flat"};
+  if (!previous) return {text: "+100% vs earlier", state: ""};
+  const pct = Math.round(((current - previous) / Math.max(1, previous)) * 100);
+  return {text: `${pct >= 0 ? "+" : ""}${pct}% vs earlier`, state: pct > 0 ? "" : (pct < 0 ? "down" : "flat")};
+}
+
+function updateAnalyticsDeltas() {
+  const current = analyticsReport.comparison?.current || {};
+  const previous = analyticsReport.comparison?.previous || {};
+  const lowerIsBetter = new Set(["avg_response_time_ms", "unanswered"]);
+  document.querySelectorAll("[data-kpi]").forEach(card => {
+    const key = card.dataset.kpi;
+    const badge = card.querySelector(".bi-delta");
+    if (!key || !badge || !(key in current)) return;
+    const delta = formatDelta(Number(current[key] || 0), Number(previous[key] || 0));
+    const isDown = delta.state === "down";
+    const isFlat = delta.state === "flat";
+    badge.textContent = delta.text;
+    badge.classList.toggle("flat", isFlat);
+    badge.classList.toggle("down", lowerIsBetter.has(key) ? (!isFlat && !isDown) : isDown);
+  });
+}
+
+function chartPalette() {
+  return {
+    brand: getComputedStyle(document.documentElement).getPropertyValue("--brand").trim() || "#6366f1",
+    brand2: getComputedStyle(document.documentElement).getPropertyValue("--brand-2").trim() || "#06b6d4"
+  };
+}
+
+function renderLineChart(targetId, dataObject) {
+  const target = document.getElementById(targetId);
+  if (!target) return;
+  const entries = Object.entries(dataObject || {});
+  if (!entries.length) {
+    target.innerHTML = '<div class="bi-chart-empty">No trend data yet</div>';
+    return;
+  }
+  const width = 720;
+  const height = 280;
+  const pad = {top: 22, right: 18, bottom: 38, left: 42};
+  const values = entries.map(([, value]) => Number(value) || 0);
+  const maxValue = Math.max(1, ...values);
+  const xStep = entries.length > 1 ? (width - pad.left - pad.right) / (entries.length - 1) : 0;
+  const points = entries.map(([, value], index) => {
+    const x = pad.left + (entries.length > 1 ? index * xStep : (width - pad.left - pad.right) / 2);
+    const y = height - pad.bottom - ((Number(value) || 0) / maxValue) * (height - pad.top - pad.bottom);
+    return [x, y];
+  });
+  const path = points.map(([x, y], index) => `${index ? "L" : "M"} ${x.toFixed(1)} ${y.toFixed(1)}`).join(" ");
+  const area = `${path} L ${points[points.length - 1][0].toFixed(1)} ${height - pad.bottom} L ${points[0][0].toFixed(1)} ${height - pad.bottom} Z`;
+  const labels = entries.filter((_, index) => index === 0 || index === entries.length - 1 || index % Math.ceil(entries.length / 5) === 0);
+  target.innerHTML = `
+    <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Conversation trend chart">
+      <defs>
+        <linearGradient id="biLineGradient" x1="0" x2="1"><stop offset="0" stop-color="${chartPalette().brand}"/><stop offset="1" stop-color="${chartPalette().brand2}"/></linearGradient>
+        <linearGradient id="biAreaGradient" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="${chartPalette().brand}" stop-opacity=".24"/><stop offset="1" stop-color="${chartPalette().brand2}" stop-opacity=".02"/></linearGradient>
+      </defs>
+      <line class="axis" x1="${pad.left}" y1="${height - pad.bottom}" x2="${width - pad.right}" y2="${height - pad.bottom}"></line>
+      <line class="axis" x1="${pad.left}" y1="${pad.top}" x2="${pad.left}" y2="${height - pad.bottom}"></line>
+      ${[0.25,0.5,0.75].map(t => `<line class="grid" x1="${pad.left}" y1="${pad.top + t * (height - pad.top - pad.bottom)}" x2="${width - pad.right}" y2="${pad.top + t * (height - pad.top - pad.bottom)}"></line>`).join("")}
+      <path class="area" d="${area}"></path>
+      <path class="line" d="${path}"></path>
+      ${points.map(([x, y]) => `<circle class="point" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3"></circle>`).join("")}
+      ${labels.map(([label], index) => `<text x="${pad.left + (entries.length > 1 ? entries.findIndex(([key]) => key === label) * xStep : 0)}" y="${height - 14}" text-anchor="${index === 0 ? "start" : "middle"}">${htmlEscape(label.slice(5) || label)}</text>`).join("")}
+      <text x="12" y="${pad.top + 4}">${maxValue}</text>
+      <text x="18" y="${height - pad.bottom}">0</text>
+    </svg>`;
+}
+
+function renderBarChart(targetId, dataObject) {
+  const target = document.getElementById(targetId);
+  if (!target) return;
+  const entries = analyticsEntries(dataObject).slice(0, 7);
+  if (!entries.length) {
+    target.innerHTML = '<div class="bi-chart-empty">No mix data yet</div>';
+    return;
+  }
+  const width = 420;
+  const height = 280;
+  const pad = {top: 20, right: 22, bottom: 34, left: 98};
+  const maxValue = Math.max(1, ...entries.map(([, value]) => Number(value) || 0));
+  const rowHeight = (height - pad.top - pad.bottom) / entries.length;
+  target.innerHTML = `
+    <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Device mix chart">
+      <defs><linearGradient id="biBarGradient" x1="0" x2="1"><stop offset="0" stop-color="${chartPalette().brand}"/><stop offset="1" stop-color="${chartPalette().brand2}"/></linearGradient></defs>
+      ${entries.map(([label, value], index) => {
+        const y = pad.top + index * rowHeight + 7;
+        const barWidth = Math.max(4, (Number(value) / maxValue) * (width - pad.left - pad.right));
+        return `<text x="8" y="${y + 16}">${htmlEscape(String(label).slice(0, 14))}</text><rect class="bar" x="${pad.left}" y="${y}" width="${barWidth.toFixed(1)}" height="${Math.max(13, rowHeight - 14).toFixed(1)}"></rect><text x="${pad.left + barWidth + 8}" y="${y + 16}">${htmlEscape(value)}</text>`;
+      }).join("")}
+    </svg>`;
+}
+
+const countryCoordinates = {
+  "india": [78.96, 20.59],
+  "united states": [-95.71, 37.09],
+  "usa": [-95.71, 37.09],
+  "us": [-95.71, 37.09],
+  "canada": [-106.35, 56.13],
+  "united kingdom": [-3.44, 55.38],
+  "uk": [-3.44, 55.38],
+  "australia": [133.78, -25.27],
+  "germany": [10.45, 51.17],
+  "france": [2.21, 46.23],
+  "spain": [-3.75, 40.46],
+  "italy": [12.57, 41.87],
+  "netherlands": [5.29, 52.13],
+  "brazil": [-51.93, -14.24],
+  "mexico": [-102.55, 23.63],
+  "china": [104.2, 35.86],
+  "japan": [138.25, 36.2],
+  "singapore": [103.82, 1.35],
+  "united arab emirates": [53.85, 23.42],
+  "uae": [53.85, 23.42],
+  "saudi arabia": [45.08, 23.89],
+  "south africa": [22.94, -30.56],
+  "nigeria": [8.68, 9.08],
+  "kenya": [37.91, -0.02],
+  "russia": [105.32, 61.52],
+  "indonesia": [113.92, -0.79],
+  "malaysia": [101.98, 4.21],
+  "philippines": [121.77, 12.88],
+  "thailand": [100.99, 15.87],
+  "vietnam": [108.28, 14.06],
+  "pakistan": [69.35, 30.38],
+  "bangladesh": [90.36, 23.68],
+  "sri lanka": [80.77, 7.87],
+  "nepal": [84.12, 28.39]
+};
+
+function normalizeCountryName(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function projectCountry(lon, lat, width, height) {
+  return [
+    ((lon + 180) / 360) * width,
+    ((90 - lat) / 180) * height
+  ];
+}
+
+function renderCountryMap() {
+  const target = document.getElementById("biCountryMap");
+  const legend = document.getElementById("biCountryMapLegend");
+  if (!target) return;
+  const entries = analyticsEntries(analyticsReport.countries).sort((a, b) => Number(b[1]) - Number(a[1]));
+  if (!entries.length) {
+    target.innerHTML = '<div class="bi-chart-empty">No country data yet</div>';
+    if (legend) legend.innerHTML = "";
+    return;
+  }
+  const width = 900;
+  const height = 430;
+  const maxValue = Math.max(1, ...entries.map(([, value]) => Number(value) || 0));
+  const land = [
+    "M126 115 C188 72 264 84 310 125 C270 160 211 162 164 188 C125 174 93 148 126 115 Z",
+    "M240 206 C292 174 363 186 403 236 C357 295 274 306 219 265 C203 239 214 220 240 206 Z",
+    "M430 116 C500 83 596 95 657 145 C620 180 536 181 480 166 C448 158 420 143 430 116 Z",
+    "M478 183 C548 166 620 190 654 245 C602 277 523 270 480 232 C458 212 455 193 478 183 Z",
+    "M581 255 C624 239 682 263 702 313 C667 363 602 350 574 304 C564 285 566 267 581 255 Z",
+    "M690 168 C757 135 822 153 852 210 C817 244 749 237 704 207 C682 192 677 178 690 168 Z",
+    "M705 298 C759 270 826 288 852 342 C824 383 750 382 708 342 C692 325 690 309 705 298 Z"
+  ];
+  const bubbles = entries.map(([country, count]) => {
+    const coords = countryCoordinates[normalizeCountryName(country)];
+    if (!coords) return "";
+    const [x, y] = projectCountry(coords[0], coords[1], width, height);
+    const radius = 8 + Math.sqrt(Number(count) / maxValue) * 24;
+    return `<g data-drill="country" data-value="${htmlEscape(country)}"><circle class="map-bubble" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${radius.toFixed(1)}"><title>${htmlEscape(country)}: ${htmlEscape(count)}</title></circle><text x="${x.toFixed(1)}" y="${(y - radius - 6).toFixed(1)}" text-anchor="middle">${htmlEscape(count)}</text></g>`;
+  }).join("");
+  target.innerHTML = `
+    <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="World map country counts">
+      ${[1,2,3,4].map(i => `<line class="map-grid" x1="0" x2="${width}" y1="${i * height / 5}" y2="${i * height / 5}"></line>`).join("")}
+      ${[1,2,3,4,5].map(i => `<line class="map-grid" y1="0" y2="${height}" x1="${i * width / 6}" x2="${i * width / 6}"></line>`).join("")}
+      ${land.map(path => `<path class="land" d="${path}"></path>`).join("")}
+      ${bubbles}
+    </svg>`;
+  if (legend) {
+    legend.innerHTML = entries.slice(0, 8).map(([country, count]) => `<span data-drill="country" data-value="${htmlEscape(country)}"><i></i>${htmlEscape(country)}: ${htmlEscape(count)}</span>`).join("");
+  }
+}
+
+function closeAnalyticsDrill() {
+  const drawer = document.getElementById("analyticsDrillDrawer");
+  drawer?.classList.remove("active");
+  drawer?.setAttribute("aria-hidden", "true");
+}
+
+function conversationMatches(row, type, value) {
+  if (type === "answered") return !!row.answered;
+  if (type === "slow") return Number(row.response_time_ms || 0) >= Number(analyticsReport.summary?.avg_response_time_ms || 0);
+  if (type === "question") return String(row.question || "") === value;
+  if (type === "page") return String(row.source_page || "") === value;
+  if (type === "country") return String(row.country || "").toLowerCase() === String(value || "").toLowerCase();
+  return true;
+}
+
+function drillRowsFor(type, value) {
+  if (type === "leads") return analyticsReport.unique_leads || [];
+  if (type === "countries") return analyticsEntries(analyticsReport.countries).map(([country, count]) => ({country, count}));
+  return (analyticsReport.conversations || []).filter(row => conversationMatches(row, type, value));
+}
+
+function drillTitle(type, value) {
+  const labels = {
+    conversations: "Conversation Details",
+    answered: "Answered Conversations",
+    slow: "Slowest Conversations",
+    question: "Question Drill Down",
+    page: "Page Drill Down",
+    country: "Country Drill Down",
+    countries: "Country Distribution",
+    leads: "Lead Details"
+  };
+  return value ? `${labels[type] || "Analytics Details"}: ${value}` : (labels[type] || "Analytics Details");
+}
+
+function renderDrillItems(type, rows) {
+  if (!rows.length) return '<p class="empty">No matching data in the selected range.</p>';
+  if (type === "leads") {
+    return `<div class="drill-list">${rows.slice(0, 80).map(row => `<div class="drill-item"><strong>${htmlEscape(row.lead_type || "Lead")} lead</strong><small>${htmlEscape(row.email || "-")} | ${htmlEscape(row.phone_number || "-")}</small><small>Captures: ${htmlEscape(row.total_records || 0)} | WhatsApp: ${htmlEscape(row.whatsapp_redirect_count || 0)} | Last seen: ${htmlEscape(row.last_seen || "-")}</small></div>`).join("")}</div>`;
+  }
+  if (type === "countries") {
+    return `<div class="drill-list">${rows.map(row => `<div class="drill-item"><strong>${htmlEscape(row.country)}</strong><small>${htmlEscape(row.count)} tracked sessions/conversations</small></div>`).join("")}</div>`;
+  }
+  return `<div class="drill-list">${rows.slice(0, 80).map(row => `<div class="drill-item"><strong>${htmlEscape(row.question || "Conversation")}</strong><small>${htmlEscape(row.created_at || "")} | ${htmlEscape(row.source_page || "Unknown page")} | ${htmlEscape(row.country || "Unknown country")}</small><small>Status: ${htmlEscape(row.status || (row.answered ? "answered" : "unanswered"))} | Response: ${htmlEscape(row.response_time_ms || "-")}ms</small></div>`).join("")}</div>`;
+}
+
+function openAnalyticsDrill(type, value = "") {
+  const drawer = document.getElementById("analyticsDrillDrawer");
+  const title = document.getElementById("analyticsDrillTitle");
+  const subtitle = document.getElementById("analyticsDrillSubtitle");
+  const body = document.getElementById("analyticsDrillBody");
+  if (!drawer || !title || !body) return;
+  const rows = drillRowsFor(type, value);
+  title.textContent = drillTitle(type, value);
+  if (subtitle) subtitle.textContent = `${analyticsReport.date_from} to ${analyticsReport.date_to} | Previous: ${analyticsReport.previous_date_from} to ${analyticsReport.previous_date_to}`;
+  body.innerHTML = `
+    <div class="drill-summary">
+      <span>Rows<strong>${htmlEscape(rows.length)}</strong></span>
+      <span>Current period<strong>${htmlEscape(analyticsReport.range_label || "")}</strong></span>
+      <span>Bot<strong>${htmlEscape(analyticsReport.bot_name || "Vani")}</strong></span>
+    </div>
+    ${renderDrillItems(type, rows)}
+  `;
+  drawer.classList.add("active");
+  drawer.setAttribute("aria-hidden", "false");
+}
+
+document.addEventListener("click", event => {
+  const trigger = event.target.closest("[data-drill]");
+  if (!trigger) return;
+  event.preventDefault();
+  openAnalyticsDrill(trigger.dataset.drill || "conversations", trigger.dataset.value || "");
+});
+
+document.getElementById("closeAnalyticsDrillBtn")?.addEventListener("click", closeAnalyticsDrill);
+document.getElementById("analyticsDrillDrawer")?.addEventListener("click", event => {
+  if (event.target.id === "analyticsDrillDrawer") closeAnalyticsDrill();
+});
+
+function renderAnalyticsCommandCenter() {
+  updateAnalyticsDeltas();
+  renderLineChart("biConversationTrend", analyticsReport.daily_counts);
+  renderBarChart("biDeviceMix", Object.keys(analyticsReport.devices || {}).length ? analyticsReport.devices : analyticsReport.browsers);
+  renderCountryMap();
+}
+
+renderAnalyticsCommandCenter();
 
 document.querySelectorAll("[data-jump]").forEach(btn => {
   btn.addEventListener("click", event => {
