@@ -1159,6 +1159,18 @@ select:focus,input:focus,textarea:focus{box-shadow:0 0 0 3px rgba(99,102,241,.15
 .metric span{display:block;color:var(--muted);font-size:13px;font-weight:700}
 .metric strong{display:block;font-size:28px;margin-top:8px}
 .metric small{display:block;color:var(--muted);margin-top:7px;line-height:1.4}
+.chatbot-theme-preview{margin-top:12px;display:grid;gap:10px}
+.chatbot-theme-row{display:flex;align-items:flex-end;gap:9px;min-width:0}
+.chatbot-theme-avatar{width:42px;height:42px;object-fit:contain;border-radius:14px;border:1px solid var(--line);background:var(--panel-strong);padding:6px;flex:0 0 auto}
+.chatbot-theme-bubble{min-height:42px;max-width:100%;padding:10px 12px;border-radius:16px 16px 16px 5px;color:#fff;font-size:13px;font-weight:800;line-height:1.25;box-shadow:0 12px 24px rgba(15,23,42,.16);text-shadow:0 1px 12px rgba(0,0,0,.28);overflow:hidden}
+.chatbot-theme-bubble div{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.chatbot-theme-dots{display:flex;gap:4px;align-items:center}
+.chatbot-theme-dots i{width:6px;height:6px;border-radius:999px;background:rgba(255,255,255,.88);display:block}
+.popular-questions-metric{display:grid;align-content:start;gap:9px}
+.popular-question-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;border-bottom:1px solid var(--line);padding:7px 0}
+.popular-question-row:last-child{border-bottom:0}
+.popular-question-row em{font-style:normal;color:var(--ink);font-size:13px;line-height:1.35;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.popular-question-row strong{display:inline-flex;margin:0;align-items:center;justify-content:center;min-width:28px;height:24px;border-radius:999px;background:rgba(99,102,241,.12);color:var(--brand);font-size:12px}
 .status-dot{display:inline-flex;align-items:center;gap:8px}
 .status-dot:before{content:"";width:10px;height:10px;border-radius:50%;background:#22c55e;box-shadow:0 0 0 4px rgba(34,197,94,.14)}
 .status-dot.inactive:before{background:#ef4444;box-shadow:0 0 0 4px rgba(239,68,68,.14)}
@@ -1170,7 +1182,6 @@ select:focus,input:focus,textarea:focus{box-shadow:0 0 0 3px rgba(99,102,241,.15
 .switch input:checked + .switch-slider{background:#22c55e}
 .switch input:checked + .switch-slider:before{transform:translateX(24px)}
 .switch input:focus-visible + .switch-slider{box-shadow:0 0 0 3px rgba(99,102,241,.25)}
-.quick-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
 .action-card{padding:18px;display:grid;gap:10px;align-content:start}
 .action-card.danger-zone{border-color:rgba(239,68,68,.28);background:rgba(254,226,226,.46)}
 body.dark .action-card.danger-zone{background:rgba(127,29,29,.18);border-color:rgba(248,113,113,.28)}
@@ -1477,7 +1488,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
   .faq-subtabs,.integration-subtabs{display:grid;grid-template-columns:1fr;padding:0 16px 16px}
   .faq-subtab-btn,.integration-subtab-btn{width:100%}
   .overview-hero h2{font-size:28px}
-  .metrics,.quick-actions,.form-grid,.theme-controls,.outside-faq-grid,.faq-action-grid,.lead-grid,.analytics-grid,.analytics-grid.two,.funnel,.pricing-grid,.security-grid,.bulk-report-summary,.payment-choice-grid{grid-template-columns:1fr}
+  .metrics,.form-grid,.theme-controls,.outside-faq-grid,.faq-action-grid,.lead-grid,.analytics-grid,.analytics-grid.two,.funnel,.pricing-grid,.security-grid,.bulk-report-summary,.payment-choice-grid{grid-template-columns:1fr}
   .panel-actions{justify-content:stretch}
   .panel-actions .pill-btn,.panel-actions .ghost-btn,.panel-actions .danger-btn{width:100%}
   .subscription-transfer-card{padding:18px}
@@ -1546,7 +1557,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
     </div>
     <div class="sidebar-footer">
       <small>Current bot</small>
-      <strong><?php echo h($botName); ?></strong>
+      <strong id="sidebarBotNameText"><?php echo h($botName); ?></strong>
       <!-- Bot ID hidden for now; keep this code for later.
       <small>ID: <?php echo h($selectedBotId ?: 'No bot found'); ?></small>
       -->
@@ -1592,7 +1603,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
         <div class="panel overview-hero">
           <div>
             <span class="eyebrow">Your Chatbot</span>
-            <h2><?php echo h($botName); ?></h2>
+            <h2 id="overviewBotNameText"><?php echo h($botName); ?></h2>
             <p>You are currently configuring the bot for the mentioned website.</p>
           </div>
           <form class="bot-picker" method="get" action="dashboard.php">
@@ -1633,47 +1644,29 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
           <div class="panel metric"><span>Response Accuracy</span><strong><?php echo h($accuracy); ?>%</strong><small>Basic answered vs total estimate.</small></div>
           <div class="panel metric"><span>Last Activity</span><strong id="lastActivityText" data-last-activity="<?php echo h($lastActivity); ?>" style="font-size:18px"><?php echo h($lastActivity ?: 'No activity yet'); ?></strong><small id="lastActivityZone">Latest tracked conversation.</small></div>
           <div class="panel metric">
-            <span>Theme Color</span>
-            <strong style="color:<?php echo h($themeColor); ?>"><?php echo h($themeColor); ?></strong>
-            <?php if ($chatbotImage): ?><img class="selected-bot-image" style="margin-top:10px" src="<?php echo h($chatbotImage); ?>" alt="Selected chatbot image"><?php endif; ?>
-            <small>Used by the chatbot box.</small>
+            <span>Chatbot Theme</span>
+            <div class="chatbot-theme-preview" aria-label="Selected chatbot theme preview">
+              <div class="chatbot-theme-row">
+                <?php if ($chatbotImage): ?><img class="chatbot-theme-avatar" id="overviewBotImagePreview" src="<?php echo h($chatbotImage); ?>" alt="Selected chatbot image"><?php endif; ?>
+                <div class="chatbot-theme-bubble" id="overviewThemeBubble" style="background:<?php echo h($themeColor); ?>">
+                  <div id="overviewThemeMessage"><?php echo h($welcomeMessage); ?></div>
+                </div>
+              </div>
+              <div class="chatbot-theme-row" style="padding-left:51px">
+                <div class="chatbot-theme-bubble" id="overviewThemeTyping" style="background:<?php echo h($themeColor); ?>">
+                  <span class="chatbot-theme-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+                </div>
+              </div>
+            </div>
+            <small>Preview of the selected widget style.</small>
           </div>
-        </div>
-
-        <div class="split">
-          <div class="panel section-body">
-            <h3>Popular Questions</h3>
-            <p class="muted" style="margin:10px 0 14px">Trending questions customers asked that matched your FAQs.</p>
+          <div class="panel metric popular-questions-metric">
+            <span>Popular Questions</span>
             <?php if (empty($topFaqQuestionCounts)): ?><p class="empty">No repeated FAQ questions yet.</p><?php endif; ?>
             <?php foreach (array_slice($topFaqQuestionCounts, 0, 5) as $item): ?>
-              <div class="inline-row" style="justify-content:space-between;border-bottom:1px solid var(--line);padding:10px 0"><span><?php echo h($item['question']); ?></span><strong><?php echo h($item['count']); ?></strong></div>
+              <div class="popular-question-row"><em><?php echo h($item['question']); ?></em><strong><?php echo h($item['count']); ?></strong></div>
             <?php endforeach; ?>
           </div>
-          <button class="panel metric metric-link" type="button" data-jump="outside-faqs">
-            <h3>Questions Outside FAQs</h3>
-            <strong><?php echo h($unansweredCount); ?></strong>
-            <small>Questions the bot could not answer. Open this list to edit and add answers to FAQs.</small>
-          </button>
-        </div>
-
-        <div class="quick-actions">
-          <div class="panel action-card">
-            <h3>Add FAQ</h3>
-            <p>Add a new question and answer to improve bot responses.</p>
-            <button class="pill-btn" type="button" data-jump="faqs">Add FAQ</button>
-          </div>
-          <div class="panel action-card">
-            <h3>Copy embed script</h3>
-            <p>Install this bot on your website with one script tag.</p>
-            <button class="pill-btn copy-btn" type="button" data-copy="<?php echo h($embedCode); ?>">Copy script</button>
-          </div>
-          <!-- Settings shortcut hidden while Bot Settings tab is hidden; keep this code for later.
-          <div class="panel action-card">
-            <h3>Settings</h3>
-            <p>Change status, domains, notifications, and data controls.</p>
-            <button class="pill-btn" type="button" data-jump="bot-settings">Open settings</button>
-          </div>
-          -->
         </div>
 
         <div class="panel subscription-transfer-card">
@@ -1777,7 +1770,6 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
             </div>
             <div class="panel-actions setup-autosave-actions">
               <span class="input-help" id="setupAutosaveStatus">Changes save automatically.</span>
-              <button class="pill-btn" type="button" id="saveSetupBtn" hidden>Save setup</button>
             </div>
           </div>
         </div>
@@ -4019,6 +4011,7 @@ let setupAutosaveTimer = null;
 let setupAutosaveReady = false;
 let setupAutosaveSaving = false;
 let setupAutosaveQueued = false;
+let setupAutosaveToastState = "";
 
 const themePresets = [
   "#6366f1","#06b6d4","#10b981","#ec4899","#f59e0b","#ef4444","#111827","#7c3aed",
@@ -4116,6 +4109,7 @@ function initThemeDesigner() {
   applyPatternPreview(currentPattern);
 }
 initThemeDesigner();
+updateDashboardSetupPreview(setupSettingsPayload());
 setupAutosaveReady = true;
 
 document.querySelectorAll("input[name='dashboardBotImage']").forEach(input => {
@@ -4715,6 +4709,30 @@ function setupSettingsPayload() {
   };
 }
 
+function updateDashboardSetupPreview(payload) {
+  const botName = payload.bot_name || "Vani Bot";
+  const themeColor = payload.theme_color || "#6366f1";
+  const themePattern = payload.theme_pattern || "none";
+  const avatarUrl = payload.avatar_url || "";
+  const welcomeMessage = payload.welcome_message || "Hi, how can I help you today?";
+  document.getElementById("overviewBotNameText")?.replaceChildren(document.createTextNode(botName));
+  document.getElementById("sidebarBotNameText")?.replaceChildren(document.createTextNode(botName));
+  const deleteButton = document.getElementById("deleteChatbotBtn");
+  if (deleteButton) deleteButton.dataset.botName = botName;
+  document.getElementById("overviewThemeMessage")?.replaceChildren(document.createTextNode(welcomeMessage));
+  const patternCss = typeof patternStyles !== "undefined" ? (patternStyles[themePattern] || "none") : "none";
+  ["overviewThemeBubble", "overviewThemeTyping"].forEach(id => {
+    const bubble = document.getElementById(id);
+    if (!bubble) return;
+    bubble.style.background = themeColor;
+    bubble.style.backgroundImage = patternCss === "none" ? "" : `${patternCss}, ${themeColor}`;
+    bubble.style.backgroundSize = themePattern === "grid" || themePattern === "dots" ? "18px 18px, 18px 18px, cover" : "cover";
+  });
+  const overviewImage = document.getElementById("overviewBotImagePreview");
+  if (overviewImage && avatarUrl) overviewImage.src = avatarUrl;
+  if (analyticsReport) analyticsReport.bot_name = botName;
+}
+
 function updateSetupAutosaveStatus(text, state = "") {
   const status = document.getElementById("setupAutosaveStatus");
   if (!status) return;
@@ -4730,20 +4748,29 @@ async function saveSetupSettingsAutomatically() {
   }
   setupAutosaveSaving = true;
   updateSetupAutosaveStatus("Saving changes...");
-  const saved = await saveDashboardSettings(setupSettingsPayload(), {silent: true});
+  if (setupAutosaveToastState !== "saving") {
+    showToast("Saving changes...");
+    setupAutosaveToastState = "saving";
+  }
+  const payload = setupSettingsPayload();
+  const saved = await saveDashboardSettings(payload, {silent: true});
   setupAutosaveSaving = false;
   if (setupAutosaveQueued) {
     setupAutosaveQueued = false;
     scheduleSetupAutosave();
     return;
   }
+  if (saved) updateDashboardSetupPreview(payload);
   updateSetupAutosaveStatus(saved ? "All changes saved automatically." : "Could not save changes. Please try again.", saved ? "" : "error");
+  showToast(saved ? "Changes saved" : "Changes could not be saved");
+  setupAutosaveToastState = saved ? "saved" : "error";
 }
 
 function scheduleSetupAutosave() {
   if (!setupAutosaveReady) return;
   clearTimeout(setupAutosaveTimer);
   updateSetupAutosaveStatus("Changes pending...");
+  setupAutosaveToastState = "";
   setupAutosaveTimer = setTimeout(saveSetupSettingsAutomatically, 650);
 }
 
@@ -4851,10 +4878,6 @@ document.getElementById("transferSubscriptionBtn")?.addEventListener("click", as
   setTimeout(() => {
     window.location.href = `dashboard.php?bot=${encodeURIComponent(targetCustomerId)}#subscription`;
   }, 800);
-});
-
-document.getElementById("saveSetupBtn")?.addEventListener("click", () => {
-  saveDashboardSettings(setupSettingsPayload());
 });
 
 ["botNameInput", "welcomeInput"].forEach(id => {
