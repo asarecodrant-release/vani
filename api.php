@@ -2374,6 +2374,79 @@ if ($action === "delete_faq") {
     exit;
 }
 
+// ==========================
+// DELETE CHATBOT
+// ==========================
+if ($action === "delete_chatbot") {
+
+    $data = getJSON();
+    $customer_id = trim((string)($data['customer_id'] ?? ''));
+    $confirmText = trim((string)($data['confirm_text'] ?? ''));
+
+    if ($customer_id === '' || $confirmText !== 'DELETE') {
+        echo json_encode([
+            "success" => false,
+            "message" => "Type DELETE to confirm chatbot deletion"
+        ]);
+        exit;
+    }
+
+    if (!authenticated_customer_access($customer_id)) {
+        echo json_encode([
+            "success" => false,
+            "message" => "Access denied"
+        ]);
+        exit;
+    }
+
+    $email = authenticated_email();
+    $existing = supabase(
+        "GET",
+        "chatbot_signups?select=customer_id,website_name&customer_id=eq." . urlencode($customer_id) . "&email=eq." . urlencode($email) . "&limit=1"
+    );
+
+    if (empty($existing['data'])) {
+        echo json_encode([
+            "success" => false,
+            "message" => "Chatbot not found"
+        ]);
+        exit;
+    }
+
+    $res = supabase(
+        "DELETE",
+        "chatbot_signups?customer_id=eq." . urlencode($customer_id) . "&email=eq." . urlencode($email)
+    );
+
+    $check = supabase(
+        "GET",
+        "chatbot_signups?select=customer_id&customer_id=eq." . urlencode($customer_id) . "&email=eq." . urlencode($email) . "&limit=1"
+    );
+
+    $deleted = ($res['status'] >= 200 && $res['status'] < 300 && empty($check['data']));
+    if (!$deleted) {
+        echo json_encode([
+            "success" => false,
+            "message" => "Chatbot was not deleted from the database",
+            "debug" => $res
+        ]);
+        exit;
+    }
+
+    $remaining = supabase(
+        "GET",
+        "chatbot_signups?select=customer_id&email=eq." . urlencode($email) . "&order=created_at.desc&limit=1"
+    );
+    $nextCustomerId = trim((string)($remaining['data'][0]['customer_id'] ?? ''));
+
+    echo json_encode([
+        "success" => true,
+        "message" => "Chatbot deleted",
+        "redirect" => $nextCustomerId !== '' ? "dashboard.php?bot=" . rawurlencode($nextCustomerId) : "dashboard.php"
+    ]);
+    exit;
+}
+
 
 // ==========================
 // SAVE LEAD GENERATION SETTINGS

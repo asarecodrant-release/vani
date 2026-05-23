@@ -1016,6 +1016,8 @@ select:focus,input:focus,textarea:focus{box-shadow:0 0 0 3px rgba(99,102,241,.15
 .switch input:focus-visible + .switch-slider{box-shadow:0 0 0 3px rgba(99,102,241,.25)}
 .quick-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
 .action-card{padding:18px;display:grid;gap:10px;align-content:start}
+.action-card.danger-zone{border-color:rgba(239,68,68,.28);background:rgba(254,226,226,.46)}
+body.dark .action-card.danger-zone{background:rgba(127,29,29,.18);border-color:rgba(248,113,113,.28)}
 .action-card h3,.section-head h3{font-size:17px}
 .action-card p,.muted{color:var(--muted);line-height:1.6;font-size:14px}
 .tab-panel{display:none;gap:18px;min-width:0;max-width:100%}
@@ -1457,6 +1459,11 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
             <h3>Copy embed script</h3>
             <p>Install this bot on your website with one script tag.</p>
             <button class="pill-btn copy-btn" type="button" data-copy="<?php echo h($embedCode); ?>">Copy script</button>
+          </div>
+          <div class="panel action-card danger-zone">
+            <h3>Delete chatbot</h3>
+            <p>Permanently delete this chatbot and its related setup, FAQs, conversations, leads, API keys, and support tickets.</p>
+            <button class="danger-btn" type="button" id="deleteChatbotBtn" data-bot-name="<?php echo h($botName); ?>">Delete chatbot</button>
           </div>
           <!-- Settings shortcut hidden while Bot Settings tab is hidden; keep this code for later.
           <div class="panel action-card">
@@ -3955,6 +3962,49 @@ document.getElementById("overviewActiveSwitch")?.addEventListener("change", asyn
   setOverviewActiveUI(isActive);
   const saved = await saveDashboardSettings({is_active: isActive});
   if (!saved) setOverviewActiveUI(!isActive);
+});
+
+document.getElementById("deleteChatbotBtn")?.addEventListener("click", async event => {
+  const customerId = selectedCustomerId || "";
+  if (!customerId) {
+    showToast("Select a bot first");
+    return;
+  }
+
+  const botName = event.currentTarget.dataset.botName || "this chatbot";
+  const warning = [
+    `Delete ${botName}?`,
+    "",
+    "This will permanently delete this chatbot and its setup, FAQs, conversations, leads, API keys, and support tickets.",
+    "This action cannot be undone."
+  ].join("\n");
+  if (!confirm(warning)) return;
+
+  const typed = prompt('Type DELETE to permanently delete this chatbot.');
+  if (typed !== "DELETE") {
+    showToast("Chatbot deletion cancelled");
+    return;
+  }
+
+  const button = event.currentTarget;
+  button.disabled = true;
+  button.textContent = "Deleting...";
+  const response = await fetch("/api.php?action=delete_chatbot", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({customer_id: customerId, confirm_text: typed})
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!data.success) {
+    button.disabled = false;
+    button.textContent = "Delete chatbot";
+    showToast(data.message || "Chatbot could not be deleted");
+    return;
+  }
+  showToast("Chatbot deleted");
+  setTimeout(() => {
+    window.location.href = data.redirect || "dashboard.php";
+  }, 700);
 });
 
 document.getElementById("saveSetupBtn")?.addEventListener("click", () => {
