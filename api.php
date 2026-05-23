@@ -2349,6 +2349,105 @@ if ($action === "add_faq") {
     exit;
 }
 
+// ==========================
+// BULK ADD FAQ
+// ==========================
+if ($action === "bulk_add_faq") {
+
+    $data = getJSON();
+    $customer_id = trim((string)($data['customer_id'] ?? ''));
+    $incomingFaqs = is_array($data['faqs'] ?? null) ? $data['faqs'] : [];
+
+    if ($customer_id === '' || empty($incomingFaqs)) {
+        echo json_encode(["success" => false, "message" => "Missing FAQ data"]);
+        exit;
+    }
+
+    if (!authenticated_customer_access($customer_id)) {
+        echo json_encode(["success" => false, "message" => "Access denied"]);
+        exit;
+    }
+
+    $existingFaqs = supabase(
+        "GET",
+        "faq_questions?select=id&customer_id=eq." . urlencode($customer_id)
+    );
+    $existingCount = is_array($existingFaqs['data'] ?? null) ? count($existingFaqs['data']) : 0;
+    $activePlan = billing_active_plan_from_account(billing_account_for_customer($customer_id));
+    $faqLimit = billing_faq_limit($activePlan);
+    $limitLabel = $faqLimit === PHP_INT_MAX ? "Unlimited" : (string)$faqLimit;
+    $saved = [];
+    $failed = [];
+    $acceptedCount = 0;
+
+    foreach ($incomingFaqs as $index => $faq) {
+        $sourceRow = (int)($faq['row'] ?? ($index + 2));
+        $question = trim((string)($faq['question'] ?? ''));
+        $answer = trim((string)($faq['answer'] ?? ''));
+        $category = trim((string)($faq['category'] ?? 'General')) ?: 'General';
+
+        if ($question === '' || $answer === '') {
+            $failed[] = [
+                "row" => $sourceRow,
+                "question" => $question,
+                "answer" => $answer,
+                "category" => $category,
+                "reason" => "Question and answer are required"
+            ];
+            continue;
+        }
+
+        if ($faqLimit !== PHP_INT_MAX && ($existingCount + $acceptedCount) >= $faqLimit) {
+            $failed[] = [
+                "row" => $sourceRow,
+                "question" => $question,
+                "answer" => $answer,
+                "category" => $category,
+                "reason" => "Plan FAQ limit reached. Current plan allows " . $limitLabel . " FAQs."
+            ];
+            continue;
+        }
+
+        $res = supabase("POST", "faq_questions", [[
+            "customer_id" => $customer_id,
+            "question" => $question,
+            "answer" => $answer,
+            "category" => $category
+        ]]);
+
+        if ($res['status'] >= 200 && $res['status'] < 300 && !empty($res['data'][0])) {
+            $acceptedCount++;
+            $saved[] = [
+                "row" => $sourceRow,
+                "id" => $res['data'][0]['id'] ?? null,
+                "question" => $question,
+                "answer" => $answer,
+                "category" => $category
+            ];
+        } else {
+            $failed[] = [
+                "row" => $sourceRow,
+                "question" => $question,
+                "answer" => $answer,
+                "category" => $category,
+                "reason" => "Database save failed"
+            ];
+        }
+    }
+
+    echo json_encode([
+        "success" => true,
+        "saved_count" => count($saved),
+        "failed_count" => count($failed),
+        "existing_count" => $existingCount,
+        "faq_limit" => $limitLabel,
+        "active_plan" => $activePlan,
+        "saved" => $saved,
+        "failed" => $failed
+    ]);
+    exit;
+}
+
 
 // ==========================
 // UPDATE FAQ

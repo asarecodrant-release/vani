@@ -1170,6 +1170,19 @@ body.dark .outside-faq-card{background:rgba(15,23,42,.44)}
 body.dark .faq-action-card{background:rgba(15,23,42,.44)}
 .faq-action-grid{display:grid;grid-template-columns:1.2fr 1fr 1.4fr .7fr auto;gap:10px;align-items:end}
 .faq-action-grid .field{min-width:0}
+.bulk-faq-card{margin-bottom:16px;padding:16px;border:1px solid var(--line);border-radius:18px;background:rgba(255,255,255,.42);display:grid;gap:14px}
+body.dark .bulk-faq-card{background:rgba(15,23,42,.44)}
+.bulk-faq-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.bulk-faq-actions input[type=file]{max-width:360px}
+.bulk-report-backdrop{position:fixed;inset:0;background:rgba(15,23,42,.5);backdrop-filter:blur(8px);z-index:70;display:none;align-items:center;justify-content:center;padding:20px}
+.bulk-report-backdrop.active{display:flex}
+.bulk-report-modal{width:min(980px,100%);max-height:88vh;overflow:auto;background:var(--panel-strong);color:var(--ink);border:1px solid var(--line);border-radius:20px;box-shadow:0 24px 70px rgba(15,23,42,.28)}
+.bulk-report-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:18px;border-bottom:1px solid var(--line)}
+.bulk-report-body{padding:18px;display:grid;gap:16px}
+.bulk-report-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.bulk-report-summary .metric{box-shadow:none;border:1px solid var(--line)}
+.bulk-report-table{max-height:280px;overflow:auto;border:1px solid var(--line);border-radius:14px}
+.bulk-report-table table{min-width:720px}
 .lead-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
 .lead-master{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px;border:1px solid var(--line);border-radius:18px;background:rgba(255,255,255,.42);margin-top:16px}
 body.dark .lead-master{background:rgba(15,23,42,.44)}
@@ -1273,7 +1286,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
   .section-head{align-items:flex-start;flex-direction:column;padding:16px 16px 0}
   .section-body{padding:16px}
   .overview-hero h2{font-size:28px}
-  .metrics,.quick-actions,.form-grid,.theme-controls,.outside-faq-grid,.faq-action-grid,.lead-grid,.analytics-grid,.analytics-grid.two,.funnel,.pricing-grid,.security-grid{grid-template-columns:1fr}
+  .metrics,.quick-actions,.form-grid,.theme-controls,.outside-faq-grid,.faq-action-grid,.lead-grid,.analytics-grid,.analytics-grid.two,.funnel,.pricing-grid,.security-grid,.bulk-report-summary{grid-template-columns:1fr}
   .panel-actions{justify-content:stretch}
   .panel-actions .pill-btn,.panel-actions .ghost-btn,.panel-actions .danger-btn{width:100%}
   .user-menu{justify-content:space-between}
@@ -1544,7 +1557,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
 
       <section class="tab-panel" id="faqs">
         <div class="panel">
-          <div class="section-head"><h3>FAQ Management</h3><span class="tag"><?php echo h($faqCount); ?>/<?php echo h($freeFaqLimit); ?> FAQs</span></div>
+          <div class="section-head"><h3>FAQ Management</h3><span class="tag" id="faqCountTag"><?php echo h($faqCount); ?>/<?php echo h($freeFaqLimit); ?> FAQs</span></div>
           <div class="section-body faq-action-section" style="border-top:0;margin-top:0">
             <div class="inline-row" style="justify-content:space-between;gap:16px;margin-bottom:14px">
               <div>
@@ -1620,6 +1633,20 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                 Your first <?php echo h($displayFaqLimit); ?> FAQs are active. <?php echo h($frozenFaqCount); ?> extra FAQs are frozen and saved here. Starter unfreezes 100, Growth unfreezes 300, and Business unfreezes all FAQs.
               </div>
             <?php endif; ?>
+            <div class="bulk-faq-card">
+              <div class="inline-row" style="justify-content:space-between;gap:16px">
+                <div>
+                  <h3>Bulk Upload FAQs</h3>
+                  <small class="input-help">Upload Excel only. Use columns: Question, Answer, Category. Starter saves up to 100 total FAQs, Growth up to 300 total FAQs, and Business saves all uploaded FAQs.</small>
+                  <small class="input-help">After upload, a temporary report appears. Closing it clears the report from this page. Export is available in Excel format only.</small>
+                </div>
+                <a class="ghost-btn" href="#" id="downloadFaqSampleBtn">Download sample Excel</a>
+              </div>
+              <div class="bulk-faq-actions">
+                <input id="bulkFaqFileInput" type="file" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel">
+                <button class="pill-btn" type="button" id="bulkFaqUploadBtn">Upload Excel FAQs</button>
+              </div>
+            </div>
             <form id="faqForm" class="form-grid">
               <input type="hidden" id="faqCustomerId" value="<?php echo h($selectedBotId); ?>">
               <div class="field"><label>Question</label><input id="faqQuestion" placeholder="What do you want customers to ask?"></div>
@@ -2612,7 +2639,20 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
   </main>
 </div>
 <div class="toast" id="toast">Copied</div>
+<div class="bulk-report-backdrop" id="bulkFaqReportModal" aria-hidden="true">
+  <div class="bulk-report-modal" role="dialog" aria-modal="true" aria-labelledby="bulkFaqReportTitle">
+    <div class="bulk-report-head">
+      <div>
+        <h3 id="bulkFaqReportTitle">Bulk FAQ Upload Report</h3>
+        <p class="muted">This report is temporary. Closing this window clears it from the page. Export is available in Excel format only.</p>
+      </div>
+      <button class="ghost-btn" type="button" id="closeBulkFaqReportBtn">Close</button>
+    </div>
+    <div class="bulk-report-body" id="bulkFaqReportBody"></div>
+  </div>
+</div>
 <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <script>
 const tabs = document.querySelectorAll(".tab-btn");
 const panels = document.querySelectorAll(".tab-panel");
@@ -2624,6 +2664,8 @@ const drawerOverlay = document.getElementById("drawerOverlay");
 const accountToggleText = accountToggle?.textContent || "";
 let currentFaqCount = <?php echo json_encode($faqCount); ?>;
 const freeFaqLimit = <?php echo json_encode($freeFaqLimit); ?>;
+const faqLimitIsUnlimited = <?php echo json_encode($planFaqLimit === PHP_INT_MAX); ?>;
+const faqLimitLabel = <?php echo json_encode($planFaqLimit === PHP_INT_MAX ? 'Unlimited' : (string)$planFaqLimit); ?>;
 const selectedCustomerId = <?php echo json_encode($selectedBotId); ?>;
 const billingEmail = <?php echo json_encode($email); ?>;
 const leadPaidFeatures = <?php echo json_encode([
@@ -3646,6 +3688,212 @@ async function addFaq(customerId, question, answer, category) {
   const data = await response.json().catch(() => ({}));
   return data;
 }
+
+let temporaryBulkFaqReport = null;
+
+function updateFaqCountUi() {
+  const tag = document.getElementById("faqCountTag");
+  if (tag) tag.textContent = `${currentFaqCount}/${faqLimitLabel} FAQs`;
+}
+
+function faqRowHtml(faq) {
+  return `<tr data-faq-id="${htmlEscape(faq.id || "")}">
+    <td>
+      <span class="faq-display">${htmlEscape(faq.question || "")}</span>
+      <textarea class="faq-edit-field faq-question-input" aria-label="FAQ question">${htmlEscape(faq.question || "")}</textarea>
+    </td>
+    <td>
+      <span class="faq-display">${htmlEscape(faq.answer || "")}</span>
+      <textarea class="faq-edit-field faq-answer-input" aria-label="FAQ answer">${htmlEscape(faq.answer || "")}</textarea>
+    </td>
+    <td>
+      <span class="tag faq-display">${htmlEscape(faq.category || "General")}</span>
+      <input class="faq-edit-field faq-category-input" value="${htmlEscape(faq.category || "General")}" aria-label="FAQ category">
+    </td>
+    <td>
+      <div class="faq-actions">
+        <button class="ghost-btn faq-edit-btn" type="button">Edit</button>
+        <button class="pill-btn faq-save-btn faq-edit-field" type="button">Save</button>
+        <button class="ghost-btn faq-cancel-btn faq-edit-field" type="button">Cancel</button>
+        <button class="danger-btn faq-delete-btn" type="button">Delete</button>
+      </div>
+    </td>
+  </tr>`;
+}
+
+function appendBulkFaqRows(savedRows) {
+  const body = document.querySelector("#faqTable tbody");
+  if (!body || !Array.isArray(savedRows)) return;
+  body.insertAdjacentHTML("afterbegin", savedRows.map(faqRowHtml).join(""));
+}
+
+function requireXlsx() {
+  if (!window.XLSX) {
+    showToast("Excel tools could not be loaded. Please refresh and try again.");
+    return false;
+  }
+  return true;
+}
+
+function downloadWorkbook(filename, sheets) {
+  if (!requireXlsx()) return;
+  const workbook = XLSX.utils.book_new();
+  Object.entries(sheets).forEach(([name, rows]) => {
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(rows), name.slice(0, 31));
+  });
+  XLSX.writeFile(workbook, filename);
+}
+
+document.getElementById("downloadFaqSampleBtn")?.addEventListener("click", event => {
+  event.preventDefault();
+  downloadWorkbook("vani-faq-upload-sample.xlsx", {
+    "FAQs": [
+      ["Question", "Answer", "Category"],
+      ["What payment methods do you accept?", "We accept UPI, credit card, debit card, and net banking.", "Payments"],
+      ["How can I contact support?", "You can contact our support team from the contact page or WhatsApp button.", "Support"]
+    ]
+  });
+});
+
+function excelHeaderIndex(headers, names) {
+  return headers.findIndex(header => names.includes(String(header || "").trim().toLowerCase()));
+}
+
+async function parseFaqExcel(file) {
+  if (!requireXlsx()) return [];
+  const buffer = await file.arrayBuffer();
+  const workbook = XLSX.read(buffer, {type: "array"});
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(sheet, {header: 1, defval: ""});
+  if (rows.length < 2) return [];
+  const headers = rows[0].map(value => String(value || "").trim().toLowerCase());
+  const questionIndex = excelHeaderIndex(headers, ["question", "faq question", "questions"]);
+  const answerIndex = excelHeaderIndex(headers, ["answer", "faq answer", "answers"]);
+  const categoryIndex = excelHeaderIndex(headers, ["category", "faq category", "categories"]);
+  if (questionIndex < 0 || answerIndex < 0) {
+    throw new Error("Excel must include Question and Answer columns");
+  }
+  return rows.slice(1).map((row, index) => {
+    const question = String(row[questionIndex] || "").trim();
+    const answer = String(row[answerIndex] || "").trim();
+    const rawCategory = categoryIndex >= 0 ? String(row[categoryIndex] || "").trim() : "";
+    return {
+      row: index + 2,
+      question,
+      answer,
+      category: rawCategory || "General",
+      hasAnyValue: !!(question || answer || rawCategory)
+    };
+  }).filter(item => item.hasAnyValue).map(({hasAnyValue, ...item}) => item);
+}
+
+function reportRowsForExport(report, type) {
+  const rows = [["Status", "Excel Row", "Question", "Answer", "Category", "Reason"]];
+  const source = type === "saved" ? report.saved || [] : report.failed || [];
+  source.forEach(item => rows.push([
+    type === "saved" ? "Saved" : "Failed",
+    item.row || "",
+    item.question || "",
+    item.answer || "",
+    item.category || "General",
+    item.reason || ""
+  ]));
+  return rows;
+}
+
+function reportTable(title, rows, status) {
+  const body = rows.length
+    ? rows.map(item => `<tr><td>${htmlEscape(item.row || "")}</td><td>${htmlEscape(item.question || "")}</td><td>${htmlEscape(item.category || "General")}</td><td>${htmlEscape(item.reason || status)}</td></tr>`).join("")
+    : `<tr><td colspan="4" class="empty">No ${htmlEscape(title.toLowerCase())} rows.</td></tr>`;
+  return `<div>
+    <h3>${htmlEscape(title)}</h3>
+    <div class="bulk-report-table"><table><thead><tr><th>Excel Row</th><th>Question</th><th>Category</th><th>Status / Reason</th></tr></thead><tbody>${body}</tbody></table></div>
+  </div>`;
+}
+
+function showBulkFaqReport(report) {
+  temporaryBulkFaqReport = report;
+  const modal = document.getElementById("bulkFaqReportModal");
+  const body = document.getElementById("bulkFaqReportBody");
+  if (!modal || !body) return;
+  body.innerHTML = `
+    <div class="bulk-report-summary">
+      <div class="panel metric"><span>Saved</span><strong>${htmlEscape(report.saved_count || 0)}</strong><small>Inserted into FAQ database.</small></div>
+      <div class="panel metric"><span>Failed</span><strong>${htmlEscape(report.failed_count || 0)}</strong><small>Not saved. Check reasons below.</small></div>
+      <div class="panel metric"><span>Plan Limit</span><strong>${htmlEscape(report.faq_limit || faqLimitLabel)}</strong><small>${htmlEscape(report.active_plan || "plan")} plan.</small></div>
+    </div>
+    <div class="panel-actions" style="padding-top:0">
+      <button class="pill-btn" type="button" id="exportBulkFaqReportBtn">Export report Excel</button>
+    </div>
+    ${reportTable("Successfully Uploaded And Saved", report.saved || [], "Saved")}
+    ${reportTable("Failed Rows", report.failed || [], "Failed")}
+  `;
+  modal.classList.add("active");
+  modal.setAttribute("aria-hidden", "false");
+  document.getElementById("exportBulkFaqReportBtn")?.addEventListener("click", () => {
+    if (!temporaryBulkFaqReport) return showToast("No temporary report to export");
+    downloadWorkbook("vani-bulk-faq-upload-report.xlsx", {
+      "Successful": reportRowsForExport(temporaryBulkFaqReport, "saved"),
+      "Failed": reportRowsForExport(temporaryBulkFaqReport, "failed")
+    });
+  });
+}
+
+function closeBulkFaqReport() {
+  temporaryBulkFaqReport = null;
+  const modal = document.getElementById("bulkFaqReportModal");
+  const body = document.getElementById("bulkFaqReportBody");
+  if (body) body.innerHTML = "";
+  if (modal) {
+    modal.classList.remove("active");
+    modal.setAttribute("aria-hidden", "true");
+  }
+}
+
+document.getElementById("closeBulkFaqReportBtn")?.addEventListener("click", closeBulkFaqReport);
+
+document.getElementById("bulkFaqUploadBtn")?.addEventListener("click", async event => {
+  const customerId = document.getElementById("faqCustomerId")?.value || "";
+  const fileInput = document.getElementById("bulkFaqFileInput");
+  const file = fileInput?.files?.[0];
+  if (!customerId) return showToast("Select a bot first");
+  if (!file) return showToast("Choose an Excel file");
+  if (!/\.(xlsx|xls)$/i.test(file.name)) {
+    if (fileInput) fileInput.value = "";
+    return showToast("Only Excel files are accepted");
+  }
+  if (!faqLimitIsUnlimited && currentFaqCount >= freeFaqLimit) {
+    showToast("Your current FAQ plan limit is already reached");
+    openTab("subscription");
+    return;
+  }
+
+  const button = event.currentTarget;
+  button.disabled = true;
+  button.textContent = "Uploading...";
+  try {
+    const faqs = await parseFaqExcel(file);
+    if (!faqs.length) throw new Error("No FAQ rows found in Excel");
+    const response = await fetch("/api.php?action=bulk_add_faq", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({customer_id: customerId, faqs})
+    });
+    const report = await response.json().catch(() => ({}));
+    if (!report.success) throw new Error(report.message || "Bulk upload failed");
+    appendBulkFaqRows(report.saved || []);
+    currentFaqCount += Number(report.saved_count || 0);
+    updateFaqCountUi();
+    showBulkFaqReport(report);
+    if (fileInput) fileInput.value = "";
+    showToast("Bulk FAQ upload completed");
+  } catch (error) {
+    showToast(error.message || "Bulk FAQ upload failed");
+  } finally {
+    button.disabled = false;
+    button.textContent = "Upload Excel FAQs";
+  }
+});
 
 document.getElementById("faqForm")?.addEventListener("submit", async event => {
   event.preventDefault();
