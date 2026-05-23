@@ -595,6 +595,80 @@
     });
   }
 
+  function renderCategoryMenu(suggestionsBox, input, categories) {
+    suggestionsBox.innerHTML = "";
+    const visibleCategories = Array.isArray(categories) ? categories.filter(item => item && item.category) : [];
+    suggestionsBox.style.display = visibleCategories.length ? "grid" : "none";
+    if (!visibleCategories.length) return;
+
+    const panel = document.createElement("div");
+    panel.className = "vani-action-panel";
+    css(panel, {
+      display: "grid",
+      gap: "8px",
+      padding: "10px",
+      borderRadius: "16px",
+      background: "linear-gradient(180deg,rgba(255,255,255,.86),rgba(248,250,252,.72))",
+      border: "1px solid rgba(199,210,254,.75)",
+      boxShadow: "0 14px 34px rgba(15,23,42,.10)"
+    });
+    const heading = document.createElement("div");
+    heading.textContent = "Browse FAQs by category";
+    css(heading, {
+      color: "#64748b",
+      fontSize: "11px",
+      fontWeight: "800",
+      letterSpacing: ".03em",
+      textTransform: "uppercase"
+    });
+    panel.appendChild(heading);
+
+    visibleCategories.forEach((item, index) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "vani-suggestion-card";
+      button.style.animationDelay = `${Math.min(index * 35, 180)}ms`;
+      const label = document.createElement("span");
+      label.textContent = item.category;
+      const count = document.createElement("small");
+      count.textContent = `${Number(item.count || 0)} FAQs`;
+      button.appendChild(label);
+      button.appendChild(count);
+      css(button, {
+        width: "100%",
+        border: "1px solid #e2e8f0",
+        borderRadius: "13px",
+        background: "rgba(255,255,255,.92)",
+        color: "#0f172a",
+        padding: "10px 11px",
+        textAlign: "left",
+        cursor: "pointer",
+        display: "grid",
+        gap: "2px",
+        boxShadow: "0 8px 22px rgba(15,23,42,.06)",
+        transition: "transform .16s ease, box-shadow .16s ease, border-color .16s ease, background .16s ease"
+      });
+      if (label) css(label, {fontWeight: "800", fontSize: "13px", lineHeight: "1.35"});
+      if (count) css(count, {color: "#64748b", fontSize: "11px", lineHeight: "1.35"});
+      button.onmouseenter = () => {
+        button.style.background = "#fff";
+        button.style.borderColor = themeAccent();
+        button.style.boxShadow = "0 12px 28px rgba(15,23,42,.12)";
+        button.style.transform = "translateY(-1px)";
+      };
+      button.onmouseleave = () => {
+        button.style.background = "rgba(255,255,255,.92)";
+        button.style.borderColor = "#e2e8f0";
+        button.style.boxShadow = "0 8px 22px rgba(15,23,42,.06)";
+        button.style.transform = "translateY(0)";
+      };
+      button.onclick = () => showFaqCategory(item.category, suggestionsBox, input);
+      panel.appendChild(button);
+    });
+
+    suggestionsBox.appendChild(panel);
+  }
+
   function cleanPhone(value) {
     return String(value || "").replace(/[^\d+]/g, "").replace(/(?!^)\+/g, "").replace(/\D+/g, "");
   }
@@ -1061,6 +1135,11 @@
     async function loadTop() {
       if (activeFaqActions.length) {
         renderSuggestions(suggestionsBox, input, [], {includeFaqs: false});
+        return;
+      }
+      if (isEnabled(config.faq_category_menu_enabled)) {
+        const response = await api("get_faq_categories", "GET", null, `&customer_id=${encodeURIComponent(customerId)}`);
+        renderCategoryMenu(suggestionsBox, input, response.data || []);
         return;
       }
       const response = await api("get_top_faqs", "GET", null, `&customer_id=${encodeURIComponent(customerId)}`);

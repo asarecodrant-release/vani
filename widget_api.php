@@ -416,6 +416,7 @@ function widget_disable_paid_service_toggles_for_email(string $email, string $re
             "allowed_domains_enabled" => false,
             "live_chat_actions_enabled" => false,
             "faq_actions_enabled" => false,
+            "faq_category_menu_enabled" => false,
             "webhook_url" => null,
             "webhook_secret" => null
         ]);
@@ -446,6 +447,7 @@ function widget_downgrade_account_to_free(string $customerId, string $reason = '
         "allowed_domains_enabled" => false,
         "live_chat_actions_enabled" => false,
         "faq_actions_enabled" => false,
+        "faq_category_menu_enabled" => false,
         "webhook_url" => null,
         "webhook_secret" => null
     ]);
@@ -1512,6 +1514,7 @@ if ($action === "get_widget_config" || $action === "get_theme") {
         "allowed_domains" => $settings['allowed_domains'] ?? '',
         "live_chat_actions_enabled" => widget_bool($settings['live_chat_actions_enabled'] ?? false) && billing_feature_enabled($activePlan, 'live_chat_actions'),
         "faq_actions_enabled" => widget_bool($settings['faq_actions_enabled'] ?? false) && billing_feature_enabled($activePlan, 'faq_action_suggestions'),
+        "faq_category_menu_enabled" => widget_bool($settings['faq_category_menu_enabled'] ?? false),
         "verification_status" => $access['status'],
         "access_allowed" => $access['allowed'],
         "access_message" => $access['message'],
@@ -1726,6 +1729,32 @@ if ($action === "get_top_faqs") {
     widget_json_response(["success" => true, "data" => $questions]);
 }
 
+if ($action === "get_faq_categories") {
+    $customerId = widget_customer_id();
+    if (!$customerId) {
+        widget_json_response(["success" => false, "message" => "Missing customer_id"], 400);
+    }
+
+    $rows = widget_safe_rows(supabase(
+        "GET",
+        "faq_questions?select=category&customer_id=eq." . urlencode($customerId) . widget_faq_active_query_suffix($customerId, "category.asc")
+    ));
+    $categories = [];
+    foreach ($rows as $row) {
+        $category = trim((string)($row['category'] ?? 'General')) ?: 'General';
+        $key = strtolower($category);
+        if (!isset($categories[$key])) {
+            $categories[$key] = [
+                "category" => $category,
+                "count" => 0
+            ];
+        }
+        $categories[$key]["count"]++;
+    }
+
+    widget_json_response(["success" => true, "data" => array_values($categories)]);
+}
+
 if ($action === "get_faqs_by_category") {
     $customerId = widget_customer_id();
     $category = trim((string)($_GET['category'] ?? ''));
@@ -1735,9 +1764,9 @@ if ($action === "get_faqs_by_category") {
 
     $res = supabase(
         "GET",
-        "faq_questions?select=id,question,category&customer_id=eq." . urlencode($customerId) . "&category=eq." . urlencode($category) . widget_faq_active_query_suffix($customerId) . "&limit=6"
+        "faq_questions?select=id,question,category&customer_id=eq." . urlencode($customerId) . "&category=eq." . urlencode($category) . widget_faq_active_query_suffix($customerId)
     );
-    widget_json_response(["success" => true, "data" => widget_safe_rows($res)]);
+    widget_json_response(["success" => true, "data" => array_slice(widget_safe_rows($res), 0, 6)]);
 }
 
 if ($action === "track_widget_session") {

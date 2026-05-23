@@ -1673,7 +1673,7 @@ if ($action === "customer_api_profile") {
     ));
     $settings = safe_rows(supabase(
         "GET",
-        "chatbot_settings?select=bot_name,welcome_message,theme_color,theme_pattern,position,avatar_url,language,is_active,website_verification_enabled,allowed_domains_enabled,allowed_domains,live_chat_actions_enabled,faq_actions_enabled,webhook_url,verification_status,created_at,updated_at&customer_id=eq." . urlencode($customerId) . "&limit=1"
+        "chatbot_settings?select=bot_name,welcome_message,theme_color,theme_pattern,position,avatar_url,language,is_active,website_verification_enabled,allowed_domains_enabled,allowed_domains,live_chat_actions_enabled,faq_actions_enabled,faq_category_menu_enabled,webhook_url,verification_status,created_at,updated_at&customer_id=eq." . urlencode($customerId) . "&limit=1"
     ));
     customer_api_json($validation, "profile", [
         "profile" => $profile[0] ?? null,
@@ -3039,7 +3039,7 @@ if ($action === "save_faq_action") {
 
     $activePlan = billing_active_plan_from_account(billing_account_for_customer($customer_id));
     if (!billing_feature_enabled($activePlan, 'faq_action_suggestions')) {
-        echo json_encode(["success" => false, "requires_paid" => true, "message" => "FAQ Action Suggestions requires Growth or Business plan"]);
+        echo json_encode(["success" => false, "requires_paid" => true, "message" => "FAQ Action Suggestions requires Starter, Growth, or Business plan"]);
         exit;
     }
 
@@ -3183,7 +3183,7 @@ if ($action === "save_dashboard_settings") {
     }
     if (!billing_feature_enabled($activePlan, 'faq_action_suggestions')) {
         if (!empty($data['faq_actions_enabled'])) {
-            echo json_encode(["success" => false, "requires_paid" => true, "message" => "FAQ Action Suggestions requires Growth or Business plan"]);
+            echo json_encode(["success" => false, "requires_paid" => true, "message" => "FAQ Action Suggestions requires Starter, Growth, or Business plan"]);
             exit;
         }
         unset($data['faq_actions_enabled']);
@@ -3210,6 +3210,7 @@ if ($action === "save_dashboard_settings") {
         "handoff_email",
         "live_chat_actions_enabled",
         "faq_actions_enabled",
+        "faq_category_menu_enabled",
         "verification_status"
     ];
 

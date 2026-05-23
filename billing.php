@@ -27,7 +27,7 @@ function billing_plans(): array {
                 'whatsapp_redirect' => true,
                 'webhook_support' => true,
                 'human_handoff' => false,
-                'faq_action_suggestions' => false,
+                'faq_action_suggestions' => true,
                 'export_reports' => false,
                 'partial_analytics' => false,
                 'advanced_analytics' => false

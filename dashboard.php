@@ -69,6 +69,7 @@ function dashboard_disable_paid_service_toggles(array $bots, string $reason): vo
             "allowed_domains_enabled" => false,
             "live_chat_actions_enabled" => false,
             "faq_actions_enabled" => false,
+            "faq_category_menu_enabled" => false,
             "webhook_url" => null,
             "webhook_secret" => null
         ]);
@@ -826,6 +827,7 @@ $handoffEnabled = filter_var($settings['handoff_enabled'] ?? false, FILTER_VALID
 $handoffEmail = first_value($settings, ['handoff_email'], $email);
 $liveChatActionsEnabled = filter_var($settings['live_chat_actions_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
 $faqActionsEnabled = filter_var($settings['faq_actions_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
+$faqCategoryMenuEnabled = filter_var($settings['faq_category_menu_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
 $verificationStatus = first_value($settings, ['verification_status'], 'Pending');
 $faqById = [];
 foreach ($faqs as $faq) {
@@ -1564,9 +1566,19 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
           <div class="section-body faq-action-section" style="border-top:0;margin-top:0">
             <div class="inline-row" style="justify-content:space-between;gap:16px;margin-bottom:14px">
               <div>
+                <h3>FAQ Category Public Menu</h3>
+                <small class="input-help">When ON, the chatbot first shows FAQ categories so visitors can browse by category before asking a question.</small>
+              </div>
+              <label class="switch" title="Enable FAQ category public menu">
+                <input id="faqCategoryMenuToggle" type="checkbox" <?php echo $faqCategoryMenuEnabled ? 'checked' : ''; ?> aria-label="Enable FAQ category public menu">
+                <span class="switch-slider"></span>
+              </label>
+            </div>
+            <div class="inline-row" style="justify-content:space-between;gap:16px;margin-bottom:14px">
+              <div>
                 <h3>FAQ Action Suggestions</h3>
                 <small class="input-help">Show action buttons after a matched FAQ answer, such as call, email, WhatsApp, booking, coupon, map, form, or related FAQ category.</small>
-                <?php if (!$canUseFaqActionSuggestions): ?><small class="input-help error">Growth or Business plan required.</small><?php endif; ?>
+                <?php if (!$canUseFaqActionSuggestions): ?><small class="input-help error">Starter, Growth, or Business plan required.</small><?php endif; ?>
               </div>
               <label class="switch" title="Enable FAQ action suggestions">
                 <input id="faqActionsToggle" type="checkbox" <?php echo $faqActionsEnabled && $canUseFaqActionSuggestions ? 'checked' : ''; ?> <?php echo $canUseFaqActionSuggestions ? '' : 'disabled'; ?> aria-label="Enable FAQ action suggestions">
@@ -2463,7 +2475,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
               <div class="pricing-head"><div><span class="eyebrow">Starter</span><h3>Starter Plan</h3></div><span class="tag">Small</span></div>
               <?php if ($activePlanId === 'starter'): ?><div class="current-plan-note">Current plan</div><?php endif; ?>
               <div class="price">₹199<small>/month</small></div>
-              <div class="feature-list"><span>100 FAQ answers for small websites</span><span>Email and Mobile OTP verification for real leads</span><span>WhatsApp Redirect add-on billed at ₹99 / 30 days</span><span>Webhook support</span><span>Auto wallet recharge: below ₹50, recharge ₹199</span></div>
+              <div class="feature-list"><span>100 FAQ answers for small websites</span><span>Email and Mobile OTP verification for real leads</span><span>Dedicated WhatsApp button and Many more action items for FAQs</span><span>Webhook support</span><span>FAQ Action Suggestions</span><span>Auto wallet recharge: below ₹50, recharge ₹199</span></div>
               <div class="wallet-table"><table><thead><tr><th>Wallet action</th><th>Charge</th></tr></thead><tbody><tr><td>Fresh Email OTP Lead</td><td>₹6</td></tr><tr><td>Repeat Email OTP Verification</td><td>₹2</td></tr><tr><td>Fresh Mobile OTP Lead</td><td>₹12</td></tr><tr><td>Repeat Mobile OTP Verification</td><td>₹3</td></tr><tr><td>WhatsApp Redirect</td><td>Add-on ₹99, refundable if cancelled within 1 hour</td></tr></tbody></table></div>
               <small class="muted">Validity of Fresh Email and Mobile OTP Leads is 30 days from last user verification.</small>
               <button class="pill-btn billing-plan-btn" type="button" data-plan-id="starter">Start Auto Payment</button>
@@ -2474,7 +2486,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
               <div class="pricing-head"><div><span class="eyebrow">Growth</span><h3>Growth Plan</h3></div><span class="tag good">Popular</span></div>
               <?php if ($activePlanId === 'growth'): ?><div class="current-plan-note">Current plan</div><?php endif; ?>
               <div class="price">₹499<small>/month</small></div>
-              <div class="feature-list"><span>300 FAQ answers for growing local businesses</span><span>Email and Mobile OTP verification for real leads</span><span>WhatsApp Redirect add-on billed at ₹99 / 30 days</span><span>Webhook support</span><span>FAQ Action Suggestions</span><span>Auto wallet recharge: below ₹100, recharge ₹499</span><span>Partial Analytics dashboard for tracking captured contacts</span><span>Better wallet rates than Starter on email and mobile leads</span><span>Analytics access: Overview, Conversations, FAQ Insights, Leads</span></div>
+              <div class="feature-list"><span>300 FAQ answers for growing local businesses</span><span>Email and Mobile OTP verification for real leads</span><span>Dedicated WhatsApp button and Many more action items for FAQs</span><span>Webhook support</span><span>FAQ Action Suggestions</span><span>Auto wallet recharge: below ₹100, recharge ₹499</span><span>Better wallet rates than Starter on email and mobile leads</span><span>Analytics access: Overview, Conversations, FAQ Insights, Leads</span></div>
               <div class="wallet-table"><table><thead><tr><th>Wallet action</th><th>Charge</th></tr></thead><tbody><tr><td>Fresh Email OTP Lead</td><td>₹5</td></tr><tr><td>Repeat Email OTP Verification</td><td>₹1</td></tr><tr><td>Fresh Mobile OTP Lead</td><td>₹10</td></tr><tr><td>Repeat Mobile OTP Verification</td><td>₹2</td></tr><tr><td>WhatsApp Redirect</td><td>Add-on ₹99, refundable if cancelled within 1 hour</td></tr></tbody></table></div>
               <small class="muted">Validity of Fresh Email and Mobile OTP Leads is 30 days from last user verification.</small>
               <button class="pill-btn billing-plan-btn" type="button" data-plan-id="growth">Start Auto Payment</button>
@@ -2485,7 +2497,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
               <div class="pricing-head"><div><span class="eyebrow">Business</span><h3>Business Plan</h3></div><span class="tag">Scale</span></div>
               <?php if ($activePlanId === 'business'): ?><div class="current-plan-note">Current plan</div><?php endif; ?>
               <div class="price">₹999<small>/month</small></div>
-              <div class="feature-list"><span>Unlimited FAQ capacity for larger businesses</span><span>Email and Mobile combined OTP verification for real leads</span><span>WhatsApp Redirect add-on billed at ₹99 / 30 days</span><span>Webhook support</span><span>FAQ Action Suggestions</span><span>Live Chat Actions for real-time website reactions</span><span>Auto wallet recharge: below ₹200, recharge ₹999</span><span>Complete Analytics dashboard for tracking captured contacts</span><span>Access for API Integration, Migrate or save data in your database via API</span><span>Advanced Analytics: Overview, Conversations, FAQ Insights, Leads, Pages, Real-Time, Reports Download</span><span>Chat can run only allowed domains</span></div>
+              <div class="feature-list"><span>Unlimited FAQ capacity for larger businesses</span><span>Email and Mobile combined OTP verification for real leads</span><span>Dedicated WhatsApp button and Many more action items for FAQs</span><span>Webhook support</span><span>FAQ Action Suggestions</span><span>Live Chat Actions for real-time website reactions</span><span>Auto wallet recharge: below ₹200, recharge ₹999</span><span>Access for API Integration, Migrate or save data in your database via API</span><span>Advanced Analytics: Overview, Conversations, FAQ Insights, Leads, Pages, Real-Time, Reports Download</span><span>Chat can run only allowed domains</span></div>
               <div class="wallet-table"><table><thead><tr><th>Wallet action</th><th>Charge</th></tr></thead><tbody><tr><td>Fresh Email OTP Lead</td><td>₹5</td></tr><tr><td>Repeat Email OTP Verification</td><td>₹1</td></tr><tr><td>Fresh Mobile OTP Lead</td><td>₹10</td></tr><tr><td>Repeat Mobile OTP Verification</td><td>₹2</td></tr><tr><td>WhatsApp Redirect</td><td>Add-on ₹99, refundable if cancelled within 1 hour</td></tr></tbody></table></div>
               <small class="muted">Validity of Fresh Email and Mobile OTP Leads is 30 days from last user verification.</small>
               <button class="pill-btn billing-plan-btn" type="button" data-plan-id="business">Start Auto Payment</button>
@@ -4071,7 +4083,7 @@ async function saveFaqActionsToggle({live = false} = {}) {
   if (!toggle) return;
   if (toggle.checked && !businessFeatures.faq_action_suggestions) {
     toggle.checked = false;
-    alert("FAQ Action Suggestions requires Growth or Business plan");
+    alert("FAQ Action Suggestions requires Starter, Growth, or Business plan");
     openTab("subscription");
     return;
   }
@@ -4085,6 +4097,15 @@ async function saveFaqActionsToggle({live = false} = {}) {
 
 document.getElementById("faqActionsToggle")?.addEventListener("change", () => {
   saveFaqActionsToggle({live: true});
+});
+
+document.getElementById("faqCategoryMenuToggle")?.addEventListener("change", async event => {
+  const saved = await saveDashboardSettings({
+    faq_category_menu_enabled: !!event.currentTarget.checked
+  });
+  if (saved) {
+    showToast(event.currentTarget.checked ? "FAQ category menu enabled" : "FAQ category menu disabled");
+  }
 });
 
 const faqActionHelp = {
@@ -4117,7 +4138,7 @@ updateFaqActionHelp();
 document.getElementById("faqActionForm")?.addEventListener("submit", async event => {
   event.preventDefault();
   if (!businessFeatures.faq_action_suggestions) {
-    showToast("FAQ Action Suggestions requires Growth or Business plan");
+    showToast("FAQ Action Suggestions requires Starter, Growth, or Business plan");
     openTab("subscription");
     return;
   }

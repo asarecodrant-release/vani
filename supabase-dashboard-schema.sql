@@ -26,6 +26,7 @@ create table if not exists public.chatbot_settings (
   handoff_email text,
   live_chat_actions_enabled boolean not null default false,
   faq_actions_enabled boolean not null default false,
+  faq_category_menu_enabled boolean not null default false,
   verification_status text default 'Pending',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -54,6 +55,9 @@ alter table public.chatbot_settings
 
 alter table public.chatbot_settings
   add column if not exists faq_actions_enabled boolean not null default false;
+
+alter table public.chatbot_settings
+  add column if not exists faq_category_menu_enabled boolean not null default false;
 
 alter table public.chatbot_settings
   add column if not exists theme_pattern text default 'none';
