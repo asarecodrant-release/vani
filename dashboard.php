@@ -3475,7 +3475,7 @@ async function startPlanCheckout(planId, button) {
   button.disabled = true;
   button.textContent = "Creating auto payment...";
 
-  const orderResponse = await fetch("/api.php?action=create_auto_recharge_mandate_order", {
+  const orderResponse = await fetch("/api.php?action=create_razorpay_subscription_checkout", {
     method: "POST",
     headers: {"Content-Type": "application/json"},
     body: JSON.stringify({
@@ -3496,13 +3496,9 @@ async function startPlanCheckout(planId, button) {
 
   const checkout = new Razorpay({
     key: orderData.key_id,
-    amount: orderData.order.amount,
-    currency: orderData.order.currency || "INR",
     name: "Vani AI",
-    description: `${orderData.plan.name} mandatory auto payment`,
-    order_id: orderData.order.id,
-    customer_id: orderData.razorpay_customer_id,
-    recurring: true,
+    description: `${orderData.plan.name} subscription with automatic payment`,
+    subscription_id: orderData.subscription_id,
     remember_customer: true,
     prefill: {
       name: autoPayName,
@@ -3513,7 +3509,7 @@ async function startPlanCheckout(planId, button) {
     theme: {color: "#6366f1"},
     handler: async response => {
       showToast("Verifying automatic payment...");
-      const verifyResponse = await fetch("/api.php?action=verify_auto_recharge_mandate", {
+      const verifyResponse = await fetch("/api.php?action=verify_razorpay_subscription_payment", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify(response)
@@ -3528,7 +3524,7 @@ async function startPlanCheckout(planId, button) {
     }
   });
   checkout.on("payment.failed", response => {
-    showToast(response.error?.description || "Automatic payment authorization failed");
+    showToast(response.error?.description || "Subscription payment authorization failed");
   });
   checkout.open();
 }
