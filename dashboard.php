@@ -1374,8 +1374,8 @@ body.dark .sidebar{background:rgba(15,23,42,.66)}
 .tab-btn:hover,.tab-btn.active{background:rgba(99,102,241,.11);color:var(--brand)}
 .sidebar-footer{margin-top:14px;padding:14px;border:1px solid var(--line);border-radius:16px;background:var(--panel);flex:0 0 auto}
 .sidebar-footer small{display:block;color:var(--muted);line-height:1.6}
-.dashboard-switch{display:inline-flex;align-items:center;gap:6px;padding:5px;border:1px solid var(--line);border-radius:14px;background:var(--panel);min-width:0}
-.dashboard-switch-btn{border:0;border-radius:10px;background:transparent;color:var(--muted);min-height:34px;padding:0 12px;font-size:13px;font-weight:800;cursor:pointer;white-space:nowrap}
+.dashboard-switch{display:inline-flex;align-items:center;gap:6px;padding:5px;border:1px solid var(--line);border-radius:14px;background:var(--panel);min-width:0;max-width:100%}
+.dashboard-switch-btn{border:0;border-radius:10px;background:transparent;color:var(--muted);min-height:36px;padding:0 16px;font-size:14px;font-weight:900;cursor:pointer;white-space:nowrap}
 .dashboard-switch-btn.active{color:#fff;background:linear-gradient(135deg,var(--brand),var(--brand-2));box-shadow:0 8px 18px rgba(99,102,241,.18)}
 .main{min-width:0;width:100%;max-width:100vw;overflow-x:hidden}
 .topbar{
@@ -1888,6 +1888,8 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
 }
 @media(max-width:720px){
   .topbar{padding:12px 14px}
+  .dashboard-switch{width:100%;display:grid;grid-template-columns:1fr 1fr}
+  .dashboard-switch-btn{width:100%;padding:0 8px;font-size:13px}
   .mobile-toggle{width:40px;height:40px}
   body.account-open #accountToggle{top:12px;right:14px}
   .content{padding:14px;gap:16px}
@@ -1998,10 +2000,9 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
         <button class="mobile-toggle" id="navToggle" type="button" aria-label="Open dashboard menu" aria-expanded="false">☰</button>
         <div class="page-title">
           <div class="dashboard-switch" role="group" aria-label="Dashboard type">
-            <button class="dashboard-switch-btn active" type="button" data-dashboard-mode="chatbot">Chatbot Dashboard</button>
-            <button class="dashboard-switch-btn" type="button" data-dashboard-mode="ai">AI Services</button>
+            <button class="dashboard-switch-btn active" type="button" data-dashboard-mode="chatbot">Nadara</button>
+            <button class="dashboard-switch-btn" type="button" data-dashboard-mode="ai">Krishna</button>
           </div>
-          <h1 id="dashboardTitle">Chatbot Dashboard</h1>
           <!--<p>Overview, setup, FAQs, logs, analytics, install, settings, and billing.</p>-->
         </div>
       </div>
@@ -2942,7 +2943,6 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
           <div class="section-head">
             <div>
               <span class="eyebrow">AI Services</span>
-              <h3>AI Chatbot Dashboard</h3>
               <p class="muted">Keep the current FAQ chatbot separate from AI features, then choose FAQ-only, AI-only, or Hybrid mode for this bot.</p>
             </div>
             <span class="tag">Planning</span>
@@ -3759,7 +3759,6 @@ const accountToggle = document.getElementById("accountToggle");
 const drawerOverlay = document.getElementById("drawerOverlay");
 const accountToggleText = accountToggle?.textContent || "";
 const dashboardLoadingOverlay = document.getElementById("dashboardLoadingOverlay");
-const dashboardTitle = document.getElementById("dashboardTitle");
 const profileNeedsSetup = <?php echo js_json($profileNeedsSetup); ?>;
 const profilePromptKey = <?php echo js_json($profilePromptKey); ?>;
 let currentFaqCount = <?php echo js_json($faqCount); ?>;
@@ -3941,7 +3940,6 @@ function setDashboardMode(mode) {
   document.querySelectorAll(".dashboard-switch-btn").forEach(button => {
     button.classList.toggle("active", button.dataset.dashboardMode === (isAi ? "ai" : "chatbot"));
   });
-  if (dashboardTitle) dashboardTitle.textContent = isAi ? "AI Chatbot Dashboard" : "Chatbot Dashboard";
 }
 
 function htmlEscape(value) {
