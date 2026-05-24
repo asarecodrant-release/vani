@@ -11,7 +11,7 @@ header(
     "Cross-Origin-Opener-Policy: same-origin-allow-popups"
 );
 
-require "core.php";
+require_once __DIR__ . "/core.php";
 require_once __DIR__ . "/email.php";
 
 $error = "";
@@ -283,6 +283,11 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && !isset($_POST['reset_action'])) {
                     $user,
                     "password"
                 );
+                if (!empty($_POST['remember_device'])) {
+                    remember_authenticated_device($user);
+                } else {
+                    clear_remembered_device();
+                }
 
                 login_redirect_after_success((string)$user['email']);
 
@@ -307,6 +312,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && !isset($_POST['reset_action'])) {
 name="viewport"
 content="width=device-width, initial-scale=1.0"
 >
+<link rel="icon" type="image/png" href="images/logo_img.png">
 
 <title>Login - Vani AI</title>
 
@@ -347,6 +353,14 @@ body{
   overflow-x:hidden;
 
   position:relative;
+}
+
+body.bright{
+  background:
+    radial-gradient(circle at top left,rgba(99,102,241,.16),transparent 34%),
+    radial-gradient(circle at 88% 8%,rgba(236,72,153,.13),transparent 30%),
+    linear-gradient(135deg,#f8fafc 0%,#eef2ff 48%,#fdf2f8 100%);
+  color:#334155;
 }
 
 .bg-circle{
@@ -399,6 +413,12 @@ body{
     inset 0 1px 0 rgba(255,255,255,.05);
 }
 
+body.bright .card{
+  background:rgba(255,255,255,.88);
+  border-color:rgba(99,102,241,.16);
+  box-shadow:0 24px 72px rgba(15,23,42,.13);
+}
+
 .logo{
   display:flex;
   align-items:center;
@@ -420,6 +440,12 @@ body{
   margin-right:auto;
 }
 
+body.bright .logo{
+  color:#111827;
+  background:linear-gradient(135deg,rgba(99,102,241,.08),rgba(236,72,153,.06));
+  border-color:rgba(99,102,241,.14);
+}
+
 .logo img{
   width:58px;
   height:58px;
@@ -432,6 +458,12 @@ body{
   -webkit-background-clip:text;
   -webkit-text-fill-color:transparent;
   filter:drop-shadow(0 0 14px rgba(129,140,248,.28));
+}
+
+body.bright .logo span{
+  background:linear-gradient(90deg,#4f46e5,#ec4899);
+  -webkit-background-clip:text;
+  -webkit-text-fill-color:transparent;
 }
 
 h1{
@@ -466,6 +498,12 @@ h1{
   margin-bottom:30px;
 }
 
+body.bright .subtitle,
+body.bright .footer,
+body.bright .reset-copy{
+  color:#475569;
+}
+
 .input-group{
   margin-bottom:18px;
 }
@@ -481,6 +519,11 @@ h1{
   font-weight:600;
 
   color:#e5e7eb;
+}
+
+body.bright .input-group label,
+body.bright .reset-title{
+  color:#111827;
 }
 
 .input-group input{
@@ -499,6 +542,12 @@ h1{
   outline:none;
 
   font-size:14px;
+}
+
+body.bright .input-group input{
+  background:#fff;
+  color:#111827;
+  border-color:#cbd5e1;
 }
 
 .input-group input:focus{
@@ -553,6 +602,35 @@ h1{
   display:flex;
   justify-content:flex-end;
   margin:-6px 0 12px;
+}
+
+.remember-row{
+  display:flex;
+  align-items:flex-start;
+  gap:10px;
+  margin:-2px 0 14px;
+  color:#cbd5e1;
+  font-size:13px;
+  line-height:1.5;
+}
+
+.remember-row input{
+  margin-top:3px;
+  accent-color:#6366f1;
+}
+
+.remember-row strong{
+  display:block;
+  color:#f8fafc;
+  font-size:14px;
+}
+
+body.bright .remember-row{
+  color:#64748b;
+}
+
+body.bright .remember-row strong{
+  color:#111827;
 }
 
 .reset-panel{
@@ -661,6 +739,25 @@ h1{
   box-shadow:0 12px 28px rgba(15,23,42,.08);
 }
 
+.theme-btn{
+  min-height:42px;
+  padding:0 15px;
+  border-radius:12px;
+  background:rgba(15,23,42,.72);
+  border:1px solid rgba(129,140,248,.24);
+  color:#e5e7eb;
+  font-weight:700;
+  cursor:pointer;
+}
+
+body.bright .home-link,
+body.bright .theme-btn,
+body.bright .page-actions .site-menu-trigger{
+  background:#fff;
+  color:#334155;
+  border-color:rgba(99,102,241,.16);
+}
+
 .page-actions .site-menu-trigger{
   background:rgba(15,23,42,.72);
   color:#e5e7eb;
@@ -683,9 +780,19 @@ h1{
 </head>
 
 <body>
+<script>
+try {
+    const initialTheme = localStorage.getItem("vani-index-theme") || localStorage.getItem("vani_dashboard_theme") || localStorage.getItem("vani_setup_theme") || "bright";
+    document.body.classList.toggle("bright", initialTheme !== "dark");
+    document.body.classList.toggle("dark", initialTheme === "dark");
+} catch (error) {
+    document.body.classList.add("bright");
+}
+</script>
 
 <div class="page-actions">
   <a class="home-link" href="index.php">Home</a>
+  <button class="theme-btn" type="button" id="themeToggle">Dark Mode</button>
   <button class="site-menu-trigger" type="button" aria-label="Open menu" aria-expanded="false">
     <span></span>
     <span></span>
@@ -801,6 +908,14 @@ required
 
 </div>
 
+<label class="remember-row">
+  <input type="checkbox" name="remember_device" value="1" checked>
+  <span>
+    <strong>Keep me signed in on this device</strong>
+    Stay logged in for 12 hours after closing the browser. Uncheck this on shared or public computers.
+  </span>
+</label>
+
 <div class="form-help">
   <button class="link-btn" type="button" id="showResetBtn">Forgot password?</button>
 </div>
@@ -863,6 +978,23 @@ Get Started
 </div>
 
 <script>
+const themeToggle = document.getElementById("themeToggle");
+function setVaniTheme(mode) {
+    const dark = mode === "dark";
+    document.body.classList.toggle("bright", !dark);
+    document.body.classList.toggle("dark", dark);
+    if (themeToggle) {
+        themeToggle.textContent = dark ? "Bright Mode" : "Dark Mode";
+        themeToggle.setAttribute("aria-pressed", String(dark));
+    }
+    localStorage.setItem("vani-index-theme", dark ? "dark" : "bright");
+    localStorage.removeItem("vani_dashboard_theme");
+    localStorage.removeItem("vani_setup_theme");
+}
+setVaniTheme(localStorage.getItem("vani-index-theme") || localStorage.getItem("vani_dashboard_theme") || localStorage.getItem("vani_setup_theme") || "bright");
+themeToggle?.addEventListener("click", () => {
+    setVaniTheme(document.body.classList.contains("dark") ? "bright" : "dark");
+});
 
 function parseJwt(token) {
 

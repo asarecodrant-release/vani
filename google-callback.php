@@ -1,7 +1,7 @@
 <?php
 
-require 'vendor/autoload.php';
-require 'core.php';
+require_once __DIR__ . '/vendor/autoload.php';
+require_once __DIR__ . '/core.php';
 require_once __DIR__ . "/session-auth.php";
 
 // =====================================
@@ -51,6 +51,7 @@ if (!empty($check['data'])) {
         $customer,
         "google"
     );
+    remember_authenticated_device($customer);
 
 } else {
 
@@ -77,6 +78,10 @@ if (!empty($check['data'])) {
         ],
         "google"
     );
+    remember_authenticated_device($insert['data'][0] ?? [
+        "id" => $customer_id,
+        "email" => $email
+    ]);
 }
 
 header("Location: dashboard.php");

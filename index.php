@@ -809,6 +809,41 @@ body.dark .side-menu-link.secondary{
   color:#e5e7eb;
 }
 
+.theme-choice-panel{
+  position:fixed;
+  right:20px;
+  bottom:20px;
+  z-index:1200;
+  width:min(340px,calc(100vw - 32px));
+  padding:18px;
+  border-radius:18px;
+  background:rgba(255,255,255,.94);
+  border:1px solid rgba(99,102,241,.16);
+  box-shadow:0 22px 60px rgba(15,23,42,.18);
+  display:none;
+}
+
+.theme-choice-panel.show{display:block}
+.theme-choice-panel strong{display:block;color:#111827;font-size:17px;margin-bottom:6px}
+.theme-choice-panel p{color:#64748b;font-size:13px;line-height:1.55;margin-bottom:14px}
+.theme-choice-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.theme-choice-actions button{
+  min-height:42px;
+  border-radius:12px;
+  border:1px solid rgba(99,102,241,.18);
+  cursor:pointer;
+  font-weight:800;
+}
+.theme-choice-bright{background:#fff;color:#334155}
+.theme-choice-dark{background:#111827;color:#f8fafc}
+body.dark .theme-choice-panel{
+  background:rgba(15,23,42,.96);
+  border-color:rgba(129,140,248,.28);
+  box-shadow:0 22px 60px rgba(0,0,0,.36);
+}
+body.dark .theme-choice-panel strong{color:#f8fafc}
+body.dark .theme-choice-panel p{color:#cbd5e1}
+
 .user-box{
   display:flex;
   align-items:center;
@@ -1031,6 +1066,15 @@ body.dark .side-menu-link.secondary{
   </div>
 </aside>
 
+<div class="theme-choice-panel" id="themeChoicePanel" role="dialog" aria-live="polite" aria-label="Choose site theme">
+  <strong>Choose your theme</strong>
+  <p>Select once and Vani AI will keep the same theme across website, login, setup, and dashboard pages.</p>
+  <div class="theme-choice-actions">
+    <button class="theme-choice-bright" type="button" data-theme-choice="bright">Bright</button>
+    <button class="theme-choice-dark" type="button" data-theme-choice="dark">Dark</button>
+  </div>
+</div>
+
 <!-- HERO -->
 <section class="hero">
 
@@ -1161,6 +1205,7 @@ const menuClose = document.getElementById("menuClose");
 const menuOverlay = document.getElementById("menuOverlay");
 const sideMenu = document.getElementById("sideMenu");
 const themeToggle = document.getElementById("themeToggle");
+const themeChoicePanel = document.getElementById("themeChoicePanel");
 
 function setMenu(open) {
   sideMenu?.classList.toggle("open", open);
@@ -1177,9 +1222,15 @@ function setTheme(mode) {
     themeToggle.textContent = dark ? "Bright Mode" : "Dark Mode";
   }
   localStorage.setItem("vani-index-theme", dark ? "dark" : "bright");
+  localStorage.removeItem("vani_dashboard_theme");
+  localStorage.removeItem("vani_setup_theme");
 }
 
-setTheme(localStorage.getItem("vani-index-theme") || "bright");
+const savedTheme = localStorage.getItem("vani-index-theme") || localStorage.getItem("vani_dashboard_theme") || localStorage.getItem("vani_setup_theme");
+setTheme(savedTheme === "dark" ? "dark" : "bright");
+if (!savedTheme) {
+  themeChoicePanel?.classList.add("show");
+}
 
 menuToggle?.addEventListener("click", () => setMenu(true));
 menuClose?.addEventListener("click", () => setMenu(false));
@@ -1192,6 +1243,14 @@ document.addEventListener("keydown", event => {
 });
 themeToggle?.addEventListener("click", () => {
   setTheme(document.body.classList.contains("dark") ? "bright" : "dark");
+  themeChoicePanel?.classList.remove("show");
+});
+
+document.querySelectorAll("[data-theme-choice]").forEach(button => {
+  button.addEventListener("click", () => {
+    setTheme(button.dataset.themeChoice === "dark" ? "dark" : "bright");
+    themeChoicePanel?.classList.remove("show");
+  });
 });
 
 // Scroll animation

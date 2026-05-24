@@ -1007,6 +1007,56 @@ grant update(password) on public.customers to anon, authenticated;
 alter table public.customers
   add column if not exists must_reset_password boolean not null default false;
 grant update(password, must_reset_password) on public.customers to anon, authenticated;
+
+create table if not exists public.customer_remember_tokens (
+  id uuid primary key default gen_random_uuid(),
+  email text not null,
+  selector text not null unique,
+  token_hash text not null,
+  expires_at timestamptz not null,
+  user_agent text,
+  created_at timestamptz not null default now(),
+  last_used_at timestamptz
+);
+
+create index if not exists customer_remember_tokens_email_idx
+on public.customer_remember_tokens(email);
+
+create index if not exists customer_remember_tokens_expires_idx
+on public.customer_remember_tokens(expires_at);
+
+alter table public.customer_remember_tokens enable row level security;
+
+drop policy if exists "remember tokens readable" on public.customer_remember_tokens;
+create policy "remember tokens readable"
+on public.customer_remember_tokens
+for select
+to anon, authenticated
+using (true);
+
+drop policy if exists "remember tokens insertable" on public.customer_remember_tokens;
+create policy "remember tokens insertable"
+on public.customer_remember_tokens
+for insert
+to anon, authenticated
+with check (true);
+
+drop policy if exists "remember tokens updatable" on public.customer_remember_tokens;
+create policy "remember tokens updatable"
+on public.customer_remember_tokens
+for update
+to anon, authenticated
+using (true)
+with check (true);
+
+drop policy if exists "remember tokens deletable" on public.customer_remember_tokens;
+create policy "remember tokens deletable"
+on public.customer_remember_tokens
+for delete
+to anon, authenticated
+using (true);
+
+grant select, insert, update, delete on public.customer_remember_tokens to anon, authenticated;
 grant usage, select on sequence public.chatbot_settings_id_seq to anon, authenticated;
 grant usage, select on sequence public.chatbot_conversations_id_seq to anon, authenticated;
 grant usage, select on sequence public.chatbot_sessions_id_seq to anon, authenticated;

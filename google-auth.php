@@ -4,7 +4,7 @@ require_once __DIR__ . "/session-auth.php";
 
 header("Content-Type: application/json");
 
-require "core.php";
+require_once __DIR__ . "/core.php";
 
 if (!class_exists(Google_Client::class)) {
     echo json_encode([
@@ -93,6 +93,7 @@ if (!empty($check['data'])) {
         $customer,
         "google"
     );
+    remember_authenticated_device($customer);
 
 } else {
 
@@ -120,6 +121,10 @@ if (!empty($check['data'])) {
         ],
         "google"
     );
+    remember_authenticated_device($insert['data'][0] ?? [
+        "id" => $customer_id,
+        "email" => $email
+    ]);
 }
 
 echo json_encode([

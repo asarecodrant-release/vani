@@ -1,10 +1,13 @@
 (function () {
-  const storageKey = "vani_setup_theme";
+  const storageKey = "vani-index-theme";
   const lightClass = "setup-theme-light";
   const darkClass = "setup-theme-dark";
 
   function preferredTheme() {
     const saved = localStorage.getItem(storageKey);
+    if (saved === "bright") {
+      return "light";
+    }
     if (saved === "light" || saved === "dark") {
       return saved;
     }
@@ -14,7 +17,7 @@
   function applyTheme(theme) {
     document.body.classList.toggle(lightClass, theme === "light");
     document.body.classList.toggle(darkClass, theme === "dark");
-    localStorage.setItem(storageKey, theme);
+    localStorage.setItem(storageKey, theme === "dark" ? "dark" : "bright");
 
     const toggle = document.getElementById("setupThemeToggle");
     if (!toggle) {

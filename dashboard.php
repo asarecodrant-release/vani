@@ -4930,12 +4930,17 @@ themeToggle?.addEventListener("click", () => {
   const dark = !document.body.classList.contains("dark");
   document.body.classList.toggle("dark", dark);
   if (themeToggle) themeToggle.textContent = dark ? "Bright" : "Dark";
-  localStorage.setItem("vani_dashboard_theme", dark ? "dark" : "bright");
+  localStorage.setItem("vani-index-theme", dark ? "dark" : "bright");
+  localStorage.removeItem("vani_dashboard_theme");
+  localStorage.removeItem("vani_setup_theme");
 });
 
-if (localStorage.getItem("vani_dashboard_theme") === "dark") {
+const dashboardTheme = localStorage.getItem("vani-index-theme") || localStorage.getItem("vani_dashboard_theme") || "bright";
+if (dashboardTheme === "dark") {
   document.body.classList.add("dark");
   if (themeToggle) themeToggle.textContent = "Bright";
+} else if (themeToggle) {
+  themeToggle.textContent = "Dark";
 }
 
 function formatLastActivityForBrowser() {

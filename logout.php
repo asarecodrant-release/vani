@@ -1,5 +1,7 @@
 <?php
-session_start();
+require_once __DIR__ . '/session-auth.php';
+
+clear_remembered_device();
 
 // Unset all session variables
 $_SESSION = [];
