@@ -10,6 +10,7 @@ $showResetPasswordNotice = is_authenticated_user() && (string)($_GET['reset_pass
 
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="images/logo_img.png">
 
 <title>Vani – AI Chatbot Platform</title>
 

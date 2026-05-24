@@ -2670,6 +2670,25 @@ if ($action === "send_email_otp") {
         echo json_encode(["success" => false, "message" => "Enter a valid email address"]);
         exit;
     }
+    if ($flow === 'freebot_signup' && !is_authenticated_user()) {
+        $existingBots = safe_rows(supabase(
+            "GET",
+            "chatbot_signups?select=customer_id&email=eq." . urlencode($email) . "&limit=1"
+        ));
+        $existingCustomer = safe_rows(supabase(
+            "GET",
+            "customers?select=id&email=eq." . urlencode($email) . "&limit=1"
+        ));
+        if (!empty($existingBots) || !empty($existingCustomer)) {
+            echo json_encode([
+                "success" => false,
+                "requires_login" => true,
+                "message" => "This email already has a Vani AI account or chatbot setup. Please login to continue.",
+                "login_url" => "login.php?setup=incomplete"
+            ]);
+            exit;
+        }
+    }
     $code = (string)random_int(100000, 999999);
     $_SESSION['email_otp'][$flow] = [
         "email" => $email,
@@ -3001,8 +3020,7 @@ if ($action === "signup") {
         empty($data['customer_id']) ||
         empty($data['website_name']) ||
         empty($data['email']) ||
-        empty($data['business_type']) ||
-        empty($data['email_otp'])
+        empty($data['business_type'])
     ) {
         echo json_encode(["error" => "Missing fields"]);
         exit;
@@ -3018,6 +3036,13 @@ if ($action === "signup") {
     }
 
     $emailForSignup = strtolower(trim((string)$data['email']));
+    if (is_authenticated_user() && strcasecmp($emailForSignup, authenticated_email()) !== 0) {
+        echo json_encode([
+            "error" => "email_mismatch",
+            "message" => "Please use your logged-in account email for chatbot setup."
+        ]);
+        exit;
+    }
     $existingBots = safe_rows(supabase(
         "GET",
         "chatbot_signups?select=customer_id,website_name,business_type&email=eq." . urlencode($emailForSignup) . "&limit=1"
@@ -3054,13 +3079,15 @@ if ($action === "signup") {
         ]);
         exit;
     }
-    $otpCheck = require_verified_email_for_flow($emailForSignup, trim((string)$data['email_otp']), 'freebot_signup');
-    if (empty($otpCheck['success'])) {
-        echo json_encode([
-            "error" => "email_not_verified",
-            "message" => $otpCheck['message'] ?? "Please verify your email before continuing"
-        ]);
-        exit;
+    if (!is_authenticated_user()) {
+        $otpCheck = require_verified_email_for_flow($emailForSignup, trim((string)($data['email_otp'] ?? '')), 'freebot_signup');
+        if (empty($otpCheck['success'])) {
+            echo json_encode([
+                "error" => "email_not_verified",
+                "message" => $otpCheck['message'] ?? "Please verify your email before continuing"
+            ]);
+            exit;
+        }
     }
 
     $res = supabase("POST", "chatbot_signups", [[

@@ -130,6 +130,7 @@ function sendPasswordResetCodeEmail(string $toEmail, string $code): bool {
     <head>
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" type="image/png" href="images/logo_img.png">
     </head>
     <body style="margin:0;padding:0;background:#eef2ff;font-family:Inter,Arial,sans-serif;color:#0f172a;">
       <div style="padding:30px 14px;background:radial-gradient(circle at top left,rgba(99,102,241,.28),transparent 34%),radial-gradient(circle at 90% 0,rgba(236,72,153,.22),transparent 32%),linear-gradient(135deg,#f8fafc,#eef2ff,#faf5ff);">

@@ -22,6 +22,7 @@ if (!empty($_SESSION['must_reset_password'])) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="images/logo_img.png">
 <title>Free Chatbot Signup</title>
 
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
@@ -206,10 +207,11 @@ button:hover {
   >
 
   <!-- ✅ FIX: HIDDEN CUSTOMER ID (still used in JS/backend) -->
-  <div class="otp-row">
-    <input type="text" id="emailOtp" placeholder="Enter 6-digit email OTP" inputmode="numeric" maxlength="6" required>
-    <button type="button" id="sendSetupOtpBtn">Send OTP</button>
+  <div class="otp-row" id="setupOtpRow" style="display:none;">
+    <input type="text" id="emailOtp" placeholder="Enter 6-digit email OTP" inputmode="numeric" maxlength="6">
+    <button type="button" id="sendSetupOtpBtn">Resend OTP</button>
   </div>
+  <div class="small" id="setupOtpStatus" style="display:none; margin-top:8px;"></div>
 
   <input type="hidden" id="customerId">
 
@@ -267,6 +269,8 @@ button:hover {
 <script>
 
 const API = "/api.php";
+let setupOtpSentForEmail = "";
+const isLoggedInCustomer = <?php echo $loggedInEmail ? 'true' : 'false'; ?>;
 
 function normalizeWebsiteDomain(value) {
   let input = value.trim().toLowerCase();
@@ -325,13 +329,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
 });
 
-document.getElementById("sendSetupOtpBtn")?.addEventListener("click", async () => {
+async function sendSetupOtpForEmail(email) {
   const emailInput = document.getElementById("email");
-  const email = emailInput.value.trim();
+  const otpRow = document.getElementById("setupOtpRow");
+  const otpStatus = document.getElementById("setupOtpStatus");
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     alert("Enter a valid email before sending OTP");
     emailInput.focus();
-    return;
+    return false;
   }
   const button = document.getElementById("sendSetupOtpBtn");
   const originalText = button.innerText;
@@ -344,12 +349,43 @@ document.getElementById("sendSetupOtpBtn")?.addEventListener("click", async () =
       body: JSON.stringify({email, flow: "freebot_signup"})
     });
     const data = await res.json();
-    alert(data.message || (data.success ? "OTP sent" : "OTP could not be sent"));
+    if (data.requires_login) {
+      alert(data.message || "This email already has an account. Please login to continue.");
+      window.location.href = data.login_url || "login.php?setup=incomplete";
+      return false;
+    }
+    if (!data.success) {
+      alert(data.message || "OTP could not be sent");
+      return false;
+    }
+    setupOtpSentForEmail = email;
+    otpRow.style.display = "flex";
+    document.getElementById("emailOtp").required = true;
+    if (otpStatus) {
+      otpStatus.style.display = "block";
+      otpStatus.innerText = data.message || "Verification code sent to your email. Enter it below to continue.";
+    }
+    document.getElementById("emailOtp").focus();
+    return true;
   } catch (err) {
     alert("OTP could not be sent");
+    return false;
+  } finally {
+    button.disabled = false;
+    button.innerText = originalText;
   }
-  button.disabled = false;
-  button.innerText = originalText;
+}
+
+document.getElementById("email")?.addEventListener("input", () => {
+  setupOtpSentForEmail = "";
+  document.getElementById("emailOtp").value = "";
+  document.getElementById("emailOtp").required = false;
+  document.getElementById("setupOtpRow").style.display = "none";
+  document.getElementById("setupOtpStatus").style.display = "none";
+});
+
+document.getElementById("sendSetupOtpBtn")?.addEventListener("click", async () => {
+  await sendSetupOtpForEmail(document.getElementById("email").value.trim());
 });
 
 document.getElementById("signupForm")
@@ -369,15 +405,7 @@ document.getElementById("signupForm")
 
   const email =
     document.getElementById("email").value.trim();
-  const emailOtp = document.getElementById("emailOtp").value.trim();
-
-  if (!/^\d{6}$/.test(emailOtp)) {
-    overlay.style.display = "none";
-    btn.disabled = false;
-    btn.innerText = "Continue ->";
-    alert("Please enter the 6-digit email OTP");
-    return;
-  }
+  let emailOtp = document.getElementById("emailOtp").value.trim();
 
   const cid =
     document.getElementById("customerId").value.trim();
@@ -407,6 +435,30 @@ document.getElementById("signupForm")
   }
 
   websiteInput.value = website;
+
+  if (!isLoggedInCustomer && setupOtpSentForEmail !== email) {
+    const sent = await sendSetupOtpForEmail(email);
+    overlay.style.display = "none";
+    btn.disabled = false;
+    btn.innerText = "Verify & Continue";
+    if (sent) {
+      alert("We sent a verification code to your email. Enter the OTP and click Verify & Continue.");
+    }
+    return;
+  }
+
+  if (!isLoggedInCustomer && !/^\d{6}$/.test(emailOtp)) {
+    overlay.style.display = "none";
+    btn.disabled = false;
+    btn.innerText = "Verify & Continue";
+    alert("Please enter the 6-digit email OTP");
+    document.getElementById("emailOtp").focus();
+    return;
+  }
+
+  if (isLoggedInCustomer) {
+    emailOtp = "";
+  }
 
   try {
 

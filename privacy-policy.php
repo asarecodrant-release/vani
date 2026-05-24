@@ -6,6 +6,7 @@ $updatedAt = 'May 25, 2026';
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="images/logo_img.png">
 <title>Privacy Policy - Vani AI</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -170,6 +171,7 @@ footer{padding:24px 0 40px;color:#94a3b8;text-align:center;font-size:14px}
       <section id="secure-embed">
         <h2>8. Secure Chatbot Embed</h2>
         <p>Vani AI is designed to be installed as a secure iframe-based chatbot embed. The customer website loads a small Vani AI script that creates and resizes an isolated iframe. The chatbot experience, conversations, lead forms, OTP flows, and widget UI run inside Vani AI's iframe instead of directly inside the customer's website page.</p>
+        <p>An iframe is secure because it creates a separate browser document for the chatbot. This separation is called browser isolation. The chatbot frontend code may still be visible in browser developer tools, because all browser-side code can be inspected, but visibility of frontend code is not the security boundary. The security benefit is that the chatbot runs separately from the customer's website document and cannot directly inspect or control the customer's page content.</p>
         <div class="assurance">
           <p><strong>Customer assurance:</strong> the Vani AI embed is intended only to display and operate the chatbot service selected by the customer. It is not designed to read passwords, payment card fields, private form values, admin panels, shopping cart contents, authentication cookies, or confidential website operations.</p>
         </div>
@@ -181,6 +183,14 @@ footer{padding:24px 0 40px;color:#94a3b8;text-align:center;font-size:14px}
           <div class="trust-card">
             <strong>What the chatbot iframe does</strong>
             <p>It displays the chatbot, sends visitor questions to Vani AI, receives answers, captures lead details only when enabled, runs OTP verification when configured, and records allowed analytics.</p>
+          </div>
+          <div class="trust-card">
+            <strong>Why iframe isolation matters</strong>
+            <p>The chatbot runs on Vani AI's origin, separate from the customer's website origin. This prevents direct access to the customer's page DOM, form fields, checkout fields, admin content, and website cookies.</p>
+          </div>
+          <div class="trust-card">
+            <strong>What iframe does not hide</strong>
+            <p>It does not hide frontend HTML, CSS, or JavaScript from browser inspection. Secret keys, database credentials, payment secrets, and private server logic must remain on Vani AI backend systems.</p>
           </div>
           <div class="trust-card">
             <strong>What we do not collect by default</strong>
