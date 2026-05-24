@@ -12,12 +12,9 @@ header(
 );
 
 require_once __DIR__ . "/core.php";
-require_once __DIR__ . "/email.php";
 
 $error = "";
 $resetMessage = "";
-$resetError = "";
-$showReset = false;
 $googleClientId =
     $_ENV['GOOGLE_CLIENT_ID']
     ?? getenv('GOOGLE_CLIENT_ID')
@@ -65,7 +62,7 @@ function login_user_has_pending_subscription(string $email): bool {
 
 function login_redirect_after_success(string $email): void {
     if (!empty($_SESSION['must_reset_password'])) {
-        header("Location: login.php?reset=1&forced=1");
+        header("Location: forgot-password.php?forced=1");
         exit;
     }
     if (!login_user_has_chatbot($email)) {
@@ -85,10 +82,8 @@ if ($_SERVER["REQUEST_METHOD"] !== "POST" && (string)($_GET['subscription'] ?? '
 }
 
 if ($_SERVER["REQUEST_METHOD"] !== "POST" && (string)($_GET['reset'] ?? '') === '1') {
-    $showReset = true;
-    $resetMessage = (string)($_GET['forced'] ?? '') === '1'
-        ? "For security, reset your temporary password before continuing."
-        : "Enter your email below to reset the temporary password.";
+    header("Location: forgot-password.php" . ((string)($_GET['forced'] ?? '') === '1' ? '?forced=1' : ''));
+    exit;
 }
 
 if ($_SERVER["REQUEST_METHOD"] !== "POST" && (string)($_GET['setup'] ?? '') === 'incomplete') {
@@ -99,7 +94,7 @@ if ($_SERVER["REQUEST_METHOD"] !== "POST" && (string)($_GET['upgrade'] ?? '') ==
     $resetMessage = "Login to upgrade your existing chatbot from Dashboard > Subscription.";
 }
 
-if ($_SERVER["REQUEST_METHOD"] !== "POST" && is_authenticated_user() && !$showReset) {
+if ($_SERVER["REQUEST_METHOD"] !== "POST" && is_authenticated_user()) {
     login_redirect_after_success(authenticated_email());
 }
 
@@ -120,116 +115,6 @@ if (
 
     exit;
 
-}
-
-function sendPasswordResetCodeEmail(string $toEmail, string $code): bool {
-    $safeCode = htmlspecialchars($code, ENT_QUOTES, 'UTF-8');
-    $html = '
-    <!doctype html>
-    <html>
-    <head>
-      <meta charset="utf-8">
-      <meta name="viewport" content="width=device-width,initial-scale=1">
-<link rel="icon" type="image/png" href="images/logo_img.png">
-    </head>
-    <body style="margin:0;padding:0;background:#eef2ff;font-family:Inter,Arial,sans-serif;color:#0f172a;">
-      <div style="padding:30px 14px;background:radial-gradient(circle at top left,rgba(99,102,241,.28),transparent 34%),radial-gradient(circle at 90% 0,rgba(236,72,153,.22),transparent 32%),linear-gradient(135deg,#f8fafc,#eef2ff,#faf5ff);">
-        <div style="max-width:620px;margin:0 auto;background:#ffffff;border:1px solid rgba(148,163,184,.24);border-radius:24px;overflow:hidden;box-shadow:0 24px 70px rgba(15,23,42,.13);">
-          <div style="padding:34px 30px;background:linear-gradient(135deg,#6366f1,#8b5cf6,#ec4899);color:#ffffff;">
-            <div style="display:inline-block;padding:7px 11px;border-radius:999px;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.24);font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;">Vani by Codrant</div>
-            <h1 style="margin:16px 0 8px;font-size:30px;line-height:1.22;">Reset your dashboard password</h1>
-            <p style="margin:0;color:rgba(255,255,255,.88);font-size:15px;line-height:1.7;">Use the verification code below to securely update your customer account password.</p>
-          </div>
-          <div style="padding:32px 30px;">
-            <p style="margin:0 0 18px;color:#475569;font-size:15px;line-height:1.7;">This code is valid for <strong style="color:#0f172a;">15 minutes</strong>. Enter it on the Vani login page along with your new password.</p>
-            <div style="margin:24px 0;padding:22px;border-radius:18px;background:linear-gradient(135deg,#eef2ff,#fdf2f8);border:1px solid #c7d2fe;text-align:center;">
-              <div style="font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#6366f1;margin-bottom:8px;">Verification Code</div>
-              <div style="font-size:38px;line-height:1;font-weight:900;letter-spacing:10px;color:#4f46e5;">' . $safeCode . '</div>
-            </div>
-            <div style="padding:16px;border-radius:14px;background:#f8fafc;border:1px solid #e2e8f0;color:#64748b;font-size:13px;line-height:1.7;">
-              <strong style="display:block;color:#0f172a;margin-bottom:4px;">Security note</strong>
-              If you did not request this password reset, ignore this email. Your password will not change unless this code is verified.
-            </div>
-            <p style="margin:22px 0 0;color:#94a3b8;font-size:12px;line-height:1.6;text-align:center;">Vani AI from Codrant<br>https://vani.codrant.com</p>
-          </div>
-        </div>
-      </div>
-    </body>
-    </html>';
-
-    return sendBrevoEmail($toEmail, "Your Vani password reset code", $html);
-}
-
-// ======================================
-// FORGOT PASSWORD / RESET WITH CODE
-// ======================================
-if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['reset_action'])) {
-    $showReset = true;
-    $resetAction = (string)($_POST['reset_action'] ?? '');
-
-    if ($resetAction === 'request') {
-        $resetEmail = strtolower(trim((string)($_POST['reset_email'] ?? '')));
-        if (!filter_var($resetEmail, FILTER_VALIDATE_EMAIL)) {
-            $resetError = "Enter a valid email address.";
-        } else {
-            $res = supabase(
-                "GET",
-                "customers?email=eq." . urlencode($resetEmail) . "&limit=1"
-            );
-            $user = $res['data'][0] ?? null;
-            if ($user) {
-                $code = (string)random_int(100000, 999999);
-                $_SESSION['password_reset'] = [
-                    'email' => $resetEmail,
-                    'code_hash' => password_hash($code, PASSWORD_DEFAULT),
-                    'expires_at' => time() + 15 * 60,
-                    'attempts' => 0
-                ];
-                if (!sendPasswordResetCodeEmail($resetEmail, $code)) {
-                    $resetError = "Reset email could not be sent. Please try again.";
-                } else {
-                    $resetMessage = "Verification code sent to your email.";
-                }
-            } else {
-                unset($_SESSION['password_reset']);
-                $resetMessage = "If this email exists, a verification code has been sent.";
-            }
-        }
-    }
-
-    if ($resetAction === 'confirm') {
-        $resetState = $_SESSION['password_reset'] ?? [];
-        $code = trim((string)($_POST['reset_code'] ?? ''));
-        $newPassword = (string)($_POST['new_password'] ?? '');
-        $confirmPassword = (string)($_POST['confirm_password'] ?? '');
-
-        if (empty($resetState['email']) || empty($resetState['code_hash']) || (int)($resetState['expires_at'] ?? 0) < time()) {
-            unset($_SESSION['password_reset']);
-            $resetError = "Verification code expired. Please request a new code.";
-        } elseif ((int)($resetState['attempts'] ?? 0) >= 5) {
-            unset($_SESSION['password_reset']);
-            $resetError = "Too many invalid attempts. Please request a new code.";
-        } elseif (!password_verify($code, (string)$resetState['code_hash'])) {
-            $_SESSION['password_reset']['attempts'] = (int)($resetState['attempts'] ?? 0) + 1;
-            $resetError = "Invalid verification code.";
-        } elseif (strlen($newPassword) < 8) {
-            $resetError = "Password must be at least 8 characters.";
-        } elseif ($newPassword !== $confirmPassword) {
-            $resetError = "Passwords do not match.";
-        } else {
-            $passwordRes = login_customer_password_update((string)$resetState['email'], password_hash($newPassword, PASSWORD_DEFAULT));
-            if ($passwordRes['status'] >= 200 && $passwordRes['status'] < 300) {
-                unset($_SESSION['password_reset']);
-                if (is_authenticated_user() && authenticated_email() === (string)$resetState['email']) {
-                    $_SESSION['must_reset_password'] = false;
-                }
-                $showReset = false;
-                $resetMessage = "Password reset successful. You can log in now.";
-            } else {
-                $resetError = "Password could not be reset. Please try again.";
-            }
-        }
-    }
 }
 
 // ======================================
@@ -917,7 +802,7 @@ required
 </label>
 
 <div class="form-help">
-  <button class="link-btn" type="button" id="showResetBtn">Forgot password?</button>
+  <a class="link-btn" href="forgot-password.php">Forgot password?</a>
 </div>
 
 <button
@@ -928,41 +813,6 @@ Login →
 </button>
 
 </form>
-
-<div class="reset-panel <?php echo $showReset ? 'active' : ''; ?>" id="resetPanel">
-  <h2 class="reset-title">Reset Password</h2>
-  <p class="reset-copy">Enter your account email. We will send a verification code before changing the password.</p>
-
-  <?php if($resetError): ?>
-    <div class="error"><?php echo htmlspecialchars($resetError); ?></div>
-  <?php endif; ?>
-
-  <form method="POST">
-    <input type="hidden" name="reset_action" value="request">
-    <div class="input-group">
-      <label>Email Address</label>
-      <input type="email" name="reset_email" placeholder="Enter your account email" autocomplete="email" required>
-    </div>
-    <button type="submit" class="login-btn">Send verification code</button>
-  </form>
-
-  <form method="POST" style="margin-top:18px">
-    <input type="hidden" name="reset_action" value="confirm">
-    <div class="input-group">
-      <label>Verification Code</label>
-      <input type="text" name="reset_code" placeholder="6-digit code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" required>
-    </div>
-    <div class="input-group">
-      <label>New Password</label>
-      <input type="password" name="new_password" placeholder="Minimum 8 characters" autocomplete="new-password" required>
-    </div>
-    <div class="input-group">
-      <label>Confirm Password</label>
-      <input type="password" name="confirm_password" placeholder="Repeat new password" autocomplete="new-password" required>
-    </div>
-    <button type="submit" class="login-btn">Verify & Reset Password</button>
-  </form>
-</div>
 
 <div class="footer">
 
@@ -1011,16 +861,6 @@ function parseJwt(token) {
         return null;
     }
 }
-
-document.getElementById("showResetBtn")?.addEventListener("click", () => {
-    const panel = document.getElementById("resetPanel");
-    if (!panel) return;
-    panel.classList.toggle("active");
-    if (panel.classList.contains("active")) {
-        panel.scrollIntoView({behavior: "smooth", block: "nearest"});
-        panel.querySelector("input[name='reset_email']")?.focus();
-    }
-});
 
 // ======================================
 // GOOGLE LOGIN SUCCESS

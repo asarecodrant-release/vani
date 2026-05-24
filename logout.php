@@ -10,7 +10,7 @@ $_SESSION = [];
 session_destroy();
 
 $next = (string)($_GET['next'] ?? '');
-$allowed = ['index.php', 'login.php'];
+$allowed = ['index.php', 'login.php', 'forgot-password.php'];
 $target = 'index.php';
 if ($next !== '') {
     $path = parse_url($next, PHP_URL_PATH) ?: '';

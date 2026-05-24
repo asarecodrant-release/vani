@@ -9,7 +9,7 @@ if (!is_authenticated_user()) {
 }
 
 if (!empty($_SESSION['must_reset_password'])) {
-    header("Location: login.php?reset=1&forced=1");
+    header("Location: forgot-password.php?forced=1");
     exit;
 }
 

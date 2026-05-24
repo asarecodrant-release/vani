@@ -1033,7 +1033,7 @@ body.dark .theme-choice-panel p{color:#cbd5e1}
         </p>
       </div>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
-        <?php if ($showResetPasswordNotice): ?><a class="nav-btn" href="logout.php?next=login.php%3Freset%3D1">Reset password</a><?php endif; ?>
+        <?php if ($showResetPasswordNotice): ?><a class="nav-btn" href="logout.php?next=forgot-password.php">Reset password</a><?php endif; ?>
         <a class="nav-btn" href="freebot.php">Create chatbot</a>
       </div>
     </div>
