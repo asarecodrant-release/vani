@@ -81,6 +81,10 @@ if ($_SERVER["REQUEST_METHOD"] !== "POST" && (string)($_GET['subscription'] ?? '
     $resetMessage = "Subscription activated. Check your email for login details, then reset your password after logging in.";
 }
 
+if ($_SERVER["REQUEST_METHOD"] !== "POST" && (string)($_GET['password_reset'] ?? '') === 'success') {
+    $resetMessage = "Password reset successful. Please login with your new password.";
+}
+
 if ($_SERVER["REQUEST_METHOD"] !== "POST" && (string)($_GET['reset'] ?? '') === '1') {
     header("Location: forgot-password.php" . ((string)($_GET['forced'] ?? '') === '1' ? '?forced=1' : ''));
     exit;

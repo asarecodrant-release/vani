@@ -1697,6 +1697,23 @@ function public_subscription_save_profile(string $email, string $name, string $c
     }
 }
 
+function ensure_customer_profile_exists(string $email): void {
+    $email = strtolower(trim($email));
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        return;
+    }
+    $existing = safe_rows(supabase(
+        "GET",
+        "customer_profiles?select=id&email=eq." . urlencode($email) . "&limit=1"
+    ));
+    if (!empty($existing)) {
+        return;
+    }
+    supabase("POST", "customer_profiles", [[
+        "email" => $email
+    ]]);
+}
+
 function public_subscription_credit_pending_wallet(string $email, string $planId, int $amountPaise, string $paymentId): array {
     $accountRows = safe_rows(supabase(
         "GET",
@@ -4470,38 +4487,8 @@ if ($action === "save_customer_profile") {
         );
     }
 
-    $passwordMessage = null;
-    $newPassword = (string)($data['new_password'] ?? '');
-
-    if ($newPassword !== '') {
-        if (strlen($newPassword) < 8) {
-            echo json_encode([
-                "success" => false,
-                "message" => "Password must be at least 8 characters"
-            ]);
-            exit;
-        }
-
-        $passwordRes = supabase_customer_write_with_reset_flag(
-            "PATCH",
-            "customers?email=eq." . urlencode($email),
-            [
-                "password" => password_hash($newPassword, PASSWORD_DEFAULT)
-            ],
-            false
-        );
-        if ($passwordRes['status'] >= 200 && $passwordRes['status'] < 300) {
-            $_SESSION['must_reset_password'] = false;
-        }
-
-        $passwordMessage = ($passwordRes['status'] >= 200 && $passwordRes['status'] < 300)
-            ? "password_updated"
-            : "password_update_failed";
-    }
-
     echo json_encode([
         "success" => ($profileRes['status'] >= 200 && $profileRes['status'] < 300),
-        "password" => $passwordMessage,
         "debug" => $profileRes
     ]);
     exit;
@@ -4793,6 +4780,22 @@ if ($action === "create_account") {
 
         $isExistingUser = false;
     }
+
+    $customerReady = $isExistingUser || (
+        is_array($insertCustomer)
+        && (($insertCustomer['status'] ?? 0) >= 200)
+        && (($insertCustomer['status'] ?? 0) < 300)
+    );
+    if (!$customerReady) {
+        echo json_encode([
+            "success" => false,
+            "message" => "Account could not be created. Please try again.",
+            "customer_insert" => $insertCustomer
+        ]);
+        exit;
+    }
+
+    ensure_customer_profile_exists($email);
 
     // ==========================
     // INSERT BOT TYPE

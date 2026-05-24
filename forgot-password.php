@@ -110,8 +110,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $_SESSION['must_reset_password'] = false;
                 }
                 clear_remembered_device();
-                $message = 'Password reset successful. Please login with your new password.';
-                $showConfirm = false;
+                unset(
+                    $_SESSION['is_logged_in'],
+                    $_SESSION['auth_email'],
+                    $_SESSION['auth_user_id'],
+                    $_SESSION['auth_provider'],
+                    $_SESSION['must_reset_password'],
+                    $_SESSION['email']
+                );
+                header('Location: login.php?password_reset=success');
+                exit;
             } else {
                 $error = 'Password could not be reset. Please try again.';
                 $showConfirm = true;
@@ -170,12 +178,7 @@ try{const t=localStorage.getItem("vani-index-theme")||"bright";document.body.cla
       <div>
         <a class="brand" href="index.php"><img src="images/logo_img.png" alt="Vani AI"><span>Vani AI</span></a>
         <h1>Securely reset your dashboard password.</h1>
-        <p>We verify your email first, then allow a new password. This keeps temporary-password and forgotten-password flows protected.</p>
-      </div>
-      <div class="trust-list">
-        <span>15-minute verification code</span>
-        <span>Branded Vani AI security email</span>
-        <span>No old password required</span>
+        <p>We verify your email first, then allow a new password. This keeps existing-password and forgotten-password flows protected.</p>
       </div>
     </section>
     <section class="card">

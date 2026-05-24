@@ -1261,6 +1261,10 @@ $profileFirstName = first_value($profile, ['first_name'], '');
 $profileLastName = first_value($profile, ['last_name'], '');
 $displayName = trim($profileFirstName . ' ' . $profileLastName);
 $razorpayCustomerName = $displayName;
+$profileNeedsSetup = trim($profileFirstName) === ''
+    || trim((string)($profile['country_code'] ?? '')) === ''
+    || trim((string)($profile['mobile_number'] ?? '')) === '';
+$profilePromptKey = 'vani_profile_prompt_dismissed_' . substr(hash('sha256', strtolower($email)), 0, 16);
 $profileMobileNumber = preg_replace('/\D+/', '', (string)($profile['mobile_number'] ?? ''));
 $profileCountryCode = preg_replace('/[^\d+]/', '', (string)($profile['country_code'] ?? ''));
 $profileContactValue = '';
@@ -1468,6 +1472,16 @@ body.dark .action-card.danger-zone{background:rgba(127,29,29,.18);border-color:r
 body.dark .profile-photo{background:rgba(15,23,42,.44)}
 .profile-avatar{width:112px;height:112px;border-radius:50%;display:grid;place-items:center;color:#fff;font-size:36px;font-weight:800;background:linear-gradient(135deg,var(--brand),var(--brand-2));overflow:hidden}
 .profile-avatar img{width:100%;height:100%;object-fit:cover}
+.security-note{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px;border:1px solid var(--line);border-radius:14px;background:rgba(99,102,241,.08);color:var(--muted);font-size:13px;line-height:1.5}
+.profile-prompt-backdrop{position:fixed;inset:0;z-index:150;display:none;place-items:center;padding:20px;background:rgba(15,23,42,.5);backdrop-filter:blur(12px)}
+.profile-prompt-backdrop.active{display:grid}
+.profile-prompt{width:min(620px,100%);max-height:92vh;overflow:auto;background:var(--panel-strong);border:1px solid var(--line);border-radius:22px;box-shadow:0 24px 80px rgba(15,23,42,.32);padding:22px;color:var(--ink)}
+.profile-prompt-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:18px}
+.profile-prompt-head h3{font-size:22px;margin:6px 0 6px}
+.profile-prompt-badge{display:inline-flex;width:42px;height:42px;border-radius:14px;align-items:center;justify-content:center;color:#fff;font-weight:900;background:linear-gradient(135deg,var(--brand),var(--brand-2));box-shadow:0 12px 24px rgba(99,102,241,.22)}
+.profile-prompt-close{width:36px;height:36px;border-radius:12px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font-size:20px;line-height:1;cursor:pointer}
+.profile-prompt-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.profile-prompt-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px;flex-wrap:wrap}
 .field{display:grid;gap:8px;min-width:0}
 .field.full{grid-column:1/-1}
 .panel-actions{grid-column:1/-1;display:flex;justify-content:flex-end;gap:10px;min-width:0;padding-top:4px}
@@ -1866,6 +1880,8 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
   .pill-btn,.ghost-btn,.danger-btn{min-height:42px;padding:0 12px;font-size:14px}
   .profile-photo{grid-template-columns:1fr;justify-items:center}
   .profile-avatar{width:96px;height:96px}
+  .profile-prompt-grid{grid-template-columns:1fr}
+  .profile-prompt-actions{display:grid}
   code{font-size:12px;padding:13px}
   table{min-width:560px}
   th{font-size:11px}
@@ -3372,8 +3388,10 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
               <div class="field"><label>Country</label><input id="countryInput" value="<?php echo h($profile['country'] ?? 'India'); ?>" autocomplete="country-name"></div>
               <div class="field"><label>Postal code</label><input id="postalInput" value="<?php echo h($profile['postal_code'] ?? ''); ?>" autocomplete="postal-code"></div>
               <div class="field full"><label>Location notes</label><textarea id="locationInput" placeholder="Office, branch, timezone, preferred contact hours"><?php echo h($profile['location_notes'] ?? ''); ?></textarea></div>
-              <div class="field"><label>New password</label><input id="newPasswordInput" type="password" placeholder="Minimum 8 characters" autocomplete="new-password"></div>
-              <div class="field"><label>Confirm password</label><input id="confirmPasswordInput" type="password" placeholder="Repeat new password" autocomplete="new-password"></div>
+              <div class="security-note">
+                <span>Password changes are handled through secure email verification.</span>
+                <a class="ghost-btn" href="forgot-password.php">Change password</a>
+              </div>
             </div>
             <div class="panel-actions"><button class="pill-btn" type="button" id="saveProfileBtn">Save profile</button></div>
           </div>
@@ -3472,6 +3490,32 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
   </main>
 </div>
 <div class="toast" id="toast">Copied</div>
+<?php if ($profileNeedsSetup): ?>
+<div class="profile-prompt-backdrop" id="profileSetupPrompt" aria-hidden="true">
+  <div class="profile-prompt" role="dialog" aria-modal="true" aria-labelledby="profileSetupTitle">
+    <div class="profile-prompt-head">
+      <div>
+        <span class="profile-prompt-badge">V</span>
+        <h3 id="profileSetupTitle">Complete your profile</h3>
+        <p class="muted">Add the basic details used for wallet recharge, billing, and support contact. You can close this now and finish it later from the Profile tab.</p>
+      </div>
+      <button class="profile-prompt-close" type="button" id="closeProfilePromptBtn" aria-label="Close profile setup">x</button>
+    </div>
+    <div class="profile-prompt-grid">
+      <div class="field"><label>First name</label><input id="promptFirstNameInput" value="<?php echo h($profileFirstName); ?>" autocomplete="given-name"></div>
+      <div class="field"><label>Last name</label><input id="promptLastNameInput" value="<?php echo h($profileLastName); ?>" autocomplete="family-name"></div>
+      <div class="field"><label>Country code</label><input id="promptCountryCodeInput" list="countryCodeList" value="<?php echo h($profile['country_code'] ?? '+91'); ?>" placeholder="+91"></div>
+      <div class="field"><label>Mobile number</label><input id="promptMobileInput" value="<?php echo h($profile['mobile_number'] ?? ''); ?>" placeholder="9876543210" autocomplete="tel"></div>
+      <div class="field"><label>City</label><input id="promptCityInput" value="<?php echo h($profile['city'] ?? ''); ?>" autocomplete="address-level2"></div>
+      <div class="field"><label>Country</label><input id="promptCountryInput" value="<?php echo h($profile['country'] ?? 'India'); ?>" autocomplete="country-name"></div>
+    </div>
+    <div class="profile-prompt-actions">
+      <button class="ghost-btn" type="button" id="profilePromptLaterBtn">Later</button>
+      <button class="pill-btn" type="button" id="saveProfilePromptBtn">Save basic profile</button>
+    </div>
+  </div>
+</div>
+<?php endif; ?>
 <div class="bulk-report-backdrop" id="bulkFaqReportModal" aria-hidden="true">
   <div class="bulk-report-modal" role="dialog" aria-modal="true" aria-labelledby="bulkFaqReportTitle">
     <div class="bulk-report-head">
@@ -3498,6 +3542,8 @@ const accountToggle = document.getElementById("accountToggle");
 const drawerOverlay = document.getElementById("drawerOverlay");
 const accountToggleText = accountToggle?.textContent || "";
 const dashboardLoadingOverlay = document.getElementById("dashboardLoadingOverlay");
+const profileNeedsSetup = <?php echo js_json($profileNeedsSetup); ?>;
+const profilePromptKey = <?php echo js_json($profilePromptKey); ?>;
 let currentFaqCount = <?php echo js_json($faqCount); ?>;
 const freeFaqLimit = <?php echo js_json($freeFaqLimit); ?>;
 const faqLimitIsUnlimited = <?php echo js_json($planFaqLimit === PHP_INT_MAX); ?>;
@@ -6590,14 +6636,15 @@ document.getElementById("generateAvatarBtn")?.addEventListener("click", () => {
 });
 
 document.getElementById("saveProfileBtn")?.addEventListener("click", async () => {
-  const newPassword = document.getElementById("newPasswordInput").value;
-  const confirmPassword = document.getElementById("confirmPasswordInput").value;
-
-  if (newPassword || confirmPassword) {
-    if (newPassword !== confirmPassword) return showToast("Passwords do not match");
-    if (newPassword.length < 8) return showToast("Password needs at least 8 characters");
+  const response = await saveCustomerProfileFromMainForm();
+  if (!response.success) {
+    showToast(response.message || "Profile could not be saved");
+    return;
   }
+  showToast("Profile saved");
+});
 
+async function saveCustomerProfileFromMainForm() {
   const response = await fetch("/api.php?action=save_customer_profile", {
     method: "POST",
     headers: {"Content-Type": "application/json"},
@@ -6614,20 +6661,70 @@ document.getElementById("saveProfileBtn")?.addEventListener("click", async () =>
       state_region: document.getElementById("stateInput").value.trim(),
       country: document.getElementById("countryInput").value.trim(),
       postal_code: document.getElementById("postalInput").value.trim(),
-      location_notes: document.getElementById("locationInput").value.trim(),
-      new_password: newPassword
+      location_notes: document.getElementById("locationInput").value.trim()
     })
   });
 
   const data = await response.json().catch(() => ({}));
-  if (!data.success) {
-    showToast(data.message || "Profile could not be saved");
-    return;
-  }
-  document.getElementById("newPasswordInput").value = "";
-  document.getElementById("confirmPasswordInput").value = "";
-  showToast(data.password ? "Profile and password saved" : "Profile saved");
+  return data;
+}
+
+function setProfilePromptOpen(open) {
+  const prompt = document.getElementById("profileSetupPrompt");
+  if (!prompt) return;
+  prompt.classList.toggle("active", open);
+  prompt.setAttribute("aria-hidden", open ? "false" : "true");
+}
+
+function dismissProfilePrompt() {
+  try { localStorage.setItem(profilePromptKey, "1"); } catch (error) {}
+  setProfilePromptOpen(false);
+  showToast("Please complete your profile from the Profile tab when ready.");
+}
+
+function copyPromptProfileToMainForm() {
+  const pairs = [
+    ["promptFirstNameInput", "firstNameInput"],
+    ["promptLastNameInput", "lastNameInput"],
+    ["promptCountryCodeInput", "countryCodeInput"],
+    ["promptMobileInput", "mobileInput"],
+    ["promptCityInput", "cityInput"],
+    ["promptCountryInput", "countryInput"]
+  ];
+  pairs.forEach(([fromId, toId]) => {
+    const from = document.getElementById(fromId);
+    const to = document.getElementById(toId);
+    if (from && to) to.value = from.value.trim();
+  });
+}
+
+document.getElementById("closeProfilePromptBtn")?.addEventListener("click", dismissProfilePrompt);
+document.getElementById("profilePromptLaterBtn")?.addEventListener("click", dismissProfilePrompt);
+document.getElementById("saveProfilePromptBtn")?.addEventListener("click", async event => {
+  const button = event.currentTarget;
+  const firstName = document.getElementById("promptFirstNameInput")?.value.trim() || "";
+  const mobile = document.getElementById("promptMobileInput")?.value.trim() || "";
+  if (firstName.length < 2) return showToast("Enter your first name");
+  if (!/^\d{7,15}$/.test(mobile.replace(/\D/g, ""))) return showToast("Enter a valid mobile number");
+  copyPromptProfileToMainForm();
+  button.disabled = true;
+  button.textContent = "Saving...";
+  const data = await saveCustomerProfileFromMainForm();
+  button.disabled = false;
+  button.textContent = "Save basic profile";
+  if (!data.success) return showToast(data.message || "Profile could not be saved");
+  try { localStorage.removeItem(profilePromptKey); } catch (error) {}
+  setProfilePromptOpen(false);
+  showToast("Profile saved");
 });
+
+if (profileNeedsSetup) {
+  let dismissed = false;
+  try { dismissed = localStorage.getItem(profilePromptKey) === "1"; } catch (error) {}
+  if (!dismissed) {
+    window.addEventListener("load", () => setTimeout(() => setProfilePromptOpen(true), 450));
+  }
+}
 
 const hash = location.hash.replace("#", "");
 if (hash && !hash.includes("/") && document.getElementById(hash)) openTab(hash);
