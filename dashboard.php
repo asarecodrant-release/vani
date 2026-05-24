@@ -18,7 +18,7 @@ $accountId = authenticated_user_id();
 $selectedBotId = trim($_GET['bot'] ?? '');
 $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
 $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-$widgetUrl = $scheme . '://' . $host . rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? ''), '/\\') . '/widget.js';
+$widgetUrl = $scheme . '://' . $host . rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? ''), '/\\') . '/embed.js';
 $botImages = glob(__DIR__ . '/images/botimg_*') ?: [];
 $botImages = array_values(array_filter($botImages, 'is_file'));
 natcasesort($botImages);
@@ -2870,11 +2870,12 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
           </div>
           <div class="section-body form-grid integration-subpanel active" id="integration-subpanel-install">
             <div class="field full">
-              <label>Install snippet</label>
+              <label>Secure iframe install snippet</label>
               <div class="embed-box"><code id="embedCode"><?php echo h($embedCode ?: 'Create or select a bot to generate the embed script.'); ?></code></div>
               <div class="panel-actions">
-                <button class="pill-btn copy-btn" type="button" data-copy="<?php echo h($embedCode); ?>">Copy JS snippet</button>
+                <button class="pill-btn copy-btn" type="button" data-copy="<?php echo h($embedCode); ?>">Copy secure snippet</button>
               </div>
+              <small class="input-help">This loader creates a sandboxed iframe. The chatbot runs inside Vani AI's isolated frame and the page snippet only mounts and resizes that frame.</small>
             </div>
 
             <div class="field full">

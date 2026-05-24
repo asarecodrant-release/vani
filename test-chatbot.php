@@ -26,8 +26,8 @@ $email = authenticated_email();
 $selectedBotId = trim($_GET['bot'] ?? '');
 $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
 $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-$widgetVersion = is_file(__DIR__ . '/widget.js') ? filemtime(__DIR__ . '/widget.js') : time();
-$widgetUrl = $scheme . '://' . $host . rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? ''), '/\\') . '/widget.js?v=' . $widgetVersion;
+$embedVersion = is_file(__DIR__ . '/embed.js') ? filemtime(__DIR__ . '/embed.js') : time();
+$embedUrl = $scheme . '://' . $host . rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? ''), '/\\') . '/embed.js?v=' . $embedVersion;
 
 $bots = safe_data(supabase(
     "GET",
@@ -103,14 +103,14 @@ p{color:var(--muted);line-height:1.7}
     <section class="panel">
       <span class="eyebrow">Test chatbot</span>
       <h1><?php echo h($botName); ?></h1>
-      <p>This page loads the current chatbot widget with the selected Bot ID. Use the chat bubble on this page to test the customer experience.</p>
-      <code class="snippet">&lt;script src="<?php echo h($widgetUrl); ?>" data-id="<?php echo h($selectedBotId); ?>"&gt;&lt;/script&gt;</code>
+      <p>This page loads the secure iframe chatbot embed with the selected Bot ID. Use the chat bubble on this page to test the customer experience.</p>
+      <code class="snippet">&lt;script src="<?php echo h($embedUrl); ?>" data-id="<?php echo h($selectedBotId); ?>"&gt;&lt;/script&gt;</code>
     </section>
   <?php endif; ?>
 </main>
 
 <?php if ($selectedBotId && !empty($selectedBot)): ?>
-<script src="<?php echo h($widgetUrl); ?>" data-id="<?php echo h($selectedBotId); ?>"></script>
+<script src="<?php echo h($embedUrl); ?>" data-id="<?php echo h($selectedBotId); ?>"></script>
 <?php endif; ?>
 <script>
 const themeToggle = document.getElementById("themeToggle");

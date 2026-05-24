@@ -123,19 +123,19 @@ const cid = localStorage.getItem("cid");
 const cidBox = document.getElementById("cidBox");
 const codeBox = document.getElementById("codeBox");
 
-const widgetUrl = "https://vani.codrant.com/widget.js?v=" + Date.now();
+const embedUrl = "https://vani.codrant.com/embed.js?v=" + Date.now();
 
 if (!cid) {
   cidBox.innerText = "Missing customer_id";
 } else {
   cidBox.innerText = cid;
 
-  const embedCode = `<script src="${widgetUrl}" data-id="${cid}"><\/script>`;
+  const embedCode = `<script src="${embedUrl}" data-id="${cid}"><\/script>`;
   codeBox.innerText = embedCode;
 
-  // OPTIONAL: load widget preview
+  // OPTIONAL: load secure iframe preview
   const script = document.createElement("script");
-  script.src = widgetUrl;
+  script.src = embedUrl;
   script.setAttribute("data-id", cid);
   document.body.appendChild(script);
 }

@@ -1,5 +1,5 @@
 <?php
-$updatedAt = 'May 23, 2026';
+$updatedAt = 'May 25, 2026';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -58,6 +58,15 @@ body:not(.dark) h2{color:#111827}
 p,li{color:#cbd5e1;line-height:1.78;font-size:15px}
 body:not(.dark) p,body:not(.dark) li{color:#475569}
 ul{padding-left:20px;display:grid;gap:8px}
+.trust-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:16px}
+.trust-card{padding:16px;border-radius:16px;background:rgba(15,23,42,.58);border:1px solid rgba(129,140,248,.22)}
+body:not(.dark) .trust-card{background:#f8fafc;border-color:#e0e7ff}
+.trust-card strong{display:block;color:#f8fafc;margin-bottom:8px;font-size:15px}
+body:not(.dark) .trust-card strong{color:#111827}
+.code-block{margin-top:14px;padding:16px;border-radius:14px;background:#020617;border:1px solid rgba(129,140,248,.24);color:#e5e7eb;font-size:13px;line-height:1.7;white-space:pre-wrap;word-break:break-word}
+body:not(.dark) .code-block{background:#111827;color:#e5e7eb}
+.assurance{margin-top:16px;padding:18px;border-radius:18px;background:linear-gradient(135deg,rgba(99,102,241,.2),rgba(236,72,153,.14));border:1px solid rgba(129,140,248,.28)}
+body:not(.dark) .assurance{background:linear-gradient(135deg,#eef2ff,#fdf2f8);border-color:#c7d2fe}
 .note{margin-top:28px;padding:16px;border-radius:14px;background:rgba(99,102,241,.12);border:1px solid rgba(129,140,248,.24);color:#ddd6fe}
 body:not(.dark) .note{color:#4338ca;background:#eef2ff;border-color:#c7d2fe}
 a{color:#c4b5fd}
@@ -69,6 +78,7 @@ footer{padding:24px 0 40px;color:#94a3b8;text-align:center;font-size:14px}
   .content-card{padding:24px}
   .brand{font-size:20px}
   .brand img{width:46px;height:46px}
+  .trust-grid{grid-template-columns:1fr}
 }
 </style>
 </head>
@@ -100,6 +110,8 @@ footer{padding:24px 0 40px;color:#94a3b8;text-align:center;font-size:14px}
       <a href="#leads">Leads & Conversations</a>
       <a href="#sharing">Sharing</a>
       <a href="#security">Security</a>
+      <a href="#secure-embed">Secure Chatbot Embed</a>
+      <a href="#customer-controls">Customer Controls</a>
       <a href="#retention">Retention</a>
       <a href="#rights">Your Rights</a>
       <a href="#contact">Contact</a>
@@ -155,28 +167,69 @@ footer{padding:24px 0 40px;color:#94a3b8;text-align:center;font-size:14px}
         <p>We use reasonable technical and organisational safeguards to protect data, including access controls, API key hashing, session controls, database permissions, and service monitoring. No internet service can be guaranteed completely secure, so customers should protect their credentials, API keys, webhook secrets, and website integrations.</p>
       </section>
 
+      <section id="secure-embed">
+        <h2>8. Secure Chatbot Embed</h2>
+        <p>Vani AI is designed to be installed as a secure iframe-based chatbot embed. The customer website loads a small Vani AI script that creates and resizes an isolated iframe. The chatbot experience, conversations, lead forms, OTP flows, and widget UI run inside Vani AI's iframe instead of directly inside the customer's website page.</p>
+        <div class="assurance">
+          <p><strong>Customer assurance:</strong> the Vani AI embed is intended only to display and operate the chatbot service selected by the customer. It is not designed to read passwords, payment card fields, private form values, admin panels, shopping cart contents, authentication cookies, or confidential website operations.</p>
+        </div>
+        <div class="trust-grid">
+          <div class="trust-card">
+            <strong>What the page snippet does</strong>
+            <p>It loads Vani AI's secure iframe, passes the chatbot ID and current page URL for domain checks and analytics, positions the chat bubble, and resizes the iframe when the visitor opens or closes chat.</p>
+          </div>
+          <div class="trust-card">
+            <strong>What the chatbot iframe does</strong>
+            <p>It displays the chatbot, sends visitor questions to Vani AI, receives answers, captures lead details only when enabled, runs OTP verification when configured, and records allowed analytics.</p>
+          </div>
+          <div class="trust-card">
+            <strong>What we do not collect by default</strong>
+            <p>We do not collect website passwords, payment card numbers, CVV, customer website session cookies, hidden admin data, or unrelated form fields from the customer's website.</p>
+          </div>
+          <div class="trust-card">
+            <strong>Visitor-facing actions</strong>
+            <p>Actions such as WhatsApp redirect, phone call links, email links, lead capture, webhooks, API integrations, and live actions work only when the customer enables and configures those features.</p>
+          </div>
+        </div>
+        <p>Customers with a strict Content Security Policy may need to allow Vani AI as a script, frame, and API connection source. A typical policy addition is:</p>
+        <div class="code-block">script-src https://vani.codrant.com;
+frame-src https://vani.codrant.com;
+connect-src https://vani.codrant.com;</div>
+      </section>
+
+      <section id="customer-controls">
+        <h2>9. Customer Controls and Integration Safety</h2>
+        <ul>
+          <li><strong>Domain controls:</strong> customers can enable allowed domains so a chatbot runs only on approved websites.</li>
+          <li><strong>Feature controls:</strong> lead capture, WhatsApp redirect, FAQ actions, live actions, webhook delivery, API integrations, and analytics features are controlled from the customer dashboard.</li>
+          <li><strong>API and webhook responsibility:</strong> customers should use secure endpoints, keep API keys and webhook URLs private, rotate credentials when needed, and avoid sending unnecessary sensitive data.</li>
+          <li><strong>Website notices:</strong> customers should update their own website privacy notices to explain chatbot use, lead capture, OTP verification, analytics, and any integrations they enable.</li>
+          <li><strong>Old snippets:</strong> customers should use the latest Vani AI secure iframe embed snippet from the Integration tab and replace older direct widget snippets where applicable.</li>
+        </ul>
+      </section>
+
       <section id="retention">
-        <h2>8. Data Retention</h2>
+        <h2>10. Data Retention</h2>
         <p>We keep data for as long as needed to provide the service, comply with legal and tax requirements, resolve disputes, prevent abuse, and maintain records. Customers may request deletion or export of applicable chatbot data, subject to legal, billing, security, and backup retention requirements.</p>
       </section>
 
       <section id="rights">
-        <h2>9. Your Choices and Rights</h2>
+        <h2>11. Your Choices and Rights</h2>
         <p>Depending on applicable law, you may request access, correction, deletion, export, restriction, or withdrawal of consent for personal data. We may need to verify your identity and account ownership before acting on a request.</p>
       </section>
 
       <section id="children">
-        <h2>10. Children</h2>
+        <h2>12. Children</h2>
         <p>Vani AI is intended for business use and is not directed to children. Customers should not knowingly use the chatbot to collect personal information from children without proper legal authority and consent.</p>
       </section>
 
       <section id="changes">
-        <h2>11. Changes to This Policy</h2>
+        <h2>13. Changes to This Policy</h2>
         <p>We may update this Privacy Policy when our services, legal requirements, or business practices change. The updated date at the top of this page will reflect the latest version.</p>
       </section>
 
       <section id="contact">
-        <h2>12. Contact</h2>
+        <h2>14. Contact</h2>
         <p>For privacy questions or requests, contact Codrant at <a href="mailto:info@codrant.com">info@codrant.com</a>.</p>
         <p class="note">Last updated: <?php echo htmlspecialchars($updatedAt); ?>. Please have qualified legal counsel review this policy before public launch.</p>
       </section>

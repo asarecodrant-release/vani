@@ -3,6 +3,11 @@
   const customerId = script?.getAttribute("data-id") ||
     script?.getAttribute("data-key") ||
     script?.getAttribute("data-customer-id");
+  const sourceUrl = script?.getAttribute("data-source-url") || window.location.href;
+  let sourcePath = window.location.pathname || window.location.href;
+  try {
+    sourcePath = new URL(sourceUrl).pathname || sourceUrl;
+  } catch (error) {}
 
   if (!customerId) {
     console.error("Vani widget: missing data-id");
@@ -42,6 +47,16 @@
   let msg91OtpScriptPromise = null;
   let activeFaqActions = [];
   let activeFaqActionContext = {};
+
+  function notifyFrameState(open = false) {
+    if (window.parent === window) return;
+    window.parent.postMessage({
+      type: "vani:frame-state",
+      customer_id: customerId,
+      open,
+      position: config.position === "left" ? "left" : "right"
+    }, "*");
+  }
 
   let userId = localStorage.getItem("vani_widget_user_id");
   if (!userId) {
@@ -149,7 +164,7 @@
       customer_id: customerId,
       user_id: userId,
       session_id: sessionId,
-      source_url: window.location.href,
+      source_url: sourceUrl,
       timestamp: new Date().toISOString(),
       ...detail
     };
@@ -268,8 +283,8 @@
     const region = localeRegion();
     return {
       session_id: sessionId,
-      source_url: window.location.href,
-      current_page: window.location.pathname || window.location.href,
+      source_url: sourceUrl,
+      current_page: sourcePath,
       referrer_url: document.referrer || "",
       device_type: deviceType(),
       browser_name: browser.name,
@@ -295,7 +310,7 @@
       customer_id: customerId,
       user_id: userId,
       session_id: sessionId,
-      source_url: window.location.href,
+      source_url: sourceUrl,
       duration_seconds: sessionDurationSeconds(),
       message_count: sessionMessageCount,
       analytics: analyticsPayload(),
@@ -842,7 +857,7 @@
         email: emailInput.value.trim(),
         phone: phoneInput.value.trim(),
         message,
-        source_url: window.location.href
+        source_url: sourceUrl
       });
       if (response.success) {
         setStatus("Request sent. The business team can follow up from their dashboard.", true);
@@ -903,11 +918,11 @@
     }
     if (actionType === "call") {
       const phone = cleanPhone(value);
-      if (/^[1-9][0-9]{7,14}$/.test(phone)) window.location.href = `tel:+${phone}`;
+      if (/^[1-9][0-9]{7,14}$/.test(phone)) window.open(`tel:+${phone}`, "_blank");
       return;
     }
     if (actionType === "email") {
-      if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) window.location.href = `mailto:${value}`;
+      if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) window.open(`mailto:${value}`, "_blank");
       return;
     }
     if (actionType === "coupon") {
@@ -936,7 +951,7 @@
           customer_id: customerId,
           user_id: userId,
           session_id: sessionId,
-          source_url: window.location.href,
+          source_url: sourceUrl,
           action,
           context
         }
@@ -961,7 +976,7 @@
       "get_widget_config",
       "GET",
       null,
-      `&customer_id=${encodeURIComponent(customerId)}&current_url=${encodeURIComponent(window.location.href)}`
+      `&customer_id=${encodeURIComponent(customerId)}&current_url=${encodeURIComponent(sourceUrl)}`
     );
     config = cfg || {};
 
@@ -975,6 +990,7 @@
     const greetingSideStyles = position === "left" ? {left: "90px"} : {right: "90px"};
     const avatarUrl = resolveAssetUrl(config.avatar_url);
     const greetingText = (config.welcome_message || defaultGreeting).trim() || defaultGreeting;
+    notifyFrameState(false);
     trackWidgetSessionSoon();
 
     // Add breathing animation
@@ -1391,7 +1407,7 @@
         const leadRes = await api("create_lead", "POST", {
           customer_id: customerId,
           user_id: userId,
-          source_url: window.location.href,
+          source_url: sourceUrl,
           whatsapp_redirected: true
         });
         emitLiveAction("whatsappClicked", {
@@ -1400,7 +1416,7 @@
         });
 
         if (isMobileDevice()) {
-          window.location.href = `https://wa.me/${phone}`;
+          window.open(`https://wa.me/${phone}`, "_blank", "noopener,noreferrer");
           return;
         }
 
@@ -1836,7 +1852,7 @@
             customer_id: customerId,
             user_id: userId,
             email,
-            source_url: window.location.href,
+            source_url: sourceUrl,
             suppress_notification: true
           });
           if (!emailRes.success || !emailRes.lead) {
@@ -1906,7 +1922,7 @@
                 user_id: userId,
                 phone_number: activePhone,
                 msg91_access_token: accessToken,
-                source_url: window.location.href,
+                source_url: sourceUrl,
                 msg91_response: data || null,
                 suppress_notification: true
               });
@@ -2016,7 +2032,7 @@
             location_text: locText,
             latitude: lat,
             longitude: lon,
-            source_url: window.location.href,
+            source_url: sourceUrl,
             verification_quality: verifyEmailOtp || verifyMobileOtp ? 'poor' : 'poor'
           });
           if (saveRes && saveRes.success) {
@@ -2106,8 +2122,8 @@
           if (!validEmail(email)) return addMessage(messages, "Enter a valid email address.", "bot");
           sendBtn.disabled = true;
           const res = verifyEmailOtp
-            ? await api("create_lead_send_email_otp", "POST", { customer_id: customerId, user_id: userId, email, source_url: window.location.href })
-            : await api("create_lead", "POST", { customer_id: customerId, user_id: userId, email, source_url: window.location.href, verification_quality: "poor" });
+            ? await api("create_lead_send_email_otp", "POST", { customer_id: customerId, user_id: userId, email, source_url: sourceUrl })
+            : await api("create_lead", "POST", { customer_id: customerId, user_id: userId, email, source_url: sourceUrl, verification_quality: "poor" });
           sendBtn.disabled = false;
           if (res.success && res.lead) {
             leadState.leadId = res.lead.id || leadState.leadId;
@@ -2144,7 +2160,7 @@
                 user_id: userId,
                 phone_number: verified.phone || "",
                 msg91_access_token: verified.msg91_access_token || "",
-                source_url: window.location.href,
+                source_url: sourceUrl,
                 msg91_response: verified.msg91_response || null
               });
               if (res.success && res.lead) {
@@ -2181,7 +2197,7 @@
             customer_id: customerId,
             user_id: userId,
             phone_number: phone,
-            source_url: window.location.href,
+            source_url: sourceUrl,
             mobile_otp_verified: false,
             verification_quality: "poor"
           });
@@ -2247,7 +2263,7 @@
         faq_id: selectedFaqId,
         user_id: userId,
         session_id: sessionId,
-        source_url: window.location.href,
+        source_url: sourceUrl,
         started_at: sessionChatStartedAt,
         duration_seconds: sessionDurationSeconds(),
         message_count: sessionMessageCount,
@@ -2280,6 +2296,7 @@
       box.style.display = "flex";
       greeting.style.display = "none";
       icon.setAttribute("aria-label", "Close chat");
+      notifyFrameState(true);
       sessionOpenedAt = sessionOpenedAt || new Date().toISOString();
       emitLiveAction("chatOpened", {opened_at: sessionOpenedAt});
       trackWidgetSessionSoon({opened_at: sessionOpenedAt});
@@ -2293,6 +2310,7 @@
       box.style.display = "none";
       greeting.style.display = "block";
       icon.setAttribute("aria-label", "Open chat");
+      notifyFrameState(false);
       trackWidgetSessionSoon();
     }
 
