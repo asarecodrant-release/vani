@@ -672,6 +672,8 @@ $deviceCounts = [];
 $browserCounts = [];
 $countryCounts = [];
 $cityCounts = [];
+$locationPointRows = [];
+$cityClusterRows = [];
 $responseTimes = [];
 $sessionDurations = [];
 $sessionMessageTotal = 0;
@@ -815,6 +817,40 @@ foreach ($leadRows as $lead) {
         ];
     }
     $sourcePageStats[$sourceLabel]['leads']++;
+
+    $latitude = $lead['latitude'] ?? null;
+    $longitude = $lead['longitude'] ?? null;
+    if (is_numeric($latitude) && is_numeric($longitude)) {
+        $lat = (float)$latitude;
+        $lon = (float)$longitude;
+        if ($lat >= -90 && $lat <= 90 && $lon >= -180 && $lon <= 180) {
+            $leadCountry = first_value($lead, ['country_name', 'country_code'], '');
+            $leadCity = first_value($lead, ['city', 'location_text'], '');
+            $locationLabel = $leadCity !== '' ? $leadCity : ($leadCountry !== '' ? $leadCountry : 'Saved location');
+            $locationPointRows[] = [
+                'name' => $locationLabel,
+                'city' => $leadCity,
+                'country' => $leadCountry,
+                'lat' => $lat,
+                'lon' => $lon,
+                'source_page' => $sourceLabel,
+                'date' => substr($leadCreated, 0, 10)
+            ];
+
+            $clusterKey = strtolower(trim(($leadCountry ?: 'unknown') . '|' . ($leadCity ?: round($lat, 2) . ',' . round($lon, 2))));
+            if (!isset($cityClusterRows[$clusterKey])) {
+                $cityClusterRows[$clusterKey] = [
+                    'name' => $locationLabel,
+                    'city' => $leadCity,
+                    'country' => $leadCountry,
+                    'lat' => $lat,
+                    'lon' => $lon,
+                    'count' => 0
+                ];
+            }
+            $cityClusterRows[$clusterKey]['count']++;
+        }
+    }
 }
 
 foreach ($sessionRows as $session) {
@@ -887,6 +923,7 @@ arsort($deviceCounts);
 arsort($browserCounts);
 arsort($countryCounts);
 arsort($cityCounts);
+uasort($cityClusterRows, fn($a, $b) => ($b['count'] ?? 0) <=> ($a['count'] ?? 0));
 $dailyChartCounts = $dailyCounts;
 ksort($dailyChartCounts);
 $dailyAnsweredChartCounts = $dailyAnsweredCounts;
@@ -1402,6 +1439,18 @@ body.dark .critical-save-note{background:rgba(127,29,29,.22);border-color:rgba(2
 .world-map-fallback{display:grid;gap:10px;margin-top:12px}
 .world-map-fallback.compact{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
 .world-map-fallback .bar-row{grid-template-columns:minmax(90px,.45fr) minmax(0,1fr) 44px}
+.map-controls{display:flex;gap:12px;align-items:end;justify-content:space-between;flex-wrap:wrap;margin-top:14px}
+.map-controls .field{min-width:220px;margin:0}
+.map-note{font-size:12px;color:var(--muted);line-height:1.5;max-width:520px}
+.analytics-head{align-items:center}
+.analytics-title-block{display:grid;gap:10px;min-width:0}
+.analytics-period-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.analytics-period-card{display:grid;gap:3px;padding:10px 12px;border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.44);min-width:210px}
+body.dark .analytics-period-card{background:rgba(15,23,42,.38)}
+.analytics-period-card span{font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:900;letter-spacing:.05em}
+.analytics-period-card strong{font-size:13px;color:var(--ink);line-height:1.35}
+.analytics-head-actions{display:grid;gap:12px;justify-items:end;align-self:center;min-width:260px}
+.analytics-head-actions .analytics-pdf-report-btn{min-height:44px;white-space:nowrap}
 .filter-bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
 .filter-chip{border:1px solid var(--line);background:var(--panel-strong);color:var(--ink);border-radius:999px;padding:8px 12px;font-size:13px;font-weight:700;text-decoration:none}
 .filter-chip.active{background:linear-gradient(135deg,var(--brand),var(--brand-2));border-color:transparent;color:#fff}
@@ -2247,20 +2296,24 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
 
       <section class="tab-panel" id="analytics">
         <div class="panel section-body">
-          <div class="section-head" style="padding:0">
-            <div>
+          <div class="section-head analytics-head" style="padding:0">
+            <div class="analytics-title-block">
               <span class="eyebrow">Analytics</span>
               <h3 style="margin-top:8px">Performance Dashboard</h3>
-              <p class="muted" style="margin-top:6px">Showing <?php echo h($analyticsRangeLabel); ?>: <?php echo h($analyticsFrom); ?> to <?php echo h($analyticsTo); ?></p>
-              <p class="muted" style="margin-top:4px;font-size:12px">Compared with previous period: <?php echo h($previousAnalyticsFrom); ?> to <?php echo h($previousAnalyticsTo); ?></p>
+              <div class="analytics-period-row">
+                <div class="analytics-period-card"><span>Current analysis</span><strong><?php echo h($analyticsRangeLabel); ?> · <?php echo h($analyticsFrom); ?> to <?php echo h($analyticsTo); ?></strong></div>
+                <div class="analytics-period-card"><span>Previous comparison</span><strong><?php echo h($previousAnalyticsFrom); ?> to <?php echo h($previousAnalyticsTo); ?></strong></div>
+              </div>
             </div>
-            <div class="filter-bar">
-              <a class="filter-chip <?php echo $analyticsRange === 'today' ? 'active' : ''; ?>" href="<?php echo h(analytics_url('today', $selectedBotId)); ?>">Today: <?php echo h($todayAllQueries); ?></a>
-              <a class="filter-chip <?php echo $analyticsRange === 'yesterday' ? 'active' : ''; ?>" href="<?php echo h(analytics_url('yesterday', $selectedBotId)); ?>">Yesterday: <?php echo h($yesterdayAllQueries); ?></a>
-              <a class="filter-chip <?php echo $analyticsRange === '7_days' ? 'active' : ''; ?>" href="<?php echo h(analytics_url('7_days', $selectedBotId)); ?>">7 days: <?php echo h($last7AllQueries); ?></a>
-              <a class="filter-chip <?php echo $analyticsRange === '30_days' ? 'active' : ''; ?>" href="<?php echo h(analytics_url('30_days', $selectedBotId)); ?>">30 days: <?php echo h($last30AllQueries); ?></a>
-              <a class="filter-chip <?php echo $analyticsRange === 'custom' ? 'active' : ''; ?>" href="<?php echo h(analytics_url('custom', $selectedBotId, $analyticsFrom, $analyticsTo)); ?>">Custom range</a>
-              <button class="pill-btn analytics-pdf-report-btn" type="button" <?php echo $canExportReports ? '' : 'data-premium-lock="Business subscription required"'; ?>>Download PDF Report</button>
+            <div class="analytics-head-actions">
+              <button class="pill-btn analytics-pdf-report-btn" type="button" <?php echo $canExportReports ? '' : 'data-premium-lock="Business subscription required"'; ?>>Export Current Analysis in PDF</button>
+              <div class="filter-bar">
+                <a class="filter-chip <?php echo $analyticsRange === 'today' ? 'active' : ''; ?>" href="<?php echo h(analytics_url('today', $selectedBotId)); ?>">Today: <?php echo h($todayAllQueries); ?></a>
+                <a class="filter-chip <?php echo $analyticsRange === 'yesterday' ? 'active' : ''; ?>" href="<?php echo h(analytics_url('yesterday', $selectedBotId)); ?>">Yesterday: <?php echo h($yesterdayAllQueries); ?></a>
+                <a class="filter-chip <?php echo $analyticsRange === '7_days' ? 'active' : ''; ?>" href="<?php echo h(analytics_url('7_days', $selectedBotId)); ?>">7 days: <?php echo h($last7AllQueries); ?></a>
+                <a class="filter-chip <?php echo $analyticsRange === '30_days' ? 'active' : ''; ?>" href="<?php echo h(analytics_url('30_days', $selectedBotId)); ?>">30 days: <?php echo h($last30AllQueries); ?></a>
+                <a class="filter-chip <?php echo $analyticsRange === 'custom' ? 'active' : ''; ?>" href="<?php echo h(analytics_url('custom', $selectedBotId, $analyticsFrom, $analyticsTo)); ?>">Custom range</a>
+              </div>
             </div>
           </div>
           <form class="analytics-filter-form" method="get" action="dashboard.php">
@@ -2413,14 +2466,29 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
           <div class="panel section-body analytics-map-panel">
             <h3>Country World Map</h3>
             <p class="muted" style="margin:10px 0 0">Country-level distribution for tracked widget sessions in the selected range.</p>
+            <div class="map-controls">
+              <div class="field">
+                <label>Focus country</label>
+                <select id="analyticsCountryFocus">
+                  <option value="">All countries</option>
+                  <?php foreach (array_keys($countryCounts) as $country): ?>
+                    <option value="<?php echo h($country); ?>"><?php echo h($country); ?></option>
+                  <?php endforeach; ?>
+                </select>
+              </div>
+              <div class="map-note">Red dots show saved user locations from latitude/longitude lead data. Larger dots mean more users clustered around the same city/location.</div>
+            </div>
             <div class="world-map-chart" id="analyticsWorldMap" aria-label="World map of country counts"></div>
             <div class="world-map-fallback compact" id="analyticsWorldMapFallback">
-              <?php if (empty($countryCounts) && empty($cityCounts)): ?><p class="empty">No location data yet. Country is estimated from browser locale; city needs geolocation or IP lookup later.</p><?php endif; ?>
+              <?php if (empty($countryCounts) && empty($cityCounts) && empty($cityClusterRows)): ?><p class="empty">No location data yet. Country is estimated from browser locale; red dots need users to share location.</p><?php endif; ?>
               <?php foreach (array_slice($countryCounts, 0, 8, true) as $country => $count): ?>
                 <div class="bar-row"><span><?php echo h($country); ?></span><div class="bar-track"><div class="bar-fill" style="width:<?php echo h(round(($count / max(1, max($countryCounts))) * 100)); ?>%"></div></div><strong><?php echo h($count); ?></strong></div>
               <?php endforeach; ?>
               <?php foreach (array_slice($cityCounts, 0, 4, true) as $city => $count): ?>
                 <div class="bar-row"><span><?php echo h($city); ?></span><div class="bar-track"><div class="bar-fill" style="width:<?php echo h(round(($count / max(1, max($cityCounts))) * 100)); ?>%"></div></div><strong><?php echo h($count); ?></strong></div>
+              <?php endforeach; ?>
+              <?php foreach (array_slice($cityClusterRows, 0, 6, true) as $cluster): ?>
+                <div class="bar-row"><span><?php echo h($cluster['name']); ?></span><div class="bar-track"><div class="bar-fill" style="width:<?php echo h(round(((int)($cluster['count'] ?? 0) / max(1, max(array_column($cityClusterRows, 'count') ?: [1]))) * 100)); ?>%"></div></div><strong><?php echo h($cluster['count'] ?? 0); ?></strong></div>
               <?php endforeach; ?>
             </div>
           </div>
@@ -3227,6 +3295,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
 <script defer src="https://checkout.razorpay.com/v1/checkout.js"></script>
 <script defer src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
 <script>
 const tabs = document.querySelectorAll(".tab-btn");
 const panels = document.querySelectorAll(".tab-panel");
@@ -3307,6 +3376,8 @@ const analyticsReport = <?php echo js_json([
   "browsers" => $browserCounts,
   "countries" => $countryCounts,
   "cities" => $cityCounts,
+  "location_points" => array_values($locationPointRows),
+  "city_clusters" => array_values($cityClusterRows),
   "funnel" => [
     ["label" => "Visitors", "value" => $uniqueVisitorCount],
     ["label" => "Chat Opened", "value" => $chatOpenedCount],
@@ -3684,6 +3755,22 @@ function rowsToCsv(rows) {
   return rows.map(row => row.map(csvValue).join(",")).join("\n");
 }
 
+function currentAnalyticsFilterState() {
+  const activeSection = document.querySelector(".analytics-tab-btn.active")?.textContent?.trim() || "Overview";
+  const countryFocus = selectedAnalyticsCountry();
+  return {
+    bot: analyticsReport.bot_name || "Selected chatbot",
+    range: analyticsReport.range_label || "",
+    range_key: analyticsReport.range_key || "",
+    date_from: analyticsReport.date_from || "",
+    date_to: analyticsReport.date_to || "",
+    previous_date_from: analyticsReport.previous_date_from || "",
+    previous_date_to: analyticsReport.previous_date_to || "",
+    country_focus: countryFocus || "All countries",
+    exported_section: activeSection
+  };
+}
+
 const analyticsCharts = new Map();
 
 function analyticsThemeColors() {
@@ -3944,40 +4031,68 @@ function worldMapCountryName(name) {
 }
 
 let analyticsWorldMapChart = null;
+let analyticsWorldMapJson = null;
+let analyticsWorldMapResizeBound = false;
+
+function selectedAnalyticsCountry() {
+  return document.getElementById("analyticsCountryFocus")?.value || "";
+}
+
+function sameWorldMapCountry(a, b) {
+  return worldMapCountryName(a).toLowerCase() === worldMapCountryName(b).toLowerCase();
+}
 
 async function renderAnalyticsWorldMap() {
   const mapEl = document.getElementById("analyticsWorldMap");
   const fallback = document.getElementById("analyticsWorldMapFallback");
   if (!mapEl) return;
   if (!mapEl.offsetWidth) return;
-  if (analyticsWorldMapChart) {
-    analyticsWorldMapChart.resize();
-    return;
-  }
+  const focusedCountry = selectedAnalyticsCountry();
   const countryEntries = Object.entries(analyticsReport.countries || {})
     .filter(([, count]) => Number(count) > 0)
+    .filter(([country]) => !focusedCountry || sameWorldMapCountry(country, focusedCountry))
     .sort((a, b) => Number(b[1]) - Number(a[1]));
+  const cityClusters = (analyticsReport.city_clusters || [])
+    .filter(item => !focusedCountry || (item.country && sameWorldMapCountry(item.country, focusedCountry)))
+    .filter(item => Number.isFinite(Number(item.lat)) && Number.isFinite(Number(item.lon)))
+    .map(item => ({
+      name: item.name || item.city || item.country || "Saved location",
+      value: [Number(item.lon), Number(item.lat), Number(item.count) || 1],
+      country: item.country || "",
+      city: item.city || "",
+      count: Number(item.count) || 1
+    }));
   if (!countryEntries.length) {
-    mapEl.style.display = "none";
-    return;
+    mapEl.style.display = cityClusters.length ? "" : "none";
+    if (!cityClusters.length) return;
+  } else {
+    mapEl.style.display = "";
   }
   if (!window.echarts) {
     mapEl.innerHTML = '<div class="empty">World map library could not be loaded. Showing country list below.</div>';
     return;
   }
   try {
-    const response = await fetch("https://cdn.jsdelivr.net/npm/echarts@4.9.0/map/json/world.json", {cache: "force-cache"});
-    if (!response.ok) throw new Error("World GeoJSON could not be loaded");
-    const worldJson = await response.json();
-    echarts.registerMap("world", worldJson);
-    const chart = echarts.init(mapEl);
+    if (!analyticsWorldMapJson) {
+      const response = await fetch("https://cdn.jsdelivr.net/npm/echarts@4.9.0/map/json/world.json", {cache: "force-cache"});
+      if (!response.ok) throw new Error("World GeoJSON could not be loaded");
+      analyticsWorldMapJson = await response.json();
+      echarts.registerMap("world", analyticsWorldMapJson);
+    }
+    const chart = analyticsWorldMapChart || echarts.init(mapEl);
     analyticsWorldMapChart = chart;
     const maxValue = Math.max(1, ...countryEntries.map(([, count]) => Number(count) || 0));
+    const maxCluster = Math.max(1, ...cityClusters.map(item => item.count));
     chart.setOption({
       backgroundColor: "transparent",
       tooltip: {
         trigger: "item",
-        formatter: params => `${htmlEscape(params.name || "Unknown")}: ${htmlEscape(params.value || 0)}`
+        formatter: params => {
+          if (params.seriesType === "scatter") {
+            return `${htmlEscape(params.name || "Saved location")}: ${htmlEscape(params.data?.count || params.value?.[2] || 1)} users`;
+          }
+          return `${htmlEscape(params.name || "Unknown")}: ${htmlEscape(params.value || 0)}`;
+        }
       },
       visualMap: {
         min: 0,
@@ -3989,11 +4104,23 @@ async function renderAnalyticsWorldMap() {
         inRange: {color: ["#dbeafe", "#93c5fd", "#6366f1", "#ec4899"]},
         textStyle: {color: getComputedStyle(document.body).getPropertyValue("--muted").trim() || "#64748b"}
       },
+      geo: {
+        map: "world",
+        roam: true,
+        zoom: focusedCountry ? 1.45 : 1,
+        label: {show: false},
+        itemStyle: {
+          areaColor: "rgba(99,102,241,.08)",
+          borderColor: "rgba(99,102,241,.25)"
+        },
+        emphasis: {itemStyle: {areaColor: "#f59e0b"}}
+      },
       series: [{
         name: "Country sessions",
         type: "map",
         map: "world",
-        roam: true,
+        geoIndex: 0,
+        roam: false,
         selectedMode: false,
         label: {
           show: true,
@@ -4015,10 +4142,35 @@ async function renderAnalyticsWorldMap() {
           value: Number(count) || 0,
           originalName: country
         }))
+      }, {
+        name: "Saved user locations",
+        type: "scatter",
+        coordinateSystem: "geo",
+        symbol: "circle",
+        symbolSize: value => Math.max(9, Math.min(34, 8 + (Number(value?.[2] || 1) / maxCluster) * 24)),
+        itemStyle: {
+          color: "#ef4444",
+          borderColor: "#ffffff",
+          borderWidth: 2,
+          shadowBlur: 10,
+          shadowColor: "rgba(239,68,68,.45)"
+        },
+        label: {
+          show: true,
+          formatter: params => Number(params.data?.count || 0) > 1 ? String(params.data.count) : "",
+          color: "#991b1b",
+          fontSize: 11,
+          fontWeight: 900,
+          position: "right"
+        },
+        data: cityClusters
       }]
-    });
+    }, true);
     if (fallback) fallback.classList.remove("compact");
-    window.addEventListener("resize", () => analyticsWorldMapChart?.resize());
+    if (!analyticsWorldMapResizeBound) {
+      analyticsWorldMapResizeBound = true;
+      window.addEventListener("resize", () => analyticsWorldMapChart?.resize());
+    }
   } catch (error) {
     console.error("World map render failed", error);
     mapEl.innerHTML = '<div class="empty">World map could not be loaded. Showing country list below.</div>';
@@ -4030,6 +4182,10 @@ if (document.readyState === "loading") {
 } else {
   setTimeout(renderAnalyticsVisuals, 0);
 }
+
+document.getElementById("analyticsCountryFocus")?.addEventListener("change", () => {
+  renderAnalyticsWorldMap();
+});
 
 function analyticsCsv() {
   const rows = [
@@ -4051,6 +4207,9 @@ function analyticsCsv() {
     ["Countries", "Country", "Count"],
     ...Object.entries(analyticsReport.countries || {}).map(([country, count]) => ["Countries", country, count]),
     [],
+    ["City Location Clusters", "Location", "Country", "Latitude", "Longitude", "Users"],
+    ...(analyticsReport.city_clusters || []).map(item => ["City Location Clusters", item.name, item.country, item.lat, item.lon, item.count]),
+    [],
     ["Top Questions", "Question", "Count", "Success Rate"],
     ...(analyticsReport.top_questions || []).map(item => ["Top Questions", item.question, item.count, `${item.success_rate}%`]),
     [],
@@ -4069,12 +4228,14 @@ function analyticsCsv() {
   return rowsToCsv(rows);
 }
 
-function analyticsReportHtml() {
+function analyticsReportHtml(options = {}) {
   const esc = value => String(value ?? "").replace(/[&<>"']/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[char]));
   const label = value => String(value || "").replace(/_/g, " ").replace(/\b\w/g, char => char.toUpperCase());
   const number = value => Number(value || 0).toLocaleString("en-IN");
   const percent = value => `${number(value)}%`;
   const summary = analyticsReport.summary || {};
+  const chartImages = options.chartImages || {};
+  const filters = options.filters || currentAnalyticsFilterState();
   const comparison = analyticsReport.comparison || {};
   const current = comparison.current || {};
   const previous = comparison.previous || {};
@@ -4092,6 +4253,13 @@ function analyticsReportHtml() {
   const logo = vaniBrandLogo ? `<img src="${vaniBrandLogo}" alt="Vani AI">` : `<strong>Vani AI</strong>`;
   const card = (title, value, note = "") => `<div class="kpi"><span>${esc(title)}</span><strong>${esc(value)}</strong><small>${esc(note)}</small></div>`;
   const alertCard = (title, value, note, status = "") => `<div class="alert ${status}"><strong>${esc(title)}</strong><b>${esc(value)}</b><span>${esc(note)}</span></div>`;
+  const executiveNotes = [
+    `${number(summary.total_conversations)} conversations were tracked for the selected ${analyticsReport.range_label} filter.`,
+    `${number(summary.answered_queries_percent)}% answer rate and ${number(summary.unanswered_queries_percent)}% unanswered rate show current FAQ coverage.`,
+    `${number(summary.leads_collected)} raw leads were captured, with ${number(summary.real_unique_leads)} real verified leads.`,
+    `Current period is compared against ${filters.previous_date_from} to ${filters.previous_date_to}.`,
+    `Country focus for the map is ${filters.country_focus}.`
+  ];
   const summaryRows = Object.entries(summary)
     .map(([key, value]) => `<tr><th>${esc(label(key))}</th><td>${esc(value)}</td></tr>`).join("");
   const comparisonRows = Object.keys(current).map(key => {
@@ -4125,6 +4293,9 @@ function analyticsReportHtml() {
     const maxValue = Math.max(1, ...filtered.map(item => Number(item.value) || 0));
     return `<section class="panel page-break-avoid"><h2>${esc(title)}</h2>${filtered.length ? filtered.map(item => `<div class="bar-row"><span>${esc(item.name)}</span><div><i style="width:${Math.round(((Number(item.value) || 0) / maxValue) * 100)}%"></i></div><strong>${esc(number(item.value))}</strong></div>`).join("") : `<p class="empty">No data</p>`}</section>`;
   };
+  const chartImage = (title, key) => chartImages[key]
+    ? `<section class="panel page-break-avoid"><h2>${esc(title)}</h2><img class="chart-shot" src="${chartImages[key]}" alt="${esc(title)}"></section>`
+    : "";
   const table = (title, headers, rows) => `
     <section class="panel page-break-avoid"><h2>${esc(title)}</h2>
     <table><thead><tr>${headers.map(header => `<th>${esc(header)}</th>`).join("")}</tr></thead>
@@ -4142,7 +4313,7 @@ function analyticsReportHtml() {
 .trend{height:190px;display:flex;align-items:end;gap:8px;border-left:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;padding:12px 8px 0}.trend-item{flex:1;display:grid;gap:7px;min-width:0;text-align:center}.trend-stack{height:130px;display:flex;align-items:end;justify-content:center;gap:3px}.trend-stack i,.trend-stack b,.trend-stack em,.trend-stack u{display:block;width:8px;border-radius:8px 8px 0 0;text-decoration:none}.trend-stack i{background:#4f46e5}.trend-stack em{background:#22c55e}.trend-stack u{background:#f59e0b}.trend-stack b{background:#06b6d4}.trend-item span{font-size:10px;color:#64748b;white-space:nowrap}
 .funnel-row,.bar-row{display:grid;grid-template-columns:120px 1fr 58px;gap:10px;align-items:center;margin:10px 0;font-size:12px;color:#475569}.funnel-row div,.bar-row div{height:13px;border-radius:999px;background:#e2e8f0;overflow:hidden}.funnel-row i,.bar-row i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#4f46e5,#06b6d4)}.funnel-row strong,.bar-row strong{text-align:right;color:#111827}
 table{width:100%;border-collapse:separate;border-spacing:0;margin-top:8px;overflow:hidden;border:1px solid #e2e8f0;border-radius:14px}th,td{text-align:left;border-bottom:1px solid #e2e8f0;padding:9px 10px;font-size:12px;vertical-align:top;word-break:break-word}th{background:#f1f5f9;color:#475569;text-transform:uppercase;font-size:10px;letter-spacing:.05em}tr:last-child td{border-bottom:0}.delta{font-weight:800;color:#64748b}.delta.good{color:#15803d}.delta.bad{color:#b91c1c}
-.footer{display:flex;justify-content:space-between;gap:16px;color:#64748b;font-size:11px;margin-top:20px}.legend{display:flex;gap:14px;flex-wrap:wrap;color:#64748b;font-size:12px}.legend i{display:inline-block;width:10px;height:10px;border-radius:999px;margin-right:5px}.legend .c{background:#4f46e5}.legend .a{background:#22c55e}.legend .u{background:#f59e0b}.legend .l{background:#06b6d4}
+.chart-shot{display:block;width:100%;max-height:420px;object-fit:contain;border:1px solid #e2e8f0;border-radius:14px;background:#fff}.summary-list{display:grid;gap:10px;margin:0;padding:0;list-style:none}.summary-list li{padding:12px 14px;border:1px solid #e2e8f0;border-radius:14px;background:#f8fafc;color:#334155}.footer{display:flex;justify-content:space-between;gap:16px;color:#64748b;font-size:11px;margin-top:20px;border-top:1px solid #e2e8f0;padding-top:12px}.legend{display:flex;gap:14px;flex-wrap:wrap;color:#64748b;font-size:12px}.legend i{display:inline-block;width:10px;height:10px;border-radius:999px;margin-right:5px}.legend .c{background:#4f46e5}.legend .a{background:#22c55e}.legend .u{background:#f59e0b}.legend .l{background:#06b6d4}
 @media print{body{background:#fff}.report{padding:0}.cover,.kpi,.panel{box-shadow:none}.page-break-avoid{break-inside:avoid}.two,.three,.section-grid,.meta{break-inside:avoid}}
 </style>
 </head><body>
@@ -4150,9 +4321,10 @@ table{width:100%;border-collapse:separate;border-spacing:0;margin-top:8px;overfl
 <section class="cover">
   <div class="brand">${logo}<div><strong>Vani AI</strong><span>Analytics report</span></div></div>
   <div><h1>Performance Dashboard Report</h1><p>BI-style snapshot generated from the dashboard data currently loaded in your browser.</p></div>
-  <div class="meta"><div><span>Chatbot</span><strong>${esc(analyticsReport.bot_name)}</strong></div><div><span>Range</span><strong>${esc(analyticsReport.range_label)}</strong></div><div><span>Period</span><strong>${esc(analyticsReport.date_from)} to ${esc(analyticsReport.date_to)}</strong></div><div><span>Generated</span><strong>${esc(generatedAt)}</strong></div></div>
-  <div class="filter-strip"><span>Applied filter: ${esc(analyticsReport.range_label)}</span><span>From ${esc(analyticsReport.date_from)}</span><span>To ${esc(analyticsReport.date_to)}</span><span>Previous period: ${esc(analyticsReport.previous_date_from)} to ${esc(analyticsReport.previous_date_to)}</span></div>
+  <div class="meta"><div><span>Chatbot</span><strong>${esc(filters.bot)}</strong></div><div><span>Range</span><strong>${esc(filters.range)}</strong></div><div><span>Period</span><strong>${esc(filters.date_from)} to ${esc(filters.date_to)}</strong></div><div><span>Generated</span><strong>${esc(generatedAt)}</strong></div></div>
+  <div class="filter-strip"><span>Applied filter: ${esc(filters.range)}</span><span>From ${esc(filters.date_from)}</span><span>To ${esc(filters.date_to)}</span><span>Previous period: ${esc(filters.previous_date_from)} to ${esc(filters.previous_date_to)}</span><span>Country focus: ${esc(filters.country_focus)}</span><span>Exported from: ${esc(filters.exported_section)}</span></div>
 </section>
+<section class="panel page-break-avoid"><h2>Executive Summary</h2><ul class="summary-list">${executiveNotes.map(note => `<li>${esc(note)}</li>`).join("")}</ul></section>
 <section class="section-grid">
 ${card("Conversations", number(summary.total_conversations), "Tracked chat sessions and queries")}
 ${card("Messages", number(summary.total_messages), "User messages currently tracked")}
@@ -4172,6 +4344,9 @@ ${alertCard("Response Time", summary.avg_response_time_ms ? `${number(summary.av
   <div class="panel"><h2>Conversation, Answer and Lead Trend</h2><div class="legend"><span><i class="c"></i>Conversations</span><span><i class="a"></i>Answered</span><span><i class="u"></i>Unanswered</span><span><i class="l"></i>Leads</span></div><div class="trend">${trendBars}</div></div>
   <div class="panel"><h2>Conversion Funnel</h2>${funnel || `<p class="empty">No funnel data</p>`}</div>
 </section>
+${chartImage("Live BI Trend Chart", "analyticsTrendChart")}
+${chartImage("Live Conversion Funnel", "analyticsFunnelChart")}
+${chartImage("World Map", "analyticsWorldMap")}
 <section class="three">
   ${breakdown("Device Mix", analyticsReport.devices)}
   ${breakdown("Browser Breakdown", analyticsReport.browsers)}
@@ -4186,9 +4361,10 @@ ${alertCard("Response Time", summary.avg_response_time_ms ? `${number(summary.av
 <section class="panel page-break-avoid"><h2>Complete Summary</h2><table><tbody>${summaryRows}</tbody></table></section>
 ${table("Top Questions", ["Question", "Count", "Success Rate"], (analyticsReport.top_questions || []).map(item => `<tr><td>${esc(item.question)}</td><td>${esc(item.count)}</td><td>${esc(item.success_rate)}%</td></tr>`))}
 ${table("Unanswered Questions", ["Question", "Source Page", "Date"], (analyticsReport.unanswered_questions || []).map(item => `<tr><td>${esc(item.question)}</td><td>${esc(item.source_page)}</td><td>${esc(item.date)}</td></tr>`))}
+${table("City Location Clusters", ["Location", "Country", "Latitude", "Longitude", "Users"], (analyticsReport.city_clusters || []).map(item => `<tr><td>${esc(item.name)}</td><td>${esc(item.country || "-")}</td><td>${esc(item.lat)}</td><td>${esc(item.lon)}</td><td>${esc(item.count)}</td></tr>`))}
 ${table("Unique Leads", ["Type", "Email", "Mobile", "Email OTP", "Mobile OTP", "Captures", "WhatsApp", "Source Pages", "Location", "First Seen", "Last Seen"], (analyticsReport.unique_leads || []).map(item => `<tr><td>${esc(item.lead_type)}</td><td>${esc(item.email)}</td><td>${esc(item.phone_number)}</td><td>${esc(item.email_otp_count)}</td><td>${esc(item.mobile_otp_count)}</td><td>${esc(item.total_records)}</td><td>${esc(item.whatsapp_redirect_count)}</td><td>${esc(item.source_pages)}</td><td>${esc(item.location)}</td><td>${esc(item.first_seen)}</td><td>${esc(item.last_seen)}</td></tr>`))}
 ${table("Source Pages", ["Page", "Conversations", "Leads", "Success Rate"], (analyticsReport.source_pages || []).map(item => `<tr><td>${esc(item.page)}</td><td>${esc(item.conversations)}</td><td>${esc(item.leads)}</td><td>${esc(item.success_rate)}%</td></tr>`))}
-<div class="footer"><span>Vani AI Analytics</span><span>${esc(reportFileBase())}</span></div>
+<div class="footer"><span>Vani AI Analytics | Branded customer dashboard report</span><span>${esc(reportFileBase())}</span></div>
 </main>
 </body></html>`;
 }
@@ -4199,24 +4375,126 @@ document.getElementById("exportAnalyticsCsvBtn")?.addEventListener("click", () =
 });
 
 document.getElementById("downloadAnalyticsReportBtn")?.addEventListener("click", () => {
-  downloadBlob(`${reportFileBase()}.html`, analyticsReportHtml(), "text/html;charset=utf-8");
+  downloadBlob(`${reportFileBase()}.html`, analyticsReportHtml({filters: currentAnalyticsFilterState()}), "text/html;charset=utf-8");
   showToast("Branded report downloaded");
 });
 
 document.getElementById("downloadWeeklyReportBtn")?.addEventListener("click", () => {
-  downloadBlob(`${reportFileBase()}-weekly.html`, analyticsReportHtml(), "text/html;charset=utf-8");
+  downloadBlob(`${reportFileBase()}-weekly.html`, analyticsReportHtml({filters: currentAnalyticsFilterState()}), "text/html;charset=utf-8");
   showToast("Weekly report downloaded");
 });
 
 document.getElementById("downloadMonthlyReportBtn")?.addEventListener("click", () => {
-  downloadBlob(`${reportFileBase()}-monthly.html`, analyticsReportHtml(), "text/html;charset=utf-8");
+  downloadBlob(`${reportFileBase()}-monthly.html`, analyticsReportHtml({filters: currentAnalyticsFilterState()}), "text/html;charset=utf-8");
   showToast("Monthly report downloaded");
 });
 
-function printAnalyticsPdfReport() {
+function waitForAnalyticsPaint(delay = 450) {
+  return new Promise(resolve => setTimeout(resolve, delay));
+}
+
+async function captureAnalyticsChartImages() {
+  const activeButton = document.querySelector(".analytics-tab-btn.active");
+  const activeTab = activeButton?.dataset.analyticsTab || "analytics-overview";
+  const images = {};
+  const captureChart = (key, chart) => {
+    try {
+      chart?.resize();
+      const image = chart?.getDataURL?.({type: "png", pixelRatio: 2, backgroundColor: "#ffffff"});
+      if (image) images[key] = image;
+    } catch (error) {
+      console.warn("Analytics chart capture skipped", key, error);
+    }
+  };
+
+  openAnalyticsTab("analytics-overview", false);
+  await waitForAnalyticsPaint();
+  renderAnalyticsBICharts();
+  await waitForAnalyticsPaint(250);
+  ["analyticsTrendChart", "analyticsFunnelChart", "analyticsDeviceChart", "analyticsQuestionChart", "analyticsPageChart"].forEach(id => {
+    captureChart(id, analyticsCharts.get(id));
+  });
+
+  openAnalyticsTab("analytics-conversations", false);
+  await waitForAnalyticsPaint();
+  renderAnalyticsBICharts();
+  await renderAnalyticsWorldMap();
+  await waitForAnalyticsPaint(350);
+  ["analyticsHourChart", "analyticsBrowserChart"].forEach(id => {
+    captureChart(id, analyticsCharts.get(id));
+  });
+  captureChart("analyticsWorldMap", analyticsWorldMapChart);
+
+  openAnalyticsTab("analytics-leads", false);
+  await waitForAnalyticsPaint();
+  renderAnalyticsBICharts();
+  await waitForAnalyticsPaint(250);
+  ["analyticsLeadTrendChart", "analyticsLeadQualityChart"].forEach(id => {
+    captureChart(id, analyticsCharts.get(id));
+  });
+
+  openAnalyticsTab(activeTab, false);
+  await waitForAnalyticsPaint(100);
+  renderAnalyticsVisuals();
+  return images;
+}
+
+async function analyticsReportHtmlWithCharts() {
+  const filters = currentAnalyticsFilterState();
+  const chartImages = await captureAnalyticsChartImages();
+  return analyticsReportHtml({chartImages, filters});
+}
+
+async function downloadAnalyticsPdfReport(button = null) {
+  if (!window.html2pdf) {
+    showToast("PDF engine could not be loaded. Opening print view.");
+    await printAnalyticsPdfReport();
+    return;
+  }
+  const originalText = button?.textContent || "";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Preparing PDF...";
+  }
+  try {
+    const html = await analyticsReportHtmlWithCharts();
+    const container = document.createElement("div");
+    container.innerHTML = html;
+    const report = container.querySelector(".report") || container;
+    document.body.appendChild(container);
+    container.style.position = "fixed";
+    container.style.left = "-10000px";
+    container.style.top = "0";
+    container.style.width = "1120px";
+    await html2pdf()
+      .set({
+        margin: [10, 10, 10, 10],
+        filename: `${reportFileBase()}.pdf`,
+        image: {type: "jpeg", quality: 0.96},
+        html2canvas: {scale: 2, useCORS: true, backgroundColor: "#ffffff"},
+        jsPDF: {unit: "mm", format: "a4", orientation: "portrait"},
+        pagebreak: {mode: ["css", "legacy"]}
+      })
+      .from(report)
+      .save();
+    container.remove();
+    showToast("PDF report downloaded");
+  } catch (error) {
+    console.error("PDF download failed", error);
+    showToast("PDF download failed. Opening print view.");
+    await printAnalyticsPdfReport();
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = originalText;
+    }
+  }
+}
+
+async function printAnalyticsPdfReport() {
   const reportWindow = window.open("", "_blank");
   if (!reportWindow) return showToast("Allow popups to print the report");
-  reportWindow.document.write(analyticsReportHtml());
+  reportWindow.document.write(await analyticsReportHtmlWithCharts());
   reportWindow.document.close();
   reportWindow.focus();
   setTimeout(() => reportWindow.print(), 350);
@@ -4229,7 +4507,7 @@ document.querySelectorAll(".analytics-pdf-report-btn").forEach(button => {
       openTab("subscription");
       return;
     }
-    printAnalyticsPdfReport();
+    downloadAnalyticsPdfReport(button);
   });
 });
 

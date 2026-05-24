@@ -20,3 +20,15 @@
 [Sun May 24 05:03:15 2026] 127.0.0.1:49381 Accepted
 [Sun May 24 05:03:20 2026] 127.0.0.1:49381 [200]: GET /dashboard.php?analytics_range=7_days
 [Sun May 24 05:03:20 2026] 127.0.0.1:49381 Closing
+[Sun May 24 05:12:41 2026] 127.0.0.1:56227 Accepted
+[Sun May 24 05:12:46 2026] 127.0.0.1:56227 [200]: GET /dashboard.php?analytics_range=7_days
+[Sun May 24 05:12:46 2026] 127.0.0.1:56227 Closing
+[Sun May 24 05:21:04 2026] 127.0.0.1:61948 Accepted
+[Sun May 24 05:21:08 2026] 127.0.0.1:61948 [200]: GET /dashboard.php?analytics_range=30_days
+[Sun May 24 05:21:08 2026] 127.0.0.1:61948 Closing
+[Sun May 24 05:27:11 2026] 127.0.0.1:49762 Accepted
+[Sun May 24 05:27:16 2026] 127.0.0.1:49762 [200]: GET /dashboard.php?analytics_range=7_days
+[Sun May 24 05:27:16 2026] 127.0.0.1:49762 Closing
+[Sun May 24 05:29:55 2026] 127.0.0.1:51629 Accepted
+[Sun May 24 05:29:59 2026] 127.0.0.1:51629 [200]: GET /dashboard.php?analytics_range=custom&date_from=2026-05-01&date_to=2026-05-23
+[Sun May 24 05:29:59 2026] 127.0.0.1:51629 Closing
