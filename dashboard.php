@@ -4185,8 +4185,20 @@ if (document.readyState === "loading") {
 }
 
 document.getElementById("analyticsCountryFocus")?.addEventListener("change", () => {
+  const countryFocus = selectedAnalyticsCountry();
+  if (countryFocus) {
+    sessionStorage.setItem("analyticsCountryFocus", countryFocus);
+  } else {
+    sessionStorage.removeItem("analyticsCountryFocus");
+  }
   renderAnalyticsWorldMap();
 });
+
+const savedAnalyticsCountryFocus = sessionStorage.getItem("analyticsCountryFocus") || "";
+const analyticsCountryFocusSelect = document.getElementById("analyticsCountryFocus");
+if (analyticsCountryFocusSelect && savedAnalyticsCountryFocus && Array.from(analyticsCountryFocusSelect.options).some(option => option.value === savedAnalyticsCountryFocus)) {
+  analyticsCountryFocusSelect.value = savedAnalyticsCountryFocus;
+}
 
 function analyticsCsv() {
   const rows = [
@@ -4394,6 +4406,13 @@ function waitForAnalyticsPaint(delay = 450) {
   return new Promise(resolve => setTimeout(resolve, delay));
 }
 
+function refreshDashboardAfterPdfExport() {
+  const countryFocus = selectedAnalyticsCountry();
+  if (countryFocus) sessionStorage.setItem("analyticsCountryFocus", countryFocus);
+  showToast("Refreshing dashboard...");
+  setTimeout(() => window.location.reload(), 900);
+}
+
 async function captureAnalyticsChartImages() {
   const activeButton = document.querySelector(".analytics-tab-btn.active");
   const activeTab = activeButton?.dataset.analyticsTab || "analytics-overview";
@@ -4480,6 +4499,7 @@ async function downloadAnalyticsPdfReport(button = null) {
       .save();
     container.remove();
     showToast("PDF report downloaded");
+    refreshDashboardAfterPdfExport();
   } catch (error) {
     console.error("PDF download failed", error);
     showToast("PDF download failed. Opening print view.");
@@ -4499,6 +4519,7 @@ async function printAnalyticsPdfReport() {
   reportWindow.document.close();
   reportWindow.focus();
   setTimeout(() => reportWindow.print(), 350);
+  refreshDashboardAfterPdfExport();
 }
 
 document.querySelectorAll(".analytics-pdf-report-btn").forEach(button => {
