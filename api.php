@@ -657,6 +657,36 @@ function authenticated_customer_access(string $customerId): bool {
     return strcasecmp(billing_email_for_customer($customerId), authenticated_email()) === 0;
 }
 
+function setup_customer_access(string $customerId): bool {
+    $customerId = trim($customerId);
+    $setupCustomerId = trim((string)($_SESSION['setup_customer_id'] ?? ''));
+    $setupEmail = strtolower(trim((string)($_SESSION['setup_email'] ?? '')));
+    if ($customerId === '' || $setupCustomerId === '' || $setupEmail === '' || $setupCustomerId !== $customerId) {
+        return false;
+    }
+
+    $rows = safe_rows(supabase(
+        "GET",
+        "chatbot_signups?select=email&customer_id=eq." . urlencode($customerId) . "&limit=1"
+    ));
+    return !empty($rows[0]['email']) && strcasecmp((string)$rows[0]['email'], $setupEmail) === 0;
+}
+
+function customer_mutation_access(string $customerId, bool $allowSetupFlow = false): bool {
+    return authenticated_customer_access($customerId)
+        || ($allowSetupFlow && setup_customer_access($customerId));
+}
+
+function require_customer_mutation_access(string $customerId, bool $allowSetupFlow = false): void {
+    if (!customer_mutation_access($customerId, $allowSetupFlow)) {
+        echo json_encode([
+            "success" => false,
+            "message" => is_authenticated_user() || $allowSetupFlow ? "Access denied" : "Login required"
+        ]);
+        exit;
+    }
+}
+
 function webhook_deliver_for_customer(string $customerId, string $event, array $data = []): array {
     if ($customerId === '') {
         return ["success" => false, "message" => "Missing customer_id"];
@@ -3191,25 +3221,28 @@ if ($action === "signup") {
 if ($action === "update_theme") {
 
     $data = getJSON();
+    $customer_id = trim((string)($data['customer_id'] ?? ''));
 
     if (
-        empty($data['customer_id']) ||
+        empty($customer_id) ||
         empty($data['theme_color'])
     ) {
         echo json_encode(["error" => "Missing data"]);
         exit;
     }
 
+    require_customer_mutation_access($customer_id, true);
+
     $res = supabase(
         "PATCH",
-        "chatbot_signups?customer_id=eq." . trim($data['customer_id']),
+        "chatbot_signups?customer_id=eq." . urlencode($customer_id),
         [
             "theme_color" => $data['theme_color']
         ]
     );
 
     $settingsPayload = [
-        "customer_id" => trim($data['customer_id']),
+        "customer_id" => $customer_id,
         "theme_color" => $data['theme_color']
     ];
 
@@ -3219,13 +3252,13 @@ if ($action === "update_theme") {
 
     $existingSettings = supabase(
         "GET",
-        "chatbot_settings?select=id&customer_id=eq." . urlencode(trim($data['customer_id'])) . "&limit=1"
+        "chatbot_settings?select=id&customer_id=eq." . urlencode($customer_id) . "&limit=1"
     );
 
     if (!empty($existingSettings['data'])) {
         supabase(
             "PATCH",
-            "chatbot_settings?customer_id=eq." . urlencode(trim($data['customer_id'])),
+            "chatbot_settings?customer_id=eq." . urlencode($customer_id),
             $settingsPayload
         );
     } else {
@@ -3286,6 +3319,8 @@ if ($action === "add_faq") {
         echo json_encode(["error" => "Missing FAQ data"]);
         exit;
     }
+
+    require_customer_mutation_access($customer_id, true);
 
     $existingFaqs = supabase(
         "GET",
@@ -3456,6 +3491,8 @@ if ($action === "update_faq") {
         exit;
     }
 
+    require_customer_mutation_access($customer_id);
+
     $existing = supabase(
         "GET",
         "faq_questions?select=id&id=eq." . urlencode($faq_id) . "&customer_id=eq." . urlencode($customer_id) . "&limit=1"
@@ -3504,6 +3541,8 @@ if ($action === "delete_faq") {
         ]);
         exit;
     }
+
+    require_customer_mutation_access($customer_id);
 
     $existing = supabase(
         "GET",
@@ -3639,6 +3678,8 @@ if ($action === "save_lead_generation_settings") {
         ]);
         exit;
     }
+
+    require_customer_mutation_access($customer_id);
 
     $notification_email = trim($data['notification_email'] ?? '');
     $whatsapp_mobile_number = trim($data['whatsapp_mobile_number'] ?? '');
@@ -4033,6 +4074,8 @@ if ($action === "save_faq_action") {
         exit;
     }
 
+    require_customer_mutation_access($customer_id);
+
     $activePlan = billing_active_plan_from_account(billing_account_for_customer($customer_id));
     if (!billing_feature_enabled($activePlan, 'faq_action_suggestions')) {
         echo json_encode(["success" => false, "requires_paid" => true, "message" => "FAQ Action Suggestions requires Starter, Growth, or Business plan"]);
@@ -4122,6 +4165,8 @@ if ($action === "delete_faq_action") {
         exit;
     }
 
+    require_customer_mutation_access($customer_id);
+
     $res = supabase(
         "DELETE",
         "faq_action_suggestions?id=eq." . urlencode($id) . "&customer_id=eq." . urlencode($customer_id)
@@ -4143,6 +4188,8 @@ if ($action === "save_scheduled_faq_actions") {
         echo json_encode(["success" => false, "message" => "Select a bot first"]);
         exit;
     }
+
+    require_customer_mutation_access($customer_id);
 
     $activePlan = billing_active_plan_from_account(billing_account_for_customer($customer_id));
     if (!billing_feature_enabled($activePlan, 'faq_action_suggestions')) {
@@ -4239,6 +4286,8 @@ if ($action === "save_dashboard_settings") {
         ]);
         exit;
     }
+
+    require_customer_mutation_access($customer_id);
 
     $activePlan = billing_active_plan_from_account(billing_account_for_customer($customer_id));
     if (!billing_feature_enabled($activePlan, 'allowed_domains')) {
@@ -4672,6 +4721,19 @@ if ($action === "create_account") {
         echo json_encode([
             "success" => false,
             "message" => "Enter a valid website domain, for example example.com, example.in, or example.co.in."
+        ]);
+        exit;
+    }
+
+    $email = strtolower($email);
+    $signupRows = safe_rows(supabase(
+        "GET",
+        "chatbot_signups?select=customer_id,email&customer_id=eq." . urlencode($customer_id) . "&email=eq." . urlencode($email) . "&limit=1"
+    ));
+    if (empty($signupRows)) {
+        echo json_encode([
+            "success" => false,
+            "message" => "Chatbot setup was not found for this email. Please start setup again."
         ]);
         exit;
     }

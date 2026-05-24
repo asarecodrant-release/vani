@@ -500,6 +500,13 @@ saveBtn.onclick = async () => {
 
     const data = await res.json();
 
+    if (!res.ok || data.success === false || data.error) {
+      showError(data.message || data.error || "Theme could not be saved. Please login and try again.");
+      saveBtn.classList.remove("loading");
+      saveBtn.innerText = "Save & Continue ->";
+      return;
+    }
+
     localStorage.setItem("theme", selectedColor);
     if (selectedBotImage) localStorage.setItem("chatbot_image", selectedBotImage);
 
