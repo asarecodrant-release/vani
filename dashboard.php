@@ -32,6 +32,68 @@ function h($value): string {
     return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
 }
 
+function dashboard_parse_utc_datetime($value): ?DateTimeImmutable {
+    $raw = trim((string)$value);
+    if ($raw === '') {
+        return null;
+    }
+    try {
+        $hasTimezone = (bool)preg_match('/(?:z|[+-]\d{2}:?\d{2})$/i', $raw);
+        $date = $hasTimezone
+            ? new DateTimeImmutable($raw)
+            : new DateTimeImmutable($raw, new DateTimeZone('UTC'));
+        return $date->setTimezone(new DateTimeZone('UTC'));
+    } catch (Throwable $error) {
+        return null;
+    }
+}
+
+function dashboard_billing_date_fallback($value): string {
+    $date = dashboard_parse_utc_datetime($value);
+    return $date ? $date->format('M j, Y, g:i A') . ' UTC' : 'Time not recorded';
+}
+
+function dashboard_billing_reference_display(array $txn): array {
+    $referenceType = trim((string)($txn['reference_type'] ?? ''));
+    $referenceId = trim((string)($txn['reference_id'] ?? ''));
+    $labels = [
+        'razorpay_payment' => 'Subscription payment',
+        'razorpay_auto_recharge' => 'Automatic wallet recharge',
+        'razorpay_mandate_authorization' => 'Automatic payment authorization',
+        'lead_email_otp' => 'Email OTP lead verification',
+        'lead_mobile_otp' => 'Mobile OTP lead verification',
+        'whatsapp_redirect_addon' => 'WhatsApp Redirect renewal',
+        'whatsapp_redirect_addon_failed' => 'WhatsApp Redirect renewal skipped'
+    ];
+    $label = $labels[$referenceType] ?? ($referenceType !== '' ? ucwords(str_replace('_', ' ', $referenceType)) : 'Billing transaction');
+    $detailLabel = 'Reference ID';
+    if (strpos($referenceType, 'razorpay_') === 0) {
+        $detailLabel = 'Payment ID';
+    } elseif (strpos($referenceType, 'lead_') === 0) {
+        $detailLabel = 'Lead ID';
+    } elseif (strpos($referenceType, 'whatsapp_redirect') === 0) {
+        $detailLabel = 'Customer ID';
+    }
+    return [
+        'label' => $label,
+        'detail' => $referenceId !== '' ? $detailLabel . ': ' . $referenceId : ''
+    ];
+}
+
+function dashboard_billing_plan_help_text(string $planId, array $plan, int $autoRechargeThresholdPaise, int $autoRechargeAmountPaise): string {
+    $planName = (string)($plan['name'] ?? 'Free');
+    $pricePaise = (int)($plan['price_paise'] ?? 0);
+    if ($planId === 'free' || $pricePaise <= 0) {
+        return 'Free plan: there is no monthly subscription charge and paid wallet deductions are not active. Upgrade to Starter, Growth, or Business to use paid lead verification, WhatsApp Redirect, analytics, and higher FAQ limits.';
+    }
+    $emailFresh = billing_rupees(billing_wallet_charge_paise($planId, 'fresh_email_lead'));
+    $emailRepeat = billing_rupees(billing_wallet_charge_paise($planId, 'repeat_email_lead'));
+    $mobileFresh = billing_rupees(billing_wallet_charge_paise($planId, 'fresh_mobile_lead'));
+    $mobileRepeat = billing_rupees(billing_wallet_charge_paise($planId, 'repeat_mobile_lead'));
+    $whatsapp = billing_rupees(billing_wallet_charge_paise($planId, 'whatsapp_redirect_addon'));
+    return $planName . ' plan: monthly payment ' . billing_rupees($pricePaise) . ' is credited to the wallet. Usage then deducts from wallet: fresh Email OTP lead ' . $emailFresh . ', repeat Email OTP verification ' . $emailRepeat . ', fresh Mobile OTP lead ' . $mobileFresh . ', repeat Mobile OTP verification ' . $mobileRepeat . ', and WhatsApp Redirect ' . $whatsapp . ' for 30 days while enabled. Auto recharge rule: when wallet goes below ' . billing_rupees($autoRechargeThresholdPaise) . ', recharge ' . billing_rupees($autoRechargeAmountPaise) . ' automatically if auto payment is authorized.';
+}
+
 function js_json($value): string {
     $json = json_encode(
         $value,
@@ -428,6 +490,21 @@ if ($analyticsRange === 'today') {
     $analyticsTo = max($customFrom, $customTo);
 }
 
+$billingFromInput = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['billing_from'] ?? '') ? (string)$_GET['billing_from'] : '';
+$billingToInput = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['billing_to'] ?? '') ? (string)$_GET['billing_to'] : '';
+if ($billingFromInput !== '' && $billingToInput !== '' && $billingFromInput > $billingToInput) {
+    [$billingFromInput, $billingToInput] = [$billingToInput, $billingFromInput];
+}
+$billingFilterActive = $billingFromInput !== '' || $billingToInput !== '';
+$billingRangeParts = [];
+if ($billingFromInput !== '') {
+    $billingRangeParts[] = 'From ' . $billingFromInput;
+}
+if ($billingToInput !== '') {
+    $billingRangeParts[] = 'To ' . $billingToInput;
+}
+$billingRangeLabel = $billingFilterActive ? implode(' ', $billingRangeParts) : 'Showing latest wallet transactions';
+
 $bots = safe_data(supabase(
     "GET",
     "chatbot_signups?select=*&email=eq." . urlencode($email) . "&order=created_at.desc"
@@ -527,11 +604,20 @@ if ($selectedBotId) {
     }
 }
 
-$walletTransactionRows = $selectedBotId
-    ? safe_data(supabase(
-        "GET",
-        "wallet_transactions?select=*&customer_id=eq." . urlencode($selectedBotId) . "&order=created_at.desc&limit=100"
-    ))
+$walletTransactionQuery = $selectedBotId
+    ? "wallet_transactions?select=*&customer_id=eq." . urlencode($selectedBotId)
+    : '';
+if ($walletTransactionQuery !== '') {
+    if ($billingFromInput !== '') {
+        $walletTransactionQuery .= "&created_at=gte." . urlencode($billingFromInput . "T00:00:00Z");
+    }
+    if ($billingToInput !== '') {
+        $walletTransactionQuery .= "&created_at=lte." . urlencode($billingToInput . "T23:59:59Z");
+    }
+    $walletTransactionQuery .= "&order=created_at.desc&limit=" . ($billingFilterActive ? "1000" : "100");
+}
+$walletTransactionRows = $walletTransactionQuery !== ''
+    ? safe_data(supabase("GET", $walletTransactionQuery))
     : [];
 
 $apiKeyRows = $selectedBotId
@@ -639,6 +725,7 @@ $savedPaymentMethodStatus = (string)($billingAccount['saved_payment_method_statu
 $savedPaymentCustomerId = (string)($billingAccount['saved_payment_method_customer_id'] ?? '');
 $savedPaymentContact = (string)($billingAccount['saved_payment_method_contact'] ?? '');
 $savedPaymentMethodReference = (string)($billingAccount['saved_payment_method_reference'] ?? '');
+$billingPlanHelpText = dashboard_billing_plan_help_text($activePlanId, $activePlan, $autoRechargeThresholdPaise, $autoRechargeAmountPaise);
 $walletCreditPaise = array_sum(array_map(fn($row) => ($row['transaction_type'] ?? '') === 'credit' ? (int)($row['amount_paise'] ?? 0) : 0, $walletTransactionRows));
 $walletDebitPaise = array_sum(array_map(fn($row) => ($row['transaction_type'] ?? '') === 'debit' ? (int)($row['amount_paise'] ?? 0) : 0, $walletTransactionRows));
 $faqCount = count($faqs);
@@ -1385,6 +1472,7 @@ table{width:100%;border-collapse:collapse;min-width:720px}
 th,td{text-align:left;padding:13px 14px;border-bottom:1px solid var(--line);vertical-align:top}
 th{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
 td{font-size:14px;color:var(--ink);overflow-wrap:anywhere}
+td small{display:block;margin-top:4px}
 td .ghost-btn{white-space:normal}
 .tag{display:inline-flex;align-items:center;border-radius:999px;padding:5px 9px;font-size:12px;font-weight:800;background:rgba(99,102,241,.12);color:var(--brand)}
 .tag.good{background:rgba(34,197,94,.13);color:#15803d}.tag.bad{background:rgba(239,68,68,.12);color:#b91c1c}
@@ -1513,6 +1601,11 @@ body.dark .active-subscription-banner{background:linear-gradient(135deg,rgba(99,
 .subscription-wallet-note{margin-top:18px;padding:16px 18px;border:1px solid rgba(34,197,94,.24);border-radius:18px;background:linear-gradient(135deg,rgba(34,197,94,.12),rgba(6,182,212,.09));color:var(--ink);line-height:1.65}
 .subscription-wallet-note strong{display:block;font-size:17px;margin-bottom:4px}
 body.dark .subscription-wallet-note{background:linear-gradient(135deg,rgba(34,197,94,.16),rgba(6,182,212,.12))}
+.billing-filter{margin-top:18px;display:grid;grid-template-columns:repeat(2,minmax(150px,1fr)) auto auto;gap:12px;align-items:end;padding:14px;border:1px solid var(--line);border-radius:16px;background:rgba(255,255,255,.42)}
+body.dark .billing-filter{background:rgba(15,23,42,.44)}
+.billing-filter .field{gap:6px}
+.billing-filter .ghost-btn,.billing-filter .pill-btn{min-height:44px}
+.billing-filter-summary{grid-column:1/-1;margin:0}
 .pricing-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:16px;margin-top:18px;align-items:stretch}
 .pricing-card{grid-column:span 2;padding:16px;display:grid;gap:12px;align-content:start}
 .pricing-card.plan-selected{border-color:rgba(99,102,241,.82);box-shadow:0 0 0 3px rgba(99,102,241,.14),0 18px 42px rgba(99,102,241,.16)}
@@ -1688,7 +1781,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
   .faq-subtabs,.integration-subtabs{display:grid;grid-template-columns:1fr;padding:0 16px 16px}
   .faq-subtab-btn,.integration-subtab-btn{width:100%}
   .overview-hero h2{font-size:28px}
-  .metrics,.form-grid,.theme-controls,.outside-faq-grid,.faq-action-grid,.lead-grid,.analytics-grid,.analytics-grid.two,.bi-kpi-grid,.bi-dashboard-grid,.bi-dashboard-grid.three,.bi-alert-grid,.funnel,.pricing-grid,.security-grid,.bulk-report-summary,.payment-choice-grid{grid-template-columns:1fr}
+  .metrics,.form-grid,.theme-controls,.outside-faq-grid,.faq-action-grid,.lead-grid,.analytics-grid,.analytics-grid.two,.bi-kpi-grid,.bi-dashboard-grid,.bi-dashboard-grid.three,.bi-alert-grid,.funnel,.pricing-grid,.security-grid,.bulk-report-summary,.payment-choice-grid,.billing-filter{grid-template-columns:1fr}
   .panel-actions{justify-content:stretch}
   .panel-actions .pill-btn,.panel-actions .ghost-btn,.panel-actions .danger-btn{width:100%}
   .subscription-transfer-card{padding:18px}
@@ -3053,8 +3146,6 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
               <?php if ($activePlanId === 'starter'): ?><div class="current-plan-note">Current plan</div><?php endif; ?>
               <div class="price">₹199<small>/month</small></div>
               <div class="feature-list"><span class="is-included">100 FAQ answers for small websites</span><span class="is-included">Email and Mobile OTP verification for real leads</span><span class="is-included">Dedicated WhatsApp button and many more action items for FAQs</span><span class="is-included">Webhook support</span><span class="is-included">FAQ Action Suggestions</span><span class="is-included">Auto wallet recharge: below ₹50, recharge ₹199</span><span class="is-excluded">Live Chat Actions for real-time website reactions</span><span class="is-excluded">API Integration to migrate or save data in your database</span><span class="is-excluded">Analytics dashboard access</span><span class="is-excluded">Chat can run only on allowed domains</span></div>
-              <div class="wallet-table"><table><thead><tr><th>Wallet action</th><th>Charge</th></tr></thead><tbody><tr><td>Fresh Email OTP Lead</td><td>₹6</td></tr><tr><td>Repeat Email OTP Verification</td><td>₹2</td></tr><tr><td>Fresh Mobile OTP Lead</td><td>₹12</td></tr><tr><td>Repeat Mobile OTP Verification</td><td>₹3</td></tr><tr><td>WhatsApp Redirect</td><td>Add-on ₹99, refundable if cancelled within 1 hour</td></tr></tbody></table></div>
-              <small class="muted">Validity of Fresh Email and Mobile OTP Leads is 30 days from last user verification.</small>
               <button class="pill-btn billing-plan-btn" type="button" data-plan-id="starter">Buy Subscription</button>
               <small class="muted">Best for portfolios, coaches, and small businesses.</small>
             </div>
@@ -3064,8 +3155,6 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
               <?php if ($activePlanId === 'growth'): ?><div class="current-plan-note">Current plan</div><?php endif; ?>
               <div class="price">₹499<small>/month</small></div>
               <div class="feature-list"><span class="is-included">300 FAQ capacity for growing businesses</span><span class="is-included">Email and Mobile OTP verification for real leads</span><span class="is-included">Dedicated WhatsApp button and many more action items for FAQs</span><span class="is-included">Webhook support</span><span class="is-included">FAQ Action Suggestions</span><span class="is-included">Auto wallet recharge: below ₹100, recharge ₹499</span><span class="is-included">Analytics access: Overview, Conversations, FAQ Insights, Leads</span><span class="is-included">Better wallet rates than Starter on email and mobile leads</span><span class="is-excluded">Live Chat Actions for real-time website reactions</span><span class="is-excluded">API Integration to migrate or save data in your database</span><span class="is-excluded">Chat can run only on allowed domains</span></div>
-              <div class="wallet-table"><table><thead><tr><th>Wallet action</th><th>Charge</th></tr></thead><tbody><tr><td>Fresh Email OTP Lead</td><td>₹5</td></tr><tr><td>Repeat Email OTP Verification</td><td>₹1</td></tr><tr><td>Fresh Mobile OTP Lead</td><td>₹10</td></tr><tr><td>Repeat Mobile OTP Verification</td><td>₹2</td></tr><tr><td>WhatsApp Redirect</td><td>Add-on ₹99, refundable if cancelled within 1 hour</td></tr></tbody></table></div>
-              <small class="muted">Validity of Fresh Email and Mobile OTP Leads is 30 days from last user verification.</small>
               <button class="pill-btn billing-plan-btn" type="button" data-plan-id="growth">Buy Subscription</button>
               <small class="muted">Best for local businesses, agencies, and service providers.</small>
             </div>
@@ -3075,8 +3164,6 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
               <?php if ($activePlanId === 'business'): ?><div class="current-plan-note">Current plan</div><?php endif; ?>
               <div class="price">₹999<small>/month</small></div>
               <div class="feature-list"><span class="is-included">Unlimited FAQ capacity for larger businesses</span><span class="is-included">Email and Mobile combined widget</span><span class="is-included">Dedicated WhatsApp button and many more action items for FAQs</span><span class="is-included">Webhook support</span><span class="is-included">FAQ Action Suggestions</span><span class="is-included">Live Chat Actions for real-time website reactions</span><span class="is-included">Auto wallet recharge: below ₹200, recharge ₹999</span><span class="is-included">API Integration to migrate or save data in your database</span><span class="is-included">Advanced Analytics: Overview, Conversations, FAQ Insights, Leads, Pages, Real-Time, Reports Download</span><span class="is-included">Chat can run only on allowed domains</span></div>
-              <div class="wallet-table"><table><thead><tr><th>Wallet action</th><th>Charge</th></tr></thead><tbody><tr><td>Fresh Email OTP Lead</td><td>₹5</td></tr><tr><td>Repeat Email OTP Verification</td><td>₹1</td></tr><tr><td>Fresh Mobile OTP Lead</td><td>₹10</td></tr><tr><td>Repeat Mobile OTP Verification</td><td>₹2</td></tr><tr><td>WhatsApp Redirect</td><td>Add-on ₹99, refundable if cancelled within 1 hour</td></tr></tbody></table></div>
-              <small class="muted">Validity of Fresh Email and Mobile OTP Leads is 30 days from last user verification.</small>
               <button class="pill-btn billing-plan-btn" type="button" data-plan-id="business">Buy Subscription</button>
               <small class="muted">Best for real estate, education institutes, marketing agencies, SaaS businesses, and larger teams.</small>
             </div>
@@ -3208,27 +3295,12 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
           <div class="metrics" style="margin-top:18px">
             <div class="panel metric"><span>Wallet balance</span><strong><?php echo h(billing_rupees($billingWalletPaise)); ?></strong><small>Available for paid usage.</small></div>
             <div class="panel metric"><span>Current plan</span><strong><?php echo h($activePlan['name']); ?></strong><small>Subscription status: <?php echo h($isCancelledWalletAccess ? 'cancelled, wallet access active' : $subscriptionStatus); ?></small></div>
-            <div class="panel metric"><span>Billing model</span><strong>Hybrid</strong><small>Monthly subscription plus usage wallet.</small></div>
+            <div class="panel metric"><span>Billing model <span class="help-tip" tabindex="0" aria-label="How billing works for your current plan" data-tip="<?php echo h($billingPlanHelpText); ?>">?</span></span><strong>Hybrid</strong><small>Monthly subscription plus usage wallet.</small></div>
             <div class="panel metric"><span>Total credited</span><strong><?php echo h(billing_rupees($walletCreditPaise)); ?></strong><small>Money added to wallet.</small></div>
             <div class="panel metric"><span>Total deducted</span><strong><?php echo h(billing_rupees($walletDebitPaise)); ?></strong><small>Paid feature usage.</small></div>
             <div class="panel metric"><span>Transactions</span><strong><?php echo h(count($walletTransactionRows)); ?></strong><small>Latest wallet activity.</small></div>
           </div>
 
-          <div class="split" style="margin-top:18px">
-            <div class="notice"><strong>Monthly subscription:</strong><br>Fixed platform fee for dashboard access, FAQ limits, analytics, and plan features.</div>
-            <div class="notice"><strong>Wallet usage:</strong><br>Usage charges deduct automatically for OTP verification, leads, WhatsApp redirects, and other paid services.</div>
-          </div>
-          <div class="notice" style="margin-top:18px">
-            <strong>Auto wallet recharge:</strong><br>
-            <?php if ($activePlanId === 'free'): ?>
-              Auto recharge starts after a paid plan is active.
-            <?php else: ?>
-              <?php echo h($activePlan['name']); ?> rule: when wallet balance is below <?php echo h(billing_rupees($autoRechargeThresholdPaise)); ?>, recharge <?php echo h(billing_rupees($autoRechargeAmountPaise)); ?> automatically.
-              Status: <?php echo h($autoRechargeEnabled ? 'Enabled' : 'Disabled'); ?>.
-              Saved payment method: <?php echo h(ucfirst($savedPaymentMethodStatus)); ?>.
-              <?php if ($savedPaymentMethodStatus !== 'active'): ?>Mandatory auto charging is not ready until a Razorpay recurring token/mandate is saved. Paid wallet deductions will fail if the balance is insufficient.<?php endif; ?>
-            <?php endif; ?>
-          </div>
           <?php if ($whatsappStoppedReason === 'insufficient_wallet_balance'): ?>
             <div class="notice" style="margin-top:18px">
               <strong>WhatsApp Redirect stopped:</strong><br>
@@ -3236,23 +3308,25 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
             </div>
           <?php endif; ?>
 
-          <div class="notice" style="margin-top:18px">
-            <div class="section-head" style="padding:0;align-items:flex-start">
-              <div>
-                <strong>Automatic payment authorization</strong><br>
-                Customer ID: <?php echo h($savedPaymentCustomerId ?: 'Not created'); ?>.
-                Contact: <?php echo h($savedPaymentContact ?: 'Not linked'); ?>.<br>
-                Token status:
-                <span id="autoRechargeMandateStatusText"><?php echo h(ucfirst($savedPaymentMethodStatus)); ?></span>.
-                Token:
-                <span id="autoRechargeTokenText"><?php echo h($savedPaymentMethodReference ? substr($savedPaymentMethodReference, 0, 10) . '...' : 'Not authorized'); ?></span>.
-              </div>
-              <span class="tag <?php echo $savedPaymentMethodStatus === 'active' ? 'good' : 'bad'; ?>" id="autoRechargeMandateStatusTag"><?php echo h($savedPaymentMethodStatus === 'active' ? 'Ready' : 'Authorize'); ?></span>
+          <form class="billing-filter" method="get" action="dashboard.php#billing">
+            <?php if ($selectedBotId !== ''): ?><input type="hidden" name="bot" value="<?php echo h($selectedBotId); ?>"><?php endif; ?>
+            <input type="hidden" name="analytics_range" value="<?php echo h($analyticsRange); ?>">
+            <?php if ($analyticsRange === 'custom'): ?>
+              <input type="hidden" name="date_from" value="<?php echo h($analyticsFrom); ?>">
+              <input type="hidden" name="date_to" value="<?php echo h($analyticsTo); ?>">
+            <?php endif; ?>
+            <div class="field">
+              <label for="billingFromInput">From date</label>
+              <input id="billingFromInput" type="date" name="billing_from" value="<?php echo h($billingFromInput); ?>">
             </div>
-            <p class="muted" style="margin-top:12px">
-              Automatic payment is optional during plan purchase. Choose Starter, Growth, or Business from the Subscription tab, then select one-time payment or auto payment before checkout.
-            </p>
-          </div>
+            <div class="field">
+              <label for="billingToInput">To date</label>
+              <input id="billingToInput" type="date" name="billing_to" value="<?php echo h($billingToInput); ?>">
+            </div>
+            <button class="pill-btn" type="submit">Apply</button>
+            <a class="ghost-btn" href="dashboard.php<?php echo $selectedBotId !== '' ? '?' . http_build_query(['bot' => $selectedBotId]) : ''; ?>#billing">Clear</a>
+            <p class="muted billing-filter-summary"><?php echo h($billingRangeLabel); ?>. Totals and transactions below use this billing date filter.</p>
+          </form>
 
           <div class="table-wrap" style="margin-top:18px">
             <table>
@@ -3262,14 +3336,23 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                   <tr><td colspan="6" class="empty">No wallet transactions yet.</td></tr>
                 <?php endif; ?>
                 <?php foreach ($walletTransactionRows as $txn): ?>
-                  <?php $type = (string)($txn['transaction_type'] ?? ''); ?>
+                  <?php
+                    $type = (string)($txn['transaction_type'] ?? '');
+                    $billingReference = dashboard_billing_reference_display($txn);
+                  ?>
                   <tr>
-                    <td><?php echo h($txn['created_at'] ?? ''); ?></td>
+                    <td>
+                      <span class="billing-date" data-billing-date="<?php echo h($txn['created_at'] ?? ''); ?>"><?php echo h(dashboard_billing_date_fallback($txn['created_at'] ?? '')); ?></span>
+                      <small class="muted billing-date-zone">Shown in UTC until your timezone loads.</small>
+                    </td>
                     <td><span class="tag <?php echo $type === 'credit' ? 'good' : 'bad'; ?>"><?php echo h(ucfirst($type)); ?></span></td>
                     <td><?php echo h($txn['description'] ?? ''); ?></td>
                     <td><?php echo h(($type === 'debit' ? '-' : '+') . billing_rupees((int)($txn['amount_paise'] ?? 0))); ?></td>
                     <td><?php echo h(billing_rupees((int)($txn['balance_after_paise'] ?? 0))); ?></td>
-                    <td><?php echo h(($txn['reference_type'] ?? '') . ' ' . ($txn['reference_id'] ?? '')); ?></td>
+                    <td>
+                      <strong><?php echo h($billingReference['label']); ?></strong>
+                      <?php if ($billingReference['detail'] !== ''): ?><small class="muted"><?php echo h($billingReference['detail']); ?></small><?php endif; ?>
+                    </td>
                   </tr>
                 <?php endforeach; ?>
               </tbody>
@@ -3500,6 +3583,7 @@ function bindBillingRefresh() {
       bindBillingRefresh();
       bindRazorpayCustomerSetup();
       bindAutoRechargeMandate();
+      formatBillingDatesForBrowser();
       showToast("Billing refreshed");
     } catch (error) {
       button.disabled = false;
@@ -4730,6 +4814,33 @@ function formatLastActivityForBrowser() {
 }
 
 formatLastActivityForBrowser();
+
+function formatBillingDatesForBrowser() {
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+  const formatter = new Intl.DateTimeFormat(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZoneName: "short"
+  });
+  document.querySelectorAll(".billing-date[data-billing-date]").forEach((dateNode) => {
+    const raw = dateNode.dataset.billingDate || "";
+    if (!raw) return;
+    const normalized = /z$|[+-]\d{2}:?\d{2}$/i.test(raw) ? raw : raw + "Z";
+    const date = new Date(normalized);
+    if (Number.isNaN(date.getTime())) return;
+    dateNode.textContent = formatter.format(date);
+    dateNode.title = timezone ? `Shown in ${timezone}` : "Shown in your browser timezone";
+    const zoneNode = dateNode.parentElement?.querySelector(".billing-date-zone");
+    if (zoneNode) {
+      zoneNode.textContent = timezone ? `Shown in ${timezone}` : "Shown in your browser timezone";
+    }
+  });
+}
+
+formatBillingDatesForBrowser();
 
 const leadGenerationEnabled = document.getElementById("leadGenerationEnabled");
 const leadServiceOptions = document.getElementById("leadServiceOptions");
