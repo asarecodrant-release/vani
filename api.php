@@ -2921,10 +2921,48 @@ if ($action === "signup") {
         exit;
     }
 
+    $emailForSignup = strtolower(trim((string)$data['email']));
+    $existingBots = safe_rows(supabase(
+        "GET",
+        "chatbot_signups?select=customer_id,website_name,business_type&email=eq." . urlencode($emailForSignup) . "&limit=1"
+    ));
+    if (!is_authenticated_user() && !empty($existingBots)) {
+        $existingCustomer = safe_rows(supabase(
+            "GET",
+            "customers?select=id,email&email=eq." . urlencode($emailForSignup) . "&limit=1"
+        ));
+        if (empty($existingCustomer)) {
+            require_once __DIR__ . "/email.php";
+            $recoveryPassword = bin2hex(random_bytes(4)) . "@AI";
+            supabase("POST", "customers", [[
+                "email" => $emailForSignup,
+                "password" => password_hash($recoveryPassword, PASSWORD_DEFAULT)
+            ]]);
+            supabase("POST", "customer_bot_type", [[
+                "customer_id" => (string)($existingBots[0]['customer_id'] ?? ''),
+                "bot_type" => "Free"
+            ]]);
+            sendWelcomeEmail(
+                $emailForSignup,
+                (string)($existingBots[0]['customer_id'] ?? ''),
+                (string)($existingBots[0]['website_name'] ?? ''),
+                $recoveryPassword,
+                false
+            );
+        }
+        echo json_encode([
+            "error" => "login_required",
+            "requires_login" => true,
+            "message" => "A chatbot setup is already started for this email. Please login to continue setup.",
+            "login_url" => "login.php?setup=incomplete"
+        ]);
+        exit;
+    }
+
     $res = supabase("POST", "chatbot_signups", [[
         "customer_id" => $data['customer_id'],
         "website_name" => $websiteDomain,
-        "email" => $data['email'],
+        "email" => $emailForSignup,
         "business_type" => $data['business_type'],
         "theme_color" => "#007bff"
     ]]);
@@ -2932,7 +2970,7 @@ if ($action === "signup") {
     if ($res['status'] >= 200 && $res['status'] < 300) {
         billing_adopt_legacy_email_account(
             trim((string)$data['customer_id']),
-            strtolower(trim((string)$data['email']))
+            $emailForSignup
         );
     }
 

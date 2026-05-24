@@ -622,6 +622,23 @@ $walletTransactionRows = $walletTransactionQuery !== ''
     ? safe_data(supabase("GET", $walletTransactionQuery))
     : [];
 
+$selectedBusinessType = trim((string)($selectedBot['business_type'] ?? ''));
+$themeSetupIncomplete = $selectedBotId !== '' && empty($settingsRows);
+$faqSetupIncomplete = $selectedBotId !== '' && empty($faqs);
+$chatbotSetupIncomplete = $themeSetupIncomplete || $faqSetupIncomplete;
+$suggestedFaqRows = ($faqSetupIncomplete && $selectedBusinessType !== '' && strcasecmp($selectedBusinessType, 'Other') !== 0)
+    ? safe_data(supabase(
+        "GET",
+        "pre_loaded_question?select=question,answer&category=eq." . urlencode($selectedBusinessType) . "&order=id.asc"
+    ))
+    : [];
+if ($chatbotSetupIncomplete && $selectedBotId !== '') {
+    $_SESSION['setup_email'] = $email;
+    $_SESSION['setup_customer_id'] = $selectedBotId;
+    $_SESSION['setup_website_name'] = (string)($selectedBot['website_name'] ?? '');
+    $_SESSION['setup_business_type'] = $selectedBusinessType;
+}
+
 $apiKeyRows = $selectedBotId
     ? safe_data(supabase(
         "GET",
@@ -1674,12 +1691,23 @@ body.dark .outside-faq-card{background:rgba(15,23,42,.44)}
 .faq-action-card{padding:14px;border:1px solid var(--line);border-radius:16px;background:rgba(255,255,255,.42);display:grid;gap:12px}
 body.dark .faq-action-card{background:rgba(15,23,42,.44)}
 .help-tip{position:relative;display:inline-grid;place-items:center;width:22px;height:22px;border-radius:999px;border:1px solid rgba(99,102,241,.35);background:rgba(99,102,241,.12);color:var(--brand);font-size:13px;font-weight:900;cursor:help;margin-left:8px;vertical-align:middle}
-.help-tip:after{content:attr(data-tip);position:absolute;left:50%;bottom:calc(100% + 10px);transform:translateX(-50%) translateY(4px);width:min(320px,calc(100vw - 48px));padding:12px 13px;border-radius:12px;background:var(--panel-strong);border:1px solid var(--line);box-shadow:0 16px 34px rgba(15,23,42,.16);color:var(--ink);font-size:12px;font-weight:600;line-height:1.55;text-align:left;opacity:0;pointer-events:none;transition:.16s ease;z-index:20}
+.help-tip:after{content:attr(data-tip);position:absolute;left:50%;bottom:calc(100% + 10px);transform:translateX(-50%) translateY(4px);width:min(320px,calc(100vw - 48px));padding:12px 13px;border-radius:12px;background:var(--panel-strong);border:1px solid var(--line);box-shadow:0 16px 34px rgba(15,23,42,.16);color:var(--ink);font-size:12px;font-weight:600;line-height:1.55;text-align:left;opacity:0;pointer-events:none;transition:.16s ease;z-index:20;white-space:normal;text-transform:none;letter-spacing:0}
 .help-tip:hover:after,.help-tip:focus-visible:after{opacity:1;transform:translateX(-50%) translateY(0)}
+.billing-model-head{display:flex!important;align-items:center;gap:8px;position:relative;width:fit-content;max-width:100%;overflow:visible}
+.billing-help-tip{background:rgba(245,158,11,.18);border-color:rgba(245,158,11,.62);color:#b45309;margin-left:0;flex:0 0 auto}
+.billing-help-tip:after{left:0;right:auto;bottom:auto;top:calc(100% + 10px);transform:translateY(-4px);width:min(420px,calc(100vw - 64px));max-height:min(56vh,360px);overflow:auto}
+.billing-help-tip:hover:after,.billing-help-tip:focus-visible:after{transform:translateY(0)}
+body.dark .billing-help-tip{background:rgba(245,158,11,.22);color:#fbbf24;border-color:rgba(251,191,36,.7)}
 .faq-action-grid{display:grid;grid-template-columns:1.2fr 1fr 1.4fr .7fr auto;gap:10px;align-items:end}
 .faq-action-grid .field{min-width:0}
 .bulk-faq-card{margin-bottom:16px;padding:16px;border:1px solid var(--line);border-radius:18px;background:rgba(255,255,255,.42);display:grid;gap:14px}
 body.dark .bulk-faq-card{background:rgba(15,23,42,.44)}
+.setup-recovery-card{margin-bottom:16px;padding:16px;border:1px solid rgba(245,158,11,.34);border-radius:18px;background:rgba(245,158,11,.10);display:grid;gap:12px}
+.setup-recovery-card strong{font-size:17px}
+.suggested-faq-list{display:grid;gap:8px;max-height:260px;overflow:auto;padding-right:4px}
+.suggested-faq-item{padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--panel-strong);display:grid;gap:4px}
+.suggested-faq-item span{font-weight:800;font-size:13px}
+.suggested-faq-item small{color:var(--muted);line-height:1.45}
 .bulk-faq-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .bulk-faq-actions input[type=file]{max-width:360px}
 .bulk-report-backdrop{position:fixed;inset:0;background:rgba(15,23,42,.5);backdrop-filter:blur(8px);z-index:70;display:none;align-items:center;justify-content:center;padding:20px}
@@ -1810,6 +1838,8 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
   th,td{padding:11px 12px}
   .table-wrap{width:100%;max-width:100%;border-radius:0}
   .inline-row input,.inline-row .ghost-btn{flex:1 1 100%;width:100%}
+  .billing-help-tip:after{position:fixed;left:16px;right:16px;top:auto;bottom:20px;width:auto;max-height:52vh;transform:translateY(10px)}
+  .billing-help-tip:hover:after,.billing-help-tip:focus-visible:after{transform:translateY(0)}
 }
 @media(max-width:480px){
   .sidebar{padding:12px}
@@ -1918,6 +1948,21 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
       <?php endif; ?>
 
       <section class="tab-panel active" id="overview">
+        <?php if ($chatbotSetupIncomplete): ?>
+          <div class="panel setup-recovery-card">
+            <strong>Finish your chatbot setup</strong>
+            <p class="muted">
+              This chatbot was created but setup is not complete yet.
+              <?php if ($themeSetupIncomplete): ?>Theme setup is pending.<?php endif; ?>
+              <?php if ($faqSetupIncomplete): ?>FAQs are pending.<?php endif; ?>
+              <?php if ($selectedBusinessType !== ''): ?>We found your business type as <?php echo h($selectedBusinessType); ?> and prepared matching FAQ suggestions.<?php endif; ?>
+            </p>
+            <div class="inline-row">
+              <?php if ($themeSetupIncomplete): ?><a class="pill-btn" href="theme-selection.php">Complete Theme</a><?php endif; ?>
+              <a class="ghost-btn" href="#faqs" data-jump="faqs">Open FAQ Management</a>
+            </div>
+          </div>
+        <?php endif; ?>
         <div class="panel overview-hero">
           <div>
             <span class="eyebrow">Your Chatbot</span>
@@ -2263,6 +2308,34 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                 <button class="pill-btn" type="button" id="bulkFaqUploadBtn">Upload Excel FAQs</button>
               </div>
             </div>
+            <?php if ($faqSetupIncomplete): ?>
+              <div class="setup-recovery-card">
+                <strong>FAQ setup is pending</strong>
+                <p class="muted">
+                  <?php if ($selectedBusinessType !== ''): ?>
+                    These suggested FAQs are based on the business type selected during chatbot creation: <?php echo h($selectedBusinessType); ?>.
+                  <?php else: ?>
+                    Add FAQs below to complete the chatbot setup.
+                  <?php endif; ?>
+                </p>
+                <?php if (!empty($suggestedFaqRows)): ?>
+                  <div class="suggested-faq-list" id="suggestedFaqList">
+                    <?php foreach ($suggestedFaqRows as $suggestedFaq): ?>
+                      <div class="suggested-faq-item" data-question="<?php echo h($suggestedFaq['question'] ?? ''); ?>" data-answer="<?php echo h($suggestedFaq['answer'] ?? ''); ?>" data-category="<?php echo h($selectedBusinessType ?: 'General'); ?>">
+                        <span><?php echo h($suggestedFaq['question'] ?? ''); ?></span>
+                        <small><?php echo h($suggestedFaq['answer'] ?? ''); ?></small>
+                      </div>
+                    <?php endforeach; ?>
+                  </div>
+                  <div class="inline-row">
+                    <button class="pill-btn" type="button" id="addSuggestedFaqsBtn">Add Suggested FAQs</button>
+                    <small class="input-help">You can edit these FAQs after adding them.</small>
+                  </div>
+                <?php else: ?>
+                  <small class="input-help">No ready-made FAQ template was found for this business type. You can add your FAQs manually below.</small>
+                <?php endif; ?>
+              </div>
+            <?php endif; ?>
             <form id="faqForm" class="form-grid">
               <input type="hidden" id="faqCustomerId" value="<?php echo h($selectedBotId); ?>">
               <div class="field"><label>Question</label><input id="faqQuestion" placeholder="What do you want customers to ask?"></div>
@@ -3321,7 +3394,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
           <div class="metrics" style="margin-top:18px">
             <div class="panel metric"><span>Wallet balance</span><strong><?php echo h(billing_rupees($billingWalletPaise)); ?></strong><small>Available for paid usage.</small></div>
             <div class="panel metric"><span>Current plan</span><strong><?php echo h($activePlan['name']); ?></strong><small>Subscription status: <?php echo h($isCancelledWalletAccess ? 'cancelled, wallet access active' : $subscriptionStatus); ?></small></div>
-            <div class="panel metric"><span>Billing model <span class="help-tip" tabindex="0" aria-label="How billing works for your current plan" data-tip="<?php echo h($billingPlanHelpText); ?>">?</span></span><strong>Hybrid</strong><small>Monthly subscription plus usage wallet.</small></div>
+            <div class="panel metric"><span class="billing-model-head">Billing model <span class="help-tip billing-help-tip" tabindex="0" aria-label="How billing works for your current plan" data-tip="<?php echo h($billingPlanHelpText); ?>">?</span></span><strong>Hybrid</strong><small>Monthly subscription plus usage wallet.</small></div>
             <div class="panel metric"><span>Total credited</span><strong><?php echo h(billing_rupees($walletCreditPaise)); ?></strong><small>Money added to wallet.</small></div>
             <div class="panel metric"><span>Total deducted</span><strong><?php echo h(billing_rupees($walletDebitPaise)); ?></strong><small>Paid feature usage.</small></div>
             <div class="panel metric"><span>Transactions</span><strong><?php echo h(count($walletTransactionRows)); ?></strong><small>Latest wallet activity.</small></div>
@@ -5537,6 +5610,46 @@ document.getElementById("bulkFaqUploadBtn")?.addEventListener("click", async eve
   } finally {
     button.disabled = false;
     button.textContent = "Upload Excel FAQs";
+  }
+});
+
+document.getElementById("addSuggestedFaqsBtn")?.addEventListener("click", async event => {
+  const customerId = document.getElementById("faqCustomerId")?.value || "";
+  const items = Array.from(document.querySelectorAll("#suggestedFaqList .suggested-faq-item"));
+  if (!customerId) return showToast("Select a bot first");
+  if (!items.length) return showToast("No suggested FAQs available");
+  const faqs = items.map(item => ({
+    question: item.dataset.question || "",
+    answer: item.dataset.answer || "",
+    category: item.dataset.category || "General"
+  })).filter(item => item.question && item.answer);
+  if (!faqs.length) return showToast("No valid suggested FAQs available");
+  if (!faqLimitIsUnlimited && currentFaqCount + faqs.length > freeFaqLimit) {
+    showToast("Your current plan limit cannot save all suggested FAQs");
+    openTab("subscription");
+    return;
+  }
+  const button = event.currentTarget;
+  const originalText = button.textContent;
+  button.disabled = true;
+  button.textContent = "Adding FAQs...";
+  try {
+    const response = await fetch("/api.php?action=bulk_add_faq", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({customer_id: customerId, faqs})
+    });
+    const report = await response.json().catch(() => ({}));
+    if (!report.success) throw new Error(report.message || "Suggested FAQs could not be added");
+    appendBulkFaqRows(report.saved || []);
+    currentFaqCount += Number(report.saved_count || 0);
+    updateFaqCountUi();
+    document.querySelector("#suggestedFaqList")?.closest(".setup-recovery-card")?.remove();
+    showToast("Suggested FAQs added");
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = originalText;
+    showToast(error.message || "Suggested FAQs could not be added");
   }
 });
 

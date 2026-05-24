@@ -377,6 +377,11 @@ document.getElementById("signupForm")
       overlay.style.display = "none";
       btn.disabled = false;
       btn.innerText = "Continue ->";
+      if (signupData.requires_login) {
+        alert(signupData.message || "Please login to continue chatbot setup.");
+        window.location.href = signupData.login_url || "login.php?setup=incomplete";
+        return;
+      }
       alert(signupData.message || signupData.error);
       return;
     }

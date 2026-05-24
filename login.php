@@ -77,6 +77,10 @@ if ($_SERVER["REQUEST_METHOD"] !== "POST" && (string)($_GET['reset'] ?? '') === 
     $resetMessage = "Enter your email below to reset the temporary password.";
 }
 
+if ($_SERVER["REQUEST_METHOD"] !== "POST" && (string)($_GET['setup'] ?? '') === 'incomplete') {
+    $resetMessage = "Please login to continue your unfinished chatbot setup.";
+}
+
 // ======================================
 // GOOGLE LOGIN
 // ======================================
