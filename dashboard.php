@@ -1459,6 +1459,14 @@ body.dark .theme-designer{background:rgba(15,23,42,.44)}
 .bot-image-option input{position:absolute;opacity:0;pointer-events:none}
 .bot-image-option:has(input:checked){border-color:rgba(99,102,241,.72);box-shadow:0 0 0 3px rgba(99,102,241,.14)}
 .selected-bot-image{width:64px;height:64px;object-fit:contain;border-radius:16px;border:1px solid var(--line);background:var(--panel-strong);padding:8px}
+.dashboard-loading{position:fixed;inset:0;z-index:120;display:none;place-items:center;padding:24px;background:rgba(15,23,42,.42);backdrop-filter:blur(10px)}
+.dashboard-loading.active{display:grid}
+body.dashboard-loading-active{overflow:hidden}
+.dashboard-loading-card{width:min(360px,calc(100vw - 40px));padding:22px;border:1px solid var(--line);border-radius:18px;background:var(--panel);box-shadow:var(--shadow);display:grid;gap:12px;text-align:center;justify-items:center}
+.dashboard-loading-spinner{width:42px;height:42px;border-radius:50%;border:4px solid rgba(99,102,241,.18);border-top-color:var(--brand);animation:dashboardSpin .8s linear infinite}
+.dashboard-loading-card strong{font-size:18px}
+.dashboard-loading-card span{color:var(--muted);font-size:14px;line-height:1.5}
+@keyframes dashboardSpin{to{transform:rotate(360deg)}}
 .table-wrap{
   width:100%;
   max-width:100%;
@@ -1824,6 +1832,13 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
 <body>
 <div class="dashboard-shell">
   <div class="drawer-overlay" id="drawerOverlay" aria-hidden="true"></div>
+  <div class="dashboard-loading" id="dashboardLoadingOverlay" aria-hidden="true">
+    <div class="dashboard-loading-card" role="status" aria-live="polite">
+      <div class="dashboard-loading-spinner" aria-hidden="true"></div>
+      <strong>Loading chatbot dashboard</strong>
+      <span>Please wait while the selected chatbot data loads.</span>
+    </div>
+  </div>
   <aside class="sidebar">
     <a class="brand" href="index.php">
       <img src="images/logo_img.png" alt="Vani AI">
@@ -1899,12 +1914,12 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
             <h2 id="overviewBotNameText"><?php echo h($botName); ?></h2>
             <p>You are currently configuring the bot for the mentioned website.</p>
           </div>
-          <form class="bot-picker" method="get" action="dashboard.php">
+          <form class="bot-picker" id="botPickerForm" method="get" action="dashboard.php">
             <div class="bot-picker-head">
               <label for="bot">Select Website bot</label>
               <button class="danger-btn delete-bot-mini" type="button" id="deleteChatbotBtn" data-bot-name="<?php echo h($botName); ?>">Delete</button>
             </div>
-            <select id="bot" name="bot" onchange="this.form.submit()">
+            <select id="bot" name="bot">
               <?php if (empty($bots)): ?>
                 <option value="">No bots available</option>
               <?php endif; ?>
@@ -3389,6 +3404,7 @@ const navToggle = document.getElementById("navToggle");
 const accountToggle = document.getElementById("accountToggle");
 const drawerOverlay = document.getElementById("drawerOverlay");
 const accountToggleText = accountToggle?.textContent || "";
+const dashboardLoadingOverlay = document.getElementById("dashboardLoadingOverlay");
 let currentFaqCount = <?php echo js_json($faqCount); ?>;
 const freeFaqLimit = <?php echo js_json($freeFaqLimit); ?>;
 const faqLimitIsUnlimited = <?php echo js_json($planFaqLimit === PHP_INT_MAX); ?>;
@@ -3527,6 +3543,21 @@ function closeDrawers() {
   if (accountToggle) accountToggle.textContent = accountToggleText;
 }
 
+function showDashboardLoading(message = "Please wait while the selected chatbot data loads.") {
+  if (!dashboardLoadingOverlay) return;
+  const messageNode = dashboardLoadingOverlay.querySelector("span");
+  if (messageNode) messageNode.textContent = message;
+  dashboardLoadingOverlay.classList.add("active");
+  dashboardLoadingOverlay.setAttribute("aria-hidden", "false");
+  document.body.classList.add("dashboard-loading-active");
+}
+
+window.addEventListener("pageshow", () => {
+  dashboardLoadingOverlay?.classList.remove("active");
+  dashboardLoadingOverlay?.setAttribute("aria-hidden", "true");
+  document.body.classList.remove("dashboard-loading-active");
+});
+
 navToggle?.addEventListener("click", () => {
   setDrawer("nav", !document.body.classList.contains("nav-open"));
 });
@@ -3565,6 +3596,16 @@ function openTab(id, updateHash = true) {
 }
 
 tabs.forEach(tab => tab.addEventListener("click", () => openTab(tab.dataset.tab)));
+
+document.getElementById("bot")?.addEventListener("change", event => {
+  const select = event.currentTarget;
+  const form = document.getElementById("botPickerForm");
+  if (!form || !select.value) return;
+  showDashboardLoading("Loading the selected chatbot dashboard. Please do not close or click anything.");
+  requestAnimationFrame(() => {
+    setTimeout(() => form.submit(), 60);
+  });
+});
 
 function bindBillingRefresh() {
   document.getElementById("refreshBillingBtn")?.addEventListener("click", async event => {
