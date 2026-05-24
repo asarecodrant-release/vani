@@ -57,7 +57,24 @@ td,th{padding:8px 0;border-bottom:1px solid rgba(148,163,184,.22);text-align:lef
 td:last-child,th:last-child{text-align:right;font-weight:800}
 .note{padding:12px 14px;border-radius:12px;background:rgba(15,23,42,.6);border:1px solid rgba(148,163,184,.22);color:#cbd5e1;line-height:1.55;font-size:14px}
 .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:auto}
-@media(max-width:992px){.pricing-grid{grid-template-columns:1fr}.card,.card.featured{grid-column:auto;transform:none}h1{font-size:36px}.nav-inner{align-items:center;flex-direction:row}.nav-link,.nav-btn{display:none}.logo{font-size:20px}.logo img{width:46px;height:46px}}
+.choose-plan-btn{border:0;cursor:pointer}
+.checkout-panel{display:none;margin:0 0 46px;padding:22px;border:1px solid rgba(129,140,248,.28);border-radius:20px;background:linear-gradient(145deg,rgba(15,23,42,.92),rgba(30,41,59,.78));box-shadow:0 22px 60px rgba(0,0,0,.28)}
+.checkout-panel.active{display:block}
+.checkout-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:16px}
+.checkout-head h2{font-size:24px}
+.checkout-head p{margin-top:6px;color:#cbd5e1;line-height:1.6}
+.checkout-form{display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) auto;gap:12px;align-items:end}
+.field{display:grid;gap:7px}
+.field label{font-size:13px;font-weight:800;color:#e5e7eb}
+.required{color:#f87171}
+.field input{width:100%;height:46px;border-radius:12px;border:1px solid rgba(148,163,184,.32);background:rgba(15,23,42,.72);color:#fff;padding:0 13px;font-size:15px;outline:0}
+.field input:focus{border-color:#a5b4fc;box-shadow:0 0 0 3px rgba(99,102,241,.24)}
+.field input.error{border-color:#f87171;box-shadow:0 0 0 3px rgba(248,113,113,.18)}
+.checkout-help{grid-column:1/-1;color:#cbd5e1;font-size:13px;line-height:1.55}
+.checkout-help.error{color:#fecaca}
+.checkout-status{display:none;grid-column:1/-1;padding:12px 14px;border-radius:12px;background:rgba(99,102,241,.14);border:1px solid rgba(129,140,248,.24);color:#e0e7ff;line-height:1.55}
+.checkout-status.show{display:block}
+@media(max-width:992px){.pricing-grid,.checkout-form{grid-template-columns:1fr}.card,.card.featured{grid-column:auto;transform:none}h1{font-size:36px}.nav-inner{align-items:center;flex-direction:row}.nav-link{display:none}.logo{font-size:20px}.logo img{width:46px;height:46px}.checkout-head{display:grid}}
 </style>
 </head>
 <body>
@@ -94,23 +111,174 @@ td:last-child,th:last-child{text-align:right;font-weight:800}
       <div class="head"><div><span class="eyebrow">Starter</span><h2>Starter Plan</h2></div><span class="tag">Small</span></div>
       <div class="price">₹199<small>/month</small></div>
       <div class="features"><span class="is-included">100 FAQ answers for small websites</span><span class="is-included">Email and Mobile OTP verification for real leads</span><span class="is-included">Dedicated WhatsApp button and many more action items for FAQs</span><span class="is-included">Webhook support</span><span class="is-included">FAQ Action Suggestions</span><span class="is-included">Auto wallet recharge: below ₹50, recharge ₹199</span><span class="is-excluded">Live Chat Actions for real-time website reactions</span><span class="is-excluded">API Integration to migrate or save data in your database</span><span class="is-excluded">Analytics dashboard access</span><span class="is-excluded">Chat can run only on allowed domains</span></div>
-      <div class="actions"><a class="nav-btn" href="login.php">Choose Starter</a></div>
+      <div class="actions"><button class="nav-btn choose-plan-btn" type="button" data-plan-id="starter" data-plan-name="Starter Plan" data-plan-price="₹199/month">Choose Starter</button></div>
     </article>
 
     <article class="card featured">
       <div class="head"><div><span class="eyebrow">Growth</span><h2>Growth Plan</h2></div><span class="tag good">Popular</span></div>
       <div class="price">₹499<small>/month</small></div>
       <div class="features"><span class="is-included">300 FAQ capacity for growing businesses</span><span class="is-included">Email and Mobile OTP verification for real leads</span><span class="is-included">Dedicated WhatsApp button and many more action items for FAQs</span><span class="is-included">Webhook support</span><span class="is-included">FAQ Action Suggestions</span><span class="is-included">Auto wallet recharge: below ₹100, recharge ₹499</span><span class="is-included">Analytics access: Overview, Conversations, FAQ Insights, Leads</span><span class="is-included">Better wallet rates than Starter on email and mobile leads</span><span class="is-excluded">Live Chat Actions for real-time website reactions</span><span class="is-excluded">API Integration to migrate or save data in your database</span><span class="is-excluded">Chat can run only on allowed domains</span></div>
-      <div class="actions"><a class="nav-btn" href="login.php">Choose Growth</a></div>
+      <div class="actions"><button class="nav-btn choose-plan-btn" type="button" data-plan-id="growth" data-plan-name="Growth Plan" data-plan-price="₹499/month">Choose Growth</button></div>
     </article>
 
     <article class="card">
       <div class="head"><div><span class="eyebrow">Business</span><h2>Business Plan</h2></div><span class="tag">Scale</span></div>
       <div class="price">₹999<small>/month</small></div>
       <div class="features"><span class="is-included">Unlimited FAQ capacity for larger businesses</span><span class="is-included">Email and Mobile combined widget</span><span class="is-included">Dedicated WhatsApp button and many more action items for FAQs</span><span class="is-included">Webhook support</span><span class="is-included">FAQ Action Suggestions</span><span class="is-included">Live Chat Actions for real-time website reactions</span><span class="is-included">Auto wallet recharge: below ₹200, recharge ₹999</span><span class="is-included">API Integration to migrate or save data in your database</span><span class="is-included">Advanced Analytics: Overview, Conversations, FAQ Insights, Leads, Pages, Real-Time, Reports Download</span><span class="is-included">Chat can run only on allowed domains</span></div>
-      <div class="actions"><a class="nav-btn" href="login.php">Choose Business</a></div>
+      <div class="actions"><button class="nav-btn choose-plan-btn" type="button" data-plan-id="business" data-plan-name="Business Plan" data-plan-price="₹999/month">Choose Business</button></div>
     </article>
   </section>
+
+  <section class="checkout-panel" id="publicCheckoutPanel">
+    <div class="checkout-head">
+      <div>
+        <span class="eyebrow">Secure Checkout</span>
+        <h2>Buy <span id="checkoutPlanName">Selected Plan</span></h2>
+        <p>Enter customer details for billing and account creation. After successful payment, login details will be sent to the email address below.</p>
+      </div>
+      <span class="tag good" id="checkoutPlanPrice">Select a plan</span>
+    </div>
+    <form class="checkout-form" id="publicSubscriptionForm">
+      <div class="field">
+        <label for="publicCustomerName">Customer name <span class="required">*</span></label>
+        <input id="publicCustomerName" autocomplete="name" required>
+      </div>
+      <div class="field">
+        <label for="publicCustomerEmail">Customer email <span class="required">*</span></label>
+        <input id="publicCustomerEmail" type="email" autocomplete="email" required>
+      </div>
+      <div class="field">
+        <label for="publicCustomerPhone">Mobile number with country code <span class="required">*</span></label>
+        <input id="publicCustomerPhone" type="tel" inputmode="tel" placeholder="+919876543210" autocomplete="tel" required>
+      </div>
+      <button class="nav-btn" type="submit" id="publicPayBtn">Pay Now</button>
+      <p class="checkout-help" id="publicCheckoutHelp"><span class="required">*</span> These details are required to create your Vani AI account and activate your subscription.</p>
+      <div class="checkout-status" id="publicCheckoutStatus"></div>
+    </form>
+  </section>
 </main>
+<script defer src="https://checkout.razorpay.com/v1/checkout.js"></script>
+<script>
+let selectedPublicPlan = "";
+const checkoutPanel = document.getElementById("publicCheckoutPanel");
+const checkoutStatus = document.getElementById("publicCheckoutStatus");
+const checkoutHelp = document.getElementById("publicCheckoutHelp");
+
+function setCheckoutStatus(message, show = true) {
+  if (!checkoutStatus) return;
+  checkoutStatus.textContent = message;
+  checkoutStatus.classList.toggle("show", show);
+}
+
+function validatePublicCheckout() {
+  const nameInput = document.getElementById("publicCustomerName");
+  const emailInput = document.getElementById("publicCustomerEmail");
+  const phoneInput = document.getElementById("publicCustomerPhone");
+  const nameValid = (nameInput?.value.trim() || "").length >= 3;
+  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailInput?.value.trim() || "");
+  const phoneValid = /^\+?[1-9]\d{7,14}$/.test(phoneInput?.value.trim() || "");
+  nameInput?.classList.toggle("error", !nameValid);
+  emailInput?.classList.toggle("error", !emailValid);
+  phoneInput?.classList.toggle("error", !phoneValid);
+  checkoutHelp?.classList.toggle("error", !(nameValid && emailValid && phoneValid));
+  return nameValid && emailValid && phoneValid;
+}
+
+document.querySelectorAll(".choose-plan-btn").forEach((button) => {
+  button.addEventListener("click", () => {
+    selectedPublicPlan = button.dataset.planId || "";
+    document.getElementById("checkoutPlanName").textContent = button.dataset.planName || "Selected Plan";
+    document.getElementById("checkoutPlanPrice").textContent = button.dataset.planPrice || "";
+    checkoutPanel?.classList.add("active");
+    setCheckoutStatus("", false);
+    checkoutPanel?.scrollIntoView({behavior: "smooth", block: "nearest"});
+    document.getElementById("publicCustomerName")?.focus();
+  });
+});
+
+["publicCustomerName", "publicCustomerEmail", "publicCustomerPhone"].forEach((id) => {
+  document.getElementById(id)?.addEventListener("input", (event) => {
+    event.currentTarget.classList.remove("error");
+    checkoutHelp?.classList.remove("error");
+  });
+});
+
+document.getElementById("publicSubscriptionForm")?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!selectedPublicPlan) {
+    setCheckoutStatus("Please select a plan first.");
+    return;
+  }
+  if (!validatePublicCheckout()) {
+    setCheckoutStatus("Please enter customer name, valid email, and mobile number with country code.");
+    return;
+  }
+  if (!window.Razorpay) {
+    setCheckoutStatus("Razorpay checkout could not be loaded. Please refresh and try again.");
+    return;
+  }
+  const button = document.getElementById("publicPayBtn");
+  const originalText = button.textContent;
+  const payload = {
+    plan_id: selectedPublicPlan,
+    name: document.getElementById("publicCustomerName").value.trim(),
+    email: document.getElementById("publicCustomerEmail").value.trim(),
+    contact: document.getElementById("publicCustomerPhone").value.trim()
+  };
+  button.disabled = true;
+  button.textContent = "Creating order...";
+  setCheckoutStatus("Creating secure payment order...");
+  try {
+    const orderResponse = await fetch("/api.php?action=create_public_razorpay_order", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(payload)
+    });
+    const orderData = await orderResponse.json().catch(() => ({}));
+    button.disabled = false;
+    button.textContent = originalText;
+    if (!orderData.success) {
+      setCheckoutStatus(orderData.message || "Payment could not be started.");
+      return;
+    }
+    const checkout = new Razorpay({
+      key: orderData.key_id,
+      amount: orderData.order.amount,
+      currency: orderData.order.currency || "INR",
+      name: "Vani AI",
+      description: `${orderData.plan.name} subscription`,
+      order_id: orderData.order.id,
+      remember_customer: true,
+      prefill: orderData.prefill || payload,
+      theme: {color: "#6366f1"},
+      handler: async (response) => {
+        setCheckoutStatus("Payment received. Activating subscription and sending login email...");
+        const verifyResponse = await fetch("/api.php?action=verify_public_razorpay_payment", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify(response)
+        });
+        const verifyData = await verifyResponse.json().catch(() => ({}));
+        if (!verifyData.success) {
+          setCheckoutStatus(verifyData.message || "Payment verification failed.");
+          return;
+        }
+        setCheckoutStatus("Subscription activated. Please check your email for login details.");
+        setTimeout(() => {
+          window.location.href = "login.php?subscription=success";
+        }, 1300);
+      }
+    });
+    checkout.on("payment.failed", (response) => {
+      setCheckoutStatus(response.error?.description || "Payment failed. Please try again.");
+    });
+    checkout.open();
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = originalText;
+    setCheckoutStatus("Something went wrong. Please try again.");
+  }
+});
+</script>
 </body>
 </html>

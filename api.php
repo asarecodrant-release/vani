@@ -1537,6 +1537,137 @@ function ensure_razorpay_customer_for_account(string $email, array $account, str
     ];
 }
 
+function public_subscription_temp_password(): string {
+    return bin2hex(random_bytes(4)) . "@AI";
+}
+
+function public_subscription_customer_upsert(string $email, string $password): array {
+    $existing = safe_rows(supabase(
+        "GET",
+        "customers?select=*&email=eq." . urlencode($email) . "&limit=1"
+    ));
+    if (!empty($existing[0])) {
+        return ["success" => true, "is_new" => false, "customer" => $existing[0], "password" => ""];
+    }
+    $insert = supabase("POST", "customers", [[
+        "email" => $email,
+        "password" => password_hash($password, PASSWORD_DEFAULT)
+    ]]);
+    if ($insert['status'] < 200 || $insert['status'] >= 300 || empty($insert['data'][0])) {
+        return ["success" => false, "message" => "Customer account could not be created", "debug" => $insert];
+    }
+    return ["success" => true, "is_new" => true, "customer" => $insert['data'][0], "password" => $password];
+}
+
+function public_subscription_save_profile(string $email, string $name, string $contact): void {
+    $nameParts = preg_split('/\s+/', trim($name), 2);
+    $firstName = $nameParts[0] ?? '';
+    $lastName = $nameParts[1] ?? '';
+    $digits = preg_replace('/\D+/', '', $contact);
+    $countryCode = '+91';
+    $mobile = $digits;
+    if (strpos($contact, '+') === 0 && strlen($digits) > 10) {
+        $countryDigits = substr($digits, 0, max(1, strlen($digits) - 10));
+        $countryCode = '+' . $countryDigits;
+        $mobile = substr($digits, -10);
+    }
+    $payload = [
+        "email" => $email,
+        "first_name" => $firstName,
+        "last_name" => $lastName,
+        "country_code" => $countryCode,
+        "mobile_number" => $mobile
+    ];
+    $existing = safe_rows(supabase("GET", "customer_profiles?select=id&email=eq." . urlencode($email) . "&limit=1"));
+    if (!empty($existing[0]['id'])) {
+        supabase("PATCH", "customer_profiles?id=eq." . urlencode((string)$existing[0]['id']), $payload);
+    } else {
+        supabase("POST", "customer_profiles", [$payload]);
+    }
+}
+
+function public_subscription_credit_pending_wallet(string $email, string $planId, int $amountPaise, string $paymentId): array {
+    $accountRows = safe_rows(supabase(
+        "GET",
+        "billing_accounts?select=*&email=eq." . urlencode($email) . "&customer_id=is.null&order=created_at.desc&limit=1"
+    ));
+    $account = $accountRows[0] ?? [];
+    if (empty($account)) {
+        $created = supabase("POST", "billing_accounts", [[
+            "email" => $email,
+            "wallet_balance_paise" => 0,
+            "current_plan" => "free",
+            "subscription_status" => "free"
+        ]]);
+        $account = $created['data'][0] ?? ["email" => $email, "wallet_balance_paise" => 0];
+    }
+    $balance = (int)($account['wallet_balance_paise'] ?? 0) + $amountPaise;
+    $periodStart = gmdate('Y-m-d\TH:i:s\Z');
+    $periodEnd = gmdate('Y-m-d\TH:i:s\Z', strtotime('+30 days'));
+    $rule = billing_auto_recharge_rule($planId);
+    $filter = !empty($account['id'])
+        ? "id=eq." . urlencode((string)$account['id'])
+        : "email=eq." . urlencode($email) . "&customer_id=is.null";
+    $updated = supabase("PATCH", "billing_accounts?" . $filter, [
+        "email" => $email,
+        "wallet_balance_paise" => $balance,
+        "current_plan" => $planId,
+        "subscription_status" => "active",
+        "auto_recharge_enabled" => false,
+        "auto_recharge_threshold_paise" => (int)$rule['threshold_paise'],
+        "auto_recharge_amount_paise" => (int)$rule['amount_paise'],
+        "saved_payment_method_status" => "missing",
+        "saved_payment_method_reference" => null,
+        "current_period_start" => $periodStart,
+        "current_period_end" => $periodEnd
+    ]);
+    supabase("POST", "wallet_transactions", [[
+        "email" => $email,
+        "customer_id" => null,
+        "transaction_type" => "credit",
+        "amount_paise" => $amountPaise,
+        "balance_after_paise" => $balance,
+        "description" => "Subscription amount added to wallet: " . billing_plan($planId)['name'],
+        "reference_type" => "razorpay_payment",
+        "reference_id" => $paymentId,
+        "metadata" => (object)["plan_id" => $planId, "public_subscription_checkout" => true]
+    ]]);
+    return $updated['data'][0] ?? array_merge($account, [
+        "wallet_balance_paise" => $balance,
+        "current_plan" => $planId,
+        "subscription_status" => "active"
+    ]);
+}
+
+function public_subscription_success_email_html(string $name, string $email, string $planName, string $password = ''): string {
+    $safeName = htmlspecialchars($name ?: 'there', ENT_QUOTES, 'UTF-8');
+    $safeEmail = htmlspecialchars($email, ENT_QUOTES, 'UTF-8');
+    $safePlan = htmlspecialchars($planName, ENT_QUOTES, 'UTF-8');
+    $passwordBox = $password !== ''
+        ? '<div style="margin:18px 0;padding:14px 16px;border-radius:14px;background:#eef2ff;border:1px solid #c7d2fe;"><div style="font-size:12px;color:#64748b;font-weight:800;text-transform:uppercase;letter-spacing:.06em;">Temporary login password</div><div style="margin-top:6px;font-size:22px;color:#312e81;font-weight:900;">' . htmlspecialchars($password, ENT_QUOTES, 'UTF-8') . '</div></div>'
+        : '<p style="margin:16px 0 0;color:#475569;line-height:1.7;">Your email already has a Vani AI account. Please login with your existing password, or use Forgot Password on the login page.</p>';
+    return '<!doctype html><html><body style="margin:0;background:#f8fafc;font-family:Inter,Arial,sans-serif;color:#0f172a;">'
+        . '<div style="max-width:640px;margin:0 auto;padding:28px 14px;">'
+        . '<div style="border-radius:24px;overflow:hidden;background:#ffffff;border:1px solid #e2e8f0;box-shadow:0 22px 60px rgba(15,23,42,.10);">'
+        . '<div style="padding:34px 28px;background:linear-gradient(135deg,#6366f1,#8b5cf6 58%,#ec4899);color:#fff;text-align:center;">'
+        . '<img src="https://vani.codrant.com/images/logo_img.png" alt="Vani AI" style="width:74px;height:74px;object-fit:contain;margin-bottom:12px;">'
+        . '<h1 style="margin:0;font-size:30px;line-height:1.2;">Subscription activated</h1>'
+        . '<p style="margin:12px 0 0;color:rgba(255,255,255,.9);line-height:1.7;">Welcome to Vani AI. Your ' . $safePlan . ' purchase is successful.</p>'
+        . '</div>'
+        . '<div style="padding:28px;">'
+        . '<p style="margin:0 0 14px;line-height:1.7;color:#334155;">Hi <strong>' . $safeName . '</strong>, your subscription amount has been credited to your Vani wallet. Create your chatbot from the product page and this plan will be assigned to that chatbot automatically.</p>'
+        . '<div style="display:grid;gap:10px;margin:18px 0;padding:16px;border-radius:16px;background:#f1f5f9;border:1px solid #e2e8f0;">'
+        . '<div><strong>Login email:</strong> ' . $safeEmail . '</div>'
+        . '<div><strong>Plan:</strong> ' . $safePlan . '</div>'
+        . '</div>'
+        . $passwordBox
+        . '<p style="margin:16px 0;color:#b91c1c;font-weight:800;line-height:1.6;">For security, reset your password immediately after your first login.</p>'
+        . '<div style="margin-top:22px;"><a href="https://vani.codrant.com/login.php" style="display:inline-block;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;text-decoration:none;font-weight:800;padding:13px 18px;border-radius:12px;">Login to Vani AI</a></div>'
+        . '</div>'
+        . '<div style="padding:16px 28px;background:#f8fafc;color:#64748b;font-size:12px;line-height:1.6;">This email was sent by Vani AI from Codrant after a successful subscription purchase.</div>'
+        . '</div></div></body></html>';
+}
+
 // ==========================
 // ==========================
 
@@ -2162,6 +2293,8 @@ if ($action === "create_razorpay_subscription_checkout") {
     $data = getJSON();
     $customerId = trim((string)($data['customer_id'] ?? ''));
     $planId = trim((string)($data['plan_id'] ?? ''));
+    $customerName = trim((string)($data['name'] ?? ''));
+    $customerContact = trim((string)($data['contact'] ?? ''));
     $email = authenticated_email();
     if (!authenticated_customer_access($customerId)) {
         echo json_encode(["success" => false, "message" => "Access denied"]);
@@ -2171,13 +2304,21 @@ if ($action === "create_razorpay_subscription_checkout") {
         echo json_encode(["success" => false, "message" => "Select Starter, Growth, or Business plan"]);
         exit;
     }
+    if (strlen($customerName) < 3) {
+        echo json_encode(["success" => false, "message" => "Customer name is required for subscription purchase"]);
+        exit;
+    }
+    if (!preg_match('/^\+?[1-9]\d{7,14}$/', preg_replace('/[^\d+]/', '', $customerContact))) {
+        echo json_encode(["success" => false, "message" => "Customer mobile number with country code is required"]);
+        exit;
+    }
 
     $account = billing_account_for_customer($customerId);
     $customer = ensure_razorpay_customer_for_account(
         $email,
         $account,
-        (string)($data['name'] ?? ''),
-        (string)($data['contact'] ?? '')
+        $customerName,
+        $customerContact
     );
     if (empty($customer['success'])) {
         echo json_encode($customer);
@@ -2366,6 +2507,176 @@ if ($action === "verify_razorpay_subscription_payment") {
     exit;
 }
 
+if ($action === "create_public_razorpay_order") {
+    $data = getJSON();
+    $planId = trim((string)($data['plan_id'] ?? ''));
+    $name = trim((string)($data['name'] ?? ''));
+    $email = strtolower(trim((string)($data['email'] ?? '')));
+    $contact = preg_replace('/[^\d+]/', '', (string)($data['contact'] ?? ''));
+    if (!in_array($planId, billing_plan_ids(), true) || $planId === 'free') {
+        echo json_encode(["success" => false, "message" => "Select Starter, Growth, or Business plan"]);
+        exit;
+    }
+    if (strlen($name) < 3) {
+        echo json_encode(["success" => false, "message" => "Enter customer name"]);
+        exit;
+    }
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        echo json_encode(["success" => false, "message" => "Enter a valid email address"]);
+        exit;
+    }
+    if (!preg_match('/^\+?[1-9]\d{7,14}$/', $contact)) {
+        echo json_encode(["success" => false, "message" => "Enter mobile number with country code"]);
+        exit;
+    }
+    $botRows = safe_rows(supabase(
+        "GET",
+        "chatbot_signups?select=customer_id&email=eq." . urlencode($email) . "&limit=1"
+    ));
+    if (!empty($botRows)) {
+        echo json_encode(["success" => false, "message" => "This email already has a chatbot. Please login and buy the plan from Dashboard > Subscription."]);
+        exit;
+    }
+    if ($contact[0] !== '+') {
+        $contact = '+' . ltrim($contact, '0');
+    }
+    $plan = billing_plan($planId);
+    $amountPaise = (int)$plan['price_paise'];
+    $receipt = substr("pub_" . $planId . "_" . time() . "_" . bin2hex(random_bytes(3)), 0, 40);
+    $order = razorpay_request("POST", "orders", [
+        "amount" => $amountPaise,
+        "currency" => "INR",
+        "receipt" => $receipt,
+        "notes" => [
+            "email" => $email,
+            "plan_id" => $planId,
+            "order_type" => "public_subscription",
+            "payment_mode" => "one_time"
+        ]
+    ]);
+    if ($order['status'] < 200 || $order['status'] >= 300 || empty($order['data']['id'])) {
+        echo json_encode(["success" => false, "message" => "Razorpay order could not be created", "debug" => $order]);
+        exit;
+    }
+    $storedOrder = supabase("POST", "billing_orders", [[
+        "email" => $email,
+        "customer_id" => null,
+        "plan_id" => $planId,
+        "order_type" => "subscription",
+        "amount_paise" => $amountPaise,
+        "currency" => "INR",
+        "status" => "created",
+        "razorpay_order_id" => $order['data']['id'],
+        "receipt" => $receipt,
+        "metadata" => (object)[
+            "plan_name" => $plan['name'],
+            "payment_mode" => "one_time",
+            "public_subscription_checkout" => true,
+            "customer_name" => $name,
+            "customer_contact" => $contact
+        ]
+    ]]);
+    if ($storedOrder['status'] < 200 || $storedOrder['status'] >= 300) {
+        echo json_encode(["success" => false, "message" => "Payment order could not be saved", "debug" => $storedOrder]);
+        exit;
+    }
+    [$keyId] = razorpay_credentials();
+    echo json_encode([
+        "success" => true,
+        "key_id" => $keyId,
+        "order" => $order['data'],
+        "plan" => $plan,
+        "prefill" => ["name" => $name, "email" => $email, "contact" => $contact]
+    ]);
+    exit;
+}
+
+if ($action === "verify_public_razorpay_payment") {
+    $data = getJSON();
+    $orderId = trim((string)($data['razorpay_order_id'] ?? ''));
+    $paymentId = trim((string)($data['razorpay_payment_id'] ?? ''));
+    $signature = trim((string)($data['razorpay_signature'] ?? ''));
+    [, $secret] = razorpay_credentials();
+    if (!$orderId || !$paymentId || !$signature || !$secret) {
+        echo json_encode(["success" => false, "message" => "Missing payment verification data"]);
+        exit;
+    }
+    $expected = hash_hmac('sha256', $orderId . "|" . $paymentId, $secret);
+    if (!hash_equals($expected, $signature)) {
+        supabase("PATCH", "billing_orders?razorpay_order_id=eq." . urlencode($orderId), ["status" => "failed"]);
+        echo json_encode(["success" => false, "message" => "Payment signature verification failed"]);
+        exit;
+    }
+    $rows = safe_rows(supabase(
+        "GET",
+        "billing_orders?select=*&razorpay_order_id=eq." . urlencode($orderId) . "&limit=1"
+    ));
+    $order = $rows[0] ?? [];
+    if (empty($order) || ($order['status'] ?? '') === 'paid') {
+        echo json_encode(["success" => false, "message" => "Payment order not found or already processed"]);
+        exit;
+    }
+    $metadata = is_array($order['metadata'] ?? null) ? $order['metadata'] : [];
+    if (empty($metadata['public_subscription_checkout'])) {
+        echo json_encode(["success" => false, "message" => "This is not a public subscription order"]);
+        exit;
+    }
+    $payment = razorpay_request("GET", "payments/" . rawurlencode($paymentId), []);
+    if ($payment['status'] < 200 || $payment['status'] >= 300 || empty($payment['data']['id'])) {
+        echo json_encode(["success" => false, "message" => "Payment could not be fetched", "debug" => $payment]);
+        exit;
+    }
+    $paymentData = $payment['data'];
+    if (($paymentData['order_id'] ?? '') !== $orderId) {
+        echo json_encode(["success" => false, "message" => "Payment does not match this order"]);
+        exit;
+    }
+    $paymentStatus = (string)($paymentData['status'] ?? '');
+    if (!in_array($paymentStatus, ['captured', 'authorized'], true) && empty($paymentData['captured'])) {
+        echo json_encode(["success" => false, "message" => "Payment is not captured yet", "payment_status" => $paymentStatus]);
+        exit;
+    }
+    $email = strtolower(trim((string)($order['email'] ?? '')));
+    $planId = (string)$order['plan_id'];
+    $amountPaise = (int)$order['amount_paise'];
+    $name = trim((string)($metadata['customer_name'] ?? ''));
+    $contact = trim((string)($metadata['customer_contact'] ?? ''));
+    $password = public_subscription_temp_password();
+    $customer = public_subscription_customer_upsert($email, $password);
+    if (empty($customer['success'])) {
+        echo json_encode($customer);
+        exit;
+    }
+    public_subscription_save_profile($email, $name, $contact);
+    $account = public_subscription_credit_pending_wallet($email, $planId, $amountPaise, $paymentId);
+    $newPassword = !empty($customer['is_new']) ? (string)$customer['password'] : '';
+    require_once __DIR__ . '/email.php';
+    $emailSent = sendBrevoEmail(
+        $email,
+        "Your Vani AI subscription is active",
+        public_subscription_success_email_html($name, $email, billing_plan($planId)['name'], $newPassword)
+    );
+    supabase("PATCH", "billing_orders?razorpay_order_id=eq." . urlencode($orderId), [
+        "status" => "paid",
+        "razorpay_payment_id" => $paymentId,
+        "razorpay_signature" => $signature,
+        "paid_at" => gmdate('Y-m-d\TH:i:s\Z'),
+        "metadata" => (object)array_merge($metadata, [
+            "payment_status" => $paymentStatus,
+            "account_created" => !empty($customer['is_new']),
+            "subscription_email_sent" => $emailSent
+        ])
+    ]);
+    echo json_encode([
+        "success" => true,
+        "message" => "Subscription activated. Login details were sent to your email.",
+        "email_sent" => $emailSent,
+        "account" => $account,
+        "login_url" => "login.php?subscription=success"
+    ]);
+    exit;
+}
+
 if ($action === "cancel_chatbot_subscription") {
     if (!is_authenticated_user()) {
         echo json_encode(["success" => false, "message" => "Login required"]);
@@ -2424,12 +2735,22 @@ if ($action === "create_razorpay_order") {
     $data = getJSON();
     $planId = trim((string)($data['plan_id'] ?? ''));
     $customerId = trim((string)($data['customer_id'] ?? ''));
+    $customerName = trim((string)($data['name'] ?? ''));
+    $customerContact = trim((string)($data['contact'] ?? ''));
     if (!authenticated_customer_access($customerId)) {
         echo json_encode(["success" => false, "message" => "Access denied"]);
         exit;
     }
     if (!in_array($planId, billing_plan_ids(), true) || $planId === 'free') {
         echo json_encode(["success" => false, "message" => "Select a paid plan"]);
+        exit;
+    }
+    if (strlen($customerName) < 3) {
+        echo json_encode(["success" => false, "message" => "Customer name is required for subscription purchase"]);
+        exit;
+    }
+    if (!preg_match('/^\+?[1-9]\d{7,14}$/', preg_replace('/[^\d+]/', '', $customerContact))) {
+        echo json_encode(["success" => false, "message" => "Customer mobile number with country code is required"]);
         exit;
     }
     $plan = billing_plan($planId);
@@ -2607,6 +2928,13 @@ if ($action === "signup") {
         "business_type" => $data['business_type'],
         "theme_color" => "#007bff"
     ]]);
+
+    if ($res['status'] >= 200 && $res['status'] < 300) {
+        billing_adopt_legacy_email_account(
+            trim((string)$data['customer_id']),
+            strtolower(trim((string)$data['email']))
+        );
+    }
 
     echo json_encode([
         "status" => "signup_done",

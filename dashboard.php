@@ -510,6 +510,11 @@ $bots = safe_data(supabase(
     "chatbot_signups?select=*&email=eq." . urlencode($email) . "&order=created_at.desc"
 ));
 
+if (empty($bots)) {
+    header("Location: index.php?notice=select_product");
+    exit;
+}
+
 if (!$selectedBotId && !empty($bots[0]['customer_id'])) {
     $selectedBotId = (string)$bots[0]['customer_id'];
 }
@@ -522,12 +527,9 @@ foreach ($bots as $bot) {
     }
 }
 
-if (empty($selectedBot) && $selectedBotId) {
-    $fallbackBot = safe_data(supabase(
-        "GET",
-        "chatbot_signups?select=*&customer_id=eq." . urlencode($selectedBotId) . "&limit=1"
-    ));
-    $selectedBot = $fallbackBot[0] ?? [];
+if (empty($selectedBot)) {
+    $selectedBot = $bots[0] ?? [];
+    $selectedBotId = (string)($selectedBot['customer_id'] ?? '');
 }
 
 $faqs = $selectedBotId
@@ -1236,12 +1238,17 @@ $embedCode = $selectedBotId ? '<script src="' . $widgetUrl . '" data-id="' . $se
 $profileFirstName = first_value($profile, ['first_name'], '');
 $profileLastName = first_value($profile, ['last_name'], '');
 $displayName = trim($profileFirstName . ' ' . $profileLastName);
-$razorpayCustomerName = $displayName ?: $email;
-$profileContactValue = preg_replace('/[^\d+]/', '', (string)($profile['country_code'] ?? '+91') . (string)($profile['mobile_number'] ?? ''));
-if ($profileContactValue !== '' && $profileContactValue[0] !== '+') {
-    $profileContactValue = '+91' . ltrim($profileContactValue, '0');
+$razorpayCustomerName = $displayName;
+$profileMobileNumber = preg_replace('/\D+/', '', (string)($profile['mobile_number'] ?? ''));
+$profileCountryCode = preg_replace('/[^\d+]/', '', (string)($profile['country_code'] ?? ''));
+$profileContactValue = '';
+if ($profileMobileNumber !== '') {
+    $profileContactValue = $profileCountryCode . $profileMobileNumber;
+    if ($profileContactValue !== '' && $profileContactValue[0] !== '+') {
+        $profileContactValue = '+' . ltrim($profileContactValue, '+0');
+    }
 }
-$razorpayCustomerContact = $savedPaymentContact ?: $profileContactValue;
+$razorpayCustomerContact = $profileContactValue;
 $initialSource = $profileFirstName ?: $email;
 $initials = strtoupper(substr($initialSource, 0, 1));
 $analyticsRangeLabel = [
@@ -1697,6 +1704,9 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
 .lead-disabled{opacity:.56}
 .input-help{font-size:12px;color:var(--muted);line-height:1.5}
 .input-help.error{color:#b91c1c}
+.input-help.full{grid-column:1/-1}
+.required-mark{color:#dc2626;font-weight:900}
+.field input.input-error{border-color:#dc2626;box-shadow:0 0 0 3px rgba(220,38,38,.12)}
 .toast{position:fixed;right:24px;bottom:24px;background:#111827;color:#fff;border-radius:12px;padding:12px 14px;box-shadow:0 12px 30px rgba(0,0,0,.25);opacity:0;transform:translateY(10px);pointer-events:none;transition:.25s}
 .toast.show{opacity:1;transform:translateY(0)}
 @media(max-width:1440px){
@@ -3207,13 +3217,14 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
             </div>
             <div class="form-grid" style="margin-top:14px">
               <div class="field">
-                <label for="subscriptionAutoPayNameInput">Customer name</label>
-                <input id="subscriptionAutoPayNameInput" value="<?php echo h($razorpayCustomerName); ?>" autocomplete="name">
+                <label for="subscriptionAutoPayNameInput">Customer name <span class="required-mark">*</span></label>
+                <input id="subscriptionAutoPayNameInput" value="<?php echo h($razorpayCustomerName); ?>" autocomplete="name" required aria-required="true">
               </div>
               <div class="field">
-                <label for="subscriptionAutoPayContactInput">Mobile number with country code</label>
-                <input id="subscriptionAutoPayContactInput" value="<?php echo h($razorpayCustomerContact); ?>" placeholder="+919876543210" autocomplete="tel">
+                <label for="subscriptionAutoPayContactInput">Mobile number with country code <span class="required-mark">*</span></label>
+                <input id="subscriptionAutoPayContactInput" value="<?php echo h($razorpayCustomerContact); ?>" placeholder="+919876543210" autocomplete="tel" required aria-required="true">
               </div>
+              <small class="input-help full" id="subscriptionRequiredFieldsHelp"><span class="required-mark">*</span> Customer name and mobile number are required for subscription purchase. They prefill only after the Profile tab has saved these details.</small>
             </div>
             <div class="panel-actions">
               <button class="pill-btn" type="button" id="continueSubscriptionPaymentBtn">Continue to Payment</button>
@@ -4676,16 +4687,22 @@ async function startPlanCheckout(planId, button) {
     return;
   }
   const paymentMode = document.querySelector('input[name="subscriptionPaymentMode"]:checked')?.value || "one_time";
-  const customerName = document.getElementById("subscriptionAutoPayNameInput")?.value.trim() || "";
-  const customerContact = document.getElementById("subscriptionAutoPayContactInput")?.value.trim() || "";
-  if (paymentMode === "auto" && customerName.length < 3) {
-    showToast("Enter customer name for automatic payment");
-    document.getElementById("subscriptionAutoPayNameInput")?.focus();
+  const nameInput = document.getElementById("subscriptionAutoPayNameInput");
+  const contactInput = document.getElementById("subscriptionAutoPayContactInput");
+  const helpText = document.getElementById("subscriptionRequiredFieldsHelp");
+  const customerName = nameInput?.value.trim() || "";
+  const customerContact = contactInput?.value.trim() || "";
+  nameInput?.classList.toggle("input-error", customerName.length < 3);
+  contactInput?.classList.toggle("input-error", !/^\+?[1-9]\d{7,14}$/.test(customerContact));
+  helpText?.classList.toggle("error", customerName.length < 3 || !/^\+?[1-9]\d{7,14}$/.test(customerContact));
+  if (customerName.length < 3) {
+    showToast("Customer name is required for subscription purchase");
+    nameInput?.focus();
     return;
   }
-  if (paymentMode === "auto" && !customerContact) {
-    showToast("Enter mobile number with country code");
-    document.getElementById("subscriptionAutoPayContactInput")?.focus();
+  if (!/^\+?[1-9]\d{7,14}$/.test(customerContact)) {
+    showToast("Customer mobile number with country code is required");
+    contactInput?.focus();
     return;
   }
   const originalText = button.textContent;
@@ -4784,6 +4801,13 @@ document.querySelectorAll(".billing-plan-btn").forEach(button => {
 
 document.getElementById("continueSubscriptionPaymentBtn")?.addEventListener("click", event => {
   startPlanCheckout(selectedSubscriptionPlanId, event.currentTarget);
+});
+
+["subscriptionAutoPayNameInput", "subscriptionAutoPayContactInput"].forEach((id) => {
+  document.getElementById(id)?.addEventListener("input", (event) => {
+    event.currentTarget.classList.remove("input-error");
+    document.getElementById("subscriptionRequiredFieldsHelp")?.classList.remove("error");
+  });
 });
 
 document.getElementById("cancelSubscriptionBtn")?.addEventListener("click", async event => {

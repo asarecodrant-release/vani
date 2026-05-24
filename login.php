@@ -23,9 +23,58 @@ $googleClientId =
     ?? getenv('GOOGLE_CLIENT_ID')
     ?: '970273381861-ar6734p4c2hl3pn0g58segkgccfvoirv.apps.googleusercontent.com';
 
-if ($_SERVER["REQUEST_METHOD"] !== "POST" && is_authenticated_user()) {
+function login_safe_rows(array $response): array {
+    return is_array($response['data'] ?? null) ? $response['data'] : [];
+}
+
+function login_user_has_chatbot(string $email): bool {
+    if ($email === '') {
+        return false;
+    }
+    return !empty(login_safe_rows(supabase(
+        "GET",
+        "chatbot_signups?select=customer_id&email=eq." . urlencode($email) . "&limit=1"
+    )));
+}
+
+function login_user_has_pending_subscription(string $email): bool {
+    if ($email === '') {
+        return false;
+    }
+    $rows = login_safe_rows(supabase(
+        "GET",
+        "billing_accounts?select=current_plan,subscription_status,wallet_balance_paise&email=eq." . urlencode($email) . "&customer_id=is.null&limit=1"
+    ));
+    $account = $rows[0] ?? [];
+    return (string)($account['current_plan'] ?? 'free') !== 'free'
+        || (string)($account['subscription_status'] ?? 'free') !== 'free'
+        || (int)($account['wallet_balance_paise'] ?? 0) > 0;
+}
+
+function login_redirect_after_success(string $email): void {
+    if (!login_user_has_chatbot($email)) {
+        $params = ["notice" => "select_product"];
+        if (login_user_has_pending_subscription($email)) {
+            $params["reset_password"] = "1";
+        }
+        header("Location: index.php?" . http_build_query($params));
+        exit;
+    }
     header("Location: dashboard.php");
     exit;
+}
+
+if ($_SERVER["REQUEST_METHOD"] !== "POST" && is_authenticated_user()) {
+    login_redirect_after_success(authenticated_email());
+}
+
+if ($_SERVER["REQUEST_METHOD"] !== "POST" && (string)($_GET['subscription'] ?? '') === 'success') {
+    $resetMessage = "Subscription activated. Check your email for login details, then reset your password after logging in.";
+}
+
+if ($_SERVER["REQUEST_METHOD"] !== "POST" && (string)($_GET['reset'] ?? '') === '1') {
+    $showReset = true;
+    $resetMessage = "Enter your email below to reset the temporary password.";
 }
 
 // ======================================
@@ -209,11 +258,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && !isset($_POST['reset_action'])) {
                     "password"
                 );
 
-                header(
-                    "Location: dashboard.php"
-                );
-
-                exit;
+                login_redirect_after_success((string)$user['email']);
 
             } else {
 

@@ -1,4 +1,9 @@
-<?php include 'auth.php'; ?>
+<?php
+include 'auth.php';
+$notice = (string)($_GET['notice'] ?? '');
+$showSelectProductNotice = is_authenticated_user() && $notice === 'select_product';
+$showResetPasswordNotice = is_authenticated_user() && (string)($_GET['reset_password'] ?? '') === '1';
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -165,6 +170,27 @@ body.dark .logo-dark{
 .nav-links a.nav-btn1{
   text-decoration:none !important;
 }    
+.customer-notice{
+  max-width:1180px;
+  margin:0 auto 18px;
+  padding:0 20px;
+}
+.customer-notice-card{
+  border:1px solid rgba(99,102,241,.22);
+  border-radius:18px;
+  background:linear-gradient(135deg,rgba(99,102,241,.12),rgba(236,72,153,.08));
+  padding:16px 18px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  box-shadow:0 18px 42px rgba(99,102,241,.12);
+}
+.customer-notice-card strong{display:block;font-size:16px;margin-bottom:4px}
+.customer-notice-card p{color:#475569;line-height:1.55;font-size:14px}
+body.dark .customer-notice-card{background:linear-gradient(135deg,rgba(99,102,241,.2),rgba(236,72,153,.13));border-color:rgba(129,140,248,.24)}
+body.dark .customer-notice-card p{color:#cbd5e1}
+@media(max-width:720px){.customer-notice-card{display:grid}.customer-notice-card .nav-btn{width:100%;text-align:center}}
 /* =========================
    HERO
 ========================= */
@@ -956,6 +982,27 @@ body.dark .side-menu-link.secondary{
   </div>
 
 </nav>
+
+<?php if ($showSelectProductNotice): ?>
+  <div class="customer-notice">
+    <div class="customer-notice-card">
+      <div>
+        <strong><?php echo $showResetPasswordNotice ? 'Subscription activated. Reset your password, then create your chatbot.' : 'Select your product to continue.'; ?></strong>
+        <p>
+          <?php if ($showResetPasswordNotice): ?>
+            For security, use Forgot Password on the login page to reset the temporary password. Then create your chatbot and your subscription will be assigned automatically.
+          <?php else: ?>
+            You do not have a chatbot yet. Create your Vani AI chatbot first, then your dashboard will become available.
+          <?php endif; ?>
+        </p>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <?php if ($showResetPasswordNotice): ?><a class="nav-btn" href="logout.php?next=login.php%3Freset%3D1">Reset password</a><?php endif; ?>
+        <a class="nav-btn" href="freebot.php">Create chatbot</a>
+      </div>
+    </div>
+  </div>
+<?php endif; ?>
 
 <div class="menu-overlay" id="menuOverlay" aria-hidden="true"></div>
 <aside class="side-menu" id="sideMenu" aria-label="Site menu">
