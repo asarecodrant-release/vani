@@ -3839,8 +3839,9 @@ function bindAutoRechargeMandate() {
           setTimeout(() => location.reload(), 900);
         }
       });
-      checkout.on("payment.failed", response => {
-        showToast(response.error?.description || "Mandate authorization failed");
+      checkout.on("payment.failed", async response => {
+        await recordRazorpayFailure({order_id: orderData.order.id}, response, "auto_recharge_mandate");
+        showToast(razorpayFailureMessage(response, "Mandate authorization failed"));
       });
       checkout.open();
     } catch (error) {
@@ -3972,6 +3973,48 @@ function csvValue(value) {
 
 function rowsToCsv(rows) {
   return rows.map(row => row.map(csvValue).join(",")).join("\n");
+}
+
+async function recordRazorpayFailure(reference, response, context = "checkout") {
+  const error = response?.error || {};
+  try {
+    await fetch("/api.php?action=record_razorpay_failure", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        context,
+        razorpay_order_id: reference?.order_id || error?.metadata?.order_id || "",
+        razorpay_subscription_id: reference?.subscription_id || error?.metadata?.subscription_id || "",
+        razorpay_payment_id: error?.metadata?.payment_id || "",
+        error
+      })
+    });
+  } catch (failureLogError) {
+    console.warn("Razorpay failure logging skipped", failureLogError);
+  }
+}
+
+function razorpayFailureMessage(response, fallback = "Payment could not be completed") {
+  const error = response?.error || {};
+  const reason = String(error.reason || error.code || "").toLowerCase();
+  const description = String(error.description || "").trim();
+  let detail = description || fallback;
+  if (/insufficient|balance|fund/.test(reason + " " + description.toLowerCase())) {
+    detail = "The card or account may not have enough balance. Please use another card or payment method.";
+  } else if (/declin|bank|issuer/.test(reason + " " + description.toLowerCase())) {
+    detail = "Your bank declined this payment. Please contact your bank or try another card.";
+  } else if (/expired/.test(reason + " " + description.toLowerCase())) {
+    detail = "This card appears to be expired. Please use another card.";
+  } else if (/auth|otp|3d|verification|pin/.test(reason + " " + description.toLowerCase())) {
+    detail = "Bank verification was not completed. Please retry and complete the OTP, PIN, or 3D Secure step.";
+  } else if (/timeout|network|temporar|server|gateway/.test(reason + " " + description.toLowerCase())) {
+    detail = "The payment gateway or network had a temporary issue. Please retry after a moment.";
+  } else if (/cancel/.test(reason + " " + description.toLowerCase())) {
+    detail = "The payment was cancelled before completion.";
+  } else if (/card|method|instrument/.test(reason + " " + description.toLowerCase())) {
+    detail = "This card or payment method could not be used. Please try another card or payment method.";
+  }
+  return `${detail} No wallet amount was added.`;
 }
 
 function currentAnalyticsFilterState() {
@@ -4848,8 +4891,12 @@ async function startPlanCheckout(planId, button) {
     checkoutOptions.order_id = orderData.order.id;
   }
   const checkout = new Razorpay(checkoutOptions);
-  checkout.on("payment.failed", response => {
-    showToast(response.error?.description || "Payment authorization failed");
+  checkout.on("payment.failed", async response => {
+    await recordRazorpayFailure({
+      order_id: orderData.order?.id || "",
+      subscription_id: orderData.subscription_id || ""
+    }, response, paymentMode === "auto" ? "wallet_recharge_auto_payment" : "wallet_recharge_one_time");
+    showToast(razorpayFailureMessage(response, "Payment authorization failed"));
   });
   checkout.open();
 }

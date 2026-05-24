@@ -180,6 +180,47 @@ function setCheckoutStatus(message, show = true) {
   checkoutStatus.classList.toggle("show", show);
 }
 
+async function recordPublicRazorpayFailure(orderId, response) {
+  const error = response?.error || {};
+  try {
+    await fetch("/api.php?action=record_razorpay_failure", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        context: "public_wallet_recharge",
+        razorpay_order_id: orderId || error?.metadata?.order_id || "",
+        razorpay_payment_id: error?.metadata?.payment_id || "",
+        error
+      })
+    });
+  } catch (failureLogError) {
+    console.warn("Razorpay failure logging skipped", failureLogError);
+  }
+}
+
+function publicRazorpayFailureMessage(response) {
+  const error = response?.error || {};
+  const reason = String(error.reason || error.code || "").toLowerCase();
+  const description = String(error.description || "").trim();
+  let detail = description || "Payment could not be completed.";
+  if (/insufficient|balance|fund/.test(reason + " " + description.toLowerCase())) {
+    detail = "The card or account may not have enough balance. Please use another card or payment method.";
+  } else if (/declin|bank|issuer/.test(reason + " " + description.toLowerCase())) {
+    detail = "Your bank declined this payment. Please contact your bank or try another card.";
+  } else if (/expired/.test(reason + " " + description.toLowerCase())) {
+    detail = "This card appears to be expired. Please use another card.";
+  } else if (/auth|otp|3d|verification|pin/.test(reason + " " + description.toLowerCase())) {
+    detail = "Bank verification was not completed. Please retry and complete the OTP, PIN, or 3D Secure step.";
+  } else if (/timeout|network|temporar|server|gateway/.test(reason + " " + description.toLowerCase())) {
+    detail = "The payment gateway or network had a temporary issue. Please retry after a moment.";
+  } else if (/cancel/.test(reason + " " + description.toLowerCase())) {
+    detail = "The payment was cancelled before completion.";
+  } else if (/card|method|instrument/.test(reason + " " + description.toLowerCase())) {
+    detail = "This card or payment method could not be used. Please try another card or payment method.";
+  }
+  return `${detail} No wallet amount was added.`;
+}
+
 function validatePublicCheckout() {
   const nameInput = document.getElementById("publicCustomerName");
   const emailInput = document.getElementById("publicCustomerEmail");
@@ -310,8 +351,9 @@ document.getElementById("publicSubscriptionForm")?.addEventListener("submit", as
         }, 1300);
       }
     });
-    checkout.on("payment.failed", (response) => {
-      setCheckoutStatus(response.error?.description || "Payment failed. Please try again.");
+    checkout.on("payment.failed", async (response) => {
+      await recordPublicRazorpayFailure(orderData.order.id, response);
+      setCheckoutStatus(publicRazorpayFailureMessage(response));
     });
     checkout.open();
   } catch (error) {

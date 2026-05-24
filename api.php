@@ -1096,6 +1096,28 @@ function razorpay_request(string $method, string $endpoint, array $payload = [])
     return ["status" => $status, "data" => json_decode((string)$raw, true), "raw" => $raw];
 }
 
+function merge_order_metadata($existing, array $extra): object {
+    $base = is_array($existing) ? $existing : [];
+    return (object)array_merge($base, $extra);
+}
+
+function razorpay_payment_is_captured(array $paymentData): bool {
+    return (string)($paymentData['status'] ?? '') === 'captured' || !empty($paymentData['captured']);
+}
+
+function razorpay_failure_payload(array $error): array {
+    return [
+        "code" => (string)($error['code'] ?? ''),
+        "description" => (string)($error['description'] ?? ''),
+        "reason" => (string)($error['reason'] ?? ''),
+        "source" => (string)($error['source'] ?? ''),
+        "step" => (string)($error['step'] ?? ''),
+        "metadata" => is_array($error['metadata'] ?? null) ? $error['metadata'] : [],
+        "field" => (string)($error['field'] ?? ''),
+        "recorded_at" => gmdate('Y-m-d\TH:i:s\Z')
+    ];
+}
+
 function razorpay_subscription_plan_id(string $planId): array {
     $envKey = 'RAZORPAY_PLAN_ID_' . strtoupper($planId);
     $configured = trim((string)($_ENV[$envKey] ?? getenv($envKey) ?: ''));
@@ -2343,6 +2365,56 @@ if ($action === "verify_auto_recharge_mandate") {
     exit;
 }
 
+if ($action === "record_razorpay_failure") {
+    $data = getJSON();
+    $orderId = trim((string)($data['razorpay_order_id'] ?? ''));
+    $subscriptionId = trim((string)($data['razorpay_subscription_id'] ?? ''));
+    $paymentId = trim((string)($data['razorpay_payment_id'] ?? ''));
+    $failureContext = trim((string)($data['context'] ?? 'checkout'));
+    $error = is_array($data['error'] ?? null) ? $data['error'] : [];
+    $referenceId = $orderId !== '' ? $orderId : $subscriptionId;
+
+    if ($referenceId === '') {
+        echo json_encode(["success" => false, "message" => "Missing Razorpay order reference"]);
+        exit;
+    }
+
+    $endpoint = "billing_orders?select=*&razorpay_order_id=eq." . urlencode($referenceId) . "&limit=1";
+    if (is_authenticated_user()) {
+        $endpoint .= "&email=eq." . urlencode(authenticated_email());
+    }
+    $rows = safe_rows(supabase("GET", $endpoint));
+    $order = $rows[0] ?? [];
+    if (empty($order)) {
+        echo json_encode(["success" => false, "message" => "Payment order not found"]);
+        exit;
+    }
+    if (($order['status'] ?? '') === 'paid') {
+        echo json_encode(["success" => true, "message" => "Paid order was not marked failed"]);
+        exit;
+    }
+
+    $existingMetadata = is_array($order['metadata'] ?? null) ? $order['metadata'] : [];
+    $failure = razorpay_failure_payload($error);
+    $failure['context'] = $failureContext;
+    $failure['razorpay_payment_id'] = $paymentId;
+
+    supabase("PATCH", "billing_orders?razorpay_order_id=eq." . urlencode($referenceId), [
+        "status" => "failed",
+        "razorpay_payment_id" => $paymentId !== '' ? $paymentId : null,
+        "metadata" => merge_order_metadata($existingMetadata, [
+            "payment_failed" => true,
+            "failure" => $failure
+        ])
+    ]);
+
+    echo json_encode([
+        "success" => true,
+        "message" => "Payment failure recorded"
+    ]);
+    exit;
+}
+
 if ($action === "create_razorpay_subscription_checkout") {
     if (!is_authenticated_user()) {
         echo json_encode(["success" => false, "message" => "Login required"]);
@@ -2493,7 +2565,7 @@ if ($action === "verify_razorpay_subscription_payment") {
     }
     $paymentData = $payment['data'];
     $paymentStatus = (string)($paymentData['status'] ?? '');
-    if (!in_array($paymentStatus, ['captured', 'authorized'], true) && empty($paymentData['captured'])) {
+    if (!razorpay_payment_is_captured($paymentData)) {
         echo json_encode(["success" => false, "message" => "Subscription payment is not captured yet", "payment_status" => $paymentStatus]);
         exit;
     }
@@ -2746,7 +2818,7 @@ if ($action === "verify_public_razorpay_payment") {
         exit;
     }
     $paymentStatus = (string)($paymentData['status'] ?? '');
-    if (!in_array($paymentStatus, ['captured', 'authorized'], true) && empty($paymentData['captured'])) {
+    if (!razorpay_payment_is_captured($paymentData)) {
         echo json_encode(["success" => false, "message" => "Payment is not captured yet", "payment_status" => $paymentStatus]);
         exit;
     }
@@ -2962,7 +3034,7 @@ if ($action === "verify_razorpay_payment") {
         exit;
     }
     $paymentStatus = (string)($paymentData['status'] ?? '');
-    if (!in_array($paymentStatus, ['captured', 'authorized'], true) && empty($paymentData['captured'])) {
+    if (!razorpay_payment_is_captured($paymentData)) {
         echo json_encode(["success" => false, "message" => "Payment is not captured yet", "payment_status" => $paymentStatus]);
         exit;
     }
