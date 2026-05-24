@@ -1726,9 +1726,23 @@ body.dark .outside-faq-card{background:rgba(15,23,42,.44)}
 .outside-faq-meta{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
 .outside-faq-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 .outside-faq-grid .field.full{grid-column:1/-1}
-.faq-subtabs,.integration-subtabs{display:flex;gap:8px;flex-wrap:wrap;padding:0 20px 18px;border-bottom:1px solid var(--line)}
-.faq-subtab-btn,.integration-subtab-btn{border:1px solid var(--line);background:var(--panel-strong);color:var(--muted);border-radius:12px;min-height:38px;padding:0 13px;font-weight:800;cursor:pointer}
-.faq-subtab-btn:hover,.faq-subtab-btn.active,.integration-subtab-btn:hover,.integration-subtab-btn.active{background:rgba(99,102,241,.12);color:var(--brand);border-color:rgba(99,102,241,.34)}
+.faq-subtabs,.integration-subtabs,.ai-subtabs{display:flex;gap:8px;flex-wrap:wrap;padding:0 20px 18px;border-bottom:1px solid var(--line)}
+.faq-subtab-btn,.integration-subtab-btn,.ai-subtab-btn{border:1px solid var(--line);background:var(--panel-strong);color:var(--muted);border-radius:12px;min-height:38px;padding:0 13px;font-weight:800;cursor:pointer}
+.faq-subtab-btn:hover,.faq-subtab-btn.active,.integration-subtab-btn:hover,.integration-subtab-btn.active,.ai-subtab-btn:hover,.ai-subtab-btn.active{background:rgba(99,102,241,.12);color:var(--brand);border-color:rgba(99,102,241,.34)}
+.ai-subpanel{display:none}
+.ai-subpanel.active{display:grid}
+.ai-mode-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.ai-mode-card{position:relative;padding:18px;border:1px solid var(--line);border-radius:18px;background:rgba(255,255,255,.42);display:grid;gap:12px;align-content:start}
+body.dark .ai-mode-card{background:rgba(15,23,42,.38)}
+.ai-mode-card.recommended{border-color:rgba(99,102,241,.45);box-shadow:0 18px 40px rgba(99,102,241,.12)}
+.ai-mode-card h4{font-size:18px;margin:0}
+.ai-mode-card ul{display:grid;gap:8px;padding-left:18px;color:var(--muted);font-size:14px;line-height:1.45}
+.ai-status-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+.ai-service-card{padding:16px;border:1px solid var(--line);border-radius:18px;background:var(--panel);display:grid;gap:8px;align-content:start}
+.ai-service-card h4{font-size:15px;margin:0}
+.ai-service-card p{font-size:13px;color:var(--muted);line-height:1.55;margin:0}
+.ai-placeholder-list{display:grid;gap:10px}
+.ai-placeholder-list .notice{margin:0}
 .faq-subpanel,.integration-subpanel{display:none}
 .faq-subpanel.active,.integration-subpanel.active{display:block}
 .faq-action-section{margin-top:16px;border-top:1px solid var(--line)}
@@ -1862,6 +1876,8 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
   .page-title p{display:none}
   .metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
   .easy-install-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .ai-mode-grid{grid-template-columns:1fr}
+  .ai-status-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
   .overview-hero,.subscription-transfer-card,.split,.profile-grid{grid-template-columns:1fr}
   .profile-photo{justify-items:start;grid-template-columns:auto 1fr;align-items:center}
 }
@@ -1873,8 +1889,8 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
   .panel{border-radius:18px}
   .section-head{align-items:flex-start;flex-direction:column;padding:16px 16px 0}
   .section-body{padding:16px}
-  .faq-subtabs,.integration-subtabs{display:grid;grid-template-columns:1fr;padding:0 16px 16px}
-  .faq-subtab-btn,.integration-subtab-btn{width:100%}
+  .faq-subtabs,.integration-subtabs,.ai-subtabs{display:grid;grid-template-columns:1fr;padding:0 16px 16px}
+  .faq-subtab-btn,.integration-subtab-btn,.ai-subtab-btn{width:100%}
   .overview-hero h2{font-size:28px}
   .metrics,.form-grid,.theme-controls,.outside-faq-grid,.faq-action-grid,.lead-grid,.analytics-grid,.analytics-grid.two,.bi-kpi-grid,.bi-dashboard-grid,.bi-dashboard-grid.three,.bi-alert-grid,.funnel,.pricing-grid,.security-grid,.bulk-report-summary,.payment-choice-grid,.billing-filter{grid-template-columns:1fr}
   .panel-actions{justify-content:stretch}
@@ -1917,6 +1933,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
   .lead-master,.lead-section-head,.lead-option-top{align-items:flex-start}
   .lead-master{display:grid}
   .easy-install-grid{grid-template-columns:1fr}
+  .ai-mode-grid,.ai-status-grid{grid-template-columns:1fr}
   .toast{left:14px;right:14px;bottom:14px;text-align:center}
 }
 </style>
@@ -1945,6 +1962,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
       <button class="tab-btn" data-tab="logs">Conversations</button>
       -->
       <button class="tab-btn" data-tab="analytics">Analytics</button>
+      <button class="tab-btn" data-tab="ai-services">AI Services</button>
       <button class="tab-btn" data-tab="install">Integration</button>
       <!-- Bot Settings tab hidden for now; keep this code for later.
       <button class="tab-btn" data-tab="bot-settings">Bot Settings</button>
@@ -2903,6 +2921,105 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
           </div>
           <div class="bi-drilldown-body" id="analyticsDrilldownBody"></div>
         </aside>
+      </section>
+
+      <section class="tab-panel" id="ai-services">
+        <div class="panel">
+          <div class="section-head">
+            <div>
+              <span class="eyebrow">AI Services</span>
+              <h3>FAQ Chatbot and AI Chatbot</h3>
+              <p class="muted">Keep the current FAQ chatbot separate from AI features, then choose FAQ-only, AI-only, or Hybrid mode for this bot.</p>
+            </div>
+            <span class="tag">Planning</span>
+          </div>
+          <div class="ai-subtabs" role="tablist" aria-label="AI Services sections">
+            <button class="ai-subtab-btn active" type="button" data-ai-subtab="ai-subpanel-chatbot">AI Chatbot</button>
+            <button class="ai-subtab-btn" type="button" data-ai-subtab="ai-subpanel-faq">FAQ AI Assistant</button>
+            <button class="ai-subtab-btn" type="button" data-ai-subtab="ai-subpanel-knowledge">Knowledge Base</button>
+            <button class="ai-subtab-btn" type="button" data-ai-subtab="ai-subpanel-models">Model &amp; API Keys</button>
+            <button class="ai-subtab-btn" type="button" data-ai-subtab="ai-subpanel-billing">AI Usage &amp; Billing</button>
+            <button class="ai-subtab-btn" type="button" data-ai-subtab="ai-subpanel-insights">AI Insights</button>
+          </div>
+
+          <div class="section-body ai-subpanel active" id="ai-subpanel-chatbot">
+            <div class="ai-mode-grid">
+              <div class="ai-mode-card">
+                <span class="tag">Current</span>
+                <h4>FAQ only</h4>
+                <p class="muted">Deterministic, cheaper, and answers only from approved FAQ content.</p>
+                <ul>
+                  <li>Best for simple business websites.</li>
+                  <li>Lowest wallet usage risk.</li>
+                  <li>Customer controls every answer.</li>
+                </ul>
+                <button class="ghost-btn" type="button" disabled>Already available</button>
+              </div>
+              <div class="ai-mode-card">
+                <span class="tag">AI</span>
+                <h4>AI only</h4>
+                <p class="muted">Uses an AI model to understand natural questions and answer from a knowledge base.</p>
+                <ul>
+                  <li>More flexible conversations.</li>
+                  <li>Can use documents and website content.</li>
+                  <li>Costs per AI usage.</li>
+                </ul>
+                <button class="pill-btn" type="button" disabled>Coming soon</button>
+              </div>
+              <div class="ai-mode-card recommended">
+                <span class="tag good">Recommended</span>
+                <h4>Hybrid mode</h4>
+                <p class="muted">Try approved FAQs first. If no confident match is found, then use AI.</p>
+                <ul>
+                  <li>Best balance of quality and cost.</li>
+                  <li>Keeps trusted FAQ answers first.</li>
+                  <li>Uses AI only when needed.</li>
+                </ul>
+                <button class="pill-btn" type="button" disabled>Coming soon</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="section-body ai-subpanel" id="ai-subpanel-faq">
+            <div class="ai-status-grid">
+              <div class="ai-service-card"><h4>Generate FAQs</h4><p>Create FAQs from business type, website URL, and services.</p><button class="ghost-btn" type="button" disabled>Coming soon</button></div>
+              <div class="ai-service-card"><h4>Rewrite Answers</h4><p>Make FAQ answers shorter, warmer, professional, or sales-focused.</p><button class="ghost-btn" type="button" disabled>Coming soon</button></div>
+              <div class="ai-service-card"><h4>Outside FAQ Suggestions</h4><p>Suggest answers for unanswered visitor questions.</p><button class="ghost-btn" type="button" disabled>Coming soon</button></div>
+              <div class="ai-service-card"><h4>Translate FAQs</h4><p>Prepare multilingual answers for regional customers.</p><button class="ghost-btn" type="button" disabled>Coming soon</button></div>
+            </div>
+          </div>
+
+          <div class="section-body ai-subpanel" id="ai-subpanel-knowledge">
+            <div class="ai-placeholder-list">
+              <div class="notice"><strong>Knowledge sources:</strong><br>Website pages, PDFs, product/service documents, policies, and custom text will live here.</div>
+              <div class="notice"><strong>Recommended next step:</strong><br>Start with manual text/PDF upload, then add website crawling after the AI chatbot mode is stable.</div>
+            </div>
+          </div>
+
+          <div class="section-body ai-subpanel" id="ai-subpanel-models">
+            <div class="ai-mode-grid">
+              <div class="ai-mode-card"><span class="tag">Simple</span><h4>Use Vani shared AI</h4><p class="muted">Customer has no API key. Vani manages the model key and charges usage from wallet.</p></div>
+              <div class="ai-mode-card"><span class="tag">Flexible</span><h4>Bring own API key</h4><p class="muted">Customer provides their own OpenAI, Gemini, Claude, or other supported key.</p></div>
+              <div class="ai-mode-card recommended"><span class="tag good">Managed</span><h4>Buy through Vani</h4><p class="muted">Customer wants a recommended model setup procured and managed from Vani AI.</p></div>
+            </div>
+          </div>
+
+          <div class="section-body ai-subpanel" id="ai-subpanel-billing">
+            <div class="ai-placeholder-list">
+              <div class="notice"><strong>AI billing model:</strong><br>AI usage should deduct from wallet by message, token band, document processing, and premium model usage.</div>
+              <div class="notice"><strong>Controls:</strong><br>Daily spend limit, per-chat limit, model fallback, and low-wallet alerts should be added before enabling paid AI calls.</div>
+            </div>
+          </div>
+
+          <div class="section-body ai-subpanel" id="ai-subpanel-insights">
+            <div class="ai-status-grid">
+              <div class="ai-service-card"><h4>Conversation Summary</h4><p>Summarize chats and key customer intent.</p></div>
+              <div class="ai-service-card"><h4>Lead Scoring</h4><p>Classify leads as hot, warm, or cold.</p></div>
+              <div class="ai-service-card"><h4>FAQ Gaps</h4><p>Recommend missing FAQs from unanswered questions.</p></div>
+              <div class="ai-service-card"><h4>Business Recommendations</h4><p>Suggest content and workflow improvements from analytics.</p></div>
+            </div>
+          </div>
+        </div>
       </section>
 
       <section class="tab-panel" id="install">
@@ -4030,6 +4147,23 @@ document.querySelectorAll(".integration-subtab-btn").forEach(tab => {
   });
 });
 
+function openAiSubtab(target, updateHash = true) {
+  if (!document.getElementById(target)) return;
+  document.querySelectorAll(".ai-subtab-btn").forEach(item => {
+    item.classList.toggle("active", item.dataset.aiSubtab === target);
+  });
+  document.querySelectorAll("#ai-services .ai-subpanel").forEach(panel => {
+    panel.classList.toggle("active", panel.id === target);
+  });
+  if (updateHash) history.replaceState(null, "", "#ai/" + target.replace("ai-subpanel-", ""));
+}
+
+document.querySelectorAll(".ai-subtab-btn").forEach(tab => {
+  tab.addEventListener("click", () => {
+    openAiSubtab(tab.dataset.aiSubtab || "ai-subpanel-chatbot");
+  });
+});
+
 const installGuides = {
   wix: {
     title: "Install on Wix",
@@ -4075,6 +4209,12 @@ const analyticsHash = location.hash.startsWith("#analytics/") ? location.hash.sp
 if (analyticsHash) {
   openTab("analytics", false);
   openAnalyticsTab("analytics-" + analyticsHash, false);
+}
+
+const aiHash = location.hash.startsWith("#ai/") ? location.hash.split("/")[1] : "";
+if (aiHash) {
+  openTab("ai-services", false);
+  openAiSubtab("ai-subpanel-" + aiHash, false);
 }
 
 document.querySelectorAll("[data-jump]").forEach(btn => {
