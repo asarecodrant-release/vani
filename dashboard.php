@@ -1450,13 +1450,14 @@ body.dark .analytics-period-card{background:rgba(15,23,42,.38)}
 .analytics-period-card span{font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:900;letter-spacing:.05em}
 .analytics-period-card strong{font-size:13px;color:var(--ink);line-height:1.35}
 .analytics-head-actions{display:grid;gap:12px;justify-items:end;align-self:center;min-width:260px}
-.analytics-head-actions .analytics-pdf-report-btn{min-height:44px;white-space:nowrap}
 .filter-bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
 .filter-chip{border:1px solid var(--line);background:var(--panel-strong);color:var(--ink);border-radius:999px;padding:8px 12px;font-size:13px;font-weight:700;text-decoration:none}
 .filter-chip.active{background:linear-gradient(135deg,var(--brand),var(--brand-2));border-color:transparent;color:#fff}
 .analytics-filter-form{display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin-top:16px}
 .analytics-filter-form .field{min-width:150px}
 .analytics-filter-form .pill-btn{min-height:42px}
+.analytics-filter-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-left:auto}
+.analytics-filter-actions .analytics-pdf-report-btn{white-space:nowrap}
 .analytics-tabs{display:flex;gap:8px;flex-wrap:wrap}
 .analytics-tab-btn{border:1px solid var(--line);background:var(--panel-strong);color:var(--ink);border-radius:999px;padding:9px 13px;font-size:13px;font-weight:800;cursor:pointer}
 .analytics-tab-btn.active{background:linear-gradient(135deg,var(--brand),var(--brand-2));border-color:transparent;color:#fff}
@@ -2301,12 +2302,11 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
               <span class="eyebrow">Analytics</span>
               <h3 style="margin-top:8px">Performance Dashboard</h3>
               <div class="analytics-period-row">
-                <div class="analytics-period-card"><span>Current analysis</span><strong><?php echo h($analyticsRangeLabel); ?> · <?php echo h($analyticsFrom); ?> to <?php echo h($analyticsTo); ?></strong></div>
+                <div class="analytics-period-card"><span>Current analysis</span><strong><?php echo h($analyticsRangeLabel); ?> | <?php echo h($analyticsFrom); ?> to <?php echo h($analyticsTo); ?></strong></div>
                 <div class="analytics-period-card"><span>Previous comparison</span><strong><?php echo h($previousAnalyticsFrom); ?> to <?php echo h($previousAnalyticsTo); ?></strong></div>
               </div>
             </div>
             <div class="analytics-head-actions">
-              <button class="pill-btn analytics-pdf-report-btn" type="button" <?php echo $canExportReports ? '' : 'data-premium-lock="Business subscription required"'; ?>>Export Current Analysis in PDF</button>
               <div class="filter-bar">
                 <a class="filter-chip <?php echo $analyticsRange === 'today' ? 'active' : ''; ?>" href="<?php echo h(analytics_url('today', $selectedBotId)); ?>">Today: <?php echo h($todayAllQueries); ?></a>
                 <a class="filter-chip <?php echo $analyticsRange === 'yesterday' ? 'active' : ''; ?>" href="<?php echo h(analytics_url('yesterday', $selectedBotId)); ?>">Yesterday: <?php echo h($yesterdayAllQueries); ?></a>
@@ -2327,7 +2327,10 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
               <label>To</label>
               <input type="date" name="date_to" value="<?php echo h($analyticsTo); ?>">
             </div>
-            <button class="pill-btn" type="submit">Apply</button>
+            <div class="analytics-filter-actions">
+              <button class="pill-btn" type="submit">Apply</button>
+              <button class="pill-btn analytics-pdf-report-btn" type="button" <?php echo $canExportReports ? '' : 'data-premium-lock="Business subscription required"'; ?>>Export Current Analysis in PDF</button>
+            </div>
           </form>
         </div>
 
@@ -2709,9 +2712,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
               <small class="input-help">Add one domain per line. You can also separate domains with commas.</small>
             </div>
 
-            <div class="panel-actions full">
-              <button class="pill-btn" type="button" id="saveIntegrationBtn">Save integration settings</button>
-            </div>
+            <small class="input-help full" id="integrationAutosaveStatus">Install and domain settings save automatically.</small>
           </div>
 
           <div class="section-body form-grid integration-subpanel" id="integration-subpanel-api">
@@ -5894,33 +5895,91 @@ document.getElementById("saveSettingsBtn")?.addEventListener("click", () => {
   });
 });
 
-document.getElementById("saveIntegrationBtn")?.addEventListener("click", async event => {
-  const button = event.currentTarget;
+let integrationAutosaveTimer = null;
+let integrationAutosaveSaving = false;
+let integrationAutosaveQueued = false;
+
+function updateIntegrationAutosaveStatus(text, state = "") {
+  const status = document.getElementById("integrationAutosaveStatus");
+  if (!status) return;
+  status.textContent = text;
+  status.classList.toggle("error", state === "error");
+}
+
+function integrationSettingsPayload() {
   const websiteVerificationEnabled = !!document.getElementById("websiteVerificationToggle")?.checked;
   const allowedDomainsEnabled = businessFeatures.allowed_domains && !!document.getElementById("allowedDomainsToggle")?.checked;
   const allowedDomains = document.getElementById("allowedDomainsInput")?.value.trim() || "";
+  return {
+    websiteVerificationEnabled,
+    allowedDomainsEnabled,
+    allowedDomains,
+    payload: {
+      website_verification_enabled: websiteVerificationEnabled,
+      allowed_domains_enabled: allowedDomainsEnabled,
+      allowed_domains: allowedDomains,
+      verification_status: websiteVerificationEnabled ? "Pending" : "Disabled"
+    }
+  };
+}
 
+async function saveIntegrationSettingsAutomatically({live = false} = {}) {
+  const {websiteVerificationEnabled, allowedDomainsEnabled, allowedDomains, payload} = integrationSettingsPayload();
   if (allowedDomainsEnabled && !allowedDomains) {
+    updateIntegrationAutosaveStatus("Add at least one allowed domain to enable domain restriction.", "error");
     showToast("Add at least one allowed domain");
     document.getElementById("allowedDomainsInput")?.focus();
     return;
   }
 
-  button.disabled = true;
-  button.textContent = "Saving...";
-  const saved = await saveDashboardSettings({
-    website_verification_enabled: websiteVerificationEnabled,
-    allowed_domains_enabled: allowedDomainsEnabled,
-    allowed_domains: allowedDomains,
-    verification_status: websiteVerificationEnabled ? "Pending" : "Disabled"
-  });
-  button.disabled = false;
-  button.textContent = "Save integration settings";
+  if (integrationAutosaveSaving) {
+    integrationAutosaveQueued = true;
+    return;
+  }
+  integrationAutosaveSaving = true;
+  updateIntegrationAutosaveStatus("Saving integration settings...");
+  if (live) showToast("Saving integration settings...");
+  const saved = await saveDashboardSettings(payload, {silent: true});
+  integrationAutosaveSaving = false;
 
   if (saved) {
     const statusText = document.getElementById("verificationStatusText");
     if (statusText) statusText.textContent = websiteVerificationEnabled ? "Pending" : "Disabled";
+    updateIntegrationAutosaveStatus("Integration settings saved automatically.");
+    if (live) showToast("Integration settings saved");
+  } else {
+    updateIntegrationAutosaveStatus("Could not save integration settings. Please try again.", "error");
+    if (live) showToast("Integration settings could not be saved");
   }
+
+  if (integrationAutosaveQueued) {
+    integrationAutosaveQueued = false;
+    scheduleIntegrationAutosave({live});
+  }
+}
+
+function scheduleIntegrationAutosave({live = false} = {}) {
+  clearTimeout(integrationAutosaveTimer);
+  updateIntegrationAutosaveStatus("Integration changes pending...");
+  integrationAutosaveTimer = setTimeout(() => saveIntegrationSettingsAutomatically({live}), 600);
+}
+
+document.getElementById("websiteVerificationToggle")?.addEventListener("change", () => {
+  scheduleIntegrationAutosave({live: true});
+});
+
+document.getElementById("allowedDomainsToggle")?.addEventListener("change", event => {
+  if (event.currentTarget.checked && !businessFeatures.allowed_domains) {
+    event.currentTarget.checked = false;
+    alert("Allowed domains requires Business plan");
+    openTab("subscription");
+    return;
+  }
+  scheduleIntegrationAutosave({live: true});
+});
+
+document.getElementById("allowedDomainsInput")?.addEventListener("input", () => {
+  scheduleIntegrationAutosave();
 });
 
 function validateHumanHandoffEmail(showMessage = false) {
