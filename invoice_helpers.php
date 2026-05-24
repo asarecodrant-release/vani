@@ -111,7 +111,7 @@ function invoice_pdf_binary(array $invoice, array $context): string {
     $lines[] = [invoice_money((int)($invoice['total_paise'] ?? 0)), 475, 396, 14, '0.31 0.27 0.90 rg'];
     $lines[] = ['Payment Ref: ' . (string)($invoice['payment_reference'] ?? '-'), 48, 350, 10, '0.35 0.40 0.50 rg'];
     $lines[] = ['Order Ref: ' . (string)($invoice['order_reference'] ?? '-'), 48, 335, 10, '0.35 0.40 0.50 rg'];
-    $lines[] = ['Thank you for purchasing Vani AI subscription product from Codrant.', 48, 285, 12, '0.10 0.12 0.18 rg'];
+    $lines[] = ['Thank you for recharging your Vani AI wallet with Codrant.', 48, 285, 12, '0.10 0.12 0.18 rg'];
     $lines[] = ['This is a system generated invoice.', 48, 265, 10, '0.35 0.40 0.50 rg'];
 
     $content = "0.96 0.97 1 rg 0 0 595 842 re f\n";
@@ -156,7 +156,7 @@ function invoice_email_html(array $invoice, array $context): string {
         . '<div style="padding:24px"><div style="max-width:640px;margin:auto;background:#fff;border-radius:22px;overflow:hidden;box-shadow:0 18px 45px rgba(15,23,42,.12)">'
         . '<div style="background:linear-gradient(135deg,#4f46e5,#ec4899);padding:34px;color:#fff;text-align:center"><h1 style="margin:0;font-size:30px">Vani AI Invoice</h1><p style="margin:10px 0 0;opacity:.92">Thank you for purchasing from Codrant.</p></div>'
         . '<div style="padding:32px"><h2 style="margin:0 0 12px">Hi ' . $name . ',</h2>'
-        . '<p style="line-height:1.7;color:#475569">Your invoice for the ' . $planName . ' subscription product is ready. A PDF copy is attached with this email.</p>'
+        . '<p style="line-height:1.7;color:#475569">Your invoice for the ' . $planName . ' wallet recharge is ready. A PDF copy is attached with this email.</p>'
         . '<div style="margin:24px 0;border:1px solid #e5e7eb;border-radius:16px;overflow:hidden"><div style="display:flex;justify-content:space-between;padding:16px 18px;background:#f8fafc"><strong>Invoice</strong><span>' . $invoiceNo . '</span></div>'
         . '<div style="display:flex;justify-content:space-between;padding:16px 18px"><strong>Total paid</strong><span style="color:#4f46e5;font-weight:800">' . $amount . '</span></div></div>'
         . '<p style="line-height:1.7;color:#475569">You can also download all invoices anytime from Dashboard → Billing → Invoices.</p>'

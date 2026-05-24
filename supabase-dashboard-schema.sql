@@ -1004,6 +1004,9 @@ grant select, insert, update on public.customer_api_keys to anon, authenticated;
 grant select, insert on public.customer_api_usage_logs to anon, authenticated;
 grant select, insert, update on public.support_tickets to anon, authenticated;
 grant update(password) on public.customers to anon, authenticated;
+alter table public.customers
+  add column if not exists must_reset_password boolean not null default false;
+grant update(password, must_reset_password) on public.customers to anon, authenticated;
 grant usage, select on sequence public.chatbot_settings_id_seq to anon, authenticated;
 grant usage, select on sequence public.chatbot_conversations_id_seq to anon, authenticated;
 grant usage, select on sequence public.chatbot_sessions_id_seq to anon, authenticated;

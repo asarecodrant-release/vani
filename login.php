@@ -27,6 +27,18 @@ function login_safe_rows(array $response): array {
     return is_array($response['data'] ?? null) ? $response['data'] : [];
 }
 
+function login_customer_password_update(string $email, string $passwordHash): array {
+    $payload = ["password" => $passwordHash, "must_reset_password" => false];
+    $res = supabase("PATCH", "customers?email=eq." . urlencode($email), $payload);
+    if ($res['status'] >= 200 && $res['status'] < 300) {
+        return $res;
+    }
+    if (strpos(strtolower((string)($res['raw'] ?? '')), 'must_reset_password') !== false) {
+        return supabase("PATCH", "customers?email=eq." . urlencode($email), ["password" => $passwordHash]);
+    }
+    return $res;
+}
+
 function login_user_has_chatbot(string $email): bool {
     if ($email === '') {
         return false;
@@ -52,6 +64,10 @@ function login_user_has_pending_subscription(string $email): bool {
 }
 
 function login_redirect_after_success(string $email): void {
+    if (!empty($_SESSION['must_reset_password'])) {
+        header("Location: login.php?reset=1&forced=1");
+        exit;
+    }
     if (!login_user_has_chatbot($email)) {
         $params = ["notice" => "select_product"];
         if (login_user_has_pending_subscription($email)) {
@@ -64,21 +80,27 @@ function login_redirect_after_success(string $email): void {
     exit;
 }
 
-if ($_SERVER["REQUEST_METHOD"] !== "POST" && is_authenticated_user()) {
-    login_redirect_after_success(authenticated_email());
-}
-
 if ($_SERVER["REQUEST_METHOD"] !== "POST" && (string)($_GET['subscription'] ?? '') === 'success') {
     $resetMessage = "Subscription activated. Check your email for login details, then reset your password after logging in.";
 }
 
 if ($_SERVER["REQUEST_METHOD"] !== "POST" && (string)($_GET['reset'] ?? '') === '1') {
     $showReset = true;
-    $resetMessage = "Enter your email below to reset the temporary password.";
+    $resetMessage = (string)($_GET['forced'] ?? '') === '1'
+        ? "For security, reset your temporary password before continuing."
+        : "Enter your email below to reset the temporary password.";
 }
 
 if ($_SERVER["REQUEST_METHOD"] !== "POST" && (string)($_GET['setup'] ?? '') === 'incomplete') {
     $resetMessage = "Please login to continue your unfinished chatbot setup.";
+}
+
+if ($_SERVER["REQUEST_METHOD"] !== "POST" && (string)($_GET['upgrade'] ?? '') === '1') {
+    $resetMessage = "Login to upgrade your existing chatbot from Dashboard > Subscription.";
+}
+
+if ($_SERVER["REQUEST_METHOD"] !== "POST" && is_authenticated_user() && !$showReset) {
+    login_redirect_after_success(authenticated_email());
 }
 
 // ======================================
@@ -194,13 +216,12 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['reset_action'])) {
         } elseif ($newPassword !== $confirmPassword) {
             $resetError = "Passwords do not match.";
         } else {
-            $passwordRes = supabase(
-                "PATCH",
-                "customers?email=eq." . urlencode((string)$resetState['email']),
-                ["password" => password_hash($newPassword, PASSWORD_DEFAULT)]
-            );
+            $passwordRes = login_customer_password_update((string)$resetState['email'], password_hash($newPassword, PASSWORD_DEFAULT));
             if ($passwordRes['status'] >= 200 && $passwordRes['status'] < 300) {
                 unset($_SESSION['password_reset']);
+                if (is_authenticated_user() && authenticated_email() === (string)$resetState['email']) {
+                    $_SESSION['must_reset_password'] = false;
+                }
                 $showReset = false;
                 $resetMessage = "Password reset successful. You can log in now.";
             } else {

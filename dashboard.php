@@ -8,6 +8,11 @@ if (!is_authenticated_user()) {
     exit;
 }
 
+if (!empty($_SESSION['must_reset_password'])) {
+    header("Location: login.php?reset=1&forced=1");
+    exit;
+}
+
 $email = authenticated_email();
 $accountId = authenticated_user_id();
 $selectedBotId = trim($_GET['bot'] ?? '');
@@ -84,14 +89,14 @@ function dashboard_billing_plan_help_text(string $planId, array $plan, int $auto
     $planName = (string)($plan['name'] ?? 'Free');
     $pricePaise = (int)($plan['price_paise'] ?? 0);
     if ($planId === 'free' || $pricePaise <= 0) {
-        return 'Free plan: there is no monthly subscription charge and paid wallet deductions are not active. Upgrade to Starter, Growth, or Business to use paid lead verification, WhatsApp Redirect, analytics, and higher FAQ limits.';
+        return 'Free plan: paid wallet deductions are not active. Recharge the wallet with Starter, Growth, or Business to unlock paid lead verification, WhatsApp Redirect, analytics, and higher FAQ limits.';
     }
     $emailFresh = billing_rupees(billing_wallet_charge_paise($planId, 'fresh_email_lead'));
     $emailRepeat = billing_rupees(billing_wallet_charge_paise($planId, 'repeat_email_lead'));
     $mobileFresh = billing_rupees(billing_wallet_charge_paise($planId, 'fresh_mobile_lead'));
     $mobileRepeat = billing_rupees(billing_wallet_charge_paise($planId, 'repeat_mobile_lead'));
     $whatsapp = billing_rupees(billing_wallet_charge_paise($planId, 'whatsapp_redirect_addon'));
-    return $planName . ' plan: monthly payment ' . billing_rupees($pricePaise) . ' is credited to the wallet. Usage then deducts from wallet: fresh Email OTP lead ' . $emailFresh . ', repeat Email OTP verification ' . $emailRepeat . ', fresh Mobile OTP lead ' . $mobileFresh . ', repeat Mobile OTP verification ' . $mobileRepeat . ', and WhatsApp Redirect ' . $whatsapp . ' for 30 days while enabled. Auto recharge rule: when wallet goes below ' . billing_rupees($autoRechargeThresholdPaise) . ', recharge ' . billing_rupees($autoRechargeAmountPaise) . ' automatically if auto payment is authorized.';
+    return $planName . ' plan: minimum wallet recharge ' . billing_rupees($pricePaise) . ' unlocks the plan benefits and is credited to the wallet. Usage then deducts from wallet: fresh Email OTP lead ' . $emailFresh . ', repeat Email OTP verification ' . $emailRepeat . ', fresh Mobile OTP lead ' . $mobileFresh . ', repeat Mobile OTP verification ' . $mobileRepeat . ', and WhatsApp Redirect ' . $whatsapp . ' for 30 days while enabled. Auto recharge rule: when wallet goes below ' . billing_rupees($autoRechargeThresholdPaise) . ', recharge ' . billing_rupees($autoRechargeAmountPaise) . ' automatically if auto payment is authorized.';
 }
 
 function js_json($value): string {
@@ -1690,12 +1695,14 @@ body.dark .outside-faq-card{background:rgba(15,23,42,.44)}
 .faq-action-list{display:grid;gap:12px;margin-top:14px}
 .faq-action-card{padding:14px;border:1px solid var(--line);border-radius:16px;background:rgba(255,255,255,.42);display:grid;gap:12px}
 body.dark .faq-action-card{background:rgba(15,23,42,.44)}
-.help-tip{position:relative;display:inline-grid;place-items:center;width:22px;height:22px;border-radius:999px;border:1px solid rgba(99,102,241,.35);background:rgba(99,102,241,.12);color:var(--brand);font-size:13px;font-weight:900;cursor:help;margin-left:8px;vertical-align:middle}
-.help-tip:after{content:attr(data-tip);position:absolute;left:50%;bottom:calc(100% + 10px);transform:translateX(-50%) translateY(4px);width:min(320px,calc(100vw - 48px));padding:12px 13px;border-radius:12px;background:var(--panel-strong);border:1px solid var(--line);box-shadow:0 16px 34px rgba(15,23,42,.16);color:var(--ink);font-size:12px;font-weight:600;line-height:1.55;text-align:left;opacity:0;pointer-events:none;transition:.16s ease;z-index:20;white-space:normal;text-transform:none;letter-spacing:0}
+.help-tip{position:relative;display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;line-height:1;border-radius:999px;border:1px solid rgba(99,102,241,.35);background:rgba(99,102,241,.12);color:var(--brand);font-size:13px;font-weight:900;cursor:help;margin-left:8px;vertical-align:middle;text-align:center}
+.help-tip:after{content:attr(data-tip);position:absolute;left:50%;bottom:calc(100% + 10px);transform:translateX(-50%) translateY(4px);width:min(320px,calc(100vw - 48px));padding:12px 13px;border-radius:12px;background:var(--panel-strong);border:1px solid var(--line);box-shadow:0 16px 34px rgba(15,23,42,.16);color:var(--ink);font-size:12px;font-weight:600;line-height:1.55;text-align:left;opacity:0;pointer-events:none;transition:.16s ease;z-index:9999;white-space:normal;text-transform:none;letter-spacing:0}
 .help-tip:hover:after,.help-tip:focus-visible:after{opacity:1;transform:translateX(-50%) translateY(0)}
+.billing-model-metric{position:relative;overflow:visible}
+.billing-model-metric:has(.billing-help-tip:hover),.billing-model-metric:has(.billing-help-tip:focus-visible),.billing-model-metric:hover{z-index:3000}
 .billing-model-head{display:flex!important;align-items:center;gap:8px;position:relative;width:fit-content;max-width:100%;overflow:visible}
-.billing-help-tip{background:rgba(245,158,11,.18);border-color:rgba(245,158,11,.62);color:#b45309;margin-left:0;flex:0 0 auto}
-.billing-help-tip:after{left:0;right:auto;bottom:auto;top:calc(100% + 10px);transform:translateY(-4px);width:min(420px,calc(100vw - 64px));max-height:min(56vh,360px);overflow:auto}
+.billing-help-tip{background:rgba(245,158,11,.18);border-color:rgba(245,158,11,.62);color:#b45309;margin-left:0;flex:0 0 auto;font-size:13px;line-height:1}
+.billing-help-tip:after{left:0;right:auto;bottom:auto;top:calc(100% + 10px);transform:translateY(-4px);width:min(420px,calc(100vw - 64px));max-height:min(56vh,360px);overflow:auto;z-index:10000}
 .billing-help-tip:hover:after,.billing-help-tip:focus-visible:after{transform:translateY(0)}
 body.dark .billing-help-tip{background:rgba(245,158,11,.22);color:#fbbf24;border-color:rgba(251,191,36,.7)}
 .faq-action-grid{display:grid;grid-template-columns:1.2fr 1fr 1.4fr .7fr auto;gap:10px;align-items:end}
@@ -1898,7 +1905,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
       <button class="tab-btn" data-tab="bot-settings">Bot Settings</button>
       -->
       <button class="tab-btn" data-tab="lead-generation">Lead Generation Setup</button>
-      <button class="tab-btn" data-tab="subscription">Subscription</button>
+      <button class="tab-btn" data-tab="subscription">Wallet Plans</button>
       <button class="tab-btn" data-tab="profile">Profile</button>
       <button class="tab-btn" data-tab="billing">Billing</button>
       <a class="tab-btn" href="test-chatbot.php?bot=<?php echo h(urlencode($selectedBotId)); ?>">Test Chatbot</a>
@@ -2035,9 +2042,9 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
         <div class="panel subscription-transfer-card">
           <div class="transfer-copy">
             <div>
-              <span class="eyebrow">Subscription Transfer</span>
+              <span class="eyebrow">Wallet Plan Transfer</span>
               <h3>Move this plan to another chatbot</h3>
-              <p class="muted">Transfer the current paid plan and wallet balance from this chatbot to another chatbot created under <?php echo h($email); ?>.</p>
+              <p class="muted">Transfer the current paid wallet plan and wallet balance from this chatbot to another chatbot created under <?php echo h($email); ?>.</p>
             </div>
             <p class="transfer-warning"><strong>Important:</strong> this is a transfer, not sharing. After transfer, this chatbot moves to Free service and paid toggles are turned off here.</p>
             <div class="transfer-summary">
@@ -2520,26 +2527,26 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
             </div>
             <div class="analytics-filter-actions">
               <button class="pill-btn" type="submit">Apply</button>
-              <button class="pill-btn analytics-pdf-report-btn" type="button" <?php echo $canExportReports ? '' : 'data-premium-lock="Business subscription required"'; ?>>Export Current Analysis in PDF</button>
+              <button class="pill-btn analytics-pdf-report-btn" type="button" <?php echo $canExportReports ? '' : 'data-premium-lock="Business wallet plan required"'; ?>>Export Current Analysis in PDF</button>
             </div>
           </form>
         </div>
 
         <div class="panel section-body">
           <div class="analytics-tabs" role="tablist" aria-label="Analytics sections">
-            <button class="analytics-tab-btn active" type="button" data-analytics-tab="analytics-overview" <?php echo $canUsePartialAnalytics ? '' : 'data-premium-lock="Growth subscription required"'; ?>>Overview</button>
-            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-conversations" <?php echo $canUsePartialAnalytics ? '' : 'data-premium-lock="Growth subscription required"'; ?>>Conversations</button>
-            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-faq" <?php echo $canUsePartialAnalytics ? '' : 'data-premium-lock="Growth subscription required"'; ?>>FAQ Insights</button>
-            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-leads" <?php echo $canUsePartialAnalytics ? '' : 'data-premium-lock="Growth subscription required"'; ?>>Leads</button>
-            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-pages" <?php echo $canUseAdvancedAnalytics ? '' : 'data-premium-lock="Business subscription required"'; ?>>Pages</button>
-            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-realtime" <?php echo $canUseAdvancedAnalytics ? '' : 'data-premium-lock="Business subscription required"'; ?>>Real-Time</button>
-            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-reports" <?php echo $canExportReports ? '' : 'data-premium-lock="Business subscription required"'; ?>>Reports</button>
+            <button class="analytics-tab-btn active" type="button" data-analytics-tab="analytics-overview" <?php echo $canUsePartialAnalytics ? '' : 'data-premium-lock="Growth wallet plan required"'; ?>>Overview</button>
+            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-conversations" <?php echo $canUsePartialAnalytics ? '' : 'data-premium-lock="Growth wallet plan required"'; ?>>Conversations</button>
+            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-faq" <?php echo $canUsePartialAnalytics ? '' : 'data-premium-lock="Growth wallet plan required"'; ?>>FAQ Insights</button>
+            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-leads" <?php echo $canUsePartialAnalytics ? '' : 'data-premium-lock="Growth wallet plan required"'; ?>>Leads</button>
+            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-pages" <?php echo $canUseAdvancedAnalytics ? '' : 'data-premium-lock="Business wallet plan required"'; ?>>Pages</button>
+            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-realtime" <?php echo $canUseAdvancedAnalytics ? '' : 'data-premium-lock="Business wallet plan required"'; ?>>Real-Time</button>
+            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-reports" <?php echo $canExportReports ? '' : 'data-premium-lock="Business wallet plan required"'; ?>>Reports</button>
           </div>
         </div>
 
         <?php if (!$canUsePartialAnalytics): ?>
         <div class="panel section-body">
-          <div class="notice"><strong>Growth subscription required:</strong><br>Analytics access starts on Growth. Upgrade to view Overview, Conversations, FAQ Insights, and Leads.</div>
+          <div class="notice"><strong>Growth wallet plan required:</strong><br>Analytics access starts on Growth. Recharge to view Overview, Conversations, FAQ Insights, and Leads.</div>
         </div>
         <?php else: ?>
         <div class="analytics-subpanel active" id="analytics-overview">
@@ -3225,13 +3232,13 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
 
       <section class="tab-panel" id="subscription">
         <div class="panel section-body">
-          <span class="eyebrow">Subscription</span>
-          <h2 style="margin:8px 0 10px">Subscription Plans</h2>
-          <p class="muted">Choose the monthly plan that fits your FAQ limit, lead verification, analytics, and integration needs.</p>
+          <span class="eyebrow">Wallet Recharge</span>
+          <h2 style="margin:8px 0 10px">Hybrid Wallet Plans</h2>
+          <p class="muted">Recharge your wallet with a minimum amount to unlock FAQ limits, lead verification, analytics, and integration benefits. Usage charges deduct as your customers use paid services.</p>
 
           <div class="subscription-wallet-note">
-            <strong>100% Subscription amount is credited to your wallet.</strong>
-            When a customer buys or renews a plan, the plan amount is added to the customer's wallet. The wallet is then used as-you-go for real usage, mainly when new website visitors verify by Email OTP or Mobile OTP, and for paid add-ons such as WhatsApp Redirect.
+            <strong>100% recharge amount is credited to your wallet.</strong>
+            Recharge with Starter, Growth, or Business to unlock that plan's benefits. The wallet is then used as-you-go for real usage, mainly when new website visitors verify by Email OTP or Mobile OTP, and for paid add-ons such as WhatsApp Redirect.
           </div>
 
           <div class="metrics" style="margin-top:18px">
@@ -3242,27 +3249,27 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
             <div class="panel pricing-card <?php echo $activePlanId === 'starter' ? 'current-plan' : ''; ?>">
               <div class="pricing-head"><div><span class="eyebrow">Starter</span><h3>Starter Plan</h3></div><span class="tag">Small</span></div>
               <?php if ($activePlanId === 'starter'): ?><div class="current-plan-note">Current plan</div><?php endif; ?>
-              <div class="price">₹199<small>/month</small></div>
+              <div class="price">₹199<small>minimum recharge</small></div>
               <div class="feature-list"><span class="is-included">100 FAQ answers for small websites</span><span class="is-included">Email and Mobile OTP verification for real leads</span><span class="is-included">Dedicated WhatsApp button and many more action items for FAQs</span><span class="is-included">Webhook support</span><span class="is-included">FAQ Action Suggestions</span><span class="is-included">Auto wallet recharge: below ₹50, recharge ₹199</span><span class="is-excluded">Live Chat Actions for real-time website reactions</span><span class="is-excluded">API Integration to migrate or save data in your database</span><span class="is-excluded">Analytics dashboard access</span><span class="is-excluded">Chat can run only on allowed domains</span></div>
-              <button class="pill-btn billing-plan-btn" type="button" data-plan-id="starter">Buy Subscription</button>
+              <button class="pill-btn billing-plan-btn" type="button" data-plan-id="starter">Recharge Wallet</button>
               <small class="muted">Best for portfolios, coaches, and small businesses.</small>
             </div>
 
             <div class="panel pricing-card featured <?php echo $activePlanId === 'growth' ? 'current-plan' : ''; ?>">
               <div class="pricing-head"><div><span class="eyebrow">Growth</span><h3>Growth Plan</h3></div><span class="tag good">Popular</span></div>
               <?php if ($activePlanId === 'growth'): ?><div class="current-plan-note">Current plan</div><?php endif; ?>
-              <div class="price">₹499<small>/month</small></div>
+              <div class="price">₹499<small>minimum recharge</small></div>
               <div class="feature-list"><span class="is-included">300 FAQ capacity for growing businesses</span><span class="is-included">Email and Mobile OTP verification for real leads</span><span class="is-included">Dedicated WhatsApp button and many more action items for FAQs</span><span class="is-included">Webhook support</span><span class="is-included">FAQ Action Suggestions</span><span class="is-included">Auto wallet recharge: below ₹100, recharge ₹499</span><span class="is-included">Analytics access: Overview, Conversations, FAQ Insights, Leads</span><span class="is-included">Better wallet rates than Starter on email and mobile leads</span><span class="is-excluded">Live Chat Actions for real-time website reactions</span><span class="is-excluded">API Integration to migrate or save data in your database</span><span class="is-excluded">Chat can run only on allowed domains</span></div>
-              <button class="pill-btn billing-plan-btn" type="button" data-plan-id="growth">Buy Subscription</button>
+              <button class="pill-btn billing-plan-btn" type="button" data-plan-id="growth">Recharge Wallet</button>
               <small class="muted">Best for local businesses, agencies, and service providers.</small>
             </div>
 
             <div class="panel pricing-card <?php echo $activePlanId === 'business' ? 'current-plan' : ''; ?>">
               <div class="pricing-head"><div><span class="eyebrow">Business</span><h3>Business Plan</h3></div><span class="tag">Scale</span></div>
               <?php if ($activePlanId === 'business'): ?><div class="current-plan-note">Current plan</div><?php endif; ?>
-              <div class="price">₹999<small>/month</small></div>
+              <div class="price">₹999<small>minimum recharge</small></div>
               <div class="feature-list"><span class="is-included">Unlimited FAQ capacity for larger businesses</span><span class="is-included">Email and Mobile combined widget</span><span class="is-included">Dedicated WhatsApp button and many more action items for FAQs</span><span class="is-included">Webhook support</span><span class="is-included">FAQ Action Suggestions</span><span class="is-included">Live Chat Actions for real-time website reactions</span><span class="is-included">Auto wallet recharge: below ₹200, recharge ₹999</span><span class="is-included">API Integration to migrate or save data in your database</span><span class="is-included">Advanced Analytics: Overview, Conversations, FAQ Insights, Leads, Pages, Real-Time, Reports Download</span><span class="is-included">Chat can run only on allowed domains</span></div>
-              <button class="pill-btn billing-plan-btn" type="button" data-plan-id="business">Buy Subscription</button>
+              <button class="pill-btn billing-plan-btn" type="button" data-plan-id="business">Recharge Wallet</button>
               <small class="muted">Best for real estate, education institutes, marketing agencies, SaaS businesses, and larger teams.</small>
             </div>
 
@@ -3271,8 +3278,8 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
           <div class="notice subscription-checkout-panel" id="subscriptionCheckoutPanel">
             <div class="section-head">
               <div>
-                <strong>Complete subscription purchase</strong><br>
-                <span class="muted">Selected plan: <span id="selectedSubscriptionPlanName">None</span>. Choose one-time payment or auto payment, then continue to Razorpay.</span>
+                <strong>Complete wallet recharge</strong><br>
+                <span class="muted">Selected wallet plan: <span id="selectedSubscriptionPlanName">None</span>. Choose one-time recharge or auto payment authorization, then continue to Razorpay.</span>
               </div>
               <span class="tag good" id="selectedSubscriptionPlanPrice">Select a plan</span>
             </div>
@@ -3297,7 +3304,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                 <label for="subscriptionAutoPayContactInput">Mobile number with country code <span class="required-mark">*</span></label>
                 <input id="subscriptionAutoPayContactInput" value="<?php echo h($razorpayCustomerContact); ?>" placeholder="+919876543210" autocomplete="tel" required aria-required="true">
               </div>
-              <small class="input-help full" id="subscriptionRequiredFieldsHelp"><span class="required-mark">*</span> Customer name and mobile number are required for subscription purchase. They prefill only after the Profile tab has saved these details.</small>
+              <small class="input-help full" id="subscriptionRequiredFieldsHelp"><span class="required-mark">*</span> Customer name and mobile number are required for wallet recharge. They prefill only after the Profile tab has saved these details.</small>
             </div>
             <div class="panel-actions">
               <button class="pill-btn" type="button" id="continueSubscriptionPaymentBtn">Continue to Payment</button>
@@ -3314,7 +3321,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
             </div>
             <p class="muted" style="margin-top:12px">
               Associated plan: <?php echo h($activePlan['name']); ?>. Wallet balance: <?php echo h(billing_rupees($billingWalletPaise)); ?>. Auto payment status: <?php echo h($isCancelledWalletAccess ? 'Stopped' : ucfirst($savedPaymentMethodStatus)); ?>.
-              <?php if ($activePlanId !== 'free' && $savedPaymentMethodStatus !== 'active' && !$isCancelledWalletAccess): ?>This plan was purchased without automatic payment, so there is no auto payment to unsubscribe.<?php endif; ?>
+              <?php if ($activePlanId !== 'free' && $savedPaymentMethodStatus !== 'active' && !$isCancelledWalletAccess): ?>This wallet recharge was completed without automatic payment, so there is no auto payment to unsubscribe.<?php endif; ?>
               <?php if ($isCancelledWalletAccess): ?>You will continue on <?php echo h($activePlan['name']); ?> until the wallet reaches zero, then the account will move to Free service.<?php endif; ?>
             </p>
             <div class="panel-actions">
@@ -3383,7 +3390,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
             <div>
               <span class="eyebrow">Billing</span>
               <h2 style="margin:8px 0 10px">Wallet Transactions</h2>
-              <p class="muted">Complete summary of wallet credits and deductions for subscription payments, OTP verifications, leads, WhatsApp redirects, and other paid usage.</p>
+              <p class="muted">Complete summary of wallet credits and deductions for wallet recharges, OTP verifications, leads, WhatsApp redirects, and other paid usage.</p>
             </div>
             <div class="panel-actions" style="margin:0">
               <a class="ghost-btn" href="invoices.php?bot=<?php echo urlencode($selectedBotId); ?>">Invoices</a>
@@ -3393,8 +3400,8 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
 
           <div class="metrics" style="margin-top:18px">
             <div class="panel metric"><span>Wallet balance</span><strong><?php echo h(billing_rupees($billingWalletPaise)); ?></strong><small>Available for paid usage.</small></div>
-            <div class="panel metric"><span>Current plan</span><strong><?php echo h($activePlan['name']); ?></strong><small>Subscription status: <?php echo h($isCancelledWalletAccess ? 'cancelled, wallet access active' : $subscriptionStatus); ?></small></div>
-            <div class="panel metric"><span class="billing-model-head">Billing model <span class="help-tip billing-help-tip" tabindex="0" aria-label="How billing works for your current plan" data-tip="<?php echo h($billingPlanHelpText); ?>">?</span></span><strong>Hybrid</strong><small>Monthly subscription plus usage wallet.</small></div>
+            <div class="panel metric"><span>Current plan</span><strong><?php echo h($activePlan['name']); ?></strong><small>Wallet plan status: <?php echo h($isCancelledWalletAccess ? 'cancelled, wallet access active' : $subscriptionStatus); ?></small></div>
+            <div class="panel metric billing-model-metric"><span class="billing-model-head">Billing model <span class="help-tip billing-help-tip" tabindex="0" aria-label="How billing works for your current plan" data-tip="<?php echo h($billingPlanHelpText); ?>">?</span></span><strong>Hybrid</strong><small>Wallet recharge plus usage deductions.</small></div>
             <div class="panel metric"><span>Total credited</span><strong><?php echo h(billing_rupees($walletCreditPaise)); ?></strong><small>Money added to wallet.</small></div>
             <div class="panel metric"><span>Total deducted</span><strong><?php echo h(billing_rupees($walletDebitPaise)); ?></strong><small>Paid feature usage.</small></div>
             <div class="panel metric"><span>Transactions</span><strong><?php echo h(count($walletTransactionRows)); ?></strong><small>Latest wallet activity.</small></div>
@@ -4748,11 +4755,11 @@ document.getElementById("printAnalyticsReportBtn")?.addEventListener("click", ()
 
 async function startPlanCheckout(planId, button) {
   if (!planId) {
-    showToast("Select a subscription plan first");
+    showToast("Select a wallet plan first");
     return;
   }
   if (!selectedCustomerId) {
-    showToast("Select or create a bot before subscribing");
+    showToast("Select or create a bot before recharging");
     return;
   }
   if (!window.Razorpay) {
@@ -4769,7 +4776,7 @@ async function startPlanCheckout(planId, button) {
   contactInput?.classList.toggle("input-error", !/^\+?[1-9]\d{7,14}$/.test(customerContact));
   helpText?.classList.toggle("error", customerName.length < 3 || !/^\+?[1-9]\d{7,14}$/.test(customerContact));
   if (customerName.length < 3) {
-    showToast("Customer name is required for subscription purchase");
+    showToast("Customer name is required for wallet recharge");
     nameInput?.focus();
     return;
   }
@@ -4805,7 +4812,7 @@ async function startPlanCheckout(planId, button) {
   const checkoutOptions = {
     key: orderData.key_id,
     name: "Vani AI",
-    description: `${orderData.plan.name} ${paymentMode === "auto" ? "subscription with automatic payment" : "subscription"}`,
+    description: `${orderData.plan.name} ${paymentMode === "auto" ? "wallet recharge with automatic payment" : "wallet recharge"}`,
     remember_customer: true,
     prefill: {
       name: customerName,
@@ -4846,9 +4853,9 @@ async function startPlanCheckout(planId, button) {
 }
 
 const subscriptionPlanLabels = {
-  starter: {name: "Starter Plan", price: "₹199/month"},
-  growth: {name: "Growth Plan", price: "₹499/month"},
-  business: {name: "Business Plan", price: "₹999/month"}
+  starter: {name: "Starter Plan", price: "₹199 minimum recharge"},
+  growth: {name: "Growth Plan", price: "₹499 minimum recharge"},
+  business: {name: "Business Plan", price: "₹999 minimum recharge"}
 };
 let selectedSubscriptionPlanId = "";
 
@@ -4858,7 +4865,7 @@ function selectSubscriptionPlan(planId) {
     const button = card.querySelector(".billing-plan-btn");
     const isSelected = button?.dataset.planId === planId;
     card.classList.toggle("plan-selected", isSelected);
-    if (button) button.textContent = isSelected ? "Selected" : "Buy Subscription";
+    if (button) button.textContent = isSelected ? "Selected" : "Recharge Wallet";
   });
   const panel = document.getElementById("subscriptionCheckoutPanel");
   const plan = subscriptionPlanLabels[planId] || {name: "Selected plan", price: ""};
@@ -5106,7 +5113,7 @@ function startWhatsappLockTimer() {
 }
 
 leadEmailOtpToggle?.addEventListener("change", () => {
-  if (!requireLeadPaidFeature("email_otp", leadEmailOtpToggle, "Email OTP requires an active subscription")) return;
+  if (!requireLeadPaidFeature("email_otp", leadEmailOtpToggle, "Email OTP requires an active wallet plan")) return;
   if (leadCollectEmailToggle) leadCollectEmailToggle.checked = false;
   syncOtpCollectionLocks();
   if (leadEmailOtpToggle.checked) {
@@ -5174,7 +5181,7 @@ function leadSetupPayload() {
 }
 
 async function saveLeadSetup({button = null, live = false} = {}) {
-  if (leadEmailOtpToggle?.checked && !requireLeadPaidFeature("email_otp", leadEmailOtpToggle, "Email OTP requires an active subscription")) return;
+  if (leadEmailOtpToggle?.checked && !requireLeadPaidFeature("email_otp", leadEmailOtpToggle, "Email OTP requires an active wallet plan")) return;
   if (leadMobileOtpToggle?.checked && !requireLeadPaidFeature("mobile_otp", leadMobileOtpToggle, "Mobile OTP requires an active paid plan")) return;
   if (whatsappLeadToggle?.checked && !requireLeadPaidFeature("whatsapp_redirect", whatsappLeadToggle, "WhatsApp Redirect requires an active paid plan")) return;
   if (whatsappLeadToggle?.checked && walletBalancePaise < whatsappRedirectChargePaise) {
@@ -6152,7 +6159,7 @@ document.getElementById("transferSubscriptionBtn")?.addEventListener("click", as
   if (!targetCustomerId) return showToast("Select target chatbot");
   const targetText = document.getElementById("transferSubscriptionTarget")?.selectedOptions?.[0]?.textContent?.trim() || "the selected chatbot";
   const warning = [
-    "Transfer subscription?",
+    "Transfer wallet plan?",
     "",
     `The current plan and wallet balance will move to ${targetText}.`,
     "This chatbot will move to Free service and paid toggles will be turned off here."
@@ -6175,7 +6182,7 @@ document.getElementById("transferSubscriptionBtn")?.addEventListener("click", as
   if (!data.success) {
     button.disabled = false;
     button.textContent = originalText;
-    showToast(data.message || "Subscription could not be transferred");
+    showToast(data.message || "Wallet plan could not be transferred");
     return;
   }
   showToast("Subscription transferred");

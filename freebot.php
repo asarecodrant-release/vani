@@ -11,6 +11,10 @@ clear_setup_session();
 // ======================================
 $loggedInEmail = authenticated_email();
 $loggedInCustomerId = '';
+if (!empty($_SESSION['must_reset_password'])) {
+    header("Location: login.php?reset=1&forced=1");
+    exit;
+}
 ?>
 
 <!DOCTYPE html>
@@ -94,6 +98,9 @@ input, select {
   font-size: 14px;
   background: rgba(255,255,255,0.9);
 }
+.otp-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center}
+.otp-row input{margin:10px 0}
+.otp-row button{width:auto;margin:10px 0;padding:12px 14px;white-space:nowrap;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.24)}
 
 input:focus, select:focus {
   box-shadow: 0 0 0 2px #4f6aff;
@@ -199,6 +206,11 @@ button:hover {
   >
 
   <!-- ✅ FIX: HIDDEN CUSTOMER ID (still used in JS/backend) -->
+  <div class="otp-row">
+    <input type="text" id="emailOtp" placeholder="Enter 6-digit email OTP" inputmode="numeric" maxlength="6" required>
+    <button type="button" id="sendSetupOtpBtn">Send OTP</button>
+  </div>
+
   <input type="hidden" id="customerId">
 
   <select id="businessType" required>
@@ -313,6 +325,33 @@ document.addEventListener("DOMContentLoaded", () => {
 
 });
 
+document.getElementById("sendSetupOtpBtn")?.addEventListener("click", async () => {
+  const emailInput = document.getElementById("email");
+  const email = emailInput.value.trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    alert("Enter a valid email before sending OTP");
+    emailInput.focus();
+    return;
+  }
+  const button = document.getElementById("sendSetupOtpBtn");
+  const originalText = button.innerText;
+  button.disabled = true;
+  button.innerText = "Sending...";
+  try {
+    const res = await fetch(`${API}?action=send_email_otp`, {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({email, flow: "freebot_signup"})
+    });
+    const data = await res.json();
+    alert(data.message || (data.success ? "OTP sent" : "OTP could not be sent"));
+  } catch (err) {
+    alert("OTP could not be sent");
+  }
+  button.disabled = false;
+  button.innerText = originalText;
+});
+
 document.getElementById("signupForm")
 .addEventListener("submit", async (e) => {
 
@@ -330,6 +369,15 @@ document.getElementById("signupForm")
 
   const email =
     document.getElementById("email").value.trim();
+  const emailOtp = document.getElementById("emailOtp").value.trim();
+
+  if (!/^\d{6}$/.test(emailOtp)) {
+    overlay.style.display = "none";
+    btn.disabled = false;
+    btn.innerText = "Continue ->";
+    alert("Please enter the 6-digit email OTP");
+    return;
+  }
 
   const cid =
     document.getElementById("customerId").value.trim();
@@ -368,6 +416,7 @@ document.getElementById("signupForm")
       body: JSON.stringify({
         customer_id: cid,
         email: email,
+        email_otp: emailOtp,
         website_name: website,
         business_type: business
       })

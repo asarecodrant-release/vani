@@ -7,7 +7,7 @@ require_once __DIR__ . '/billing.php';
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Vani Subscription Plans</title>
+<title>Vani Wallet Recharge Plans</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0;font-family:Inter,sans-serif}
@@ -63,7 +63,7 @@ td:last-child,th:last-child{text-align:right;font-weight:800}
 .checkout-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:16px}
 .checkout-head h2{font-size:24px}
 .checkout-head p{margin-top:6px;color:#cbd5e1;line-height:1.6}
-.checkout-form{display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) auto;gap:12px;align-items:end}
+.checkout-form{display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) auto;gap:12px;align-items:end}
 .field{display:grid;gap:7px}
 .field label{font-size:13px;font-weight:800;color:#e5e7eb}
 .required{color:#f87171}
@@ -71,6 +71,8 @@ td:last-child,th:last-child{text-align:right;font-weight:800}
 .field input:focus{border-color:#a5b4fc;box-shadow:0 0 0 3px rgba(99,102,241,.24)}
 .field input.error{border-color:#f87171;box-shadow:0 0 0 3px rgba(248,113,113,.18)}
 .checkout-help{grid-column:1/-1;color:#cbd5e1;font-size:13px;line-height:1.55}
+.otp-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end}
+.otp-row button{height:46px;white-space:nowrap}
 .checkout-help.error{color:#fecaca}
 .checkout-status{display:none;grid-column:1/-1;padding:12px 14px;border-radius:12px;background:rgba(99,102,241,.14);border:1px solid rgba(129,140,248,.24);color:#e0e7ff;line-height:1.55}
 .checkout-status.show{display:block}
@@ -97,35 +99,35 @@ td:last-child,th:last-child{text-align:right;font-weight:800}
 
 <main class="container">
   <section class="hero">
-    <span class="eyebrow">Subscription Plans</span>
+    <span class="eyebrow">Wallet Recharge Plans</span>
     <h1>Start small, verify real leads, and scale your chatbot as demand grows.</h1>
-    <p>Each monthly plan includes FAQ capacity and paid lead verification. Wallet charges apply for OTP verification and WhatsApp redirection. WhatsApp redirection is ₹99 per 30 days on every plan.</p>
+    <p>Recharge the wallet with a minimum amount to unlock FAQ capacity, paid lead verification, analytics, and integration benefits. Wallet charges apply as your customers use OTP verification and WhatsApp redirection. WhatsApp redirection is ₹99 per 30 days on every plan.</p>
     <div class="wallet-note">
-      <strong> 100% Subscription amount is credited to the customer's wallet.</strong>
-      When a plan is purchased or renewed, the plan amount is added to the customer's wallet. The wallet is then used as-you-go based on real usage, mainly when new website visitors verify by Email OTP or Mobile OTP, and for paid add-ons such as WhatsApp Redirect.
+      <strong>100% recharge amount is credited to the customer's wallet.</strong>
+      Recharge with Starter, Growth, or Business to unlock that plan's benefits. The wallet is then used as-you-go based on real usage, mainly when new website visitors verify by Email OTP or Mobile OTP, and for paid add-ons such as WhatsApp Redirect.
     </div>
   </section>
 
   <section class="pricing-grid">
     <article class="card">
       <div class="head"><div><span class="eyebrow">Starter</span><h2>Starter Plan</h2></div><span class="tag">Small</span></div>
-      <div class="price">₹199<small>/month</small></div>
+      <div class="price">₹199<small>minimum recharge</small></div>
       <div class="features"><span class="is-included">100 FAQ answers for small websites</span><span class="is-included">Email and Mobile OTP verification for real leads</span><span class="is-included">Dedicated WhatsApp button and many more action items for FAQs</span><span class="is-included">Webhook support</span><span class="is-included">FAQ Action Suggestions</span><span class="is-included">Auto wallet recharge: below ₹50, recharge ₹199</span><span class="is-excluded">Live Chat Actions for real-time website reactions</span><span class="is-excluded">API Integration to migrate or save data in your database</span><span class="is-excluded">Analytics dashboard access</span><span class="is-excluded">Chat can run only on allowed domains</span></div>
-      <div class="actions"><button class="nav-btn choose-plan-btn" type="button" data-plan-id="starter" data-plan-name="Starter Plan" data-plan-price="₹199/month">Choose Starter</button></div>
+      <div class="actions"><button class="nav-btn choose-plan-btn" type="button" data-plan-id="starter" data-plan-name="Starter Plan" data-plan-price="₹199 minimum recharge">Recharge Starter</button></div>
     </article>
 
     <article class="card featured">
       <div class="head"><div><span class="eyebrow">Growth</span><h2>Growth Plan</h2></div><span class="tag good">Popular</span></div>
-      <div class="price">₹499<small>/month</small></div>
+      <div class="price">₹499<small>minimum recharge</small></div>
       <div class="features"><span class="is-included">300 FAQ capacity for growing businesses</span><span class="is-included">Email and Mobile OTP verification for real leads</span><span class="is-included">Dedicated WhatsApp button and many more action items for FAQs</span><span class="is-included">Webhook support</span><span class="is-included">FAQ Action Suggestions</span><span class="is-included">Auto wallet recharge: below ₹100, recharge ₹499</span><span class="is-included">Analytics access: Overview, Conversations, FAQ Insights, Leads</span><span class="is-included">Better wallet rates than Starter on email and mobile leads</span><span class="is-excluded">Live Chat Actions for real-time website reactions</span><span class="is-excluded">API Integration to migrate or save data in your database</span><span class="is-excluded">Chat can run only on allowed domains</span></div>
-      <div class="actions"><button class="nav-btn choose-plan-btn" type="button" data-plan-id="growth" data-plan-name="Growth Plan" data-plan-price="₹499/month">Choose Growth</button></div>
+      <div class="actions"><button class="nav-btn choose-plan-btn" type="button" data-plan-id="growth" data-plan-name="Growth Plan" data-plan-price="₹499 minimum recharge">Recharge Growth</button></div>
     </article>
 
     <article class="card">
       <div class="head"><div><span class="eyebrow">Business</span><h2>Business Plan</h2></div><span class="tag">Scale</span></div>
-      <div class="price">₹999<small>/month</small></div>
+      <div class="price">₹999<small>minimum recharge</small></div>
       <div class="features"><span class="is-included">Unlimited FAQ capacity for larger businesses</span><span class="is-included">Email and Mobile combined widget</span><span class="is-included">Dedicated WhatsApp button and many more action items for FAQs</span><span class="is-included">Webhook support</span><span class="is-included">FAQ Action Suggestions</span><span class="is-included">Live Chat Actions for real-time website reactions</span><span class="is-included">Auto wallet recharge: below ₹200, recharge ₹999</span><span class="is-included">API Integration to migrate or save data in your database</span><span class="is-included">Advanced Analytics: Overview, Conversations, FAQ Insights, Leads, Pages, Real-Time, Reports Download</span><span class="is-included">Chat can run only on allowed domains</span></div>
-      <div class="actions"><button class="nav-btn choose-plan-btn" type="button" data-plan-id="business" data-plan-name="Business Plan" data-plan-price="₹999/month">Choose Business</button></div>
+      <div class="actions"><button class="nav-btn choose-plan-btn" type="button" data-plan-id="business" data-plan-name="Business Plan" data-plan-price="₹999 minimum recharge">Recharge Business</button></div>
     </article>
   </section>
 
@@ -133,7 +135,7 @@ td:last-child,th:last-child{text-align:right;font-weight:800}
     <div class="checkout-head">
       <div>
         <span class="eyebrow">Secure Checkout</span>
-        <h2>Buy <span id="checkoutPlanName">Selected Plan</span></h2>
+        <h2>Recharge <span id="checkoutPlanName">Selected Plan</span></h2>
         <p>Enter customer details for billing and account creation. After successful payment, login details will be sent to the email address below.</p>
       </div>
       <span class="tag good" id="checkoutPlanPrice">Select a plan</span>
@@ -151,8 +153,15 @@ td:last-child,th:last-child{text-align:right;font-weight:800}
         <label for="publicCustomerPhone">Mobile number with country code <span class="required">*</span></label>
         <input id="publicCustomerPhone" type="tel" inputmode="tel" placeholder="+919876543210" autocomplete="tel" required>
       </div>
-      <button class="nav-btn" type="submit" id="publicPayBtn">Pay Now</button>
-      <p class="checkout-help" id="publicCheckoutHelp"><span class="required">*</span> These details are required to create your Vani AI account and activate your subscription.</p>
+      <div class="field">
+        <label for="publicEmailOtp">Email OTP <span class="required">*</span></label>
+        <div class="otp-row">
+          <input id="publicEmailOtp" inputmode="numeric" maxlength="6" placeholder="6-digit code" required>
+          <button class="nav-link" type="button" id="sendPublicOtpBtn">Send OTP</button>
+        </div>
+      </div>
+      <button class="nav-btn" type="submit" id="publicPayBtn">Recharge Now</button>
+      <p class="checkout-help" id="publicCheckoutHelp"><span class="required">*</span> These details and email OTP verification are required to create your Vani AI account and activate your wallet plan benefits.</p>
       <div class="checkout-status" id="publicCheckoutStatus"></div>
     </form>
   </section>
@@ -177,11 +186,14 @@ function validatePublicCheckout() {
   const nameValid = (nameInput?.value.trim() || "").length >= 3;
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailInput?.value.trim() || "");
   const phoneValid = /^\+?[1-9]\d{7,14}$/.test(phoneInput?.value.trim() || "");
+  const otpInput = document.getElementById("publicEmailOtp");
+  const otpValid = /^\d{6}$/.test(otpInput?.value.trim() || "");
   nameInput?.classList.toggle("error", !nameValid);
   emailInput?.classList.toggle("error", !emailValid);
   phoneInput?.classList.toggle("error", !phoneValid);
-  checkoutHelp?.classList.toggle("error", !(nameValid && emailValid && phoneValid));
-  return nameValid && emailValid && phoneValid;
+  otpInput?.classList.toggle("error", !otpValid);
+  checkoutHelp?.classList.toggle("error", !(nameValid && emailValid && phoneValid && otpValid));
+  return nameValid && emailValid && phoneValid && otpValid;
 }
 
 document.querySelectorAll(".choose-plan-btn").forEach((button) => {
@@ -194,6 +206,28 @@ document.querySelectorAll(".choose-plan-btn").forEach((button) => {
     checkoutPanel?.scrollIntoView({behavior: "smooth", block: "nearest"});
     document.getElementById("publicCustomerName")?.focus();
   });
+});
+
+document.getElementById("sendPublicOtpBtn")?.addEventListener("click", async (event) => {
+  const email = document.getElementById("publicCustomerEmail")?.value.trim() || "";
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    setCheckoutStatus("Enter a valid customer email before sending OTP.");
+    document.getElementById("publicCustomerEmail")?.focus();
+    return;
+  }
+  const button = event.currentTarget;
+  const originalText = button.textContent;
+  button.disabled = true;
+  button.textContent = "Sending...";
+  const response = await fetch("/api.php?action=send_email_otp", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({email, flow: "public_subscription"})
+  });
+  const data = await response.json().catch(() => ({}));
+  button.disabled = false;
+  button.textContent = originalText;
+  setCheckoutStatus(data.message || (data.success ? "Verification code sent." : "OTP could not be sent."));
 });
 
 ["publicCustomerName", "publicCustomerEmail", "publicCustomerPhone"].forEach((id) => {
@@ -223,7 +257,8 @@ document.getElementById("publicSubscriptionForm")?.addEventListener("submit", as
     plan_id: selectedPublicPlan,
     name: document.getElementById("publicCustomerName").value.trim(),
     email: document.getElementById("publicCustomerEmail").value.trim(),
-    contact: document.getElementById("publicCustomerPhone").value.trim()
+    contact: document.getElementById("publicCustomerPhone").value.trim(),
+    email_otp: document.getElementById("publicEmailOtp").value.trim()
   };
   button.disabled = true;
   button.textContent = "Creating order...";
@@ -238,6 +273,11 @@ document.getElementById("publicSubscriptionForm")?.addEventListener("submit", as
     button.disabled = false;
     button.textContent = originalText;
     if (!orderData.success) {
+      if (orderData.requires_login && orderData.login_url) {
+        setCheckoutStatus(orderData.message || "Please login to upgrade your existing chatbot.");
+        setTimeout(() => { window.location.href = orderData.login_url; }, 900);
+        return;
+      }
       setCheckoutStatus(orderData.message || "Payment could not be started.");
       return;
     }
@@ -246,13 +286,13 @@ document.getElementById("publicSubscriptionForm")?.addEventListener("submit", as
       amount: orderData.order.amount,
       currency: orderData.order.currency || "INR",
       name: "Vani AI",
-      description: `${orderData.plan.name} subscription`,
+      description: `${orderData.plan.name} wallet recharge`,
       order_id: orderData.order.id,
       remember_customer: true,
       prefill: orderData.prefill || payload,
       theme: {color: "#6366f1"},
       handler: async (response) => {
-        setCheckoutStatus("Payment received. Activating subscription and sending login email...");
+        setCheckoutStatus("Payment received. Activating wallet benefits and sending login email...");
         const verifyResponse = await fetch("/api.php?action=verify_public_razorpay_payment", {
           method: "POST",
           headers: {"Content-Type": "application/json"},
@@ -263,7 +303,7 @@ document.getElementById("publicSubscriptionForm")?.addEventListener("submit", as
           setCheckoutStatus(verifyData.message || "Payment verification failed.");
           return;
         }
-        setCheckoutStatus("Subscription activated. Please check your email for login details.");
+        setCheckoutStatus("Wallet recharge successful. Please check your email for login details.");
         setTimeout(() => {
           window.location.href = "login.php?subscription=success";
         }, 1300);

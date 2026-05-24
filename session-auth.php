@@ -15,6 +15,7 @@ function set_authenticated_user(array $user, string $provider = 'password'): voi
     $_SESSION['auth_email'] = $email;
     $_SESSION['auth_user_id'] = $userId;
     $_SESSION['auth_provider'] = $provider;
+    $_SESSION['must_reset_password'] = !empty($user['must_reset_password']);
 
     // Kept for older templates that display the logged-in email.
     $_SESSION['email'] = $email;

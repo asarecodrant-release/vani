@@ -149,6 +149,32 @@ function safe_rows(array $response): array {
     return is_array($data) ? $data : [];
 }
 
+function supabase_customer_write_with_reset_flag(string $method, string $endpoint, array $rowsOrPayload, ?bool $mustReset): array {
+    if ($mustReset === null) {
+        return supabase($method, $endpoint, $rowsOrPayload);
+    }
+    $payload = $rowsOrPayload;
+    if ($method === 'POST') {
+        foreach ($payload as &$row) {
+            if (is_array($row)) {
+                $row['must_reset_password'] = $mustReset;
+            }
+        }
+        unset($row);
+    } else {
+        $payload['must_reset_password'] = $mustReset;
+    }
+    $res = supabase($method, $endpoint, $payload);
+    if ($res['status'] >= 200 && $res['status'] < 300) {
+        return $res;
+    }
+    $raw = strtolower((string)($res['raw'] ?? ''));
+    if (strpos($raw, 'must_reset_password') === false) {
+        return $res;
+    }
+    return supabase($method, $endpoint, $rowsOrPayload);
+}
+
 require_once __DIR__ . "/invoice_helpers.php";
 
 function is_uuid_value(string $value): bool {
@@ -290,6 +316,16 @@ function billing_adopt_legacy_email_account(string $customerId, string $email, a
     }
     if (empty($legacy)) {
         return $customerAccount;
+    }
+
+    $lock = supabase(
+        "GET",
+        "billing_accounts?select=id,customer_id&email=eq." . urlencode($email) . "&customer_id=not.is.null&current_plan=neq.free&limit=1"
+    );
+    foreach (safe_rows($lock) as $lockedAccount) {
+        if (trim((string)($lockedAccount['customer_id'] ?? '')) !== $customerId) {
+            return $customerAccount;
+        }
     }
 
     $copyFields = [
@@ -1084,7 +1120,7 @@ function razorpay_subscription_plan_id(string $planId): array {
             "name" => "Vani " . $plan["name"] . " Plan",
             "amount" => (int)$plan["price_paise"],
             "currency" => "INR",
-            "description" => "Monthly Vani chatbot subscription"
+            "description" => "Vani wallet recharge authorization"
         ],
         "notes" => [
             "vani_plan_id" => $planId
@@ -1092,7 +1128,7 @@ function razorpay_subscription_plan_id(string $planId): array {
     ]);
 
     if ($create['status'] < 200 || $create['status'] >= 300 || empty($create['data']['id'])) {
-        return ["success" => false, "message" => "Razorpay subscription plan could not be created", "debug" => $create];
+        return ["success" => false, "message" => "Razorpay auto payment plan could not be created", "debug" => $create];
     }
 
     return ["success" => true, "plan_id" => (string)$create['data']['id'], "created" => true, "debug" => $create];
@@ -1541,6 +1577,29 @@ function public_subscription_temp_password(): string {
     return bin2hex(random_bytes(4)) . "@AI";
 }
 
+function otp_email_html(string $code, string $purpose = 'verify your email'): string {
+    return '<!doctype html><html><body style="margin:0;background:#f8fafc;font-family:Inter,Arial,sans-serif;color:#0f172a;">'
+        . '<div style="max-width:580px;margin:0 auto;padding:28px 14px;"><div style="background:#fff;border:1px solid #e2e8f0;border-radius:22px;overflow:hidden;box-shadow:0 20px 55px rgba(15,23,42,.10);">'
+        . '<div style="padding:28px;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;text-align:center;"><img src="https://vani.codrant.com/images/logo_img.png" alt="Vani AI" style="width:64px;height:64px;object-fit:contain;"><h1 style="margin:12px 0 0;font-size:26px;">Email verification</h1></div>'
+        . '<div style="padding:28px;"><p style="margin:0 0 16px;color:#475569;line-height:1.7;">Use this code to ' . htmlspecialchars($purpose, ENT_QUOTES, 'UTF-8') . '.</p>'
+        . '<div style="font-size:34px;letter-spacing:8px;font-weight:900;color:#4f46e5;background:#eef2ff;border:1px solid #c7d2fe;border-radius:16px;text-align:center;padding:16px;">' . htmlspecialchars($code, ENT_QUOTES, 'UTF-8') . '</div>'
+        . '<p style="margin:16px 0 0;color:#64748b;line-height:1.6;font-size:13px;">This code is valid for 15 minutes. If you did not request it, ignore this email.</p></div>'
+        . '</div></div></body></html>';
+}
+
+function require_verified_email_for_flow(string $email, string $code, string $flow): array {
+    $state = $_SESSION['email_otp'][$flow] ?? [];
+    if (($state['email'] ?? '') !== $email || empty($state['code_hash']) || (int)($state['expires_at'] ?? 0) < time()) {
+        return ["success" => false, "message" => "Please verify your email before continuing"];
+    }
+    if (!password_verify($code, (string)$state['code_hash'])) {
+        $_SESSION['email_otp'][$flow]['attempts'] = (int)($state['attempts'] ?? 0) + 1;
+        return ["success" => false, "message" => "Invalid email verification code"];
+    }
+    unset($_SESSION['email_otp'][$flow]);
+    return ["success" => true];
+}
+
 function public_subscription_customer_upsert(string $email, string $password): array {
     $existing = safe_rows(supabase(
         "GET",
@@ -1549,10 +1608,10 @@ function public_subscription_customer_upsert(string $email, string $password): a
     if (!empty($existing[0])) {
         return ["success" => true, "is_new" => false, "customer" => $existing[0], "password" => ""];
     }
-    $insert = supabase("POST", "customers", [[
-        "email" => $email,
-        "password" => password_hash($password, PASSWORD_DEFAULT)
-    ]]);
+        $insert = supabase_customer_write_with_reset_flag("POST", "customers", [[
+            "email" => $email,
+            "password" => password_hash($password, PASSWORD_DEFAULT)
+        ]], true);
     if ($insert['status'] < 200 || $insert['status'] >= 300 || empty($insert['data'][0])) {
         return ["success" => false, "message" => "Customer account could not be created", "debug" => $insert];
     }
@@ -1651,11 +1710,11 @@ function public_subscription_success_email_html(string $name, string $email, str
         . '<div style="border-radius:24px;overflow:hidden;background:#ffffff;border:1px solid #e2e8f0;box-shadow:0 22px 60px rgba(15,23,42,.10);">'
         . '<div style="padding:34px 28px;background:linear-gradient(135deg,#6366f1,#8b5cf6 58%,#ec4899);color:#fff;text-align:center;">'
         . '<img src="https://vani.codrant.com/images/logo_img.png" alt="Vani AI" style="width:74px;height:74px;object-fit:contain;margin-bottom:12px;">'
-        . '<h1 style="margin:0;font-size:30px;line-height:1.2;">Subscription activated</h1>'
-        . '<p style="margin:12px 0 0;color:rgba(255,255,255,.9);line-height:1.7;">Welcome to Vani AI. Your ' . $safePlan . ' purchase is successful.</p>'
+        . '<h1 style="margin:0;font-size:30px;line-height:1.2;">Wallet recharge successful</h1>'
+        . '<p style="margin:12px 0 0;color:rgba(255,255,255,.9);line-height:1.7;">Welcome to Vani AI. Your ' . $safePlan . ' wallet recharge is successful.</p>'
         . '</div>'
         . '<div style="padding:28px;">'
-        . '<p style="margin:0 0 14px;line-height:1.7;color:#334155;">Hi <strong>' . $safeName . '</strong>, your subscription amount has been credited to your Vani wallet. Create your chatbot from the product page and this plan will be assigned to that chatbot automatically.</p>'
+        . '<p style="margin:0 0 14px;line-height:1.7;color:#334155;">Hi <strong>' . $safeName . '</strong>, your recharge amount has been credited to your Vani wallet. Create your chatbot from the product page and this plan will be assigned to that chatbot automatically.</p>'
         . '<div style="display:grid;gap:10px;margin:18px 0;padding:16px;border-radius:16px;background:#f1f5f9;border:1px solid #e2e8f0;">'
         . '<div><strong>Login email:</strong> ' . $safeEmail . '</div>'
         . '<div><strong>Plan:</strong> ' . $safePlan . '</div>'
@@ -1664,7 +1723,7 @@ function public_subscription_success_email_html(string $name, string $email, str
         . '<p style="margin:16px 0;color:#b91c1c;font-weight:800;line-height:1.6;">For security, reset your password immediately after your first login.</p>'
         . '<div style="margin-top:22px;"><a href="https://vani.codrant.com/login.php" style="display:inline-block;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;text-decoration:none;font-weight:800;padding:13px 18px;border-radius:12px;">Login to Vani AI</a></div>'
         . '</div>'
-        . '<div style="padding:16px 28px;background:#f8fafc;color:#64748b;font-size:12px;line-height:1.6;">This email was sent by Vani AI from Codrant after a successful subscription purchase.</div>'
+        . '<div style="padding:16px 28px;background:#f8fafc;color:#64748b;font-size:12px;line-height:1.6;">This email was sent by Vani AI from Codrant after a successful wallet recharge.</div>'
         . '</div></div></body></html>';
 }
 
@@ -1910,7 +1969,7 @@ if ($action === "transfer_chatbot_subscription") {
     $sourcePlanId = billing_active_plan_from_account($sourceAccount);
     $targetPlanId = billing_active_plan_from_account($targetAccount);
     if ($sourcePlanId === 'free' || !billing_legacy_account_has_value($sourceAccount)) {
-        echo json_encode(["success" => false, "message" => "The selected chatbot does not have an active paid subscription to transfer"]);
+        echo json_encode(["success" => false, "message" => "The selected chatbot does not have an active paid wallet plan to transfer"]);
         exit;
     }
     if ($targetPlanId !== 'free' || billing_legacy_account_has_value($targetAccount)) {
@@ -2305,7 +2364,7 @@ if ($action === "create_razorpay_subscription_checkout") {
         exit;
     }
     if (strlen($customerName) < 3) {
-        echo json_encode(["success" => false, "message" => "Customer name is required for subscription purchase"]);
+        echo json_encode(["success" => false, "message" => "Customer name is required for wallet recharge"]);
         exit;
     }
     if (!preg_match('/^\+?[1-9]\d{7,14}$/', preg_replace('/[^\d+]/', '', $customerContact))) {
@@ -2347,7 +2406,7 @@ if ($action === "create_razorpay_subscription_checkout") {
     if ($subscription['status'] < 200 || $subscription['status'] >= 300 || empty($subscription['data']['id'])) {
         echo json_encode([
             "success" => false,
-            "message" => $subscription['data']['error']['description'] ?? "Razorpay subscription could not be created",
+            "message" => $subscription['data']['error']['description'] ?? "Razorpay auto payment authorization could not be created",
             "debug" => $subscription['data'] ?? $subscription
         ]);
         exit;
@@ -2375,7 +2434,7 @@ if ($action === "create_razorpay_subscription_checkout") {
     if ($storedOrder['status'] < 200 || $storedOrder['status'] >= 300) {
         echo json_encode([
             "success" => false,
-            "message" => "Razorpay subscription was created but could not be saved. Run the latest Supabase schema migration and try again.",
+            "message" => "Razorpay auto payment authorization was created but could not be saved. Run the latest Supabase schema migration and try again.",
             "debug" => $storedOrder
         ]);
         exit;
@@ -2406,7 +2465,7 @@ if ($action === "verify_razorpay_subscription_payment") {
     $signature = trim((string)($data['razorpay_signature'] ?? ''));
     [, $secret] = razorpay_credentials();
     if (!$subscriptionId || !$paymentId || !$signature || !$secret) {
-        echo json_encode(["success" => false, "message" => "Missing subscription verification data"]);
+        echo json_encode(["success" => false, "message" => "Missing auto payment verification data"]);
         exit;
     }
 
@@ -2513,6 +2572,7 @@ if ($action === "create_public_razorpay_order") {
     $name = trim((string)($data['name'] ?? ''));
     $email = strtolower(trim((string)($data['email'] ?? '')));
     $contact = preg_replace('/[^\d+]/', '', (string)($data['contact'] ?? ''));
+    $emailOtp = trim((string)($data['email_otp'] ?? ''));
     if (!in_array($planId, billing_plan_ids(), true) || $planId === 'free') {
         echo json_encode(["success" => false, "message" => "Select Starter, Growth, or Business plan"]);
         exit;
@@ -2534,7 +2594,17 @@ if ($action === "create_public_razorpay_order") {
         "chatbot_signups?select=customer_id&email=eq." . urlencode($email) . "&limit=1"
     ));
     if (!empty($botRows)) {
-        echo json_encode(["success" => false, "message" => "This email already has a chatbot. Please login and buy the plan from Dashboard > Subscription."]);
+        echo json_encode([
+            "success" => false,
+            "requires_login" => true,
+            "message" => "This email already has a chatbot. Login to upgrade your existing chatbot.",
+            "login_url" => "login.php?upgrade=1"
+        ]);
+        exit;
+    }
+    $otpCheck = require_verified_email_for_flow($email, $emailOtp, 'public_subscription');
+    if (empty($otpCheck['success'])) {
+        echo json_encode($otpCheck);
         exit;
     }
     if ($contact[0] !== '+') {
@@ -2591,6 +2661,31 @@ if ($action === "create_public_razorpay_order") {
     exit;
 }
 
+if ($action === "send_email_otp") {
+    $data = getJSON();
+    $email = strtolower(trim((string)($data['email'] ?? '')));
+    $flow = trim((string)($data['flow'] ?? ''));
+    $allowedFlows = ['public_subscription', 'freebot_signup'];
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL) || !in_array($flow, $allowedFlows, true)) {
+        echo json_encode(["success" => false, "message" => "Enter a valid email address"]);
+        exit;
+    }
+    $code = (string)random_int(100000, 999999);
+    $_SESSION['email_otp'][$flow] = [
+        "email" => $email,
+        "code_hash" => password_hash($code, PASSWORD_DEFAULT),
+        "expires_at" => time() + 900,
+        "attempts" => 0
+    ];
+    require_once __DIR__ . "/email.php";
+    $sent = sendBrevoEmail($email, "Your Vani AI verification code", otp_email_html($code, $flow === 'public_subscription' ? 'verify your wallet recharge email' : 'verify your chatbot setup email'));
+    echo json_encode([
+        "success" => $sent,
+        "message" => $sent ? "Verification code sent" : "Verification email could not be sent"
+    ]);
+    exit;
+}
+
 if ($action === "verify_public_razorpay_payment") {
     $data = getJSON();
     $orderId = trim((string)($data['razorpay_order_id'] ?? ''));
@@ -2618,7 +2713,7 @@ if ($action === "verify_public_razorpay_payment") {
     }
     $metadata = is_array($order['metadata'] ?? null) ? $order['metadata'] : [];
     if (empty($metadata['public_subscription_checkout'])) {
-        echo json_encode(["success" => false, "message" => "This is not a public subscription order"]);
+        echo json_encode(["success" => false, "message" => "This is not a public wallet recharge order"]);
         exit;
     }
     $payment = razorpay_request("GET", "payments/" . rawurlencode($paymentId), []);
@@ -2653,7 +2748,7 @@ if ($action === "verify_public_razorpay_payment") {
     require_once __DIR__ . '/email.php';
     $emailSent = sendBrevoEmail(
         $email,
-        "Your Vani AI subscription is active",
+        "Your Vani AI wallet recharge is active",
         public_subscription_success_email_html($name, $email, billing_plan($planId)['name'], $newPassword)
     );
     supabase("PATCH", "billing_orders?razorpay_order_id=eq." . urlencode($orderId), [
@@ -2746,7 +2841,7 @@ if ($action === "create_razorpay_order") {
         exit;
     }
     if (strlen($customerName) < 3) {
-        echo json_encode(["success" => false, "message" => "Customer name is required for subscription purchase"]);
+        echo json_encode(["success" => false, "message" => "Customer name is required for wallet recharge"]);
         exit;
     }
     if (!preg_match('/^\+?[1-9]\d{7,14}$/', preg_replace('/[^\d+]/', '', $customerContact))) {
@@ -2906,7 +3001,8 @@ if ($action === "signup") {
         empty($data['customer_id']) ||
         empty($data['website_name']) ||
         empty($data['email']) ||
-        empty($data['business_type'])
+        empty($data['business_type']) ||
+        empty($data['email_otp'])
     ) {
         echo json_encode(["error" => "Missing fields"]);
         exit;
@@ -2934,10 +3030,10 @@ if ($action === "signup") {
         if (empty($existingCustomer)) {
             require_once __DIR__ . "/email.php";
             $recoveryPassword = bin2hex(random_bytes(4)) . "@AI";
-            supabase("POST", "customers", [[
+            supabase_customer_write_with_reset_flag("POST", "customers", [[
                 "email" => $emailForSignup,
                 "password" => password_hash($recoveryPassword, PASSWORD_DEFAULT)
-            ]]);
+            ]], true);
             supabase("POST", "customer_bot_type", [[
                 "customer_id" => (string)($existingBots[0]['customer_id'] ?? ''),
                 "bot_type" => "Free"
@@ -2955,6 +3051,14 @@ if ($action === "signup") {
             "requires_login" => true,
             "message" => "A chatbot setup is already started for this email. Please login to continue setup.",
             "login_url" => "login.php?setup=incomplete"
+        ]);
+        exit;
+    }
+    $otpCheck = require_verified_email_for_flow($emailForSignup, trim((string)$data['email_otp']), 'freebot_signup');
+    if (empty($otpCheck['success'])) {
+        echo json_encode([
+            "error" => "email_not_verified",
+            "message" => $otpCheck['message'] ?? "Please verify your email before continuing"
         ]);
         exit;
     }
@@ -3374,6 +3478,15 @@ if ($action === "delete_chatbot") {
         exit;
     }
 
+    $billingAccount = billing_account_for_customer($customer_id);
+    if (billing_active_plan_from_account($billingAccount) !== 'free' || (int)($billingAccount['wallet_balance_paise'] ?? 0) > 0) {
+        echo json_encode([
+            "success" => false,
+            "message" => "This chatbot has an active paid wallet plan or wallet balance. Transfer the wallet plan to another chatbot or contact support before deleting."
+        ]);
+        exit;
+    }
+
     $res = supabase(
         "DELETE",
         "chatbot_signups?customer_id=eq." . urlencode($customer_id) . "&email=eq." . urlencode($email)
@@ -3557,7 +3670,7 @@ if ($action === "save_lead_generation_settings") {
                 $billingEmail,
                 $customer_id,
                 $amountPaise,
-                "WhatsApp Redirect monthly add-on",
+                "WhatsApp Redirect 30-day add-on",
                 "whatsapp_redirect_addon",
                 $customer_id,
                 ["plan_id" => $activePlan, "billing_period_days" => 30, "refund_window_minutes" => 60]
@@ -4160,7 +4273,7 @@ if ($action === "save_customer_profile") {
     if ($requestedEmail !== $email) {
         echo json_encode([
             "success" => false,
-            "message" => "Profile email cannot be changed here"
+            "message" => "Account email cannot be changed because chatbot ownership, billing, invoices, and login are linked to this email. Contact support for a safe migration."
         ]);
         exit;
     }
@@ -4221,13 +4334,17 @@ if ($action === "save_customer_profile") {
             exit;
         }
 
-        $passwordRes = supabase(
+        $passwordRes = supabase_customer_write_with_reset_flag(
             "PATCH",
             "customers?email=eq." . urlencode($email),
             [
                 "password" => password_hash($newPassword, PASSWORD_DEFAULT)
-            ]
+            ],
+            false
         );
+        if ($passwordRes['status'] >= 200 && $passwordRes['status'] < 300) {
+            $_SESSION['must_reset_password'] = false;
+        }
 
         $passwordMessage = ($passwordRes['status'] >= 200 && $passwordRes['status'] < 300)
             ? "password_updated"
@@ -4497,7 +4614,7 @@ if ($action === "create_account") {
         $password =
             bin2hex(random_bytes(4)) . "@AI";
 
-        $insertCustomer = supabase(
+        $insertCustomer = supabase_customer_write_with_reset_flag(
             "POST",
             "customers",
             [[
@@ -4509,7 +4626,8 @@ if ($action === "create_account") {
                     $password,
                     PASSWORD_DEFAULT
                 )
-            ]]
+            ]],
+            true
         );
 
         $isExistingUser = false;
