@@ -13,7 +13,7 @@ if (!empty($_SESSION['must_reset_password'])) {
     exit;
 }
 
-$email = authenticated_email();
+$email = strtolower(trim(authenticated_email()));
 $accountId = authenticated_user_id();
 $selectedBotId = trim($_GET['bot'] ?? '');
 $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
@@ -590,6 +590,19 @@ $profileRows = safe_data(supabase(
     "GET",
     "customer_profiles?select=*&email=eq." . urlencode($email) . "&limit=1"
 ));
+if (empty($profileRows)) {
+    $profileCreate = supabase("POST", "customer_profiles", [[
+        "email" => strtolower($email)
+    ]]);
+    if ($profileCreate['status'] >= 200 && $profileCreate['status'] < 300 && !empty($profileCreate['data'][0])) {
+        $profileRows = [$profileCreate['data'][0]];
+    } else {
+        $profileRows = safe_data(supabase(
+            "GET",
+            "customer_profiles?select=*&email=eq." . urlencode($email) . "&limit=1"
+        ));
+    }
+}
 
 $billingAccountRows = $selectedBotId
     ? safe_data(supabase(

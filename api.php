@@ -1732,21 +1732,28 @@ function public_subscription_save_profile(string $email, string $name, string $c
     }
 }
 
-function ensure_customer_profile_exists(string $email): void {
+function ensure_customer_profile_exists(string $email): array {
     $email = strtolower(trim($email));
     if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-        return;
+        return ["success" => false, "message" => "Invalid profile email"];
     }
     $existing = safe_rows(supabase(
         "GET",
         "customer_profiles?select=id&email=eq." . urlencode($email) . "&limit=1"
     ));
     if (!empty($existing)) {
-        return;
+        return ["success" => true, "profile" => $existing[0], "created" => false];
     }
-    supabase("POST", "customer_profiles", [[
+    $created = supabase("POST", "customer_profiles", [[
         "email" => $email
     ]]);
+    $createdRows = safe_rows($created);
+    return [
+        "success" => $created['status'] >= 200 && $created['status'] < 300 && !empty($createdRows[0]),
+        "profile" => $createdRows[0] ?? null,
+        "created" => !empty($createdRows[0]),
+        "debug" => $created
+    ];
 }
 
 function public_subscription_credit_pending_wallet(string $email, string $planId, int $amountPaise, string $paymentId): array {
@@ -2183,7 +2190,7 @@ if ($action === "transfer_chatbot_subscription") {
     }
 
     $data = getJSON();
-    $email = authenticated_email();
+    $email = strtolower(trim(authenticated_email()));
     $sourceCustomerId = trim((string)($data['source_customer_id'] ?? ''));
     $targetCustomerId = trim((string)($data['target_customer_id'] ?? ''));
     if ($sourceCustomerId === '' || $targetCustomerId === '' || $sourceCustomerId === $targetCustomerId) {
@@ -4594,8 +4601,8 @@ if ($action === "save_customer_profile") {
     }
 
     $data = getJSON();
-    $email = authenticated_email();
-    $requestedEmail = trim($data['email'] ?? $email);
+    $email = strtolower(trim(authenticated_email()));
+    $requestedEmail = strtolower(trim($data['email'] ?? $email));
 
     if ($requestedEmail !== $email) {
         echo json_encode([
@@ -4648,9 +4655,19 @@ if ($action === "save_customer_profile") {
             [$payload]
         );
     }
+    $profileRows = safe_rows($profileRes);
+    if ($profileRes['status'] >= 200 && $profileRes['status'] < 300 && empty($profileRows[0])) {
+        $profileRows = safe_rows(supabase(
+            "GET",
+            "customer_profiles?select=*&email=eq." . urlencode($email) . "&limit=1"
+        ));
+    }
+    $profileSaved = $profileRes['status'] >= 200 && $profileRes['status'] < 300 && !empty($profileRows[0]);
 
     echo json_encode([
-        "success" => ($profileRes['status'] >= 200 && $profileRes['status'] < 300),
+        "success" => $profileSaved,
+        "message" => $profileSaved ? "Profile saved" : "Profile could not be saved in database",
+        "profile" => $profileRows[0] ?? null,
         "debug" => $profileRes
     ]);
     exit;
