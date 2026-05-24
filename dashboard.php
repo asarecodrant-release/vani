@@ -1530,6 +1530,17 @@ td .ghost-btn{white-space:normal}
 .tag.good{background:rgba(34,197,94,.13);color:#15803d}.tag.bad{background:rgba(239,68,68,.12);color:#b91c1c}
 .embed-box{position:relative}
 code{display:block;white-space:pre-wrap;word-break:break-all;padding:16px;border-radius:14px;background:#111827;color:#e5e7eb;font-size:13px;line-height:1.6}
+.easy-install-grid{grid-column:1/-1;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px}
+.easy-install-card{padding:16px;border:1px solid var(--line);border-radius:18px;background:rgba(255,255,255,.42);display:grid;gap:10px;align-content:start;min-width:0}
+body.dark .easy-install-card{background:rgba(15,23,42,.38)}
+.easy-install-icon{width:42px;height:42px;border-radius:14px;display:grid;place-items:center;color:#fff;font-weight:900;background:linear-gradient(135deg,var(--brand),var(--brand-2));box-shadow:0 10px 20px rgba(99,102,241,.18)}
+.easy-install-card h4{font-size:15px;margin:0}
+.easy-install-card p{font-size:13px;line-height:1.55;color:var(--muted);margin:0}
+.easy-install-card .ghost-btn,.easy-install-card .pill-btn{width:100%;justify-content:center;min-height:40px}
+.install-guide{grid-column:1/-1;padding:16px;border:1px solid var(--line);border-radius:18px;background:rgba(99,102,241,.07);display:none}
+.install-guide.active{display:grid;gap:10px}
+.install-guide ol{padding-left:20px;color:var(--muted);line-height:1.7;font-size:14px}
+.install-guide strong{color:var(--ink)}
 .inline-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;min-width:0;max-width:100%}
 .inline-row > *{min-width:0}
 .inline-row input{flex:1 1 220px;width:auto}
@@ -1564,6 +1575,7 @@ body.dark .security-card{background:rgba(15,23,42,.44)}
   #install .security-card .pill-btn,
   #install .security-card .ghost-btn{width:fit-content}
   #install .security-card textarea{min-height:76px}
+  .easy-install-grid{grid-template-columns:repeat(5,minmax(0,1fr))}
 }
 .api-key-reveal{display:none;margin-top:10px}
 .api-key-reveal.active{display:block}
@@ -1769,6 +1781,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
   .pill-btn,.ghost-btn,.danger-btn{padding:0 12px}
   .content{padding:22px}
   .metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .easy-install-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
 }
 @media(max-width:1180px){
   .dashboard-shell{grid-template-columns:1fr}
@@ -1835,6 +1848,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
   .page-title{min-width:0}
   .page-title p{display:none}
   .metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .easy-install-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
   .overview-hero,.subscription-transfer-card,.split,.profile-grid{grid-template-columns:1fr}
   .profile-photo{justify-items:start;grid-template-columns:auto 1fr;align-items:center}
 }
@@ -1889,6 +1903,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
   .inline-row{display:grid;grid-template-columns:1fr}
   .lead-master,.lead-section-head,.lead-option-top{align-items:flex-start}
   .lead-master{display:grid}
+  .easy-install-grid{grid-template-columns:1fr}
   .toast{left:14px;right:14px;bottom:14px;text-align:center}
 }
 </style>
@@ -2886,6 +2901,45 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
             <button class="integration-subtab-btn" type="button" data-integration-subtab="integration-subpanel-events">Webhooks &amp; Live Actions</button>
           </div>
           <div class="section-body form-grid integration-subpanel active" id="integration-subpanel-install">
+            <div class="easy-install-grid">
+              <div class="easy-install-card">
+                <span class="easy-install-icon">WP</span>
+                <h4>WordPress</h4>
+                <p>Download a ready plugin ZIP for this chatbot and upload it from WordPress admin.</p>
+                <?php if ($selectedBotId): ?>
+                  <a class="pill-btn" href="/api.php?action=download_wordpress_plugin&amp;customer_id=<?php echo h(urlencode($selectedBotId)); ?>">Download Plugin</a>
+                <?php else: ?>
+                  <button class="pill-btn" type="button" disabled>Select bot first</button>
+                <?php endif; ?>
+              </div>
+              <div class="easy-install-card">
+                <span class="easy-install-icon">W</span>
+                <h4>Wix</h4>
+                <p>Add Vani AI through Wix custom code on all pages near the end of body.</p>
+                <button class="ghost-btn install-guide-btn" type="button" data-guide="wix">View Steps</button>
+              </div>
+              <div class="easy-install-card">
+                <span class="easy-install-icon">S</span>
+                <h4>Shopify</h4>
+                <p>Paste the secure snippet into theme code before the closing body tag.</p>
+                <button class="ghost-btn install-guide-btn" type="button" data-guide="shopify">View Steps</button>
+              </div>
+              <div class="easy-install-card">
+                <span class="easy-install-icon">G</span>
+                <h4>Google Tag Manager</h4>
+                <p>Install with a Custom HTML tag and trigger it on all pages.</p>
+                <button class="ghost-btn install-guide-btn" type="button" data-guide="gtm">View Steps</button>
+              </div>
+              <div class="easy-install-card">
+                <span class="easy-install-icon">HTML</span>
+                <h4>Custom Website</h4>
+                <p>Use the universal secure iframe snippet for any HTML, PHP, React, or static site.</p>
+                <button class="ghost-btn copy-btn" type="button" data-copy="<?php echo h($embedCode); ?>">Copy Snippet</button>
+              </div>
+            </div>
+
+            <div class="install-guide" id="installGuideBox" aria-live="polite"></div>
+
             <div class="field full">
               <label>Secure iframe install snippet</label>
               <div class="embed-box"><code id="embedCode"><?php echo h($embedCode ?: 'Create or select a bot to generate the embed script.'); ?></code></div>
@@ -3960,6 +4014,47 @@ function openIntegrationSubtab(target) {
 document.querySelectorAll(".integration-subtab-btn").forEach(tab => {
   tab.addEventListener("click", () => {
     openIntegrationSubtab(tab.dataset.integrationSubtab || "integration-subpanel-install");
+  });
+});
+
+const installGuides = {
+  wix: {
+    title: "Install on Wix",
+    steps: [
+      "Open your Wix dashboard and go to Settings > Custom Code.",
+      "Choose Add Custom Code and paste the Vani AI secure iframe snippet.",
+      "Set the code to load on All Pages and place it at the end of Body.",
+      "Save, publish the website, then test the chatbot from your live domain."
+    ]
+  },
+  shopify: {
+    title: "Install on Shopify",
+    steps: [
+      "Open Shopify Admin and go to Online Store > Themes.",
+      "Choose Edit code for the active theme.",
+      "Open layout/theme.liquid and paste the Vani AI snippet before the closing body tag.",
+      "Save the theme and open your storefront to confirm the chatbot appears."
+    ]
+  },
+  gtm: {
+    title: "Install with Google Tag Manager",
+    steps: [
+      "Open Google Tag Manager and create a new Custom HTML tag.",
+      "Paste the Vani AI secure iframe snippet into the HTML field.",
+      "Set the trigger to All Pages.",
+      "Preview, confirm the chatbot loads, then publish the GTM container."
+    ]
+  }
+};
+
+document.querySelectorAll(".install-guide-btn").forEach(button => {
+  button.addEventListener("click", () => {
+    const guide = installGuides[button.dataset.guide || ""];
+    const box = document.getElementById("installGuideBox");
+    if (!guide || !box) return;
+    box.innerHTML = `<strong>${htmlEscape(guide.title)}</strong><ol>${guide.steps.map(step => `<li>${htmlEscape(step)}</li>`).join("")}</ol>`;
+    box.classList.add("active");
+    box.scrollIntoView({block: "nearest", behavior: "smooth"});
   });
 });
 

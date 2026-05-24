@@ -687,6 +687,41 @@ function require_customer_mutation_access(string $customerId, bool $allowSetupFl
     }
 }
 
+function app_public_base_url(): string {
+    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+    $basePath = rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? ''), '/\\');
+    return $scheme . '://' . $host . ($basePath === '' ? '' : $basePath);
+}
+
+function zip_bytes_from_text_files(array $files): string {
+    $body = '';
+    $central = '';
+    $offset = 0;
+    $count = 0;
+
+    foreach ($files as $path => $content) {
+        $name = str_replace('\\', '/', (string)$path);
+        $data = str_replace("\r\n", "\n", (string)$content);
+        $crc = (int)hexdec(hash('crc32b', $data));
+        $size = strlen($data);
+        $nameLength = strlen($name);
+
+        $local = pack('VvvvvvVVVvv', 0x04034b50, 20, 0, 0, 0, 0, $crc, $size, $size, $nameLength, 0)
+            . $name;
+        $body .= $local . $data;
+
+        $central .= pack('VvvvvvvVVVvvvvvVV', 0x02014b50, 20, 20, 0, 0, 0, 0, $crc, $size, $size, $nameLength, 0, 0, 0, 0, 32, $offset)
+            . $name;
+        $offset += strlen($local) + $size;
+        $count++;
+    }
+
+    return $body
+        . $central
+        . pack('VvvvvVVv', 0x06054b50, 0, 0, $count, $count, strlen($central), strlen($body), 0);
+}
+
 function webhook_deliver_for_customer(string $customerId, string $event, array $data = []): array {
     if ($customerId === '') {
         return ["success" => false, "message" => "Missing customer_id"];
@@ -2011,6 +2046,133 @@ if ($action === "billing_plans") {
         "active_plan" => billing_active_plan_from_account($account),
         "plans" => billing_plans()
     ]);
+    exit;
+}
+
+if ($action === "download_wordpress_plugin") {
+    $customerId = trim((string)($_GET['customer_id'] ?? ''));
+    if (!authenticated_customer_access($customerId)) {
+        http_response_code(is_authenticated_user() ? 403 : 401);
+        echo json_encode(["success" => false, "message" => is_authenticated_user() ? "Access denied" : "Login required"]);
+        exit;
+    }
+    $baseUrl = app_public_base_url();
+    $scriptUrl = $baseUrl . "/embed.js";
+    $pluginSlug = "vani-ai-chatbot";
+    $pluginName = "vani-ai-chatbot-" . substr(preg_replace('/[^a-zA-Z0-9-]/', '', $customerId), 0, 12) . ".zip";
+    $mainPhp = <<<'PHP'
+<?php
+/**
+ * Plugin Name: Vani AI Chatbot
+ * Description: Adds the Vani AI secure chatbot iframe loader to your WordPress website.
+ * Version: 1.0.0
+ * Author: Vani AI
+ */
+
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+const VANI_AI_OPTION_KEY = 'vani_ai_chatbot_settings';
+
+function vani_ai_default_settings() {
+    return [
+        'bot_id' => '__BOT_ID__',
+        'script_url' => '__SCRIPT_URL__',
+        'enabled' => '1',
+    ];
+}
+
+function vani_ai_settings() {
+    $saved = get_option(VANI_AI_OPTION_KEY, []);
+    return array_merge(vani_ai_default_settings(), is_array($saved) ? $saved : []);
+}
+
+register_activation_hook(__FILE__, function () {
+    if (!get_option(VANI_AI_OPTION_KEY)) {
+        add_option(VANI_AI_OPTION_KEY, vani_ai_default_settings());
+    }
+});
+
+add_action('admin_menu', function () {
+    add_options_page('Vani AI Chatbot', 'Vani AI Chatbot', 'manage_options', 'vani-ai-chatbot', 'vani_ai_settings_page');
+});
+
+add_action('admin_init', function () {
+    register_setting('vani_ai_chatbot', VANI_AI_OPTION_KEY, function ($input) {
+        return [
+            'bot_id' => sanitize_text_field($input['bot_id'] ?? ''),
+            'script_url' => esc_url_raw($input['script_url'] ?? ''),
+            'enabled' => !empty($input['enabled']) ? '1' : '0',
+        ];
+    });
+});
+
+function vani_ai_settings_page() {
+    if (!current_user_can('manage_options')) {
+        return;
+    }
+    $settings = vani_ai_settings();
+    ?>
+    <div class="wrap">
+        <h1>Vani AI Chatbot</h1>
+        <p>Install the Vani AI secure chatbot iframe loader on every public page.</p>
+        <form method="post" action="options.php">
+            <?php settings_fields('vani_ai_chatbot'); ?>
+            <table class="form-table" role="presentation">
+                <tr>
+                    <th scope="row"><label for="vani_ai_bot_id">Bot ID</label></th>
+                    <td><input id="vani_ai_bot_id" class="regular-text" name="<?php echo esc_attr(VANI_AI_OPTION_KEY); ?>[bot_id]" value="<?php echo esc_attr($settings['bot_id']); ?>"></td>
+                </tr>
+                <tr>
+                    <th scope="row"><label for="vani_ai_script_url">Script URL</label></th>
+                    <td><input id="vani_ai_script_url" class="regular-text code" name="<?php echo esc_attr(VANI_AI_OPTION_KEY); ?>[script_url]" value="<?php echo esc_url($settings['script_url']); ?>"></td>
+                </tr>
+                <tr>
+                    <th scope="row">Enabled</th>
+                    <td><label><input type="checkbox" name="<?php echo esc_attr(VANI_AI_OPTION_KEY); ?>[enabled]" value="1" <?php checked($settings['enabled'], '1'); ?>> Show chatbot on this website</label></td>
+                </tr>
+            </table>
+            <?php submit_button('Save Vani AI Settings'); ?>
+        </form>
+    </div>
+    <?php
+}
+
+add_action('wp_footer', function () {
+    if (is_admin()) {
+        return;
+    }
+    $settings = vani_ai_settings();
+    if (($settings['enabled'] ?? '0') !== '1' || empty($settings['bot_id']) || empty($settings['script_url'])) {
+        return;
+    }
+    printf(
+        '<script src="%s" data-id="%s" defer></script>' . "\n",
+        esc_url($settings['script_url']),
+        esc_attr($settings['bot_id'])
+    );
+}, 99);
+PHP;
+    $mainPhp = str_replace(['__BOT_ID__', '__SCRIPT_URL__'], [$customerId, $scriptUrl], $mainPhp);
+    $readme = "Vani AI Chatbot\n\n"
+        . "Installation:\n"
+        . "1. In WordPress, open Plugins > Add New > Upload Plugin.\n"
+        . "2. Upload this ZIP file and activate the plugin.\n"
+        . "3. Open Settings > Vani AI Chatbot and confirm the Bot ID.\n\n"
+        . "Bot ID: " . $customerId . "\n"
+        . "Script URL: " . $scriptUrl . "\n";
+
+    $zipBytes = zip_bytes_from_text_files([
+        $pluginSlug . "/vani-ai-chatbot.php" => $mainPhp,
+        $pluginSlug . "/readme.txt" => $readme
+    ]);
+
+    header("Content-Type: application/zip");
+    header("Content-Disposition: attachment; filename=\"" . $pluginName . "\"");
+    header("Content-Length: " . strlen($zipBytes));
+    header("Cache-Control: no-store");
+    echo $zipBytes;
     exit;
 }
 
