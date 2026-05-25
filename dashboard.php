@@ -1287,6 +1287,58 @@ if ($profileMobileNumber !== '') {
         $profileContactValue = '+' . ltrim($profileContactValue, '+0');
     }
 }
+$defaultFaqContactText = trim(($profileContactValue !== '' ? 'phone ' . $profileContactValue : '') . ($profileContactValue !== '' && $handoffEmail !== '' ? ' or ' : '') . ($handoffEmail !== '' ? 'email ' . $handoffEmail : ''));
+if ($defaultFaqContactText === '') {
+    $defaultFaqContactText = 'your support team';
+}
+$defaultFaqDefinitions = [
+    'fallback_contact' => [
+        'question' => 'If chatbot failed to answer question',
+        'answer' => 'I could not find the right answer for this question. Please contact ' . $defaultFaqContactText . ' and our team will help you.',
+        'note' => 'Used automatically when no FAQ or enabled default FAQ matches the visitor question.'
+    ],
+    'contact_support' => [
+        'question' => 'How can I contact support?',
+        'answer' => 'You can contact our support team through ' . $defaultFaqContactText . '.',
+        'note' => 'Answers direct support-contact questions.'
+    ],
+    'business_hours' => [
+        'question' => 'What are your business hours?',
+        'answer' => 'Our team will confirm the current business hours for you. Please contact ' . $defaultFaqContactText . ' for the latest availability.',
+        'note' => 'Useful when hours are not yet added as a custom FAQ.'
+    ],
+    'location_service_area' => [
+        'question' => 'Where are you located or which areas do you serve?',
+        'answer' => 'Please contact ' . $defaultFaqContactText . ' and our team will share the correct location or service area details.',
+        'note' => 'Covers basic location or service-area questions.'
+    ],
+    'human_agent' => [
+        'question' => 'Can I talk to a human?',
+        'answer' => 'Yes. Please contact ' . $defaultFaqContactText . ' and a team member will assist you.',
+        'note' => 'Gives a clear path when the visitor asks for a real person.'
+    ]
+];
+$defaultFaqSettingsRaw = $settings['default_faq_settings'] ?? [];
+if (is_string($defaultFaqSettingsRaw)) {
+    $decodedDefaultFaqSettings = json_decode($defaultFaqSettingsRaw, true);
+    $defaultFaqSettingsRaw = is_array($decodedDefaultFaqSettings) ? $decodedDefaultFaqSettings : [];
+}
+if (!is_array($defaultFaqSettingsRaw)) {
+    $defaultFaqSettingsRaw = [];
+}
+$defaultFaqSettings = [];
+foreach ($defaultFaqDefinitions as $defaultFaqKey => $definition) {
+    $hasSavedDefaultFaq = array_key_exists($defaultFaqKey, $defaultFaqSettingsRaw);
+    $savedDefaultFaq = $hasSavedDefaultFaq ? $defaultFaqSettingsRaw[$defaultFaqKey] : [];
+    $savedDefaultFaq = is_array($savedDefaultFaq) ? $savedDefaultFaq : ['enabled' => $savedDefaultFaq];
+    $defaultFaqSettings[$defaultFaqKey] = [
+        'enabled' => array_key_exists('enabled', $savedDefaultFaq)
+            ? filter_var($savedDefaultFaq['enabled'], FILTER_VALIDATE_BOOLEAN)
+            : true,
+        'question' => trim((string)($savedDefaultFaq['question'] ?? '')) !== '' ? trim((string)$savedDefaultFaq['question']) : $definition['question'],
+        'answer' => trim((string)($savedDefaultFaq['answer'] ?? '')) !== '' ? trim((string)$savedDefaultFaq['answer']) : $definition['answer']
+    ];
+}
 $razorpayCustomerContact = $profileContactValue;
 $initialSource = $profileFirstName ?: $email;
 $initials = strtoupper(substr($initialSource, 0, 1));
@@ -1762,6 +1814,18 @@ body.dark .bulk-faq-card{background:rgba(15,23,42,.44)}
 .suggested-faq-item small{color:var(--muted);line-height:1.45}
 .bulk-faq-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .bulk-faq-actions input[type=file]{max-width:360px}
+.default-faq-list{display:grid;gap:12px}
+.default-faq-card{padding:16px;border:1px solid var(--line);border-radius:18px;background:rgba(255,255,255,.42);display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;align-items:start}
+body.dark .default-faq-card{background:rgba(15,23,42,.44)}
+.default-faq-card h4{font-size:16px;margin-bottom:7px;color:var(--ink)}
+.default-faq-card p{color:var(--muted);line-height:1.65;font-size:14px}
+.default-faq-card small{display:block;margin-top:8px;color:var(--muted);line-height:1.45}
+.default-faq-fields{display:grid;gap:10px}
+.default-faq-fields textarea{min-height:76px}
+.default-faq-edit-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.default-faq-edit-status{color:var(--muted);font-size:12px;font-weight:800}
+.default-faq-status{display:flex;align-items:center;gap:10px;justify-content:flex-end}
+.default-faq-status span{font-size:12px;font-weight:900;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
 .bulk-report-backdrop{position:fixed;inset:0;background:rgba(15,23,42,.5);backdrop-filter:blur(8px);z-index:70;display:none;align-items:center;justify-content:center;padding:20px}
 .bulk-report-backdrop.active{display:flex}
 .bulk-report-modal{width:min(980px,100%);max-height:88vh;overflow:auto;background:var(--panel-strong);color:var(--ink);border:1px solid var(--line);border-radius:20px;box-shadow:0 24px 70px rgba(15,23,42,.28)}
@@ -1899,6 +1963,8 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
   .inline-row input,.inline-row .ghost-btn{flex:1 1 100%;width:100%}
   .billing-help-tip:after{position:fixed;left:16px;right:16px;top:auto;bottom:20px;width:auto;max-height:52vh;transform:translateY(10px)}
   .billing-help-tip:hover:after,.billing-help-tip:focus-visible:after{transform:translateY(0)}
+  .default-faq-card{grid-template-columns:1fr}
+  .default-faq-status{justify-content:space-between}
 }
 @media(max-width:480px){
   .sidebar{padding:12px}
@@ -2209,6 +2275,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
           <div class="section-head"><h3>FAQ Management</h3><span class="tag" id="faqCountTag"><?php echo h($faqCount); ?>/<?php echo h($freeFaqLimit); ?> FAQs</span></div>
           <div class="faq-subtabs" role="tablist" aria-label="FAQ Management sections">
             <button class="faq-subtab-btn active" type="button" data-faq-subtab="faq-subpanel-options">Options</button>
+            <button class="faq-subtab-btn" type="button" data-faq-subtab="faq-subpanel-default">Default FAQs</button>
             <button class="faq-subtab-btn" type="button" data-faq-subtab="faq-subpanel-qa">FAQ Q&amp;A</button>
             <button class="faq-subtab-btn" type="button" data-faq-subtab="faq-subpanel-scheduled">Scheduled Actions</button>
           </div>
@@ -2299,6 +2366,46 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
               <?php endforeach; ?>
             </div>
 
+          </div>
+
+          <div class="section-body faq-subpanel" id="faq-subpanel-default">
+            <div class="inline-row" style="justify-content:space-between;gap:16px;margin-bottom:16px">
+              <div>
+                <h3>Default FAQs</h3>
+                <small class="input-help">These built-in answers work even before the customer adds detailed FAQs. Turn OFF any default answer that should not appear in the chatbot.</small>
+              </div>
+              <span class="tag">Auto-saved</span>
+            </div>
+            <div class="default-faq-list" id="defaultFaqList">
+              <?php foreach ($defaultFaqDefinitions as $defaultFaqKey => $defaultFaq): ?>
+                <?php $savedDefaultFaq = $defaultFaqSettings[$defaultFaqKey] ?? ['enabled' => true, 'question' => $defaultFaq['question'], 'answer' => $defaultFaq['answer']]; ?>
+                <?php $defaultFaqEnabled = !empty($savedDefaultFaq['enabled']); ?>
+                <div class="default-faq-card" data-default-faq-key="<?php echo h($defaultFaqKey); ?>" data-saved-question="<?php echo h($savedDefaultFaq['question']); ?>" data-saved-answer="<?php echo h($savedDefaultFaq['answer']); ?>">
+                  <div class="default-faq-fields">
+                    <div class="field">
+                      <label>Question</label>
+                      <input class="defaultFaqQuestion" value="<?php echo h($savedDefaultFaq['question']); ?>" maxlength="240">
+                    </div>
+                    <div class="field">
+                      <label>Answer</label>
+                      <textarea class="defaultFaqAnswer" maxlength="1200"><?php echo h($savedDefaultFaq['answer']); ?></textarea>
+                    </div>
+                    <div class="default-faq-edit-actions">
+                      <button class="pill-btn defaultFaqSaveBtn" type="button" disabled>Save changes</button>
+                      <span class="default-faq-edit-status">Saved</span>
+                    </div>
+                    <small><?php echo h($defaultFaq['note']); ?></small>
+                  </div>
+                  <div class="default-faq-status">
+                    <span class="default-faq-state"><?php echo $defaultFaqEnabled ? 'ON' : 'OFF'; ?></span>
+                    <label class="switch" title="Turn this default FAQ on or off">
+                      <input class="defaultFaqToggle" type="checkbox" <?php echo $defaultFaqEnabled ? 'checked' : ''; ?> aria-label="Enable default FAQ: <?php echo h($defaultFaq['question']); ?>">
+                      <span class="switch-slider"></span>
+                    </label>
+                  </div>
+                </div>
+              <?php endforeach; ?>
+            </div>
           </div>
 
           <div class="section-body faq-subpanel" id="faq-subpanel-scheduled">
@@ -4025,6 +4132,87 @@ function openFaqSubtab(target) {
 document.querySelectorAll(".faq-subtab-btn").forEach(tab => {
   tab.addEventListener("click", () => {
     openFaqSubtab(tab.dataset.faqSubtab || "faq-subpanel-options");
+  });
+});
+
+function collectDefaultFaqSettings(draftCard = null) {
+  const settings = {};
+  document.querySelectorAll(".default-faq-card").forEach(card => {
+    const key = card.dataset.defaultFaqKey || "";
+    const toggle = card.querySelector(".defaultFaqToggle");
+    const question = card.querySelector(".defaultFaqQuestion");
+    const answer = card.querySelector(".defaultFaqAnswer");
+    if (!key || !toggle || !question || !answer) return;
+    const useDraft = draftCard && card === draftCard;
+    settings[key] = {
+      enabled: !!toggle.checked,
+      question: useDraft ? question.value.trim() : (card.dataset.savedQuestion || question.value.trim()),
+      answer: useDraft ? answer.value.trim() : (card.dataset.savedAnswer || answer.value.trim())
+    };
+  });
+  return settings;
+}
+
+async function saveDefaultFaqSettings({changedToggle = null, draftCard = null} = {}) {
+  if (draftCard) {
+    const question = draftCard.querySelector(".defaultFaqQuestion")?.value.trim() || "";
+    const answer = draftCard.querySelector(".defaultFaqAnswer")?.value.trim() || "";
+    if (!question || !answer) {
+      showToast("Default FAQ question and answer are required");
+      return false;
+    }
+  }
+  const saved = await saveDashboardSettings(
+    {default_faq_settings: collectDefaultFaqSettings(draftCard)},
+    {
+      successMessage: "Default FAQs saved",
+      errorMessage: "Default FAQs could not be saved"
+    }
+  );
+  if (!saved && changedToggle) {
+    changedToggle.checked = !changedToggle.checked;
+    const state = changedToggle.closest(".default-faq-card")?.querySelector(".default-faq-state");
+    if (state) state.textContent = changedToggle.checked ? "ON" : "OFF";
+  }
+  if (saved && draftCard) {
+    const question = draftCard.querySelector(".defaultFaqQuestion")?.value.trim() || "";
+    const answer = draftCard.querySelector(".defaultFaqAnswer")?.value.trim() || "";
+    draftCard.dataset.savedQuestion = question;
+    draftCard.dataset.savedAnswer = answer;
+    const saveButton = draftCard.querySelector(".defaultFaqSaveBtn");
+    const status = draftCard.querySelector(".default-faq-edit-status");
+    if (saveButton) saveButton.disabled = true;
+    if (status) status.textContent = "Saved";
+  }
+  return saved;
+}
+
+document.querySelectorAll(".defaultFaqToggle").forEach(toggle => {
+  toggle.addEventListener("change", event => {
+    const card = event.currentTarget.closest(".default-faq-card");
+    const state = card?.querySelector(".default-faq-state");
+    if (state) state.textContent = event.currentTarget.checked ? "ON" : "OFF";
+    saveDefaultFaqSettings({changedToggle: event.currentTarget});
+  });
+});
+
+document.querySelectorAll(".defaultFaqQuestion,.defaultFaqAnswer").forEach(input => {
+  input.addEventListener("input", () => {
+    const card = input.closest(".default-faq-card");
+    const saveButton = card?.querySelector(".defaultFaqSaveBtn");
+    const status = card?.querySelector(".default-faq-edit-status");
+    if (saveButton) saveButton.disabled = false;
+    if (status) status.textContent = "Unsaved changes";
+  });
+});
+
+document.querySelectorAll(".defaultFaqSaveBtn").forEach(button => {
+  button.addEventListener("click", () => {
+    const card = button.closest(".default-faq-card");
+    if (!card) return;
+    const status = card.querySelector(".default-faq-edit-status");
+    if (status) status.textContent = "Saving...";
+    saveDefaultFaqSettings({draftCard: card});
   });
 });
 

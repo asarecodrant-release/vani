@@ -4117,6 +4117,116 @@ if ($action === "save_lead_generation_settings") {
 // ==========================
 // CHAT
 // ==========================
+function default_faq_settings_map($raw): array {
+    if (is_string($raw)) {
+        $decoded = json_decode($raw, true);
+        $raw = is_array($decoded) ? $decoded : [];
+    }
+    return is_array($raw) ? $raw : [];
+}
+
+function default_faq_contact_parts(string $customerId, array $settings, array $signup): array {
+    $email = trim((string)($settings['handoff_email'] ?? ''));
+    if ($email === '') {
+        $email = trim((string)($signup['email'] ?? ''));
+    }
+
+    $phone = '';
+    $signupEmail = strtolower(trim((string)($signup['email'] ?? '')));
+    if ($signupEmail !== '') {
+        $profileRows = safe_rows(supabase(
+            "GET",
+            "customer_profiles?select=country_code,mobile_number&email=eq." . urlencode($signupEmail) . "&limit=1"
+        ));
+        $profile = $profileRows[0] ?? [];
+        $mobile = preg_replace('/\D+/', '', (string)($profile['mobile_number'] ?? ''));
+        $code = preg_replace('/[^\d+]/', '', (string)($profile['country_code'] ?? ''));
+        if ($mobile !== '') {
+            $phone = $code . $mobile;
+            if ($phone !== '' && $phone[0] !== '+') {
+                $phone = '+' . ltrim($phone, '+0');
+            }
+        }
+    }
+
+    return [
+        "email" => $email,
+        "phone" => $phone,
+        "contact" => trim(($phone !== '' ? "phone " . $phone : '') . ($phone !== '' && $email !== '' ? " or " : '') . ($email !== '' ? "email " . $email : ''))
+    ];
+}
+
+function default_faq_definitions(array $contact): array {
+    $contactText = $contact['contact'] !== '' ? $contact['contact'] : 'the support team';
+    return [
+        "fallback_contact" => [
+            "question" => "What happens if the chatbot cannot answer my question?",
+            "answer" => "I could not find the right answer for this question. Please contact " . $contactText . " and our team will help you."
+        ],
+        "contact_support" => [
+            "question" => "How can I contact support?",
+            "answer" => "You can contact our support team through " . $contactText . "."
+        ],
+        "business_hours" => [
+            "question" => "What are your business hours?",
+            "answer" => "Our team will confirm the current business hours for you. Please contact " . $contactText . " for the latest availability."
+        ],
+        "location_service_area" => [
+            "question" => "Where are you located or which areas do you serve?",
+            "answer" => "Please contact " . $contactText . " and our team will share the correct location or service area details."
+        ],
+        "human_agent" => [
+            "question" => "Can I talk to a human?",
+            "answer" => "Yes. Please contact " . $contactText . " and a team member will assist you."
+        ]
+    ];
+}
+
+function default_faq_with_saved_values(array $definition, $saved): array {
+    if (!is_array($saved)) {
+        $saved = ["enabled" => $saved];
+    }
+    $question = trim((string)($saved['question'] ?? ''));
+    $answer = trim((string)($saved['answer'] ?? ''));
+    return [
+        "enabled" => array_key_exists('enabled', $saved) ? filter_var($saved['enabled'], FILTER_VALIDATE_BOOLEAN) : true,
+        "question" => $question !== '' ? $question : (string)$definition['question'],
+        "answer" => $answer !== '' ? $answer : (string)$definition['answer']
+    ];
+}
+
+function enabled_default_faq_answer(string $message, array $settings, array $signup, string $customerId, bool $onlyFallback = false): ?array {
+    $states = default_faq_settings_map($settings['default_faq_settings'] ?? []);
+    $contact = default_faq_contact_parts($customerId, $settings, $signup);
+    $defs = default_faq_definitions($contact);
+
+    if ($onlyFallback) {
+        $fallback = default_faq_with_saved_values($defs['fallback_contact'], $states['fallback_contact'] ?? []);
+        if (!$fallback['enabled']) {
+            return null;
+        }
+        return ["key" => "fallback_contact", "answer" => $fallback['answer']];
+    }
+
+    $input = strtolower(trim($message));
+    foreach ($defs as $key => $definition) {
+        if ($key === 'fallback_contact') {
+            continue;
+        }
+        $defaultFaq = default_faq_with_saved_values($definition, $states[$key] ?? []);
+        if (!$defaultFaq['enabled']) {
+            continue;
+        }
+        $question = strtolower(trim((string)$defaultFaq['question']));
+        similar_text($input, $question, $percent);
+        if ($input === $question || strpos($input, $question) !== false || strpos($question, $input) !== false || $percent > 72) {
+            return ["key" => $key, "answer" => $defaultFaq['answer']];
+        }
+    }
+
+    return null;
+}
+
 if ($action === "chat") {
 
     $data = getJSON();
@@ -4146,7 +4256,7 @@ if ($action === "chat") {
 
     $signup = supabase(
         "GET",
-        "chatbot_signups?select=website_name&customer_id=eq." . urlencode(trim($customer_id)) . "&limit=1"
+        "chatbot_signups?select=website_name,email&customer_id=eq." . urlencode(trim($customer_id)) . "&limit=1"
     );
     $activePlan = billing_active_plan_from_account(billing_account_for_customer(trim($customer_id)));
     $access = chatbot_access_result($settingsRow, $signup['data'][0] ?? [], request_source_url($data), billing_feature_enabled($activePlan, 'allowed_domains'));
@@ -4208,7 +4318,15 @@ if ($action === "chat") {
 
     $answered = (bool)$matchedQuestionId;
     if (!$reply) {
-        $reply = "Sorry, I don't have an answer for that yet. Please contact customer support for help.";
+        $defaultFaqMatch = enabled_default_faq_answer($message, $settingsRow, $signup['data'][0] ?? [], trim($customer_id));
+        if ($defaultFaqMatch) {
+            $reply = $defaultFaqMatch['answer'];
+            $answered = true;
+        }
+    }
+    if (!$reply) {
+        $defaultFallback = enabled_default_faq_answer($message, $settingsRow, $signup['data'][0] ?? [], trim($customer_id), true);
+        $reply = $defaultFallback['answer'] ?? "Sorry, I don't have an answer for that yet.";
     }
 
     $conversationRes = supabase(
@@ -4511,6 +4629,25 @@ if ($action === "save_dashboard_settings") {
         }
         unset($data['faq_actions_enabled']);
     }
+    if (array_key_exists('default_faq_settings', $data)) {
+        $allowedDefaultFaqKeys = ['fallback_contact', 'contact_support', 'business_hours', 'location_service_area', 'human_agent'];
+        $incomingDefaultFaqs = is_array($data['default_faq_settings']) ? $data['default_faq_settings'] : [];
+        $cleanDefaultFaqs = [];
+        foreach ($allowedDefaultFaqKeys as $defaultFaqKey) {
+            if (array_key_exists($defaultFaqKey, $incomingDefaultFaqs)) {
+                $incomingDefaultFaq = $incomingDefaultFaqs[$defaultFaqKey];
+                if (!is_array($incomingDefaultFaq)) {
+                    $incomingDefaultFaq = ["enabled" => $incomingDefaultFaq];
+                }
+                $cleanDefaultFaqs[$defaultFaqKey] = [
+                    "enabled" => array_key_exists("enabled", $incomingDefaultFaq) ? filter_var($incomingDefaultFaq["enabled"], FILTER_VALIDATE_BOOLEAN) : true,
+                    "question" => trim(substr((string)($incomingDefaultFaq["question"] ?? ""), 0, 240)),
+                    "answer" => trim(substr((string)($incomingDefaultFaq["answer"] ?? ""), 0, 1200))
+                ];
+            }
+        }
+        $data['default_faq_settings'] = $cleanDefaultFaqs;
+    }
 
     $allowed = [
         "bot_name",
@@ -4534,6 +4671,7 @@ if ($action === "save_dashboard_settings") {
         "live_chat_actions_enabled",
         "faq_actions_enabled",
         "faq_category_menu_enabled",
+        "default_faq_settings",
         "verification_status"
     ];
 
