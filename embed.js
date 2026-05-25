@@ -43,21 +43,49 @@
     transition: "width .28s cubic-bezier(.2,.8,.2,1), height .28s cubic-bezier(.2,.8,.2,1)"
   });
 
-  function applyFrameState(state) {
-    const position = state.position === "left" ? "left" : "right";
-    iframe.style.left = position === "left" ? "0" : "auto";
-    iframe.style.right = position === "right" ? "0" : "auto";
+  let frameState = {open: false, default_open: false, position: "right"};
 
-    if (state.open || state.default_open) {
+  function viewportKeyboardOffset() {
+    const viewport = window.visualViewport;
+    if (!viewport) return 0;
+
+    return Math.max(0, Math.round(window.innerHeight - viewport.height - viewport.offsetTop));
+  }
+
+  function availableViewportHeight() {
+    const viewport = window.visualViewport;
+    return Math.max(0, Math.round(viewport?.height || window.innerHeight || document.documentElement.clientHeight || 0));
+  }
+
+  function applyViewportPlacement() {
+    const keyboardOffset = viewportKeyboardOffset();
+    const open = frameState.open || frameState.default_open;
+    const availableHeight = availableViewportHeight();
+
+    iframe.style.bottom = `${keyboardOffset}px`;
+
+    if (open) {
       iframe.style.width = "min(410px, 100vw)";
       iframe.style.height = window.matchMedia("(max-width: 640px)").matches
-        ? "min(620px, calc(100dvh - 96px))"
-        : "min(660px, 100dvh)";
+        ? `${Math.max(240, Math.min(620, availableHeight - 16))}px`
+        : `${Math.max(360, Math.min(660, availableHeight))}px`;
     } else {
       iframe.style.width = "min(360px, 100vw)";
       iframe.style.height = "132px";
     }
   }
+
+  function applyFrameState(state) {
+    frameState = {...frameState, ...state};
+    const position = state.position === "left" ? "left" : "right";
+    iframe.style.left = position === "left" ? "0" : "auto";
+    iframe.style.right = position === "right" ? "0" : "auto";
+    applyViewportPlacement();
+  }
+
+  window.addEventListener("resize", applyViewportPlacement);
+  window.visualViewport?.addEventListener("resize", applyViewportPlacement);
+  window.visualViewport?.addEventListener("scroll", applyViewportPlacement);
 
   window.addEventListener("message", (event) => {
     if (event.origin !== scriptUrl.origin) return;

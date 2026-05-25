@@ -1302,6 +1302,38 @@
     const suggestionsBox = box.querySelector("[data-vani-suggestions]");
     const whatsappAction = box.querySelector("[data-vani-whatsapp-action]");
     box.querySelector("[data-vani-title]").textContent = config.bot_name || "Chat Support";
+
+    function viewportKeyboardOffset() {
+      if (window.parent !== window) return 0;
+      const viewport = window.visualViewport;
+      if (!viewport) return 0;
+
+      return Math.max(0, Math.round(window.innerHeight - viewport.height - viewport.offsetTop));
+    }
+
+    function applyWidgetViewportPlacement() {
+      const viewport = window.visualViewport;
+      const viewportHeight = Math.max(0, Math.round(viewport?.height || window.innerHeight || document.documentElement.clientHeight || 0));
+      const keyboardOffset = viewportKeyboardOffset();
+      const compact = window.matchMedia("(max-width: 640px)").matches;
+      const iconBottom = 20 + keyboardOffset;
+      const greetingBottom = 30 + keyboardOffset;
+      const boxBottom = (compact ? 16 : 90) + keyboardOffset;
+      const verticalInset = compact ? 32 : 118;
+      const maxBoxHeight = Math.max(180, viewportHeight - verticalInset);
+
+      icon.style.bottom = `${iconBottom}px`;
+      greeting.style.bottom = `${greetingBottom}px`;
+      box.style.bottom = `${boxBottom}px`;
+      box.style.height = `${Math.min(520, maxBoxHeight)}px`;
+      box.style.width = compact ? "min(410px, calc(100vw - 24px))" : "min(360px, calc(100vw - 28px))";
+    }
+
+    applyWidgetViewportPlacement();
+    window.addEventListener("resize", applyWidgetViewportPlacement);
+    window.visualViewport?.addEventListener("resize", applyWidgetViewportPlacement);
+    window.visualViewport?.addEventListener("scroll", applyWidgetViewportPlacement);
+
     if (!userInputEnabled() && inputRow) {
       inputRow.style.display = "none";
       input.setAttribute("aria-hidden", "true");
