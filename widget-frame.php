@@ -1,6 +1,6 @@
 <?php
 header_remove('X-Frame-Options');
-header('Content-Security-Policy: frame-ancestors *');
+header_remove('Content-Security-Policy');
 $customerId = preg_replace('/[^a-zA-Z0-9_-]/', '', (string)($_GET['id'] ?? ''));
 $sourceUrl = filter_var((string)($_GET['source_url'] ?? ''), FILTER_VALIDATE_URL) ? (string)$_GET['source_url'] : '';
 $openByDefaultHint = (string)($_GET['open'] ?? '') === '1';
