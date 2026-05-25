@@ -1302,9 +1302,10 @@
     const suggestionsBox = box.querySelector("[data-vani-suggestions]");
     const whatsappAction = box.querySelector("[data-vani-whatsapp-action]");
     box.querySelector("[data-vani-title]").textContent = config.bot_name || "Chat Support";
+    const embeddedWidget = window.parent !== window;
 
     function viewportKeyboardOffset() {
-      if (window.parent !== window) return 0;
+      if (embeddedWidget) return 0;
       const viewport = window.visualViewport;
       if (!viewport) return 0;
 
@@ -1319,14 +1320,35 @@
       const iconBottom = 20 + keyboardOffset;
       const greetingBottom = 30 + keyboardOffset;
       const boxBottom = (compact ? 16 : 90) + keyboardOffset;
-      const verticalInset = compact ? 16 : 118;
+      const verticalInset = compact ? 32 : 118;
       const maxBoxHeight = Math.max(180, viewportHeight - verticalInset);
+      const open = box.style.display === "flex";
+
+      if (embeddedWidget && open) {
+        icon.style.display = "none";
+        greeting.style.display = "none";
+        box.style.bottom = "0";
+        box.style.left = position === "left" ? "0" : "auto";
+        box.style.right = position === "right" ? "0" : "auto";
+        box.style.width = "100%";
+        box.style.height = "100%";
+        return;
+      }
+
+      if (embeddedWidget) {
+        icon.style.display = "flex";
+        icon.style.bottom = "0";
+        icon.style.left = position === "left" ? "0" : "auto";
+        icon.style.right = position === "right" ? "0" : "auto";
+        greeting.style.display = "none";
+        return;
+      }
 
       icon.style.bottom = `${iconBottom}px`;
       greeting.style.bottom = `${greetingBottom}px`;
       box.style.bottom = `${boxBottom}px`;
       box.style.height = `${Math.min(520, maxBoxHeight)}px`;
-      box.style.width = compact ? "min(360px, calc(100vw - 20px))" : "min(360px, calc(100vw - 28px))";
+      box.style.width = compact ? "min(410px, calc(100vw - 24px))" : "min(360px, calc(100vw - 28px))";
     }
 
     applyWidgetViewportPlacement();
@@ -2506,6 +2528,7 @@
       }
       window.clearTimeout(chatOpenAnimationTimer);
       box.style.display = "flex";
+      applyWidgetViewportPlacement();
       box.style.opacity = "0";
       box.style.transform = "translateY(14px) scale(.97)";
       box.style.animation = "vaniChatBoxIn .28s cubic-bezier(.2,.8,.2,1) forwards";
@@ -2537,6 +2560,7 @@
       box.style.animation = "";
       greeting.style.display = "block";
       icon.setAttribute("aria-label", "Open chat");
+      applyWidgetViewportPlacement();
       notifyFrameState(false);
       trackWidgetSessionSoon();
     }

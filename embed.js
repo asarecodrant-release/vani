@@ -30,10 +30,10 @@
 
   Object.assign(iframe.style, {
     position: "fixed",
-    right: "-20px",
+    right: "0",
     bottom: "0",
-    width: "310px",
-    height: "96px",
+    width: "66px",
+    height: "74px",
     maxWidth: "100vw",
     maxHeight: "100dvh",
     border: "0",
@@ -65,21 +65,21 @@
     iframe.style.bottom = `${keyboardOffset}px`;
 
     if (open) {
-      iframe.style.width = "min(380px, 100vw)";
+      iframe.style.width = "min(410px, 100vw)";
       iframe.style.height = window.matchMedia("(max-width: 640px)").matches
         ? `${Math.max(240, Math.min(536, availableHeight - 96))}px`
         : `${Math.max(360, Math.min(610, availableHeight))}px`;
     } else {
-      iframe.style.width = "min(310px, 100vw)";
-      iframe.style.height = "96px";
+      iframe.style.width = "66px";
+      iframe.style.height = "74px";
     }
   }
 
   function applyFrameState(state) {
     frameState = {...frameState, ...state};
     const position = state.position === "left" ? "left" : "right";
-    iframe.style.left = position === "left" ? "-20px" : "auto";
-    iframe.style.right = position === "right" ? "-20px" : "auto";
+    iframe.style.left = position === "left" ? "0" : "auto";
+    iframe.style.right = position === "right" ? "0" : "auto";
     applyViewportPlacement();
   }
 
