@@ -103,6 +103,10 @@
     return userInputEnabled() ? "" : "&all=1";
   }
 
+  function compactSuggestionView() {
+    return window.matchMedia("(max-width: 768px)").matches;
+  }
+
   async function api(action, method = "GET", body = null, query = "") {
     try {
       const response = await fetch(`${apiBase}?action=${action}${query}`, {
@@ -589,9 +593,13 @@
     suggestionsBox.innerHTML = "";
     const includeFaqs = options.includeFaqs !== false;
     const hasActions = activeFaqActions.length > 0;
-    const visibleItems = includeFaqs ? items : [];
+    const compactView = compactSuggestionView();
+    const visibleItems = includeFaqs
+      ? (compactView ? items.slice(0, 3) : items)
+      : [];
     const showCategorySwitcher = !!(options.showCategorySwitcher && options.currentCategory && options.onChangeCategory);
     suggestionsBox.style.display = hasActions || visibleItems.length || showCategorySwitcher ? "grid" : "none";
+    suggestionsBox.style.maxHeight = compactView ? "150px" : "210px";
 
     if (showCategorySwitcher) {
       renderCategorySwitcher(suggestionsBox, options.currentCategory, options.onChangeCategory);
@@ -667,14 +675,14 @@
       icon.textContent = "?";
       css(icon, {
         display: "inline-flex",
-        width: "22px",
-        height: "22px",
+        width: compactView ? "20px" : "22px",
+        height: compactView ? "20px" : "22px",
         borderRadius: "999px",
         background: themeBackground(),
         color: "#fff",
         alignItems: "center",
         justifyContent: "center",
-        fontSize: "12px",
+        fontSize: compactView ? "11px" : "12px",
         fontWeight: "800",
         flex: "0 0 auto"
       });
@@ -686,13 +694,16 @@
         display: "block",
         color: "#0f172a",
         fontWeight: "700",
-        fontSize: "13px",
-        lineHeight: "1.35"
+        fontSize: compactView ? "12px" : "13px",
+        lineHeight: compactView ? "1.25" : "1.35",
+        overflow: compactView ? "hidden" : "visible",
+        textOverflow: compactView ? "ellipsis" : "clip",
+        whiteSpace: compactView ? "nowrap" : "normal"
       });
       const hint = document.createElement("span");
       hint.textContent = "Suggested answer";
       css(hint, {
-        display: "block",
+        display: compactView ? "none" : "block",
         color: "#64748b",
         fontSize: "11px",
         lineHeight: "1.35",
@@ -705,16 +716,16 @@
       css(option, {
         width: "100%",
         border: "1px solid #e2e8f0",
-        borderRadius: "13px",
+        borderRadius: compactView ? "11px" : "13px",
         background: "rgba(255,255,255,.92)",
         color: "#0f172a",
-        padding: "9px 10px",
+        padding: compactView ? "7px 9px" : "9px 10px",
         textAlign: "left",
         cursor: "pointer",
         fontSize: "13px",
         display: "flex",
         alignItems: "center",
-        gap: "9px",
+        gap: compactView ? "8px" : "9px",
         boxShadow: "0 8px 22px rgba(15,23,42,.06)",
         transition: "transform .16s ease, box-shadow .16s ease, border-color .16s ease, background .16s ease"
       });
@@ -1323,6 +1334,12 @@
       if (box.style.display !== "flex") return;
       window.requestAnimationFrame(() => scrollMessagesToLatest());
       window.setTimeout(() => scrollMessagesToLatest(), 120);
+    }
+
+    function scrollLatestWhileTyping() {
+      if (box.style.display !== "flex") return;
+      userScrolledMessages = false;
+      window.requestAnimationFrame(() => scrollMessagesToLatest({force: true}));
     }
 
     input.addEventListener("focus", scrollLatestAfterKeyboardChange);
@@ -2602,6 +2619,7 @@
     });
     input.addEventListener("input", () => {
       if (!userInputEnabled()) return;
+      scrollLatestWhileTyping();
       delete input.dataset.selectedFaqId;
       clearTimeout(debounce);
       debounce = setTimeout(() => searchFaqs(input.value.trim()), 180);
