@@ -53,7 +53,9 @@
 
     if (state.open || state.default_open) {
       iframe.style.width = "min(410px, 100vw)";
-      iframe.style.height = "min(660px, 100dvh)";
+      iframe.style.height = window.matchMedia("(max-width: 640px)").matches
+        ? "min(620px, calc(100dvh - 96px))"
+        : "min(660px, 100dvh)";
     } else {
       iframe.style.width = "min(360px, 100vw)";
       iframe.style.height = "132px";

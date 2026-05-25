@@ -51,6 +51,7 @@
   let activeFaqActionContext = {};
   let selectedFaqCategory = "";
   let chatOpenAnimationTimer = null;
+  let suppressNextInputFocusLoad = false;
 
   function notifyFrameState(open = false) {
     if (window.parent === window) return;
@@ -2467,6 +2468,10 @@
     };
 
     function openChat() {
+      if (box.style.display === "flex") {
+        notifyFrameState(true);
+        return;
+      }
       window.clearTimeout(chatOpenAnimationTimer);
       box.style.display = "flex";
       box.style.opacity = "0";
@@ -2483,8 +2488,11 @@
       sessionOpenedAt = sessionOpenedAt || new Date().toISOString();
       emitLiveAction("chatOpened", {opened_at: sessionOpenedAt});
       trackWidgetSessionSoon({opened_at: sessionOpenedAt});
-      if (userInputEnabled()) input.focus();
       loadTop();
+      if (userInputEnabled()) {
+        suppressNextInputFocusLoad = true;
+        input.focus();
+      }
       renderWhatsAppAction();
       renderLeadPrompt();
     }
@@ -2513,6 +2521,10 @@
     closeBtn.onclick = closeChat;
 
     input.addEventListener("focus", () => {
+      if (suppressNextInputFocusLoad) {
+        suppressNextInputFocusLoad = false;
+        return;
+      }
       if (userInputEnabled()) loadTop();
     });
     input.addEventListener("input", () => {
@@ -2542,8 +2554,7 @@
     if (isEnabled(config.chat_open_by_default) || openByDefaultHint) {
       openChat();
       window.setTimeout(() => {
-        if (box.style.display !== "flex") openChat();
-        notifyFrameState(true);
+        openChat();
       }, 250);
       window.setTimeout(() => notifyFrameState(true), 900);
     }
