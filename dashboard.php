@@ -1378,6 +1378,7 @@ body.dark .sidebar{background:rgba(15,23,42,.66)}
 .nadara-pill{min-height:38px;border-radius:13px;padding:0 16px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font-size:14px;font-weight:900;display:inline-flex;align-items:center;justify-content:center}
 .ai-upgrade-btn{min-height:40px;border-radius:13px;padding:0 18px;border:1px solid rgba(234,179,8,.72);background:linear-gradient(135deg,#fef08a,#facc15,#d97706);color:#050505;font-size:14px;font-weight:950;display:inline-flex;align-items:center;justify-content:center;box-shadow:0 12px 26px rgba(234,179,8,.28);white-space:nowrap}
 .ai-upgrade-btn:hover{transform:translateY(-1px);box-shadow:0 16px 34px rgba(234,179,8,.34)}
+.mobile-ai-upgrade{display:none}
 .main{min-width:0;width:100%;max-width:100vw;overflow-x:hidden}
 .topbar{
   height:78px;display:flex;align-items:center;justify-content:space-between;gap:16px;
@@ -1855,9 +1856,12 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
     right:18px;
     z-index:60;
   }
+  #accountToggle{border-radius:50%;background:linear-gradient(135deg,var(--brand),var(--brand-2));color:#fff;border:0;font-size:13px}
   body.dark .top-actions{background:rgba(15,23,42,.92)}
   body.account-open .top-actions{transform:translateX(0);visibility:visible;pointer-events:auto}
   .top-actions .pill-btn,.top-actions .ghost-btn{width:100%;justify-content:center}
+  .desktop-ai-upgrade{display:none}
+  .mobile-ai-upgrade{display:inline-flex;width:100%;min-height:48px}
   .top-actions > .user-menu{display:grid;justify-items:center;text-align:center;padding:16px}
   .top-actions .user-text{display:block;max-width:100%}
   .top-actions .user-text strong,.top-actions .user-text span{white-space:normal;word-break:break-word}
@@ -1977,13 +1981,14 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
         <div class="page-title">
           <div class="dashboard-mode-actions" aria-label="Dashboard type">
             <span class="nadara-pill">Narada</span>
-            <a class="ai-upgrade-btn" href="AI_Dashboard_Onboarding.php?bot=<?php echo h(urlencode($selectedBotId)); ?>">Upgrade your Chatbot to AI</a>
+            <a class="ai-upgrade-btn desktop-ai-upgrade" href="AI_Dashboard_Onboarding.php?bot=<?php echo h(urlencode($selectedBotId)); ?>">Upgrade your Chatbot to AI</a>
           </div>
           <!--<p>Overview, setup, FAQs, logs, analytics, install, settings, and billing.</p>-->
         </div>
       </div>
-      <button class="mobile-toggle" id="accountToggle" type="button" aria-label="Open account menu" aria-expanded="false">⋯</button>
+      <button class="mobile-toggle" id="accountToggle" type="button" aria-label="Open account menu" aria-expanded="false"><?php echo h($initials); ?></button>
       <div class="top-actions">
+        <a class="ai-upgrade-btn mobile-ai-upgrade" href="AI_Dashboard_Onboarding.php?bot=<?php echo h(urlencode($selectedBotId)); ?>">Upgrade your Chatbot to AI</a>
         <button class="ghost-btn" id="themeToggle" type="button">Dark</button>
         <a class="ghost-btn" href="index.php">Home</a>
         <a class="ghost-btn" href="#profile" data-jump="profile">Profile</a>

@@ -454,7 +454,23 @@ footer{
   }
 
   .user-box{
+    display:inline-flex;
+    width:44px;
+    height:44px;
+    padding:0;
+    border-radius:50%;
+    justify-content:center;
+    overflow:hidden;
+  }
+
+  .user-box span,
+  .user-box .nav-btn{
     display:none;
+  }
+
+  .user-avatar{
+    width:100%;
+    height:100%;
   }
 
 }
@@ -933,8 +949,11 @@ body.dark .theme-choice-panel p{color:#cbd5e1}
   }
 
   .user-box{
-    padding:8px 10px;
-    max-width: 170px;
+    width:44px;
+    height:44px;
+    padding:0;
+    max-width:44px;
+    border-radius:50%;
   }
 
   .user-box span{
@@ -942,8 +961,8 @@ body.dark .theme-choice-panel p{color:#cbd5e1}
   }
 
   .user-avatar{
-    width:32px;
-    height:32px;
+    width:100%;
+    height:100%;
     font-size:13px;
   }
 
@@ -965,10 +984,166 @@ body.dark .theme-choice-panel p{color:#cbd5e1}
     padding:0;
   }
 }
+
+/* =========================
+   VANI NEURAL THEME
+========================= */
+.site-bg-canvas{
+  position:fixed;
+  inset:0;
+  width:100%;
+  height:100%;
+  z-index:0;
+  pointer-events:none;
+}
+
+nav,
+.customer-notice,
+.hero,
+section,
+footer{
+  position:relative;
+  z-index:1;
+}
+
+body{
+  background:
+    radial-gradient(circle at 16% 12%,rgba(245,158,11,.16),transparent 32%),
+    radial-gradient(circle at 84% 6%,rgba(250,204,21,.2),transparent 30%),
+    linear-gradient(135deg,#fffaf0 0%,#fff7e6 44%,#f8fafc 100%);
+}
+
+body.dark{
+  background:
+    radial-gradient(circle at 15% 14%,rgba(0,140,255,.24),transparent 34%),
+    radial-gradient(circle at 88% 10%,rgba(0,255,209,.12),transparent 30%),
+    linear-gradient(135deg,#01030a 0%,#03111f 48%,#02040a 100%);
+}
+
+.hero h1{
+  letter-spacing:0;
+  background:linear-gradient(90deg,#18181b,#b7791f 52%,#f59e0b);
+  -webkit-background-clip:text;
+  -webkit-text-fill-color:transparent;
+}
+
+body.dark .hero h1{
+  background:linear-gradient(90deg,#eaf7ff,#38bdf8 48%,#22d3ee);
+  -webkit-background-clip:text;
+  -webkit-text-fill-color:transparent;
+}
+
+.hero-badge,
+.card,
+.nav-a1,
+.nav-menu-btn,
+.theme-btn,
+.user-box{
+  background:rgba(255,255,255,.76);
+  border-color:rgba(217,119,6,.2);
+  box-shadow:0 18px 44px rgba(180,83,9,.1);
+}
+
+.hero-badge{
+  color:#92400e;
+}
+
+.primary-btn,
+.nav-btn,
+.nav-btn1,
+.download-button{
+  background:linear-gradient(135deg,#fef3c7,#facc15,#d97706);
+  color:#111827 !important;
+  box-shadow:0 14px 30px rgba(217,119,6,.24);
+}
+
+.secondary-btn{
+  border-color:rgba(217,119,6,.22);
+  color:#3f2f15;
+  background:rgba(255,255,255,.82);
+}
+
+.cta{
+  background:
+    radial-gradient(circle at 20% 20%,rgba(255,255,255,.42),transparent 30%),
+    linear-gradient(135deg,#f59e0b,#facc15,#92400e);
+  color:#111827;
+  box-shadow:0 24px 70px rgba(180,83,9,.24);
+}
+
+.cta button{
+  background:#111827;
+  color:#fef3c7;
+}
+
+body.dark .logo-dark{
+  background:linear-gradient(135deg,rgba(2,18,38,.8),rgba(2,44,58,.56));
+  border-color:rgba(56,189,248,.22);
+}
+
+body.dark .logo-dark img{
+  filter:drop-shadow(0 0 18px rgba(56,189,248,.72)) drop-shadow(0 0 24px rgba(34,211,238,.24));
+}
+
+body.dark .logo-dark span{
+  background:linear-gradient(90deg,#ffffff,#93c5fd 52%,#67e8f9);
+  -webkit-background-clip:text;
+  -webkit-text-fill-color:transparent;
+}
+
+body.dark .hero-badge,
+body.dark .card,
+body.dark .nav-a1,
+body.dark .nav-menu-btn,
+body.dark .theme-btn,
+body.dark .user-box{
+  background:linear-gradient(145deg,rgba(2,12,28,.78),rgba(5,28,48,.68));
+  border-color:rgba(56,189,248,.2);
+  box-shadow:0 20px 55px rgba(0,0,0,.28);
+  backdrop-filter:blur(16px);
+}
+
+body.dark .hero-badge{
+  color:#7dd3fc;
+}
+
+body.dark .card:hover{
+  box-shadow:0 24px 64px rgba(14,165,233,.18);
+}
+
+body.dark .primary-btn,
+body.dark .nav-btn,
+body.dark .nav-btn1,
+body.dark .download-button{
+  background:linear-gradient(135deg,#38bdf8,#2563eb,#0f172a);
+  color:#fff !important;
+  box-shadow:0 14px 34px rgba(37,99,235,.28);
+}
+
+body.dark .secondary-btn{
+  background:rgba(2,12,28,.78);
+  color:#dbeafe;
+  border-color:rgba(56,189,248,.22);
+}
+
+body.dark .cta{
+  background:
+    radial-gradient(circle at 22% 18%,rgba(34,211,238,.24),transparent 30%),
+    linear-gradient(135deg,#020617,#082f49,#0f172a);
+  color:#f8fafc;
+  border:1px solid rgba(56,189,248,.2);
+  box-shadow:0 28px 80px rgba(0,0,0,.34);
+}
+
+body.dark .cta button{
+  background:linear-gradient(135deg,#38bdf8,#22d3ee);
+  color:#020617;
+}
 </style>
 </head>
 
 <body>
+<canvas class="site-bg-canvas" id="siteBgCanvas" aria-hidden="true"></canvas>
 <nav>
 
   <div class="container nav-inner">
@@ -1206,6 +1381,9 @@ const menuOverlay = document.getElementById("menuOverlay");
 const sideMenu = document.getElementById("sideMenu");
 const themeToggle = document.getElementById("themeToggle");
 const themeChoicePanel = document.getElementById("themeChoicePanel");
+const siteBgCanvas = document.getElementById("siteBgCanvas");
+const siteBgCtx = siteBgCanvas?.getContext("2d");
+let siteBgNodes = [];
 
 function setMenu(open) {
   sideMenu?.classList.toggle("open", open);
@@ -1217,6 +1395,7 @@ function setMenu(open) {
 function setTheme(mode) {
   const dark = mode === "dark";
   document.body.classList.toggle("dark", dark);
+  document.body.dataset.themeMode = dark ? "dark" : "bright";
   if (themeToggle) {
     themeToggle.setAttribute("aria-pressed", String(dark));
     themeToggle.textContent = dark ? "Bright Mode" : "Dark Mode";
@@ -1226,8 +1405,79 @@ function setTheme(mode) {
   localStorage.removeItem("vani_setup_theme");
 }
 
+function resizeSiteBackground() {
+  if (!siteBgCanvas || !siteBgCtx) return;
+  const ratio = window.devicePixelRatio || 1;
+  siteBgCanvas.width = Math.floor(window.innerWidth * ratio);
+  siteBgCanvas.height = Math.floor(window.innerHeight * ratio);
+  siteBgCanvas.style.width = window.innerWidth + "px";
+  siteBgCanvas.style.height = window.innerHeight + "px";
+  siteBgCtx.setTransform(ratio, 0, 0, ratio, 0, 0);
+  const count = Math.max(48, Math.min(118, Math.floor(window.innerWidth * window.innerHeight / 12500)));
+  siteBgNodes = Array.from({length: count}, (_, index) => ({
+    x: Math.random() * window.innerWidth,
+    y: Math.random() * window.innerHeight,
+    vx: (Math.random() - .5) * .28,
+    vy: (Math.random() - .5) * .28,
+    r: Math.random() < .16 ? 2.4 : 1.45,
+    kind: Math.random() < .1 ? "red" : (Math.random() < .26 ? "silver" : "core"),
+    phase: Math.random() * Math.PI * 2 + index
+  }));
+}
+
+function siteDotColor(node, alpha) {
+  const dark = document.body.classList.contains("dark");
+  if (node.kind === "red") return `rgba(255,56,76,${alpha})`;
+  if (node.kind === "silver") return dark ? `rgba(225,238,242,${alpha})` : `rgba(168,162,158,${alpha})`;
+  return dark ? `rgba(56,189,248,${alpha})` : `rgba(217,119,6,${alpha})`;
+}
+
+function drawSiteBackground(time) {
+  if (!siteBgCtx) return;
+  const dark = document.body.classList.contains("dark");
+  siteBgCtx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+  for (const node of siteBgNodes) {
+    node.x += node.vx;
+    node.y += node.vy;
+    if (node.x < -20) node.x = window.innerWidth + 20;
+    if (node.x > window.innerWidth + 20) node.x = -20;
+    if (node.y < -20) node.y = window.innerHeight + 20;
+    if (node.y > window.innerHeight + 20) node.y = -20;
+  }
+  for (let i = 0; i < siteBgNodes.length; i++) {
+    for (let j = i + 1; j < siteBgNodes.length; j++) {
+      const a = siteBgNodes[i], b = siteBgNodes[j];
+      const dx = a.x - b.x, dy = a.y - b.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < 126) {
+        const alpha = (1 - dist / 126) * (dark ? .22 : .14);
+        siteBgCtx.strokeStyle = dark ? `rgba(34,211,238,${alpha})` : `rgba(202,138,4,${alpha})`;
+        siteBgCtx.lineWidth = 1;
+        siteBgCtx.beginPath();
+        siteBgCtx.moveTo(a.x, a.y);
+        siteBgCtx.lineTo(b.x, b.y);
+        siteBgCtx.stroke();
+      }
+    }
+  }
+  for (const node of siteBgNodes) {
+    const blink = .34 + Math.abs(Math.sin(time / 620 + node.phase)) * .58;
+    siteBgCtx.fillStyle = siteDotColor(node, blink);
+    siteBgCtx.shadowColor = siteDotColor(node, .8);
+    siteBgCtx.shadowBlur = node.kind === "red" ? 11 : 7;
+    siteBgCtx.beginPath();
+    siteBgCtx.arc(node.x, node.y, node.r * blink, 0, Math.PI * 2);
+    siteBgCtx.fill();
+  }
+  siteBgCtx.shadowBlur = 0;
+  requestAnimationFrame(drawSiteBackground);
+}
+
 const savedTheme = localStorage.getItem("vani-index-theme") || localStorage.getItem("vani_dashboard_theme") || localStorage.getItem("vani_setup_theme");
 setTheme(savedTheme === "dark" ? "dark" : "bright");
+resizeSiteBackground();
+window.addEventListener("resize", resizeSiteBackground);
+requestAnimationFrame(drawSiteBackground);
 if (!savedTheme) {
   themeChoicePanel?.classList.add("show");
 }
