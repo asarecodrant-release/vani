@@ -32,8 +32,8 @@
     position: "fixed",
     right: "0",
     bottom: "0",
-    width: "360px",
-    height: "132px",
+    width: "340px",
+    height: "106px",
     maxWidth: "100vw",
     maxHeight: "100dvh",
     border: "0",
@@ -67,11 +67,11 @@
     if (open) {
       iframe.style.width = "min(410px, 100vw)";
       iframe.style.height = window.matchMedia("(max-width: 640px)").matches
-        ? `${Math.max(240, Math.min(620, availableHeight - 16))}px`
-        : `${Math.max(360, Math.min(660, availableHeight))}px`;
+        ? `${Math.max(240, Math.min(536, availableHeight - 96))}px`
+        : `${Math.max(360, Math.min(610, availableHeight))}px`;
     } else {
-      iframe.style.width = "min(360px, 100vw)";
-      iframe.style.height = "132px";
+      iframe.style.width = "min(340px, 100vw)";
+      iframe.style.height = "106px";
     }
   }
 
