@@ -47,7 +47,7 @@
     iframe.style.left = position === "left" ? "0" : "auto";
     iframe.style.right = position === "right" ? "0" : "auto";
 
-    if (state.open) {
+    if (state.open || state.default_open) {
       iframe.style.width = "min(410px, 100vw)";
       iframe.style.height = "min(660px, 100dvh)";
     } else {
@@ -63,9 +63,23 @@
     applyFrameState(data);
   });
 
+  function requestFrameState() {
+    iframe.contentWindow?.postMessage({
+      type: "vani:request-frame-state",
+      customer_id: customerId
+    }, scriptUrl.origin);
+  }
+
+  iframe.addEventListener("load", () => {
+    requestFrameState();
+    window.setTimeout(requestFrameState, 300);
+    window.setTimeout(requestFrameState, 1000);
+  });
+
   function mount() {
     if (!document.body) return;
     document.body.appendChild(iframe);
+    window.setTimeout(requestFrameState, 500);
   }
 
   if (document.body) {

@@ -55,6 +55,7 @@
       type: "vani:frame-state",
       customer_id: customerId,
       open,
+      default_open: isEnabled(config.chat_open_by_default),
       position: config.position === "left" ? "left" : "right"
     }, "*");
   }
@@ -2507,12 +2508,23 @@
     });
     sendBtn.onclick = window.sendMessage;
 
+    window.addEventListener("message", event => {
+      const data = event.data || {};
+      if (data.type !== "vani:request-frame-state" || data.customer_id !== customerId) return;
+      if (isEnabled(config.chat_open_by_default) && box.style.display !== "flex") {
+        openChat();
+        return;
+      }
+      notifyFrameState(box.style.display === "flex" || isEnabled(config.chat_open_by_default));
+    });
+
     if (isEnabled(config.chat_open_by_default)) {
       openChat();
       window.setTimeout(() => {
         if (box.style.display !== "flex") openChat();
         notifyFrameState(true);
       }, 250);
+      window.setTimeout(() => notifyFrameState(true), 900);
     }
 
     document.addEventListener("visibilitychange", () => {
