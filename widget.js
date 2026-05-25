@@ -50,6 +50,7 @@
   let activeFaqActions = [];
   let activeFaqActionContext = {};
   let selectedFaqCategory = "";
+  let chatOpenAnimationTimer = null;
 
   function notifyFrameState(open = false) {
     if (window.parent === window) return;
@@ -1138,6 +1139,10 @@
         from { opacity: 0; transform: translateY(8px) scale(.98); }
         to { opacity: 1; transform: translateY(0) scale(1); }
       }
+      @keyframes vaniChatBoxIn {
+        from { opacity: 0; transform: translateY(14px) scale(.97); }
+        to { opacity: 1; transform: translateY(0) scale(1); }
+      }
       @keyframes vaniActionPanelIn {
         from { opacity: 0; transform: translateY(12px); filter: blur(2px); }
         to { opacity: 1; transform: translateY(0); filter: blur(0); }
@@ -1264,7 +1269,8 @@
       zIndex: "999999",
       boxShadow: "0 18px 48px rgba(15,23,42,.22)",
       border: "1px solid #e5e7eb",
-      fontFamily: "Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+      fontFamily: "Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+      transformOrigin: position === "left" ? "bottom left" : "bottom right"
     });
     css(box, sideStyles);
 
@@ -2461,10 +2467,19 @@
     };
 
     function openChat() {
+      window.clearTimeout(chatOpenAnimationTimer);
       box.style.display = "flex";
+      box.style.opacity = "0";
+      box.style.transform = "translateY(14px) scale(.97)";
+      box.style.animation = "vaniChatBoxIn .28s cubic-bezier(.2,.8,.2,1) forwards";
       greeting.style.display = "none";
       icon.setAttribute("aria-label", "Close chat");
       notifyFrameState(true);
+      chatOpenAnimationTimer = window.setTimeout(() => {
+        box.style.opacity = "1";
+        box.style.transform = "translateY(0) scale(1)";
+        box.style.animation = "";
+      }, 320);
       sessionOpenedAt = sessionOpenedAt || new Date().toISOString();
       emitLiveAction("chatOpened", {opened_at: sessionOpenedAt});
       trackWidgetSessionSoon({opened_at: sessionOpenedAt});
@@ -2475,7 +2490,11 @@
     }
 
     function closeChat() {
+      window.clearTimeout(chatOpenAnimationTimer);
       box.style.display = "none";
+      box.style.opacity = "1";
+      box.style.transform = "";
+      box.style.animation = "";
       greeting.style.display = "block";
       icon.setAttribute("aria-label", "Open chat");
       notifyFrameState(false);
