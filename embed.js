@@ -90,6 +90,19 @@
   window.visualViewport?.addEventListener("resize", () => applyFrameState());
   window.visualViewport?.addEventListener("scroll", () => applyFrameState());
 
+  function requestChatClose() {
+    iframe.contentWindow?.postMessage({
+      type: "vani:close-chat",
+      customer_id: customerId
+    }, scriptUrl.origin);
+  }
+
+  document.addEventListener("pointerdown", (event) => {
+    if (!(frameState.open || frameState.default_open)) return;
+    if (event.target === iframe) return;
+    requestChatClose();
+  }, true);
+
   window.addEventListener("message", (event) => {
     if (event.origin !== scriptUrl.origin) return;
     const data = event.data || {};

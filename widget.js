@@ -53,13 +53,13 @@
   let chatOpenAnimationTimer = null;
   let suppressNextInputFocusLoad = false;
 
-  function notifyFrameState(open = false) {
+  function notifyFrameState(open = false, forceClosed = false) {
     if (window.parent === window) return;
     window.parent.postMessage({
       type: "vani:frame-state",
       customer_id: customerId,
       open,
-      default_open: isEnabled(config.chat_open_by_default),
+      default_open: forceClosed ? false : isEnabled(config.chat_open_by_default),
       position: config.position === "left" ? "left" : "right"
     }, "*");
   }
@@ -1303,6 +1303,31 @@
     const whatsappAction = box.querySelector("[data-vani-whatsapp-action]");
     box.querySelector("[data-vani-title]").textContent = config.bot_name || "Chat Support";
     const embeddedWidget = window.parent !== window;
+    let userScrolledMessages = false;
+
+    function messagesNearBottom() {
+      if (!messages) return true;
+      return messages.scrollHeight - messages.scrollTop - messages.clientHeight < 80;
+    }
+
+    function scrollMessagesToLatest({force = false} = {}) {
+      if (!messages || (!force && userScrolledMessages)) return;
+      messages.scrollTop = messages.scrollHeight;
+    }
+
+    messages?.addEventListener("scroll", () => {
+      userScrolledMessages = !messagesNearBottom();
+    }, {passive: true});
+
+    function scrollLatestAfterKeyboardChange() {
+      if (box.style.display !== "flex") return;
+      window.requestAnimationFrame(() => scrollMessagesToLatest());
+      window.setTimeout(() => scrollMessagesToLatest(), 120);
+    }
+
+    input.addEventListener("focus", scrollLatestAfterKeyboardChange);
+    window.visualViewport?.addEventListener("resize", scrollLatestAfterKeyboardChange);
+    window.visualViewport?.addEventListener("scroll", scrollLatestAfterKeyboardChange);
 
     function applyEmbeddedLayout(open) {
       if (!embeddedWidget) return;
@@ -2548,7 +2573,7 @@
       greeting.style.display = "block";
       icon.setAttribute("aria-label", "Open chat");
       applyEmbeddedLayout(false);
-      notifyFrameState(false);
+      notifyFrameState(false, true);
       trackWidgetSessionSoon();
     }
 
@@ -2586,7 +2611,12 @@
 
     window.addEventListener("message", event => {
       const data = event.data || {};
-      if (data.type !== "vani:request-frame-state" || data.customer_id !== customerId) return;
+      if (data.customer_id !== customerId) return;
+      if (data.type === "vani:close-chat") {
+        if (box.style.display === "flex") closeChat();
+        return;
+      }
+      if (data.type !== "vani:request-frame-state") return;
       if (isEnabled(config.chat_open_by_default) && box.style.display !== "flex") {
         openChat();
         return;
