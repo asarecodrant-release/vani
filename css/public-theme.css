@@ -201,6 +201,46 @@ body:not(.dark).vani-public-theme textarea{
 }
 a{color:#7dd3fc}
 body.bright a,body:not(.dark).vani-public-theme a{color:#b45309}
+body.bright .price,
+body:not(.dark).vani-public-theme .price{
+  color:#111827!important;
+}
+body.bright .price small,
+body:not(.dark).vani-public-theme .price small{
+  color:#64748b!important;
+}
+body.bright .features .is-included,
+body:not(.dark).vani-public-theme .features .is-included{
+  color:#166534!important;
+}
+body.bright .features .is-included:before,
+body:not(.dark).vani-public-theme .features .is-included:before{
+  background:rgba(34,197,94,.16)!important;
+  color:#15803d!important;
+}
+body.bright .features .is-excluded,
+body:not(.dark).vani-public-theme .features .is-excluded{
+  color:#991b1b!important;
+}
+body.bright .features .is-excluded:before,
+body:not(.dark).vani-public-theme .features .is-excluded:before{
+  background:rgba(239,68,68,.14)!important;
+  color:#b91c1c!important;
+}
+body.bright .tag,
+body:not(.dark).vani-public-theme .tag{
+  background:rgba(245,158,11,.16)!important;
+  color:#92400e!important;
+}
+body.bright .tag.good,
+body:not(.dark).vani-public-theme .tag.good{
+  background:rgba(34,197,94,.14)!important;
+  color:#166534!important;
+}
+body.bright .required,
+body:not(.dark).vani-public-theme .required{
+  color:#b91c1c!important;
+}
 footer{color:#94a3b8!important}
 @media(max-width:992px){
   body{padding-left:0;padding-right:0}
