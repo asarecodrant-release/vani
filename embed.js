@@ -44,33 +44,6 @@
   });
 
   let frameState = {open: false, default_open: false, position: "right"};
-  const openBubbleSpace = 70;
-
-  function keyboardOffset() {
-    const viewport = window.visualViewport;
-    if (!viewport) return 0;
-
-    return Math.max(0, Math.round(window.innerHeight - viewport.height - viewport.offsetTop));
-  }
-
-  function viewportHeight() {
-    const viewport = window.visualViewport;
-    return Math.max(0, Math.round(viewport?.height || window.innerHeight || document.documentElement.clientHeight || 0));
-  }
-
-  function openFrameMetrics() {
-    const availableHeight = viewportHeight();
-    const compact = window.matchMedia("(max-width: 768px)").matches;
-    const offset = keyboardOffset();
-    const bottom = compact && offset > 0 ? offset + 8 : 20;
-    const maxFrameHeight = Math.max(160, availableHeight - bottom - 8);
-    const panelHeight = Math.max(140, Math.min(520, maxFrameHeight - openBubbleSpace));
-
-    return {
-      bottom,
-      height: Math.min(maxFrameHeight, panelHeight + openBubbleSpace)
-    };
-  }
 
   function applyFrameState(state = frameState) {
     frameState = {...frameState, ...state};
@@ -79,20 +52,15 @@
     iframe.style.right = position === "right" ? "0" : "auto";
 
     if (frameState.open || frameState.default_open) {
-      const metrics = openFrameMetrics();
-      iframe.style.bottom = `${metrics.bottom}px`;
-      iframe.style.width = "min(360px, calc(100vw - 28px))";
-      iframe.style.height = `${metrics.height}px`;
+      iframe.style.bottom = "0";
+      iframe.style.width = "min(400px, 100vw)";
+      iframe.style.height = "min(610px, 100dvh)";
     } else {
       iframe.style.bottom = "0";
       iframe.style.width = "min(340px, 100vw)";
       iframe.style.height = "106px";
     }
   }
-
-  window.addEventListener("resize", () => applyFrameState());
-  window.visualViewport?.addEventListener("resize", () => applyFrameState());
-  window.visualViewport?.addEventListener("scroll", () => applyFrameState());
 
   function requestChatClose() {
     iframe.contentWindow?.postMessage({

@@ -1335,16 +1335,16 @@
         icon.style.display = "flex";
         greeting.style.display = "none";
         css(icon, {
-          bottom: "0",
-          left: position === "left" ? "0" : "auto",
-          right: position === "right" ? "0" : "auto"
+          bottom: "20px",
+          left: position === "left" ? "20px" : "auto",
+          right: position === "right" ? "20px" : "auto"
         });
         css(box, {
-          bottom: "70px",
-          left: position === "left" ? "0" : "auto",
-          right: position === "right" ? "0" : "auto",
-          width: "100%",
-          height: "calc(100% - 70px)",
+          bottom: "90px",
+          left: position === "left" ? "20px" : "auto",
+          right: position === "right" ? "20px" : "auto",
+          width: "min(360px, calc(100vw - 28px))",
+          height: "min(520px, calc(100vh - 118px))",
           boxSizing: "border-box"
         });
         return;
