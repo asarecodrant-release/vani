@@ -63,6 +63,7 @@ body.dark{--bg-a:#020617;--bg-b:#111827;--bg-c:#172554;--panel:rgba(15,23,42,.82
 body{min-height:100vh;color:var(--ink);background:linear-gradient(135deg,var(--bg-a),var(--bg-b),var(--bg-c));padding:28px}
 .shell{width:min(980px,100%);margin:0 auto;display:grid;gap:18px}
 .top{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.top{position:relative;z-index:2147483647}
 .brand{display:flex;align-items:center;gap:12px;text-decoration:none;color:inherit}
 .brand img{width:54px;height:auto}
 .brand strong{font-size:20px;background:linear-gradient(90deg,var(--brand),var(--brand-2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
@@ -77,6 +78,7 @@ p{color:var(--muted);line-height:1.7}
 .ghost-btn{color:var(--ink);background:var(--ghost);border:1px solid var(--line)}
 .snippet{display:block;white-space:pre-wrap;word-break:break-all;margin-top:14px;padding:16px;border-radius:14px;background:#111827;color:#e5e7eb;font-size:13px;line-height:1.6}
 .empty{text-align:center}
+iframe[data-vani-chatbot-frame]{z-index:2147483000!important}
 @media(max-width:640px){body{padding:16px}.panel{padding:18px;border-radius:18px}h1{font-size:26px}.pill-btn,.ghost-btn{width:100%}}
 </style>
 </head>
