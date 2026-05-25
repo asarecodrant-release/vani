@@ -2509,6 +2509,10 @@
 
     if (isEnabled(config.chat_open_by_default)) {
       openChat();
+      window.setTimeout(() => {
+        if (box.style.display !== "flex") openChat();
+        notifyFrameState(true);
+      }, 250);
     }
 
     document.addEventListener("visibilitychange", () => {

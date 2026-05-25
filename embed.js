@@ -17,7 +17,7 @@
   const iframe = document.createElement("iframe");
   iframe.title = "Vani AI chatbot";
   iframe.src = frameUrl.toString();
-  iframe.loading = "lazy";
+  iframe.loading = "eager";
   iframe.allow = "clipboard-write; geolocation";
   iframe.sandbox = [
     "allow-scripts",
