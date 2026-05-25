@@ -47,6 +47,7 @@
   let msg91OtpScriptPromise = null;
   let activeFaqActions = [];
   let activeFaqActionContext = {};
+  let selectedFaqCategory = "";
 
   function notifyFrameState(open = false) {
     if (window.parent === window) return;
@@ -64,6 +65,29 @@
       ? window.crypto.randomUUID()
       : "user-" + Date.now() + "-" + Math.random().toString(16).slice(2);
     localStorage.setItem("vani_widget_user_id", userId);
+  }
+
+  function selectedFaqCategoryStorageKey() {
+    return `vani_selected_faq_category_${customerId}_${userId}`;
+  }
+
+  function loadSelectedFaqCategory() {
+    try {
+      return localStorage.getItem(selectedFaqCategoryStorageKey()) || "";
+    } catch (error) {
+      return "";
+    }
+  }
+
+  function saveSelectedFaqCategory(category) {
+    selectedFaqCategory = String(category || "").trim();
+    try {
+      if (selectedFaqCategory) {
+        localStorage.setItem(selectedFaqCategoryStorageKey(), selectedFaqCategory);
+      } else {
+        localStorage.removeItem(selectedFaqCategoryStorageKey());
+      }
+    } catch (error) {}
   }
 
   async function api(action, method = "GET", body = null, query = "") {
@@ -491,12 +515,74 @@
     return row;
   }
 
+  function renderCategorySwitcher(suggestionsBox, currentCategory, onChangeCategory) {
+    if (!suggestionsBox || !currentCategory || typeof onChangeCategory !== "function") return;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "vani-suggestion-card";
+    css(button, {
+      width: "100%",
+      border: "1px solid rgba(99,102,241,.22)",
+      borderRadius: "13px",
+      background: "rgba(255,255,255,.96)",
+      color: "#0f172a",
+      padding: "9px 10px",
+      textAlign: "left",
+      cursor: "pointer",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: "10px",
+      boxShadow: "0 8px 22px rgba(15,23,42,.06)",
+      transition: "transform .16s ease, box-shadow .16s ease, border-color .16s ease, background .16s ease"
+    });
+    const label = document.createElement("span");
+    label.textContent = currentCategory;
+    css(label, {
+      minWidth: "0",
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      whiteSpace: "nowrap",
+      fontSize: "12px",
+      fontWeight: "800"
+    });
+    const action = document.createElement("span");
+    action.textContent = "Change category";
+    css(action, {
+      flex: "0 0 auto",
+      color: themeAccent(),
+      fontSize: "12px",
+      fontWeight: "800"
+    });
+    button.appendChild(label);
+    button.appendChild(action);
+    button.onmouseenter = () => {
+      button.style.background = "#fff";
+      button.style.borderColor = themeAccent();
+      button.style.boxShadow = "0 12px 28px rgba(15,23,42,.12)";
+      button.style.transform = "translateY(-1px)";
+    };
+    button.onmouseleave = () => {
+      button.style.background = "rgba(255,255,255,.96)";
+      button.style.borderColor = "rgba(99,102,241,.22)";
+      button.style.boxShadow = "0 8px 22px rgba(15,23,42,.06)";
+      button.style.transform = "translateY(0)";
+    };
+    button.onclick = onChangeCategory;
+    suggestionsBox.appendChild(button);
+  }
+
   function renderSuggestions(suggestionsBox, input, items, options = {}) {
     suggestionsBox.innerHTML = "";
     const includeFaqs = options.includeFaqs !== false;
     const hasActions = activeFaqActions.length > 0;
     const visibleItems = includeFaqs ? items : [];
-    suggestionsBox.style.display = hasActions || visibleItems.length ? "grid" : "none";
+    const showCategorySwitcher = !!(options.showCategorySwitcher && options.currentCategory && options.onChangeCategory);
+    suggestionsBox.style.display = hasActions || visibleItems.length || showCategorySwitcher ? "grid" : "none";
+
+    if (showCategorySwitcher) {
+      renderCategorySwitcher(suggestionsBox, options.currentCategory, options.onChangeCategory);
+    }
 
     if (hasActions) {
       const actionGroup = document.createElement("div");
@@ -647,8 +733,9 @@
     });
   }
 
-  function renderCategoryMenu(suggestionsBox, input, categories) {
+  function renderCategoryMenu(suggestionsBox, input, categories, options = {}) {
     suggestionsBox.innerHTML = "";
+    saveSelectedFaqCategory("");
     const visibleCategories = Array.isArray(categories) ? categories.filter(item => item && item.category) : [];
     suggestionsBox.style.display = visibleCategories.length ? "grid" : "none";
     if (!visibleCategories.length) return;
@@ -714,11 +801,18 @@
         button.style.boxShadow = "0 8px 22px rgba(15,23,42,.06)";
         button.style.transform = "translateY(0)";
       };
-      button.onclick = () => showFaqCategory(item.category, suggestionsBox, input);
+      button.onclick = () => showFaqCategory(item.category, suggestionsBox, input, options);
       panel.appendChild(button);
     });
 
     suggestionsBox.appendChild(panel);
+  }
+
+  async function showPublicCategoryMenu(suggestionsBox, input) {
+    const response = await api("get_faq_categories", "GET", null, `&customer_id=${encodeURIComponent(customerId)}`);
+    renderCategoryMenu(suggestionsBox, input, response.data || [], {
+      onChangeCategory: () => showPublicCategoryMenu(suggestionsBox, input)
+    });
   }
 
   function cleanPhone(value) {
@@ -757,17 +851,29 @@
     }
   }
 
-  async function showFaqCategory(value, suggestionsBox, input) {
+  async function showFaqCategory(value, suggestionsBox, input, options = {}) {
     if (!suggestionsBox || !input) return;
+    saveSelectedFaqCategory(value);
     const response = await api("get_faqs_by_category", "GET", null, `&customer_id=${encodeURIComponent(customerId)}&category=${encodeURIComponent(value)}`);
     const items = Array.isArray(response.data) ? response.data : [];
-    activeFaqActions = [];
-    activeFaqActionContext = {};
+    if (!options.preserveActions) {
+      activeFaqActions = [];
+      activeFaqActionContext = {};
+    }
     if (!items.length) {
       showInlineActionNotice(suggestionsBox, "No active FAQs found in this category.", "error");
+      renderCategorySwitcher(
+        suggestionsBox,
+        selectedFaqCategory,
+        options.onChangeCategory || (() => showPublicCategoryMenu(suggestionsBox, input))
+      );
       return;
     }
-    renderSuggestions(suggestionsBox, input, items);
+    renderSuggestions(suggestionsBox, input, items, {
+      showCategorySwitcher: true,
+      currentCategory: selectedFaqCategory,
+      onChangeCategory: options.onChangeCategory || (() => showPublicCategoryMenu(suggestionsBox, input))
+    });
   }
 
   function renderFaqActionForm(action, context, suggestionsBox) {
@@ -985,6 +1091,7 @@
       `&customer_id=${encodeURIComponent(customerId)}&current_url=${encodeURIComponent(sourceUrl)}`
     );
     config = cfg || {};
+    selectedFaqCategory = loadSelectedFaqCategory();
 
     if (config.is_active === false || config.access_allowed === false) {
       return;
@@ -1185,18 +1292,40 @@
 
     addMessage(messages, greetingText, "bot");
 
+    async function loadCategoryMenu() {
+      await showPublicCategoryMenu(suggestionsBox, input);
+    }
+
+    async function loadSelectedCategoryFaqs(options = {}) {
+      if (!selectedFaqCategory) return false;
+      await showFaqCategory(selectedFaqCategory, suggestionsBox, input, {
+        onChangeCategory: loadCategoryMenu,
+        preserveActions: !!options.preserveActions
+      });
+      return true;
+    }
+
     async function loadTop() {
       if (activeFaqActions.length) {
-        renderSuggestions(suggestionsBox, input, [], {includeFaqs: false});
+        renderSuggestions(suggestionsBox, input, [], {
+          includeFaqs: false,
+          showCategorySwitcher: isEnabled(config.faq_category_menu_enabled),
+          currentCategory: selectedFaqCategory,
+          onChangeCategory: loadCategoryMenu
+        });
         return;
       }
       if (isEnabled(config.faq_category_menu_enabled)) {
-        const response = await api("get_faq_categories", "GET", null, `&customer_id=${encodeURIComponent(customerId)}`);
-        renderCategoryMenu(suggestionsBox, input, response.data || []);
+        if (await loadSelectedCategoryFaqs()) return;
+        await loadCategoryMenu();
         return;
       }
       const response = await api("get_top_faqs", "GET", null, `&customer_id=${encodeURIComponent(customerId)}`);
-      renderSuggestions(suggestionsBox, input, response.data || []);
+      renderSuggestions(suggestionsBox, input, response.data || [], {
+        showCategorySwitcher: isEnabled(config.faq_category_menu_enabled),
+        currentCategory: selectedFaqCategory,
+        onChangeCategory: loadCategoryMenu
+      });
     }
 
     async function searchFaqs(query) {
@@ -2292,7 +2421,16 @@
         message,
         matched_faq_id: response.matched_faq_id || null
       };
-      renderSuggestions(suggestionsBox, input, Array.isArray(response.default_suggestions) ? response.default_suggestions : [], {includeFaqs: true});
+      if (isEnabled(config.faq_category_menu_enabled) && selectedFaqCategory) {
+        await loadSelectedCategoryFaqs({preserveActions: true});
+      } else {
+        renderSuggestions(suggestionsBox, input, Array.isArray(response.default_suggestions) ? response.default_suggestions : [], {
+          includeFaqs: true,
+          showCategorySwitcher: isEnabled(config.faq_category_menu_enabled),
+          currentCategory: selectedFaqCategory,
+          onChangeCategory: loadCategoryMenu
+        });
+      }
       emitLiveAction(response.answered ? "faqAnswered" : "unknownQuestion", {
         message,
         reply: response.reply || "",
