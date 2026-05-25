@@ -1319,14 +1319,14 @@
       const iconBottom = 20 + keyboardOffset;
       const greetingBottom = 30 + keyboardOffset;
       const boxBottom = (compact ? 16 : 90) + keyboardOffset;
-      const verticalInset = compact ? 32 : 118;
+      const verticalInset = compact ? 16 : 118;
       const maxBoxHeight = Math.max(180, viewportHeight - verticalInset);
 
       icon.style.bottom = `${iconBottom}px`;
       greeting.style.bottom = `${greetingBottom}px`;
       box.style.bottom = `${boxBottom}px`;
       box.style.height = `${Math.min(520, maxBoxHeight)}px`;
-      box.style.width = compact ? "min(410px, calc(100vw - 24px))" : "min(360px, calc(100vw - 28px))";
+      box.style.width = compact ? "min(360px, calc(100vw - 20px))" : "min(360px, calc(100vw - 28px))";
     }
 
     applyWidgetViewportPlacement();
