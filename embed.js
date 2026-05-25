@@ -32,8 +32,8 @@
     position: "fixed",
     right: "0",
     bottom: "0",
-    width: "360px",
-    height: "132px",
+    width: "340px",
+    height: "106px",
     maxWidth: "100vw",
     maxHeight: "100dvh",
     border: "0",
@@ -43,23 +43,53 @@
     transition: "width .28s cubic-bezier(.2,.8,.2,1), height .28s cubic-bezier(.2,.8,.2,1)"
   });
 
-  function applyFrameState(state) {
+  let frameState = {open: false, default_open: false, position: "right"};
+
+  function keyboardOffset() {
+    const viewport = window.visualViewport;
+    if (!viewport) return 0;
+
+    return Math.max(0, Math.round(window.innerHeight - viewport.height - viewport.offsetTop));
+  }
+
+  function viewportHeight() {
+    const viewport = window.visualViewport;
+    return Math.max(0, Math.round(viewport?.height || window.innerHeight || document.documentElement.clientHeight || 0));
+  }
+
+  function openFrameHeight() {
+    const availableHeight = viewportHeight();
+    const compact = window.matchMedia("(max-width: 768px)").matches;
+    const hasKeyboard = compact && keyboardOffset() > 0;
+    const reservedSpace = hasKeyboard ? 16 : 118;
+    const minimumHeight = compact ? 360 : 360;
+
+    return `${Math.max(minimumHeight, Math.min(520, availableHeight - reservedSpace))}px`;
+  }
+
+  function applyFrameState(state = frameState) {
+    frameState = {...frameState, ...state};
     const position = state.position === "left" ? "left" : "right";
     iframe.style.left = position === "left" ? "0" : "auto";
     iframe.style.right = position === "right" ? "0" : "auto";
 
-    if (state.open || state.default_open) {
-      iframe.style.width = window.matchMedia("(max-width: 640px)").matches
-        ? "min(410px, 100vw)"
-        : "min(380px, 100vw)";
-      iframe.style.height = window.matchMedia("(max-width: 640px)").matches
-        ? "min(620px, calc(100dvh - 96px))"
-        : "min(610px, 100dvh)";
+    if (frameState.open || frameState.default_open) {
+      const compact = window.matchMedia("(max-width: 768px)").matches;
+      const offset = keyboardOffset();
+      iframe.style.bottom = `${compact && offset > 0 ? offset + 8 : 90}px`;
+      iframe.style.width = "min(360px, calc(100vw - 28px))";
+      iframe.style.height = openFrameHeight();
     } else {
-      iframe.style.width = "min(360px, 100vw)";
-      iframe.style.height = "132px";
+      iframe.style.bottom = "0";
+      iframe.style.width = "min(340px, 100vw)";
+      iframe.style.height = "106px";
     }
   }
+
+  window.addEventListener("resize", () => applyFrameState());
+  window.visualViewport?.addEventListener("resize", () => applyFrameState());
+  window.visualViewport?.addEventListener("scroll", () => applyFrameState());
+
   window.addEventListener("message", (event) => {
     if (event.origin !== scriptUrl.origin) return;
     const data = event.data || {};

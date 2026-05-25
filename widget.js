@@ -1280,8 +1280,8 @@
         <span data-vani-title style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
         <button data-vani-close type="button" aria-label="Close chat" title="Close chat" style="width:30px;height:30px;border:1px solid rgba(255,255,255,.38);border-radius:999px;background:rgba(255,255,255,.16);color:#fff;cursor:pointer;font-size:20px;line-height:1;display:flex;align-items:center;justify-content:center;padding:0;">×</button>
       </div>
-      <div data-vani-messages style="flex:1;overflow:auto;padding:14px;background:linear-gradient(180deg,#f8fafc 0%,#eef2ff 100%);scroll-behavior:smooth;"></div>
-      <div data-vani-suggestions style="max-height:160px;overflow:auto;background:transparent;border-top:0;padding:8px;display:grid;gap:7px;"></div>
+      <div data-vani-messages style="flex:1 1 72px;min-height:52px;overflow:auto;padding:14px;background:linear-gradient(180deg,#f8fafc 0%,#eef2ff 100%);scroll-behavior:smooth;"></div>
+      <div data-vani-suggestions style="flex:0 0 auto;max-height:210px;overflow:auto;background:transparent;border-top:0;padding:8px;display:grid;gap:7px;"></div>
       <div data-vani-lead-prompt style="display:none;padding:10px;border-top:1px solid #e5e7eb;background:#fff;"></div>
       <div data-vani-whatsapp-action style="display:none;padding:10px;border-top:1px solid #e5e7eb;background:#fff;"></div>
       <div data-vani-input-row style="display:flex;border-top:1px solid #e5e7eb;background:#fff;">
@@ -1302,6 +1302,46 @@
     const suggestionsBox = box.querySelector("[data-vani-suggestions]");
     const whatsappAction = box.querySelector("[data-vani-whatsapp-action]");
     box.querySelector("[data-vani-title]").textContent = config.bot_name || "Chat Support";
+    const embeddedWidget = window.parent !== window;
+
+    function applyEmbeddedLayout(open) {
+      if (!embeddedWidget) return;
+      if (open) {
+        icon.style.display = "none";
+        greeting.style.display = "none";
+        css(box, {
+          bottom: "0",
+          left: position === "left" ? "0" : "auto",
+          right: position === "right" ? "0" : "auto",
+          width: "100%",
+          height: "100%",
+          boxSizing: "border-box"
+        });
+        return;
+      }
+
+      icon.style.display = "flex";
+      greeting.style.display = "block";
+      css(icon, {
+        bottom: "20px",
+        left: position === "left" ? "20px" : "auto",
+        right: position === "right" ? "20px" : "auto"
+      });
+      css(greeting, {
+        bottom: "30px",
+        left: position === "left" ? "90px" : "auto",
+        right: position === "right" ? "90px" : "auto"
+      });
+      css(box, {
+        bottom: "90px",
+        left: position === "left" ? "20px" : "auto",
+        right: position === "right" ? "20px" : "auto",
+        width: "min(360px, calc(100vw - 28px))",
+        height: "min(520px, calc(100vh - 118px))"
+      });
+    }
+
+    applyEmbeddedLayout(false);
 
     if (!userInputEnabled() && inputRow) {
       inputRow.style.display = "none";
@@ -2475,6 +2515,7 @@
       }
       window.clearTimeout(chatOpenAnimationTimer);
       box.style.display = "flex";
+      applyEmbeddedLayout(true);
       box.style.opacity = "0";
       box.style.transform = "translateY(14px) scale(.97)";
       box.style.animation = "vaniChatBoxIn .28s cubic-bezier(.2,.8,.2,1) forwards";
@@ -2506,6 +2547,7 @@
       box.style.animation = "";
       greeting.style.display = "block";
       icon.setAttribute("aria-label", "Open chat");
+      applyEmbeddedLayout(false);
       notifyFrameState(false);
       trackWidgetSessionSoon();
     }
