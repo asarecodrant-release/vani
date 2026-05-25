@@ -32,8 +32,8 @@
     position: "fixed",
     right: "0",
     bottom: "0",
-    width: "66px",
-    height: "74px",
+    width: "360px",
+    height: "132px",
     maxWidth: "100vw",
     maxHeight: "100dvh",
     border: "0",
@@ -43,50 +43,23 @@
     transition: "width .28s cubic-bezier(.2,.8,.2,1), height .28s cubic-bezier(.2,.8,.2,1)"
   });
 
-  let frameState = {open: false, default_open: false, position: "right"};
-
-  function viewportKeyboardOffset() {
-    const viewport = window.visualViewport;
-    if (!viewport) return 0;
-
-    return Math.max(0, Math.round(window.innerHeight - viewport.height - viewport.offsetTop));
-  }
-
-  function availableViewportHeight() {
-    const viewport = window.visualViewport;
-    return Math.max(0, Math.round(viewport?.height || window.innerHeight || document.documentElement.clientHeight || 0));
-  }
-
-  function applyViewportPlacement() {
-    const keyboardOffset = viewportKeyboardOffset();
-    const open = frameState.open || frameState.default_open;
-    const availableHeight = availableViewportHeight();
-
-    iframe.style.bottom = `${keyboardOffset}px`;
-
-    if (open) {
-      iframe.style.width = "min(410px, 100vw)";
-      iframe.style.height = window.matchMedia("(max-width: 640px)").matches
-        ? `${Math.max(240, Math.min(536, availableHeight - 96))}px`
-        : `${Math.max(360, Math.min(610, availableHeight))}px`;
-    } else {
-      iframe.style.width = "66px";
-      iframe.style.height = "74px";
-    }
-  }
-
   function applyFrameState(state) {
-    frameState = {...frameState, ...state};
     const position = state.position === "left" ? "left" : "right";
     iframe.style.left = position === "left" ? "0" : "auto";
     iframe.style.right = position === "right" ? "0" : "auto";
-    applyViewportPlacement();
+
+    if (state.open || state.default_open) {
+      iframe.style.width = window.matchMedia("(max-width: 640px)").matches
+        ? "min(410px, 100vw)"
+        : "min(380px, 100vw)";
+      iframe.style.height = window.matchMedia("(max-width: 640px)").matches
+        ? "min(620px, calc(100dvh - 96px))"
+        : "min(610px, 100dvh)";
+    } else {
+      iframe.style.width = "min(360px, 100vw)";
+      iframe.style.height = "132px";
+    }
   }
-
-  window.addEventListener("resize", applyViewportPlacement);
-  window.visualViewport?.addEventListener("resize", applyViewportPlacement);
-  window.visualViewport?.addEventListener("scroll", applyViewportPlacement);
-
   window.addEventListener("message", (event) => {
     if (event.origin !== scriptUrl.origin) return;
     const data = event.data || {};
