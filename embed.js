@@ -39,7 +39,7 @@
     border: "0",
     background: "transparent",
     colorScheme: "normal",
-    zIndex: "999999",
+    zIndex: "2147483647",
     transition: "width .28s cubic-bezier(.2,.8,.2,1), height .28s cubic-bezier(.2,.8,.2,1)"
   });
 
