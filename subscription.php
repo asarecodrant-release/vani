@@ -10,7 +10,6 @@ require_once __DIR__ . '/billing.php';
 <link rel="icon" type="image/png" href="images/logo_img.png">
 <title>Vani Wallet Recharge Plans</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-<script defer src="js/public-theme.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;font-family:Inter,sans-serif}
 body{
@@ -82,7 +81,7 @@ td:last-child,th:last-child{text-align:right;font-weight:800}
 </style>
 <link rel="stylesheet" href="css/public-theme.css">
 </head>
-<body class="subscription-page">
+<body class="subscription-page dark">
 <nav>
   <div class="container nav-inner">
     <a class="logo" href="index.php"><img src="images/logo_img.png" alt="Vani AI Logo"><span>Vani AI</span></a>
