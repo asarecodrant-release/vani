@@ -4,6 +4,8 @@
     script?.getAttribute("data-key") ||
     script?.getAttribute("data-customer-id");
   const sourceUrl = script?.getAttribute("data-source-url") || window.location.href;
+  const openByDefaultHint = script?.getAttribute("data-open-default") === "1" ||
+    new URLSearchParams(window.location.search || "").get("open") === "1";
   let sourcePath = window.location.pathname || window.location.href;
   try {
     sourcePath = new URL(sourceUrl).pathname || sourceUrl;
@@ -2518,7 +2520,7 @@
       notifyFrameState(box.style.display === "flex" || isEnabled(config.chat_open_by_default));
     });
 
-    if (isEnabled(config.chat_open_by_default)) {
+    if (isEnabled(config.chat_open_by_default) || openByDefaultHint) {
       openChat();
       window.setTimeout(() => {
         if (box.style.display !== "flex") openChat();

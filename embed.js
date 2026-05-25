@@ -13,10 +13,13 @@
   const frameUrl = new URL("widget-frame.php", scriptUrl);
   frameUrl.searchParams.set("id", customerId);
   frameUrl.searchParams.set("source_url", window.location.href);
+  const configUrl = new URL("widget_api.php", scriptUrl);
+  configUrl.searchParams.set("action", "get_widget_config");
+  configUrl.searchParams.set("customer_id", customerId);
+  configUrl.searchParams.set("current_url", window.location.href);
 
   const iframe = document.createElement("iframe");
   iframe.title = "Vani AI chatbot";
-  iframe.src = frameUrl.toString();
   iframe.loading = "eager";
   iframe.allow = "clipboard-write; geolocation";
   iframe.sandbox = [
@@ -56,6 +59,22 @@
     }
   }
 
+  async function loadInitialConfig() {
+    try {
+      const response = await fetch(configUrl.toString(), {cache: "no-store"});
+      const config = await response.json();
+      if (config?.chat_open_by_default) {
+        frameUrl.searchParams.set("open", "1");
+        applyFrameState({
+          open: true,
+          default_open: true,
+          position: config.position
+        });
+      }
+    } catch (error) {}
+    iframe.src = frameUrl.toString();
+  }
+
   window.addEventListener("message", (event) => {
     if (event.origin !== scriptUrl.origin) return;
     const data = event.data || {};
@@ -79,6 +98,7 @@
   function mount() {
     if (!document.body) return;
     document.body.appendChild(iframe);
+    loadInitialConfig();
     window.setTimeout(requestFrameState, 500);
   }
 

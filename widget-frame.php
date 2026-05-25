@@ -3,6 +3,7 @@ header_remove('X-Frame-Options');
 header('Content-Security-Policy: frame-ancestors *');
 $customerId = preg_replace('/[^a-zA-Z0-9_-]/', '', (string)($_GET['id'] ?? ''));
 $sourceUrl = filter_var((string)($_GET['source_url'] ?? ''), FILTER_VALIDATE_URL) ? (string)$_GET['source_url'] : '';
+$openByDefaultHint = (string)($_GET['open'] ?? '') === '1';
 $widgetVersion = is_file(__DIR__ . '/widget.js') ? filemtime(__DIR__ . '/widget.js') : time();
 ?><!doctype html>
 <html lang="en">
@@ -25,7 +26,7 @@ $widgetVersion = is_file(__DIR__ . '/widget.js') ? filemtime(__DIR__ . '/widget.
 </head>
 <body>
   <?php if ($customerId !== ''): ?>
-    <script src="widget.js?v=<?php echo (int)$widgetVersion; ?>" data-id="<?php echo htmlspecialchars($customerId, ENT_QUOTES, 'UTF-8'); ?>" data-source-url="<?php echo htmlspecialchars($sourceUrl, ENT_QUOTES, 'UTF-8'); ?>"></script>
+    <script src="widget.js?v=<?php echo (int)$widgetVersion; ?>" data-id="<?php echo htmlspecialchars($customerId, ENT_QUOTES, 'UTF-8'); ?>" data-source-url="<?php echo htmlspecialchars($sourceUrl, ENT_QUOTES, 'UTF-8'); ?>" data-open-default="<?php echo $openByDefaultHint ? '1' : '0'; ?>"></script>
   <?php endif; ?>
 </body>
 </html>
