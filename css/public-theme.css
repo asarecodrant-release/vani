@@ -211,21 +211,21 @@ body:not(.dark).vani-public-theme .price small{
 }
 body.bright .features .is-included,
 body:not(.dark).vani-public-theme .features .is-included{
-  color:#166534!important;
+  color:#064e3b!important;
 }
 body.bright .features .is-included:before,
 body:not(.dark).vani-public-theme .features .is-included:before{
-  background:rgba(34,197,94,.16)!important;
-  color:#15803d!important;
+  background:rgba(6,78,59,.12)!important;
+  color:#065f46!important;
 }
 body.bright .features .is-excluded,
 body:not(.dark).vani-public-theme .features .is-excluded{
-  color:#991b1b!important;
+  color:#7f1d1d!important;
 }
 body.bright .features .is-excluded:before,
 body:not(.dark).vani-public-theme .features .is-excluded:before{
-  background:rgba(239,68,68,.14)!important;
-  color:#b91c1c!important;
+  background:rgba(127,29,29,.12)!important;
+  color:#991b1b!important;
 }
 body.bright .tag,
 body:not(.dark).vani-public-theme .tag{
@@ -234,12 +234,32 @@ body:not(.dark).vani-public-theme .tag{
 }
 body.bright .tag.good,
 body:not(.dark).vani-public-theme .tag.good{
-  background:rgba(34,197,94,.14)!important;
-  color:#166534!important;
+  background:rgba(6,78,59,.12)!important;
+  color:#064e3b!important;
 }
 body.bright .required,
 body:not(.dark).vani-public-theme .required{
-  color:#b91c1c!important;
+  color:#7f1d1d!important;
+}
+body.bright .subscription-page .hero p,
+body.bright .subscription-page .wallet-note,
+body.bright .subscription-page .checkout-head p,
+body.bright .subscription-page .checkout-help,
+body.bright .subscription-page .note,
+body.bright .subscription-page td,
+body.bright .subscription-page th,
+body:not(.dark).vani-public-theme.subscription-page .hero p,
+body:not(.dark).vani-public-theme.subscription-page .wallet-note,
+body:not(.dark).vani-public-theme.subscription-page .checkout-head p,
+body:not(.dark).vani-public-theme.subscription-page .checkout-help,
+body:not(.dark).vani-public-theme.subscription-page .note,
+body:not(.dark).vani-public-theme.subscription-page td,
+body:not(.dark).vani-public-theme.subscription-page th{
+  color:#334155!important;
+}
+body.bright .subscription-page .price small,
+body:not(.dark).vani-public-theme.subscription-page .price small{
+  color:#475569!important;
 }
 footer{color:#94a3b8!important}
 @media(max-width:992px){

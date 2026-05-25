@@ -82,7 +82,7 @@ td:last-child,th:last-child{text-align:right;font-weight:800}
 </style>
 <link rel="stylesheet" href="css/public-theme.css">
 </head>
-<body>
+<body class="subscription-page">
 <nav>
   <div class="container nav-inner">
     <a class="logo" href="index.php"><img src="images/logo_img.png" alt="Vani AI Logo"><span>Vani AI</span></a>
