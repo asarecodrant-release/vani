@@ -44,6 +44,7 @@
   });
 
   let frameState = {open: false, default_open: false, position: "right"};
+  const openBubbleSpace = 70;
 
   function keyboardOffset() {
     const viewport = window.visualViewport;
@@ -57,14 +58,14 @@
     return Math.max(0, Math.round(viewport?.height || window.innerHeight || document.documentElement.clientHeight || 0));
   }
 
-  function openFrameHeight() {
+  function openPanelHeight() {
     const availableHeight = viewportHeight();
     const compact = window.matchMedia("(max-width: 768px)").matches;
     const hasKeyboard = compact && keyboardOffset() > 0;
-    const reservedSpace = hasKeyboard ? 16 : 118;
+    const reservedSpace = hasKeyboard ? openBubbleSpace + 16 : 118;
     const minimumHeight = compact ? 360 : 360;
 
-    return `${Math.max(minimumHeight, Math.min(520, availableHeight - reservedSpace))}px`;
+    return Math.max(minimumHeight, Math.min(520, availableHeight - reservedSpace));
   }
 
   function applyFrameState(state = frameState) {
@@ -76,9 +77,9 @@
     if (frameState.open || frameState.default_open) {
       const compact = window.matchMedia("(max-width: 768px)").matches;
       const offset = keyboardOffset();
-      iframe.style.bottom = `${compact && offset > 0 ? offset + 8 : 90}px`;
+      iframe.style.bottom = `${compact && offset > 0 ? offset + 8 : 20}px`;
       iframe.style.width = "min(360px, calc(100vw - 28px))";
-      iframe.style.height = openFrameHeight();
+      iframe.style.height = `${openPanelHeight() + openBubbleSpace}px`;
     } else {
       iframe.style.bottom = "0";
       iframe.style.width = "min(340px, 100vw)";

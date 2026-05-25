@@ -1332,14 +1332,19 @@
     function applyEmbeddedLayout(open) {
       if (!embeddedWidget) return;
       if (open) {
-        icon.style.display = "none";
+        icon.style.display = "flex";
         greeting.style.display = "none";
-        css(box, {
+        css(icon, {
           bottom: "0",
+          left: position === "left" ? "0" : "auto",
+          right: position === "right" ? "0" : "auto"
+        });
+        css(box, {
+          bottom: "70px",
           left: position === "left" ? "0" : "auto",
           right: position === "right" ? "0" : "auto",
           width: "100%",
-          height: "100%",
+          height: "calc(100% - 70px)",
           boxSizing: "border-box"
         });
         return;
