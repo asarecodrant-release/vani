@@ -1400,9 +1400,10 @@ function setTheme(mode) {
     themeToggle.setAttribute("aria-pressed", String(dark));
     themeToggle.textContent = dark ? "Bright Mode" : "Dark Mode";
   }
-  localStorage.setItem("vani-index-theme", dark ? "dark" : "bright");
-  localStorage.removeItem("vani_dashboard_theme");
-  localStorage.removeItem("vani_setup_theme");
+  const themeValue = dark ? "dark" : "bright";
+  localStorage.setItem("vani-index-theme", themeValue);
+  localStorage.setItem("vani_dashboard_theme", themeValue);
+  localStorage.setItem("vani_setup_theme", themeValue);
 }
 
 function resizeSiteBackground() {
@@ -1473,14 +1474,11 @@ function drawSiteBackground(time) {
   requestAnimationFrame(drawSiteBackground);
 }
 
-const savedTheme = localStorage.getItem("vani-index-theme") || localStorage.getItem("vani_dashboard_theme") || localStorage.getItem("vani_setup_theme");
-setTheme(savedTheme === "dark" ? "dark" : "bright");
+const savedTheme = localStorage.getItem("vani-index-theme") || localStorage.getItem("vani_dashboard_theme") || localStorage.getItem("vani_setup_theme") || "dark";
+setTheme(savedTheme === "bright" ? "bright" : "dark");
 resizeSiteBackground();
 window.addEventListener("resize", resizeSiteBackground);
 requestAnimationFrame(drawSiteBackground);
-if (!savedTheme) {
-  themeChoicePanel?.classList.add("show");
-}
 
 menuToggle?.addEventListener("click", () => setMenu(true));
 menuClose?.addEventListener("click", () => setMenu(false));

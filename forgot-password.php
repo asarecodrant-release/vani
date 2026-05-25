@@ -166,7 +166,7 @@ body.bright .eyebrow{color:#4f46e5;background:#eef2ff;border-color:#c7d2fe}
 </head>
 <body>
 <script>
-try{const t=localStorage.getItem("vani-index-theme")||"bright";document.body.classList.toggle("bright",t!=="dark");document.body.classList.toggle("dark",t==="dark");}catch(e){document.body.classList.add("bright");}
+try{const t=localStorage.getItem("vani-index-theme")||localStorage.getItem("vani_dashboard_theme")||localStorage.getItem("vani_setup_theme")||"dark";document.body.classList.toggle("bright",t==="bright");document.body.classList.toggle("dark",t!=="bright");}catch(e){document.body.classList.add("dark");}
 </script>
 <div class="page">
   <div class="top-actions">
@@ -226,8 +226,8 @@ try{const t=localStorage.getItem("vani-index-theme")||"bright";document.body.cla
 </div>
 <script>
 const themeToggle=document.getElementById("themeToggle");
-function setTheme(mode){const dark=mode==="dark";document.body.classList.toggle("bright",!dark);document.body.classList.toggle("dark",dark);if(themeToggle){themeToggle.textContent=dark?"Bright Mode":"Dark Mode";themeToggle.setAttribute("aria-pressed",String(dark));}localStorage.setItem("vani-index-theme",dark?"dark":"bright");}
-setTheme(localStorage.getItem("vani-index-theme")||"bright");
+function setTheme(mode){const dark=mode==="dark";document.body.classList.toggle("bright",!dark);document.body.classList.toggle("dark",dark);if(themeToggle){themeToggle.textContent=dark?"Bright Mode":"Dark Mode";themeToggle.setAttribute("aria-pressed",String(dark));}const themeValue=dark?"dark":"bright";localStorage.setItem("vani-index-theme",themeValue);localStorage.setItem("vani_dashboard_theme",themeValue);localStorage.setItem("vani_setup_theme",themeValue);}
+setTheme(localStorage.getItem("vani-index-theme")||localStorage.getItem("vani_dashboard_theme")||localStorage.getItem("vani_setup_theme")||"dark");
 themeToggle?.addEventListener("click",()=>setTheme(document.body.classList.contains("dark")?"bright":"dark"));
 </script>
 </body>

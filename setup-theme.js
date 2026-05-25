@@ -4,20 +4,25 @@
   const darkClass = "setup-theme-dark";
 
   function preferredTheme() {
-    const saved = localStorage.getItem(storageKey);
+    const saved = localStorage.getItem(storageKey) || localStorage.getItem("vani_dashboard_theme") || localStorage.getItem("vani_setup_theme");
     if (saved === "bright") {
       return "light";
     }
     if (saved === "light" || saved === "dark") {
       return saved;
     }
-    return "light";
+    return "dark";
   }
 
   function applyTheme(theme) {
     document.body.classList.toggle(lightClass, theme === "light");
     document.body.classList.toggle(darkClass, theme === "dark");
-    localStorage.setItem(storageKey, theme === "dark" ? "dark" : "bright");
+    document.body.classList.toggle("bright", theme === "light");
+    document.body.classList.toggle("dark", theme === "dark");
+    const themeValue = theme === "dark" ? "dark" : "bright";
+    localStorage.setItem(storageKey, themeValue);
+    localStorage.setItem("vani_dashboard_theme", themeValue);
+    localStorage.setItem("vani_setup_theme", themeValue);
 
     const toggle = document.getElementById("setupThemeToggle");
     if (!toggle) {

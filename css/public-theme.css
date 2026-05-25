@@ -1,0 +1,208 @@
+html{width:100%;max-width:100%;overflow-x:hidden}
+body{
+  width:100%;
+  max-width:100%;
+  overflow-x:hidden;
+  background:
+    radial-gradient(circle at 15% 14%,rgba(0,140,255,.24),transparent 34%),
+    radial-gradient(circle at 88% 10%,rgba(0,255,209,.12),transparent 30%),
+    linear-gradient(135deg,#01030a 0%,#03111f 48%,#02040a 100%)!important;
+  color:#e5e7eb;
+  transition:background .25s ease,color .25s ease;
+}
+body.bright,
+body:not(.dark).vani-public-theme{
+  background:
+    radial-gradient(circle at 16% 12%,rgba(245,158,11,.16),transparent 32%),
+    radial-gradient(circle at 84% 6%,rgba(250,204,21,.2),transparent 30%),
+    linear-gradient(135deg,#fffaf0 0%,#fff7e6 44%,#f8fafc 100%)!important;
+  color:#334155;
+}
+.container{max-width:min(1120px,100%)}
+.brand,.logo{
+  background:linear-gradient(135deg,rgba(2,18,38,.8),rgba(2,44,58,.56))!important;
+  border-color:rgba(56,189,248,.22)!important;
+  color:#f8fafc!important;
+}
+.brand img,.logo img{
+  filter:drop-shadow(0 0 18px rgba(56,189,248,.72)) drop-shadow(0 0 24px rgba(34,211,238,.24))!important;
+}
+.brand span,.logo span{
+  background:linear-gradient(90deg,#ffffff,#93c5fd 52%,#67e8f9)!important;
+  -webkit-background-clip:text!important;
+  -webkit-text-fill-color:transparent!important;
+}
+body.bright .brand,
+body.bright .logo,
+body:not(.dark).vani-public-theme .brand,
+body:not(.dark).vani-public-theme .logo{
+  background:linear-gradient(135deg,rgba(245,158,11,.12),rgba(250,204,21,.1))!important;
+  border-color:rgba(217,119,6,.18)!important;
+  color:#111827!important;
+}
+body.bright .brand span,
+body.bright .logo span,
+body:not(.dark).vani-public-theme .brand span,
+body:not(.dark).vani-public-theme .logo span{
+  background:linear-gradient(90deg,#18181b,#b7791f 52%,#f59e0b)!important;
+  -webkit-background-clip:text!important;
+  -webkit-text-fill-color:transparent!important;
+}
+.nav-link,.theme-btn,.site-menu-trigger,.home-link{
+  background:rgba(15,23,42,.72)!important;
+  border-color:rgba(56,189,248,.22)!important;
+  color:#e5e7eb!important;
+}
+body.bright .nav-link,
+body.bright .theme-btn,
+body.bright .site-menu-trigger,
+body.bright .home-link,
+body:not(.dark).vani-public-theme .nav-link,
+body:not(.dark).vani-public-theme .theme-btn,
+body:not(.dark).vani-public-theme .site-menu-trigger,
+body:not(.dark).vani-public-theme .home-link{
+  background:rgba(255,255,255,.86)!important;
+  border-color:rgba(217,119,6,.2)!important;
+  color:#3f2f15!important;
+}
+.nav-btn,.login-btn,button[type=submit],.choose-plan-btn{
+  background:linear-gradient(135deg,#38bdf8,#2563eb,#0f172a)!important;
+  color:#fff!important;
+  box-shadow:0 14px 34px rgba(37,99,235,.28)!important;
+}
+body.bright .nav-btn,
+body.bright .login-btn,
+body.bright button[type=submit],
+body.bright .choose-plan-btn,
+body:not(.dark).vani-public-theme .nav-btn,
+body:not(.dark).vani-public-theme .login-btn,
+body:not(.dark).vani-public-theme button[type=submit],
+body:not(.dark).vani-public-theme .choose-plan-btn{
+  background:linear-gradient(135deg,#fef3c7,#facc15,#d97706)!important;
+  color:#111827!important;
+  box-shadow:0 14px 30px rgba(217,119,6,.24)!important;
+}
+.eyebrow{
+  color:#7dd3fc!important;
+  background:rgba(15,23,42,.72)!important;
+  border-color:rgba(56,189,248,.22)!important;
+}
+body.bright .eyebrow,
+body:not(.dark).vani-public-theme .eyebrow{
+  color:#92400e!important;
+  background:rgba(255,255,255,.78)!important;
+  border-color:rgba(217,119,6,.18)!important;
+}
+h1{
+  color:#f8fafc!important;
+  letter-spacing:0!important;
+}
+.hero h1,h1{
+  background:linear-gradient(90deg,#eaf7ff,#38bdf8 48%,#22d3ee)!important;
+  -webkit-background-clip:text!important;
+  -webkit-text-fill-color:transparent!important;
+}
+body.bright .hero h1,
+body.bright h1,
+body:not(.dark).vani-public-theme .hero h1,
+body:not(.dark).vani-public-theme h1{
+  background:linear-gradient(90deg,#18181b,#b7791f 52%,#f59e0b)!important;
+  -webkit-background-clip:text!important;
+  -webkit-text-fill-color:transparent!important;
+}
+.hero p,p,li,.subtitle,.footer,.checkout-head p,.checkout-help,.note,td,th{
+  color:#cbd5e1;
+}
+body.bright .hero p,
+body.bright p,
+body.bright li,
+body.bright .subtitle,
+body.bright .footer,
+body.bright .checkout-head p,
+body.bright .checkout-help,
+body.bright .note,
+body.bright td,
+body.bright th,
+body:not(.dark).vani-public-theme .hero p,
+body:not(.dark).vani-public-theme p,
+body:not(.dark).vani-public-theme li,
+body:not(.dark).vani-public-theme .subtitle,
+body:not(.dark).vani-public-theme .footer,
+body:not(.dark).vani-public-theme .checkout-head p,
+body:not(.dark).vani-public-theme .checkout-help,
+body:not(.dark).vani-public-theme .note,
+body:not(.dark).vani-public-theme td,
+body:not(.dark).vani-public-theme th{
+  color:#475569!important;
+}
+.card,.toc,.content-card,.panel,.form-card,.checkout-panel,.wallet-note,.detail,.trust-card,.highlight,.assurance{
+  background:linear-gradient(145deg,rgba(2,12,28,.78),rgba(5,28,48,.68))!important;
+  border-color:rgba(56,189,248,.2)!important;
+  box-shadow:0 22px 55px rgba(0,0,0,.28)!important;
+}
+body.bright .card,
+body.bright .toc,
+body.bright .content-card,
+body.bright .panel,
+body.bright .form-card,
+body.bright .checkout-panel,
+body.bright .wallet-note,
+body.bright .detail,
+body.bright .trust-card,
+body.bright .highlight,
+body.bright .assurance,
+body:not(.dark).vani-public-theme .card,
+body:not(.dark).vani-public-theme .toc,
+body:not(.dark).vani-public-theme .content-card,
+body:not(.dark).vani-public-theme .panel,
+body:not(.dark).vani-public-theme .form-card,
+body:not(.dark).vani-public-theme .checkout-panel,
+body:not(.dark).vani-public-theme .wallet-note,
+body:not(.dark).vani-public-theme .detail,
+body:not(.dark).vani-public-theme .trust-card,
+body:not(.dark).vani-public-theme .highlight,
+body:not(.dark).vani-public-theme .assurance{
+  background:rgba(255,255,255,.86)!important;
+  border-color:rgba(217,119,6,.18)!important;
+  box-shadow:0 22px 55px rgba(180,83,9,.12)!important;
+}
+h2,.detail strong,.trust-card strong,label,.field label,.wallet-note strong{
+  color:#f8fafc!important;
+}
+body.bright h2,
+body.bright .detail strong,
+body.bright .trust-card strong,
+body.bright label,
+body.bright .field label,
+body.bright .wallet-note strong,
+body:not(.dark).vani-public-theme h2,
+body:not(.dark).vani-public-theme .detail strong,
+body:not(.dark).vani-public-theme .trust-card strong,
+body:not(.dark).vani-public-theme label,
+body:not(.dark).vani-public-theme .field label,
+body:not(.dark).vani-public-theme .wallet-note strong{
+  color:#111827!important;
+}
+input,select,textarea{
+  max-width:100%;
+  background:rgba(2,6,23,.52)!important;
+  color:#f8fafc!important;
+  border-color:rgba(56,189,248,.22)!important;
+}
+body.bright input,
+body.bright select,
+body.bright textarea,
+body:not(.dark).vani-public-theme input,
+body:not(.dark).vani-public-theme select,
+body:not(.dark).vani-public-theme textarea{
+  background:#fff!important;
+  color:#111827!important;
+  border-color:rgba(217,119,6,.22)!important;
+}
+a{color:#7dd3fc}
+body.bright a,body:not(.dark).vani-public-theme a{color:#b45309}
+footer{color:#94a3b8!important}
+@media(max-width:992px){
+  body{padding-left:0;padding-right:0}
+  .container{padding-left:16px!important;padding-right:16px!important}
+}

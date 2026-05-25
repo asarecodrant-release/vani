@@ -225,13 +225,21 @@ defer
   font-family:'Inter',sans-serif;
 }
 
+html{
+  width:100%;
+  max-width:100%;
+  overflow-x:hidden;
+}
+
 body{
   min-height:100vh;
+  width:100%;
+  max-width:100%;
 
   background:
-    radial-gradient(circle at top left,rgba(99,102,241,.35),transparent 34%),
-    radial-gradient(circle at 88% 8%,rgba(236,72,153,.24),transparent 30%),
-    linear-gradient(135deg,#020617 0%,#08111f 48%,#111827 100%);
+    radial-gradient(circle at 15% 14%,rgba(0,140,255,.24),transparent 34%),
+    radial-gradient(circle at 88% 10%,rgba(0,255,209,.12),transparent 30%),
+    linear-gradient(135deg,#01030a 0%,#03111f 48%,#02040a 100%);
 
   display:flex;
   align-items:center;
@@ -246,13 +254,23 @@ body{
 
 body.bright{
   background:
-    radial-gradient(circle at top left,rgba(99,102,241,.16),transparent 34%),
-    radial-gradient(circle at 88% 8%,rgba(236,72,153,.13),transparent 30%),
-    linear-gradient(135deg,#f8fafc 0%,#eef2ff 48%,#fdf2f8 100%);
+    radial-gradient(circle at 16% 12%,rgba(245,158,11,.16),transparent 32%),
+    radial-gradient(circle at 84% 6%,rgba(250,204,21,.2),transparent 30%),
+    linear-gradient(135deg,#fffaf0 0%,#fff7e6 44%,#f8fafc 100%);
   color:#334155;
 }
 
+.site-bg-canvas{
+  position:fixed;
+  inset:0;
+  width:100%;
+  height:100%;
+  z-index:0;
+  pointer-events:none;
+}
+
 .bg-circle{
+  display:none;
   position:absolute;
   border-radius:50%;
   filter:blur(100px);
@@ -278,12 +296,15 @@ body.bright{
 
 .container{
   width:100%;
+  min-width:0;
   max-width:430px;
   position:relative;
   z-index:2;
 }
 
 .card{
+  width:100%;
+  min-width:0;
 
   background:
     linear-gradient(145deg,rgba(15,23,42,.9),rgba(30,41,59,.72));
@@ -291,7 +312,7 @@ body.bright{
   backdrop-filter:blur(20px);
 
   border:
-    1px solid rgba(129,140,248,.24);
+    1px solid rgba(56,189,248,.2);
 
   border-radius:28px;
 
@@ -303,9 +324,9 @@ body.bright{
 }
 
 body.bright .card{
-  background:rgba(255,255,255,.88);
-  border-color:rgba(99,102,241,.16);
-  box-shadow:0 24px 72px rgba(15,23,42,.13);
+  background:rgba(255,255,255,.86);
+  border-color:rgba(217,119,6,.2);
+  box-shadow:0 24px 72px rgba(180,83,9,.13);
 }
 
 .logo{
@@ -323,34 +344,35 @@ body.bright .card{
   padding:7px 10px 9px 6px;
   border-radius:16px;
   background:linear-gradient(135deg,rgba(99,102,241,.12),rgba(236,72,153,.1));
-  border:1px solid rgba(129,140,248,.18);
+  border:1px solid rgba(56,189,248,.22);
   width:max-content;
+  max-width:100%;
   margin-left:auto;
   margin-right:auto;
 }
 
 body.bright .logo{
   color:#111827;
-  background:linear-gradient(135deg,rgba(99,102,241,.08),rgba(236,72,153,.06));
-  border-color:rgba(99,102,241,.14);
+  background:linear-gradient(135deg,rgba(245,158,11,.12),rgba(250,204,21,.1));
+  border-color:rgba(217,119,6,.18);
 }
 
 .logo img{
   width:58px;
   height:58px;
   object-fit:contain;
-  filter:drop-shadow(0 0 18px rgba(99,102,241,.7)) drop-shadow(0 0 24px rgba(236,72,153,.28));
+  filter:drop-shadow(0 0 18px rgba(56,189,248,.72)) drop-shadow(0 0 24px rgba(34,211,238,.24));
 }
 
 .logo span{
-  background:linear-gradient(90deg,#ffffff,#c4b5fd 48%,#f9a8d4);
+  background:linear-gradient(90deg,#ffffff,#93c5fd 52%,#67e8f9);
   -webkit-background-clip:text;
   -webkit-text-fill-color:transparent;
   filter:drop-shadow(0 0 14px rgba(129,140,248,.28));
 }
 
 body.bright .logo span{
-  background:linear-gradient(90deg,#4f46e5,#ec4899);
+  background:linear-gradient(90deg,#18181b,#b7791f 52%,#f59e0b);
   -webkit-background-clip:text;
   -webkit-text-fill-color:transparent;
 }
@@ -366,10 +388,17 @@ h1{
   background:
     linear-gradient(
       90deg,
-      #6366f1,
-      #ec4899
+      #eaf7ff,
+      #38bdf8 48%,
+      #22d3ee
     );
 
+  -webkit-background-clip:text;
+  -webkit-text-fill-color:transparent;
+}
+
+body.bright h1{
+  background:linear-gradient(90deg,#18181b,#b7791f 52%,#f59e0b);
   -webkit-background-clip:text;
   -webkit-text-fill-color:transparent;
 }
@@ -418,6 +447,7 @@ body.bright .reset-title{
 .input-group input{
 
   width:100%;
+  max-width:100%;
 
   padding:15px 16px;
 
@@ -460,10 +490,10 @@ body.bright .input-group input{
 
   background:
     linear-gradient(
-      90deg,
-      #6366f1,
-      #8b5cf6,
-      #ec4899
+      135deg,
+      #38bdf8,
+      #2563eb,
+      #0f172a
     );
 
   color:white;
@@ -475,6 +505,11 @@ body.bright .input-group input{
   cursor:pointer;
 
   margin-top:8px;
+}
+
+body.bright .login-btn{
+  background:linear-gradient(135deg,#fef3c7,#facc15,#d97706);
+  color:#111827;
 }
 
 .link-btn{
@@ -549,12 +584,19 @@ body.bright .remember-row strong{
 .google-wrapper{
 
   width:100%;
+  max-width:100%;
+  overflow:hidden;
 
   display:flex;
 
   justify-content:center;
 
   margin-bottom:22px;
+}
+
+.google-wrapper > *,
+.google-wrapper iframe{
+  max-width:100%!important;
 }
 
 .footer{
@@ -642,9 +684,9 @@ body.bright .remember-row strong{
 body.bright .home-link,
 body.bright .theme-btn,
 body.bright .page-actions .site-menu-trigger{
-  background:#fff;
-  color:#334155;
-  border-color:rgba(99,102,241,.16);
+  background:rgba(255,255,255,.86);
+  color:#3f2f15;
+  border-color:rgba(217,119,6,.2);
 }
 
 .page-actions .site-menu-trigger{
@@ -654,6 +696,11 @@ body.bright .page-actions .site-menu-trigger{
 }
 
 @media(max-width:900px){
+  body{
+    align-items:flex-start;
+    padding:76px 14px 18px;
+  }
+
   .home-link{
     display:none;
   }
@@ -661,7 +708,18 @@ body.bright .page-actions .site-menu-trigger{
   .page-actions{
     top:14px;
     right:14px;
+    max-width:calc(100vw - 28px);
   }
+
+  .container{max-width:100%}
+  .card{padding:30px 18px;border-radius:22px}
+  .logo{width:fit-content}
+  h1{font-size:28px}
+}
+
+@media(max-width:420px){
+  .theme-btn{padding:0 12px;font-size:13px}
+  .card{padding:26px 15px}
 }
 
 </style>
@@ -671,13 +729,15 @@ body.bright .page-actions .site-menu-trigger{
 <body>
 <script>
 try {
-    const initialTheme = localStorage.getItem("vani-index-theme") || localStorage.getItem("vani_dashboard_theme") || localStorage.getItem("vani_setup_theme") || "bright";
+    const initialTheme = localStorage.getItem("vani-index-theme") || localStorage.getItem("vani_dashboard_theme") || localStorage.getItem("vani_setup_theme") || "dark";
     document.body.classList.toggle("bright", initialTheme !== "dark");
     document.body.classList.toggle("dark", initialTheme === "dark");
 } catch (error) {
-    document.body.classList.add("bright");
+    document.body.classList.add("dark");
 }
 </script>
+
+<canvas class="site-bg-canvas" id="siteBgCanvas" aria-hidden="true"></canvas>
 
 <div class="page-actions">
   <a class="home-link" href="index.php">Home</a>
@@ -833,6 +893,10 @@ Get Started
 
 <script>
 const themeToggle = document.getElementById("themeToggle");
+const siteBgCanvas = document.getElementById("siteBgCanvas");
+const siteBgCtx = siteBgCanvas?.getContext("2d");
+let siteBgNodes = [];
+
 function setVaniTheme(mode) {
     const dark = mode === "dark";
     document.body.classList.toggle("bright", !dark);
@@ -841,11 +905,85 @@ function setVaniTheme(mode) {
         themeToggle.textContent = dark ? "Bright Mode" : "Dark Mode";
         themeToggle.setAttribute("aria-pressed", String(dark));
     }
-    localStorage.setItem("vani-index-theme", dark ? "dark" : "bright");
-    localStorage.removeItem("vani_dashboard_theme");
-    localStorage.removeItem("vani_setup_theme");
+    const themeValue = dark ? "dark" : "bright";
+    localStorage.setItem("vani-index-theme", themeValue);
+    localStorage.setItem("vani_dashboard_theme", themeValue);
+    localStorage.setItem("vani_setup_theme", themeValue);
 }
-setVaniTheme(localStorage.getItem("vani-index-theme") || localStorage.getItem("vani_dashboard_theme") || localStorage.getItem("vani_setup_theme") || "bright");
+setVaniTheme(localStorage.getItem("vani-index-theme") || localStorage.getItem("vani_dashboard_theme") || localStorage.getItem("vani_setup_theme") || "dark");
+
+function resizeSiteBackground() {
+    if (!siteBgCanvas || !siteBgCtx) return;
+    const ratio = window.devicePixelRatio || 1;
+    siteBgCanvas.width = Math.floor(window.innerWidth * ratio);
+    siteBgCanvas.height = Math.floor(window.innerHeight * ratio);
+    siteBgCanvas.style.width = window.innerWidth + "px";
+    siteBgCanvas.style.height = window.innerHeight + "px";
+    siteBgCtx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    const count = Math.max(46, Math.min(110, Math.floor(window.innerWidth * window.innerHeight / 13000)));
+    siteBgNodes = Array.from({length: count}, (_, index) => ({
+        x: Math.random() * window.innerWidth,
+        y: Math.random() * window.innerHeight,
+        vx: (Math.random() - .5) * .28,
+        vy: (Math.random() - .5) * .28,
+        r: Math.random() < .16 ? 2.35 : 1.45,
+        kind: Math.random() < .1 ? "red" : (Math.random() < .26 ? "silver" : "core"),
+        phase: Math.random() * Math.PI * 2 + index
+    }));
+}
+
+function siteDotColor(node, alpha) {
+    const dark = document.body.classList.contains("dark");
+    if (node.kind === "red") return `rgba(255,56,76,${alpha})`;
+    if (node.kind === "silver") return dark ? `rgba(225,238,242,${alpha})` : `rgba(168,162,158,${alpha})`;
+    return dark ? `rgba(56,189,248,${alpha})` : `rgba(217,119,6,${alpha})`;
+}
+
+function drawSiteBackground(time) {
+    if (!siteBgCtx) return;
+    const dark = document.body.classList.contains("dark");
+    siteBgCtx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+    for (const node of siteBgNodes) {
+        node.x += node.vx;
+        node.y += node.vy;
+        if (node.x < -20) node.x = window.innerWidth + 20;
+        if (node.x > window.innerWidth + 20) node.x = -20;
+        if (node.y < -20) node.y = window.innerHeight + 20;
+        if (node.y > window.innerHeight + 20) node.y = -20;
+    }
+    for (let i = 0; i < siteBgNodes.length; i++) {
+        for (let j = i + 1; j < siteBgNodes.length; j++) {
+            const a = siteBgNodes[i], b = siteBgNodes[j];
+            const dx = a.x - b.x, dy = a.y - b.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < 126) {
+                const alpha = (1 - dist / 126) * (dark ? .22 : .14);
+                siteBgCtx.strokeStyle = dark ? `rgba(34,211,238,${alpha})` : `rgba(202,138,4,${alpha})`;
+                siteBgCtx.lineWidth = 1;
+                siteBgCtx.beginPath();
+                siteBgCtx.moveTo(a.x, a.y);
+                siteBgCtx.lineTo(b.x, b.y);
+                siteBgCtx.stroke();
+            }
+        }
+    }
+    for (const node of siteBgNodes) {
+        const blink = .34 + Math.abs(Math.sin(time / 620 + node.phase)) * .58;
+        siteBgCtx.fillStyle = siteDotColor(node, blink);
+        siteBgCtx.shadowColor = siteDotColor(node, .8);
+        siteBgCtx.shadowBlur = node.kind === "red" ? 11 : 7;
+        siteBgCtx.beginPath();
+        siteBgCtx.arc(node.x, node.y, node.r * blink, 0, Math.PI * 2);
+        siteBgCtx.fill();
+    }
+    siteBgCtx.shadowBlur = 0;
+    requestAnimationFrame(drawSiteBackground);
+}
+
+resizeSiteBackground();
+window.addEventListener("resize", resizeSiteBackground);
+requestAnimationFrame(drawSiteBackground);
+
 themeToggle?.addEventListener("click", () => {
     setVaniTheme(document.body.classList.contains("dark") ? "bright" : "dark");
 });

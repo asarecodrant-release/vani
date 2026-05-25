@@ -68,6 +68,8 @@ function field_value($value) {
 <link rel="icon" type="image/png" href="images/logo_img.png">
 <title>Contact - Vani AI</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/public-theme.css">
+<script defer src="js/public-theme.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;font-family:'Inter',sans-serif}
 body{

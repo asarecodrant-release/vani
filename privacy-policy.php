@@ -9,6 +9,8 @@ $updatedAt = 'May 25, 2026';
 <link rel="icon" type="image/png" href="images/logo_img.png">
 <title>Privacy Policy - Vani AI</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/public-theme.css">
+<script defer src="js/public-theme.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;font-family:'Inter',sans-serif}
 body{
@@ -248,19 +250,5 @@ connect-src https://vani.codrant.com;</div>
 </main>
 
 <footer>© <?php echo date("Y"); ?> Vani AI by Codrant</footer>
-<script>
-const themeToggle = document.getElementById("themeToggle");
-function setTheme(mode) {
-  const dark = mode === "dark";
-  document.body.classList.toggle("dark", dark);
-  if (themeToggle) {
-    themeToggle.textContent = dark ? "Bright Mode" : "Dark Mode";
-    themeToggle.setAttribute("aria-pressed", String(dark));
-  }
-  localStorage.setItem("vani-index-theme", dark ? "dark" : "bright");
-}
-setTheme(localStorage.getItem("vani-index-theme") || "bright");
-themeToggle?.addEventListener("click", () => setTheme(document.body.classList.contains("dark") ? "bright" : "dark"));
-</script>
 </body>
 </html>

@@ -107,6 +107,43 @@
   border-color:rgba(196,181,253,.5);
   color:#fff;
 }
+body.bright .site-menu-trigger,
+body:not(.dark).vani-public-theme .site-menu-trigger{
+  background:rgba(255,255,255,.86);
+  color:#3f2f15;
+  border-color:rgba(217,119,6,.2);
+}
+body.bright .site-menu-overlay,
+body:not(.dark).vani-public-theme .site-menu-overlay{
+  background:rgba(63,47,21,.28);
+}
+body.bright .site-side-menu,
+body:not(.dark).vani-public-theme .site-side-menu{
+  background:linear-gradient(180deg,rgba(255,255,255,.98),rgba(255,247,230,.98));
+  border-left-color:rgba(217,119,6,.2);
+  box-shadow:-24px 0 70px rgba(180,83,9,.18);
+}
+body.bright .site-side-menu-head h3,
+body:not(.dark).vani-public-theme .site-side-menu-head h3{
+  color:#111827;
+}
+body.bright .site-menu-close,
+body.bright .site-side-menu-link,
+body:not(.dark).vani-public-theme .site-menu-close,
+body:not(.dark).vani-public-theme .site-side-menu-link{
+  background:#fff;
+  color:#3f2f15;
+  border-color:rgba(217,119,6,.18);
+}
+body.bright .site-side-menu-link.primary,
+body:not(.dark).vani-public-theme .site-side-menu-link.primary{
+  background:linear-gradient(135deg,#fef3c7,#facc15,#d97706);
+  color:#111827;
+  box-shadow:0 12px 26px rgba(217,119,6,.22);
+}
+body.dark .site-side-menu-link.primary{
+  background:linear-gradient(135deg,#38bdf8,#2563eb,#0f172a);
+}
 </style>
 
 <div class="site-menu-overlay" id="siteMenuOverlay" aria-hidden="true"></div>

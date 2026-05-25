@@ -171,6 +171,8 @@ button:hover {
   
 </style>
 <link rel="stylesheet" href="css/setup-theme.css">
+<link rel="stylesheet" href="css/public-theme.css">
+<script defer src="js/public-theme.js"></script>
 </head>
 
 <body>
