@@ -4227,6 +4227,27 @@ function enabled_default_faq_answer(string $message, array $settings, array $sig
     return null;
 }
 
+function enabled_default_faq_suggestions(array $settings, array $signup, string $customerId): array {
+    $states = default_faq_settings_map($settings['default_faq_settings'] ?? []);
+    $contact = default_faq_contact_parts($customerId, $settings, $signup);
+    $defs = default_faq_definitions($contact);
+    $suggestions = [];
+    foreach ($defs as $key => $definition) {
+        if ($key === 'fallback_contact') {
+            continue;
+        }
+        $item = default_faq_with_saved_values($definition, $states[$key] ?? []);
+        if (!$item['enabled']) {
+            continue;
+        }
+        $suggestions[] = [
+            "default_faq_key" => $key,
+            "question" => (string)$item['question']
+        ];
+    }
+    return $suggestions;
+}
+
 if ($action === "chat") {
 
     $data = getJSON();
@@ -4234,6 +4255,7 @@ if ($action === "chat") {
     $customer_id = $data['customer_id'] ?? $_GET['customer_id'] ?? '';
     $message = $data['message'] ?? '';
     $selectedFaqId = (int)($data['faq_id'] ?? $data['question_id'] ?? 0);
+    $selectedDefaultFaqKey = preg_replace('/[^a-z0-9_]/', '', strtolower((string)($data['default_faq_key'] ?? '')));
 
     if (!$customer_id || !$message) {
         echo json_encode(["error" => "Missing customer_id or message"]);
@@ -4274,8 +4296,22 @@ if ($action === "chat") {
 
     $reply = null;
     $matchedQuestionId = null;
+    $matchedDefaultFaqKey = null;
 
-    if ($selectedFaqId > 0) {
+    $defaultSuggestions = [];
+    if ($selectedDefaultFaqKey !== '') {
+        $defaultItems = default_faq_settings_map($settingsRow['default_faq_settings'] ?? []);
+        $defaultDefinitions = default_faq_definitions(default_faq_contact_parts(trim($customer_id), $settingsRow, $signup['data'][0] ?? []));
+        if (!empty($defaultDefinitions[$selectedDefaultFaqKey])) {
+            $defaultItem = default_faq_with_saved_values($defaultDefinitions[$selectedDefaultFaqKey], $defaultItems[$selectedDefaultFaqKey] ?? []);
+            if (!empty($defaultItem['enabled'])) {
+                $reply = (string)$defaultItem['answer'];
+                $matchedDefaultFaqKey = $selectedDefaultFaqKey;
+            }
+        }
+    }
+
+    if (($reply === null || $reply === '') && $selectedFaqId > 0) {
         $selectedFaqRows = safe_rows(supabase(
             "GET",
             "faq_questions?select=id,question,answer&customer_id=eq." . urlencode(trim($customer_id)) . "&id=eq." . urlencode((string)$selectedFaqId) . "&limit=1"
@@ -4316,17 +4352,19 @@ if ($action === "chat") {
         }
     }
 
-    $answered = (bool)$matchedQuestionId;
+    $answered = (bool)$matchedQuestionId || $matchedDefaultFaqKey !== null;
     if (!$reply) {
         $defaultFaqMatch = enabled_default_faq_answer($message, $settingsRow, $signup['data'][0] ?? [], trim($customer_id));
         if ($defaultFaqMatch) {
             $reply = $defaultFaqMatch['answer'];
+            $matchedDefaultFaqKey = (string)($defaultFaqMatch['key'] ?? '');
             $answered = true;
         }
     }
     if (!$reply) {
         $defaultFallback = enabled_default_faq_answer($message, $settingsRow, $signup['data'][0] ?? [], trim($customer_id), true);
         $reply = $defaultFallback['answer'] ?? "Sorry, I don't have an answer for that yet.";
+        $defaultSuggestions = enabled_default_faq_suggestions($settingsRow, $signup['data'][0] ?? [], trim($customer_id));
     }
 
     $conversationRes = supabase(
@@ -4355,7 +4393,13 @@ if ($action === "chat") {
         );
     }
 
-    echo json_encode(["reply" => $reply]);
+    echo json_encode([
+        "reply" => $reply,
+        "answered" => $answered,
+        "matched_faq_id" => $matchedQuestionId,
+        "matched_default_faq_key" => $matchedDefaultFaqKey,
+        "default_suggestions" => $defaultSuggestions
+    ]);
     exit;
 }
 

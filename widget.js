@@ -633,8 +633,14 @@
       };
       option.onclick = async () => {
         input.value = item.question;
-        await trackUsage(item.id);
-        input.dataset.selectedFaqId = item.id || "";
+        if (item.default_faq_key) {
+          delete input.dataset.selectedFaqId;
+          input.dataset.selectedDefaultFaqKey = item.default_faq_key;
+        } else {
+          await trackUsage(item.id);
+          input.dataset.selectedFaqId = item.id || "";
+          delete input.dataset.selectedDefaultFaqKey;
+        }
         window.sendMessage();
       };
       suggestionsBox.appendChild(option);
@@ -2229,6 +2235,7 @@
       const message = input.value.trim();
       if (!message) return;
       const selectedFaqId = input.dataset.selectedFaqId || "";
+      const selectedDefaultFaqKey = input.dataset.selectedDefaultFaqKey || "";
 
       const leadCfg = (config.lead_generation || {});
       const leadState = loadLeadState(customerId);
@@ -2244,12 +2251,14 @@
       addMessage(messages, message, "user");
       emitLiveAction("messageSent", {
         message,
-        faq_id: selectedFaqId || null
+        faq_id: selectedFaqId || null,
+        default_faq_key: selectedDefaultFaqKey || null
       });
       activeFaqActions = [];
       activeFaqActionContext = {};
       input.value = "";
       delete input.dataset.selectedFaqId;
+      delete input.dataset.selectedDefaultFaqKey;
       suggestionsBox.innerHTML = "";
       suggestionsBox.style.display = "none";
       sessionChatStartedAt = sessionChatStartedAt || new Date().toISOString();
@@ -2261,6 +2270,7 @@
         customer_id: customerId,
         message,
         faq_id: selectedFaqId,
+        default_faq_key: selectedDefaultFaqKey,
         user_id: userId,
         session_id: sessionId,
         source_url: sourceUrl,
@@ -2282,7 +2292,7 @@
         message,
         matched_faq_id: response.matched_faq_id || null
       };
-      renderSuggestions(suggestionsBox, input, [], {includeFaqs: false});
+      renderSuggestions(suggestionsBox, input, Array.isArray(response.default_suggestions) ? response.default_suggestions : [], {includeFaqs: true});
       emitLiveAction(response.answered ? "faqAnswered" : "unknownQuestion", {
         message,
         reply: response.reply || "",

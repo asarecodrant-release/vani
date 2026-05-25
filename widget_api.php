@@ -81,6 +81,96 @@ function widget_scheduled_faq_actions(string $customerId, array $settings, strin
     ], $rows));
 }
 
+function widget_default_faq_settings_map($raw): array {
+    if (is_string($raw)) {
+        $decoded = json_decode($raw, true);
+        $raw = is_array($decoded) ? $decoded : [];
+    }
+    return is_array($raw) ? $raw : [];
+}
+
+function widget_default_faq_contact_parts(string $customerId, array $settings, array $signup): array {
+    $email = trim((string)($settings['handoff_email'] ?? ''));
+    if ($email === '') {
+        $email = trim((string)($signup['email'] ?? ''));
+    }
+    $phone = '';
+    $signupEmail = strtolower(trim((string)($signup['email'] ?? '')));
+    if ($signupEmail !== '') {
+        $profileRows = widget_safe_rows(supabase(
+            "GET",
+            "customer_profiles?select=country_code,mobile_number&email=eq." . urlencode($signupEmail) . "&limit=1"
+        ));
+        $profile = $profileRows[0] ?? [];
+        $mobile = preg_replace('/\D+/', '', (string)($profile['mobile_number'] ?? ''));
+        $code = preg_replace('/[^\d+]/', '', (string)($profile['country_code'] ?? ''));
+        if ($mobile !== '') {
+            $phone = $code . $mobile;
+            if ($phone !== '' && $phone[0] !== '+') {
+                $phone = '+' . ltrim($phone, '+0');
+            }
+        }
+    }
+    return [
+        "email" => $email,
+        "phone" => $phone,
+        "contact" => trim(($phone !== '' ? "phone " . $phone : '') . ($phone !== '' && $email !== '' ? " or " : '') . ($email !== '' ? "email " . $email : ''))
+    ];
+}
+
+function widget_default_faq_definitions(array $contact): array {
+    $contactText = $contact['contact'] !== '' ? $contact['contact'] : 'the support team';
+    return [
+        "fallback_contact" => [
+            "question" => "What happens if the chatbot cannot answer my question?",
+            "answer" => "I could not find the right answer for this question. Please contact " . $contactText . " and our team will help you."
+        ],
+        "contact_support" => [
+            "question" => "How can I contact support?",
+            "answer" => "You can contact our support team through " . $contactText . "."
+        ],
+        "business_hours" => [
+            "question" => "What are your business hours?",
+            "answer" => "Our team will confirm the current business hours for you. Please contact " . $contactText . " for the latest availability."
+        ],
+        "location_service_area" => [
+            "question" => "Where are you located or which areas do you serve?",
+            "answer" => "Please contact " . $contactText . " and our team will share the correct location or service area details."
+        ],
+        "human_agent" => [
+            "question" => "Can I talk to a human?",
+            "answer" => "Yes. Please contact " . $contactText . " and a team member will assist you."
+        ]
+    ];
+}
+
+function widget_default_faq_with_saved_values(array $definition, $saved): array {
+    if (!is_array($saved)) {
+        $saved = ["enabled" => $saved];
+    }
+    $question = trim((string)($saved['question'] ?? ''));
+    $answer = trim((string)($saved['answer'] ?? ''));
+    return [
+        "enabled" => array_key_exists('enabled', $saved) ? filter_var($saved['enabled'], FILTER_VALIDATE_BOOLEAN) : true,
+        "question" => $question !== '' ? $question : (string)$definition['question'],
+        "answer" => $answer !== '' ? $answer : (string)$definition['answer']
+    ];
+}
+
+function widget_default_faq_items(string $customerId, array $settings, array $signup): array {
+    $states = widget_default_faq_settings_map($settings['default_faq_settings'] ?? []);
+    $defs = widget_default_faq_definitions(widget_default_faq_contact_parts($customerId, $settings, $signup));
+    $items = [];
+    foreach ($defs as $key => $definition) {
+        $item = widget_default_faq_with_saved_values($definition, $states[$key] ?? []);
+        if (!$item['enabled']) {
+            continue;
+        }
+        $items[$key] = $item;
+    }
+    return $items;
+}
+
 function widget_webhook_deliver(string $customerId, string $event, array $data = [], array $settings = [], string $activePlan = ''): bool {
     if ($customerId === '') {
         return false;
@@ -1564,6 +1654,7 @@ if ($action === "chat") {
     $customerId = widget_customer_id($data);
     $message = trim((string)($data['message'] ?? ''));
     $selectedFaqId = (int)($data['faq_id'] ?? $data['question_id'] ?? 0);
+    $selectedDefaultFaqKey = preg_replace('/[^a-z0-9_]/', '', strtolower((string)($data['default_faq_key'] ?? '')));
     $userId = trim((string)($data['user_id'] ?? ''));
     $sourceUrl = trim((string)($data['source_url'] ?? ''));
 
@@ -1580,8 +1671,9 @@ if ($action === "chat") {
         ]);
     }
 
+    $signup = widget_get_signup($customerId);
     $activePlan = widget_billing_plan_for_customer($customerId);
-    $access = widget_access_result($settings, widget_get_signup($customerId), widget_request_source_url($data), billing_feature_enabled($activePlan, 'allowed_domains'));
+    $access = widget_access_result($settings, $signup, widget_request_source_url($data), billing_feature_enabled($activePlan, 'allowed_domains'));
     if (!$access['allowed']) {
         widget_json_response([
             "success" => true,
@@ -1597,8 +1689,15 @@ if ($action === "chat") {
 
     $reply = null;
     $matchedFaqId = null;
+    $matchedDefaultFaqKey = null;
 
-    if ($selectedFaqId > 0) {
+    $defaultFaqItems = widget_default_faq_items($customerId, $settings, $signup);
+    if ($selectedDefaultFaqKey !== '' && !empty($defaultFaqItems[$selectedDefaultFaqKey])) {
+        $reply = (string)$defaultFaqItems[$selectedDefaultFaqKey]['answer'];
+        $matchedDefaultFaqKey = $selectedDefaultFaqKey;
+    }
+
+    if (($reply === null || $reply === '') && $selectedFaqId > 0) {
         $selectedRows = widget_safe_rows(supabase(
             "GET",
             "faq_questions?select=id,question,answer&customer_id=eq." . urlencode($customerId) . "&id=eq." . urlencode((string)$selectedFaqId) . "&limit=1"
@@ -1634,8 +1733,19 @@ if ($action === "chat") {
     }
 
     $answered = $reply !== null && $reply !== '';
+    $defaultSuggestions = [];
     if (!$answered) {
-        $reply = "Sorry, I don't have an answer for that yet. Please contact customer support for help.";
+        $fallback = $defaultFaqItems['fallback_contact'] ?? null;
+        $reply = $fallback['answer'] ?? "Sorry, I don't have an answer for that yet. Please contact customer support for help.";
+        foreach ($defaultFaqItems as $key => $item) {
+            if ($key === 'fallback_contact') {
+                continue;
+            }
+            $defaultSuggestions[] = [
+                "default_faq_key" => $key,
+                "question" => (string)$item['question']
+            ];
+        }
     }
 
     $conversationPayload = [
@@ -1699,6 +1809,8 @@ if ($action === "chat") {
         "reply" => $reply,
         "answered" => $answered,
         "matched_faq_id" => $matchedFaqId,
+        "matched_default_faq_key" => $matchedDefaultFaqKey,
+        "default_suggestions" => $defaultSuggestions,
         "actions" => $faqActions
     ]);
 }
