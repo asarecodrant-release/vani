@@ -3,6 +3,7 @@ header_remove('X-Frame-Options');
 header('Content-Security-Policy: frame-ancestors *');
 $customerId = preg_replace('/[^a-zA-Z0-9_-]/', '', (string)($_GET['id'] ?? ''));
 $sourceUrl = filter_var((string)($_GET['source_url'] ?? ''), FILTER_VALIDATE_URL) ? (string)$_GET['source_url'] : '';
+$widgetVersion = is_file(__DIR__ . '/widget.js') ? filemtime(__DIR__ . '/widget.js') : time();
 ?><!doctype html>
 <html lang="en">
 <head>
@@ -24,7 +25,7 @@ $sourceUrl = filter_var((string)($_GET['source_url'] ?? ''), FILTER_VALIDATE_URL
 </head>
 <body>
   <?php if ($customerId !== ''): ?>
-    <script src="widget.js" data-id="<?php echo htmlspecialchars($customerId, ENT_QUOTES, 'UTF-8'); ?>" data-source-url="<?php echo htmlspecialchars($sourceUrl, ENT_QUOTES, 'UTF-8'); ?>"></script>
+    <script src="widget.js?v=<?php echo (int)$widgetVersion; ?>" data-id="<?php echo htmlspecialchars($customerId, ENT_QUOTES, 'UTF-8'); ?>" data-source-url="<?php echo htmlspecialchars($sourceUrl, ENT_QUOTES, 'UTF-8'); ?>"></script>
   <?php endif; ?>
 </body>
 </html>
