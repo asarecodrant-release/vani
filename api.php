@@ -2016,7 +2016,7 @@ if ($action === "customer_api_profile") {
     ));
     $settings = safe_rows(supabase(
         "GET",
-        "chatbot_settings?select=bot_name,welcome_message,theme_color,theme_pattern,position,avatar_url,language,is_active,website_verification_enabled,allowed_domains_enabled,allowed_domains,live_chat_actions_enabled,faq_actions_enabled,faq_category_menu_enabled,webhook_url,verification_status,created_at,updated_at&customer_id=eq." . urlencode($customerId) . "&limit=1"
+        "chatbot_settings?select=bot_name,welcome_message,theme_color,theme_pattern,position,avatar_url,language,is_active,chat_open_by_default,user_input_enabled,website_verification_enabled,allowed_domains_enabled,allowed_domains,live_chat_actions_enabled,faq_actions_enabled,faq_category_menu_enabled,webhook_url,verification_status,created_at,updated_at&customer_id=eq." . urlencode($customerId) . "&limit=1"
     ));
     customer_api_json($validation, "profile", [
         "profile" => $profile[0] ?? null,
@@ -4702,6 +4702,8 @@ if ($action === "save_dashboard_settings") {
         "avatar_url",
         "language",
         "is_active",
+        "chat_open_by_default",
+        "user_input_enabled",
         "api_key",
         "rate_limit",
         "notification_preference",

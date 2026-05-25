@@ -1609,6 +1609,8 @@ if ($action === "get_widget_config" || $action === "get_theme") {
         "position" => $settings['position'] ?? 'right',
         "language" => $settings['language'] ?? 'English',
         "is_active" => widget_bool($settings['is_active'] ?? true, true) && $access['allowed'],
+        "chat_open_by_default" => widget_bool($settings['chat_open_by_default'] ?? false),
+        "user_input_enabled" => widget_bool($settings['user_input_enabled'] ?? true, true),
         "billing" => [
             "active_plan" => $activePlan,
             "email_otp" => billing_feature_enabled($activePlan, 'email_otp'),
@@ -1817,8 +1819,17 @@ if ($action === "chat") {
 
 if ($action === "get_top_faqs") {
     $customerId = widget_customer_id();
+    $showAll = widget_bool($_GET['all'] ?? false);
     if (!$customerId) {
         widget_json_response(["success" => false, "message" => "Missing customer_id"], 400);
+    }
+
+    if ($showAll) {
+        $res = supabase(
+            "GET",
+            "faq_questions?select=id,question&customer_id=eq." . urlencode($customerId) . widget_faq_active_query_suffix($customerId, "category.asc,question.asc")
+        );
+        widget_json_response(["success" => true, "data" => widget_safe_rows($res)]);
     }
 
     $usageRows = widget_safe_rows(supabase(
@@ -1890,6 +1901,7 @@ if ($action === "get_faq_categories") {
 if ($action === "get_faqs_by_category") {
     $customerId = widget_customer_id();
     $category = trim((string)($_GET['category'] ?? ''));
+    $showAll = widget_bool($_GET['all'] ?? false);
     if (!$customerId || $category === '') {
         widget_json_response(["success" => false, "message" => "Missing customer_id or category"], 400);
     }
@@ -1898,7 +1910,8 @@ if ($action === "get_faqs_by_category") {
         "GET",
         "faq_questions?select=id,question,category&customer_id=eq." . urlencode($customerId) . "&category=eq." . urlencode($category) . widget_faq_active_query_suffix($customerId)
     );
-    widget_json_response(["success" => true, "data" => array_slice(widget_safe_rows($res), 0, 6)]);
+    $rows = widget_safe_rows($res);
+    widget_json_response(["success" => true, "data" => $showAll ? $rows : array_slice($rows, 0, 6)]);
 }
 
 if ($action === "track_widget_session") {

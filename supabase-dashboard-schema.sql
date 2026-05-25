@@ -14,6 +14,8 @@ create table if not exists public.chatbot_settings (
   avatar_url text,
   language text default 'English',
   is_active boolean not null default true,
+  chat_open_by_default boolean not null default false,
+  user_input_enabled boolean not null default true,
   api_key text,
   rate_limit integer not null default 100,
   notification_preference text default 'weekly_summary',
@@ -32,6 +34,12 @@ create table if not exists public.chatbot_settings (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.chatbot_settings
+  add column if not exists chat_open_by_default boolean not null default false;
+
+alter table public.chatbot_settings
+  add column if not exists user_input_enabled boolean not null default true;
 
 alter table public.chatbot_settings
   add column if not exists website_verification_enabled boolean not null default false;

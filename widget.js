@@ -90,6 +90,14 @@
     } catch (error) {}
   }
 
+  function userInputEnabled() {
+    return !(config.user_input_enabled === false || config.user_input_enabled === 0 || config.user_input_enabled === "0" || config.user_input_enabled === "false");
+  }
+
+  function fullFaqListQueryFlag() {
+    return userInputEnabled() ? "" : "&all=1";
+  }
+
   async function api(action, method = "GET", body = null, query = "") {
     try {
       const response = await fetch(`${apiBase}?action=${action}${query}`, {
@@ -854,7 +862,7 @@
   async function showFaqCategory(value, suggestionsBox, input, options = {}) {
     if (!suggestionsBox || !input) return;
     saveSelectedFaqCategory(value);
-    const response = await api("get_faqs_by_category", "GET", null, `&customer_id=${encodeURIComponent(customerId)}&category=${encodeURIComponent(value)}`);
+    const response = await api("get_faqs_by_category", "GET", null, `&customer_id=${encodeURIComponent(customerId)}&category=${encodeURIComponent(value)}${fullFaqListQueryFlag()}`);
     const items = Array.isArray(response.data) ? response.data : [];
     if (!options.preserveActions) {
       activeFaqActions = [];
@@ -1266,7 +1274,7 @@
       <div data-vani-suggestions style="max-height:160px;overflow:auto;background:transparent;border-top:0;padding:8px;display:grid;gap:7px;"></div>
       <div data-vani-lead-prompt style="display:none;padding:10px;border-top:1px solid #e5e7eb;background:#fff;"></div>
       <div data-vani-whatsapp-action style="display:none;padding:10px;border-top:1px solid #e5e7eb;background:#fff;"></div>
-      <div style="display:flex;border-top:1px solid #e5e7eb;background:#fff;">
+      <div data-vani-input-row style="display:flex;border-top:1px solid #e5e7eb;background:#fff;">
         <input data-vani-input placeholder="Type message..." style="flex:1;min-width:0;padding:12px;border:0;outline:0;font:inherit;">
         <button data-vani-send type="button" style="padding:0 15px;background:${color};color:#fff;border:0;font-weight:700;cursor:pointer;">Send</button>
       </div>
@@ -1279,10 +1287,17 @@
     const messages = box.querySelector("[data-vani-messages]");
     const input = box.querySelector("[data-vani-input]");
     const sendBtn = box.querySelector("[data-vani-send]");
+    const inputRow = box.querySelector("[data-vani-input-row]");
     const closeBtn = box.querySelector("[data-vani-close]");
     const suggestionsBox = box.querySelector("[data-vani-suggestions]");
     const whatsappAction = box.querySelector("[data-vani-whatsapp-action]");
     box.querySelector("[data-vani-title]").textContent = config.bot_name || "Chat Support";
+    if (!userInputEnabled() && inputRow) {
+      inputRow.style.display = "none";
+      input.setAttribute("aria-hidden", "true");
+      input.tabIndex = -1;
+      sendBtn.tabIndex = -1;
+    }
     const patternCss = patternBackground(config.theme_pattern || "none");
     if (messages && patternCss) {
       messages.style.backgroundImage = `${patternCss}, linear-gradient(180deg,#f8fafc 0%,#eef2ff 100%)`;
@@ -1306,7 +1321,7 @@
     }
 
     async function loadTop() {
-      if (activeFaqActions.length) {
+      if (activeFaqActions.length && userInputEnabled()) {
         renderSuggestions(suggestionsBox, input, [], {
           includeFaqs: false,
           showCategorySwitcher: isEnabled(config.faq_category_menu_enabled),
@@ -1320,7 +1335,7 @@
         await loadCategoryMenu();
         return;
       }
-      const response = await api("get_top_faqs", "GET", null, `&customer_id=${encodeURIComponent(customerId)}`);
+      const response = await api("get_top_faqs", "GET", null, `&customer_id=${encodeURIComponent(customerId)}${fullFaqListQueryFlag()}`);
       renderSuggestions(suggestionsBox, input, response.data || [], {
         showCategorySwitcher: isEnabled(config.faq_category_menu_enabled),
         currentCategory: selectedFaqCategory,
@@ -2421,7 +2436,9 @@
         message,
         matched_faq_id: response.matched_faq_id || null
       };
-      if (isEnabled(config.faq_category_menu_enabled) && selectedFaqCategory) {
+      if (!userInputEnabled()) {
+        await loadTop();
+      } else if (isEnabled(config.faq_category_menu_enabled) && selectedFaqCategory) {
         await loadSelectedCategoryFaqs({preserveActions: true});
       } else {
         renderSuggestions(suggestionsBox, input, Array.isArray(response.default_suggestions) ? response.default_suggestions : [], {
@@ -2448,7 +2465,7 @@
       sessionOpenedAt = sessionOpenedAt || new Date().toISOString();
       emitLiveAction("chatOpened", {opened_at: sessionOpenedAt});
       trackWidgetSessionSoon({opened_at: sessionOpenedAt});
-      input.focus();
+      if (userInputEnabled()) input.focus();
       loadTop();
       renderWhatsAppAction();
       renderLeadPrompt();
@@ -2473,8 +2490,11 @@
     greeting.onclick = icon.onclick;
     closeBtn.onclick = closeChat;
 
-    input.addEventListener("focus", loadTop);
+    input.addEventListener("focus", () => {
+      if (userInputEnabled()) loadTop();
+    });
     input.addEventListener("input", () => {
+      if (!userInputEnabled()) return;
       delete input.dataset.selectedFaqId;
       clearTimeout(debounce);
       debounce = setTimeout(() => searchFaqs(input.value.trim()), 180);
@@ -2486,6 +2506,10 @@
       }
     });
     sendBtn.onclick = window.sendMessage;
+
+    if (isEnabled(config.chat_open_by_default)) {
+      openChat();
+    }
 
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "hidden") {

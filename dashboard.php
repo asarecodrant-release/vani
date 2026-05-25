@@ -1232,6 +1232,10 @@ $position = first_value($settings, ['position'], 'right');
 $language = first_value($settings, ['language'], 'English');
 $rawActive = $settings['is_active'] ?? true;
 $isActive = is_bool($rawActive) ? $rawActive : ((string)$rawActive !== 'false');
+$chatOpenByDefault = filter_var($settings['chat_open_by_default'] ?? false, FILTER_VALIDATE_BOOLEAN);
+$userInputEnabled = array_key_exists('user_input_enabled', $settings)
+    ? filter_var($settings['user_input_enabled'], FILTER_VALIDATE_BOOLEAN)
+    : true;
 $websiteVerificationEnabled = filter_var($settings['website_verification_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
 $allowedDomainsEnabled = filter_var($settings['allowed_domains_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
 $allowedDomains = first_value($settings, ['allowed_domains'], '');
@@ -1504,13 +1508,27 @@ select:focus,input:focus,textarea:focus{box-shadow:0 0 0 3px rgba(99,102,241,.15
 .metric-delta{display:inline-flex;width:fit-content;margin-top:8px;border-radius:999px;padding:4px 8px;font-size:12px;font-weight:900;background:rgba(34,197,94,.12);color:#15803d}
 .metric-delta.bad{background:rgba(239,68,68,.12);color:#b91c1c}
 .metric-delta.flat{background:rgba(148,163,184,.14);color:var(--muted)}
-.chatbot-theme-preview{margin-top:12px;display:grid;gap:10px}
-.chatbot-theme-row{display:flex;align-items:flex-end;gap:9px;min-width:0}
-.chatbot-theme-avatar{width:42px;height:42px;object-fit:contain;border-radius:14px;border:1px solid var(--line);background:var(--panel-strong);padding:6px;flex:0 0 auto}
-.chatbot-theme-bubble{min-height:42px;max-width:100%;padding:10px 12px;border-radius:16px 16px 16px 5px;color:#fff;font-size:13px;font-weight:800;line-height:1.25;box-shadow:0 12px 24px rgba(15,23,42,.16);text-shadow:0 1px 12px rgba(0,0,0,.28);overflow:hidden}
-.chatbot-theme-bubble div{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.chatbot-theme-preview{margin-top:12px;border:1px solid var(--line);border-radius:16px;overflow:hidden;background:var(--panel-strong);box-shadow:0 16px 34px rgba(15,23,42,.11)}
+.chatbot-theme-header{display:flex;align-items:center;gap:10px;padding:10px 11px;color:#fff;font-weight:800;min-width:0}
+.chatbot-theme-avatar{width:34px;height:34px;object-fit:contain;border-radius:12px;border:1px solid rgba(255,255,255,.38);background:rgba(255,255,255,.92);padding:5px;flex:0 0 auto}
+.chatbot-theme-title{min-width:0;display:grid;gap:1px}
+.chatbot-theme-title strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;line-height:1.2}
+.chatbot-theme-title small{display:block;color:rgba(255,255,255,.78);font-size:10px;font-weight:800;line-height:1.2}
+.chatbot-theme-close{width:26px;height:26px;margin-left:auto;border-radius:999px;border:1px solid rgba(255,255,255,.35);display:grid;place-items:center;background:rgba(255,255,255,.14);font-size:16px;line-height:1}
+.chatbot-theme-body{display:grid;gap:9px;padding:12px;background:linear-gradient(180deg,#f8fafc 0%,#eef2ff 100%);min-height:132px}
+.chatbot-theme-row{display:flex;align-items:flex-end;gap:8px;min-width:0}
+.chatbot-theme-row.compact{padding-left:42px}
+.chatbot-theme-mini-avatar{width:32px;height:32px;object-fit:contain;border-radius:11px;border:1px solid var(--line);background:#fff;padding:5px;flex:0 0 auto}
+.chatbot-theme-bubble{min-height:38px;max-width:min(220px,100%);padding:9px 11px;border-radius:15px 15px 15px 5px;background:#fff!important;color:#0f172a;font-size:12px;font-weight:750;line-height:1.35;box-shadow:0 10px 24px rgba(15,23,42,.08);border:1px solid rgba(226,232,240,.9);overflow:hidden}
+.chatbot-theme-bubble div{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 .chatbot-theme-dots{display:flex;gap:4px;align-items:center}
-.chatbot-theme-dots i{width:6px;height:6px;border-radius:999px;background:rgba(255,255,255,.88);display:block}
+.chatbot-theme-dots i{width:6px;height:6px;border-radius:999px;background:var(--brand);display:block;opacity:.78}
+.chatbot-theme-input{display:flex;align-items:center;border-top:1px solid var(--line);background:#fff}
+.chatbot-theme-input span{flex:1;min-width:0;padding:10px 11px;color:#94a3b8;font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chatbot-theme-input b{align-self:stretch;display:grid;place-items:center;padding:0 12px;color:#fff;font-size:12px;font-weight:900}
+body.dark .chatbot-theme-preview{background:#111827}
+body.dark .chatbot-theme-body{background:linear-gradient(180deg,#111827 0%,#172554 100%)}
+body.dark .chatbot-theme-input{background:#0f172a}
 .popular-questions-metric{display:grid;align-content:start;gap:9px}
 .popular-question-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;border-bottom:1px solid var(--line);padding:7px 0}
 .popular-question-row:last-child{border-bottom:0}
@@ -2141,16 +2159,32 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
           <div class="panel metric">
             <span>Chatbot Theme</span>
             <div class="chatbot-theme-preview" aria-label="Selected chatbot theme preview">
-              <div class="chatbot-theme-row">
-                <?php if ($chatbotImage): ?><img class="chatbot-theme-avatar" id="overviewBotImagePreview" src="<?php echo h($chatbotImage); ?>" alt="Selected chatbot image"><?php endif; ?>
-                <div class="chatbot-theme-bubble" id="overviewThemeBubble" style="background:<?php echo h($themeColor); ?>">
-                  <div id="overviewThemeMessage"><?php echo h($welcomeMessage); ?></div>
+              <div class="chatbot-theme-header" id="overviewThemeBubble" style="background:<?php echo h($themeColor); ?>">
+                <?php if ($chatbotImage): ?>
+                  <img class="chatbot-theme-avatar" id="overviewBotImagePreview" src="<?php echo h($chatbotImage); ?>" alt="Selected chatbot image">
+                <?php endif; ?>
+                <div class="chatbot-theme-title">
+                  <strong id="overviewThemeTitle"><?php echo h($botName); ?></strong>
+                  <small>Online now</small>
+                </div>
+                <span class="chatbot-theme-close" aria-hidden="true">×</span>
+              </div>
+              <div class="chatbot-theme-body">
+                <div class="chatbot-theme-row">
+                  <?php if ($chatbotImage): ?><img class="chatbot-theme-mini-avatar" id="overviewBotMiniImagePreview" src="<?php echo h($chatbotImage); ?>" alt=""><?php endif; ?>
+                  <div class="chatbot-theme-bubble">
+                    <div id="overviewThemeMessage"><?php echo h($welcomeMessage); ?></div>
+                  </div>
+                </div>
+                <div class="chatbot-theme-row compact">
+                  <div class="chatbot-theme-bubble">
+                    <span class="chatbot-theme-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+                  </div>
                 </div>
               </div>
-              <div class="chatbot-theme-row" style="padding-left:51px">
-                <div class="chatbot-theme-bubble" id="overviewThemeTyping" style="background:<?php echo h($themeColor); ?>">
-                  <span class="chatbot-theme-dots" aria-hidden="true"><i></i><i></i><i></i></span>
-                </div>
+              <div class="chatbot-theme-input">
+                <span>Type message...</span>
+                <b id="overviewThemeTyping" style="background:<?php echo h($themeColor); ?>">Send</b>
               </div>
             </div>
             <small>Preview of the selected widget style.</small>
@@ -2204,6 +2238,26 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
             <input type="hidden" id="settingsCustomerId" value="<?php echo h($selectedBotId); ?>">
             <div class="field"><label>Bot Name</label><input id="botNameInput" value="<?php echo h($botName); ?>"></div>
             <div class="field"><label>Position</label><select id="positionInput"><option <?php echo $position === 'right' ? 'selected' : ''; ?>>right</option><option <?php echo $position === 'left' ? 'selected' : ''; ?>>left</option></select></div>
+            <div class="field">
+              <label>Open chat by default</label>
+              <div class="inline-row" style="justify-content:space-between">
+                <span class="input-help">Open the chatbot message box automatically when visitors land on the website.</span>
+                <label class="switch" title="Open chatbot by default">
+                  <input id="chatOpenDefaultToggle" type="checkbox" <?php echo $chatOpenByDefault ? 'checked' : ''; ?> aria-label="Open chatbot by default">
+                  <span class="switch-slider"></span>
+                </label>
+              </div>
+            </div>
+            <div class="field">
+              <label>User typing field</label>
+              <div class="inline-row" style="justify-content:space-between">
+                <span class="input-help">When OFF, visitors choose from FAQ category and FAQ question buttons only.</span>
+                <label class="switch" title="Allow visitors to type messages">
+                  <input id="userInputEnabledToggle" type="checkbox" <?php echo $userInputEnabled ? 'checked' : ''; ?> aria-label="Allow visitors to type messages">
+                  <span class="switch-slider"></span>
+                </label>
+              </div>
+            </div>
             <div class="field full"><label>Welcome Message</label><textarea id="welcomeInput"><?php echo h($welcomeMessage); ?></textarea></div>
             <div class="field"><label>Language</label><select id="languageInput"><option><?php echo h($language); ?></option><option>English</option><option>Hindi</option><option>Spanish</option><option>French</option></select></div>
             <div class="field full">
@@ -6427,7 +6481,9 @@ function setupSettingsPayload() {
     theme_pattern: document.getElementById("themePatternInput")?.value || "none",
     avatar_url: document.querySelector("input[name='dashboardBotImage']:checked")?.value || "",
     position: document.getElementById("positionInput")?.value || "right",
-    language: document.getElementById("languageInput")?.value || "English"
+    language: document.getElementById("languageInput")?.value || "English",
+    chat_open_by_default: !!document.getElementById("chatOpenDefaultToggle")?.checked,
+    user_input_enabled: !!document.getElementById("userInputEnabledToggle")?.checked
   };
 }
 
@@ -6439,6 +6495,7 @@ function updateDashboardSetupPreview(payload) {
   const welcomeMessage = payload.welcome_message || "Hi, how can I help you today?";
   document.getElementById("overviewBotNameText")?.replaceChildren(document.createTextNode(botName));
   document.getElementById("sidebarBotNameText")?.replaceChildren(document.createTextNode(botName));
+  document.getElementById("overviewThemeTitle")?.replaceChildren(document.createTextNode(botName));
   const deleteButton = document.getElementById("deleteChatbotBtn");
   if (deleteButton) deleteButton.dataset.botName = botName;
   document.getElementById("overviewThemeMessage")?.replaceChildren(document.createTextNode(welcomeMessage));
@@ -6452,6 +6509,8 @@ function updateDashboardSetupPreview(payload) {
   });
   const overviewImage = document.getElementById("overviewBotImagePreview");
   if (overviewImage && avatarUrl) overviewImage.src = avatarUrl;
+  const overviewMiniImage = document.getElementById("overviewBotMiniImagePreview");
+  if (overviewMiniImage && avatarUrl) overviewMiniImage.src = avatarUrl;
   if (analyticsReport) analyticsReport.bot_name = botName;
 }
 
@@ -6606,7 +6665,7 @@ document.getElementById("transferSubscriptionBtn")?.addEventListener("click", as
   document.getElementById(id)?.addEventListener("input", scheduleSetupAutosave);
 });
 
-["positionInput", "languageInput"].forEach(id => {
+["positionInput", "languageInput", "chatOpenDefaultToggle", "userInputEnabledToggle"].forEach(id => {
   document.getElementById(id)?.addEventListener("change", scheduleSetupAutosave);
 });
 
