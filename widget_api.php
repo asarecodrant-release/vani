@@ -1598,12 +1598,12 @@ if ($action === "get_widget_config" || $action === "get_theme") {
     if ($botName === '') {
         $botName = 'Chat Support';
     }
-    $faqFeedbackTriggers = $settings['faq_feedback_triggers'] ?? [];
-    if (is_string($faqFeedbackTriggers)) {
-        $decodedFeedbackTriggers = json_decode($faqFeedbackTriggers, true);
-        $faqFeedbackTriggers = is_array($decodedFeedbackTriggers) ? $decodedFeedbackTriggers : [];
+    $faqFeedbackActionIds = $settings['faq_feedback_action_ids'] ?? [];
+    if (is_string($faqFeedbackActionIds)) {
+        $decodedFeedbackActionIds = json_decode($faqFeedbackActionIds, true);
+        $faqFeedbackActionIds = is_array($decodedFeedbackActionIds) ? $decodedFeedbackActionIds : [];
     }
-    $faqFeedbackTriggers = array_values(array_intersect(['link', 'whatsapp', 'call', 'coupon', 'form'], array_map('strval', is_array($faqFeedbackTriggers) ? $faqFeedbackTriggers : [])));
+    $faqFeedbackActionIds = array_values(array_filter(array_map('strval', is_array($faqFeedbackActionIds) ? $faqFeedbackActionIds : []), fn($id) => preg_match('/^\d+$/', $id)));
 
     widget_json_response([
         "success" => true,
@@ -1633,7 +1633,7 @@ if ($action === "get_widget_config" || $action === "get_theme") {
         "faq_actions_enabled" => widget_bool($settings['faq_actions_enabled'] ?? false) && billing_feature_enabled($activePlan, 'faq_action_suggestions'),
         "faq_category_menu_enabled" => widget_bool($settings['faq_category_menu_enabled'] ?? false),
         "faq_feedback_enabled" => widget_bool($settings['faq_feedback_enabled'] ?? false),
-        "faq_feedback_triggers" => $faqFeedbackTriggers,
+        "faq_feedback_action_ids" => $faqFeedbackActionIds,
         "scheduled_faq_actions" => widget_scheduled_faq_actions($customerId, $settings, $activePlan),
         "verification_status" => $access['status'],
         "access_allowed" => $access['allowed'],

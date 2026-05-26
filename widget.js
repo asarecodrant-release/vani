@@ -871,14 +871,14 @@
     return actionType;
   }
 
-  function faqFeedbackEnabledFor(actionType) {
+  function faqFeedbackEnabledFor(action) {
     if (!isEnabled(config.faq_feedback_enabled)) return false;
-    const triggers = Array.isArray(config.faq_feedback_triggers) ? config.faq_feedback_triggers : [];
-    return triggers.includes(normalizedFeedbackActionType(actionType));
+    const actionIds = Array.isArray(config.faq_feedback_action_ids) ? config.faq_feedback_action_ids.map(String) : [];
+    return actionIds.includes(String(action?.id || ""));
   }
 
   function renderFaqActionFeedback(action, context = {}, suggestionsBox = null) {
-    if (!suggestionsBox || !faqFeedbackEnabledFor(action.action_type || "link")) return;
+    if (!suggestionsBox || !faqFeedbackEnabledFor(action)) return;
     suggestionsBox.style.display = "grid";
     const panel = document.createElement("div");
     panel.className = "vani-action-panel";
@@ -934,7 +934,7 @@
   }
 
   function showFaqActionFeedback(action, context = {}, suggestionsBox = null, delay = 0) {
-    if (!faqFeedbackEnabledFor(action.action_type || "link")) return;
+    if (!faqFeedbackEnabledFor(action)) return;
     window.setTimeout(() => renderFaqActionFeedback(action, context, suggestionsBox), delay);
   }
 

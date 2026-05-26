@@ -1245,12 +1245,12 @@ $liveChatActionsEnabled = filter_var($settings['live_chat_actions_enabled'] ?? f
 $faqActionsEnabled = filter_var($settings['faq_actions_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
 $faqCategoryMenuEnabled = filter_var($settings['faq_category_menu_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
 $faqFeedbackEnabled = filter_var($settings['faq_feedback_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
-$faqFeedbackTriggers = $settings['faq_feedback_triggers'] ?? [];
-if (is_string($faqFeedbackTriggers)) {
-    $decodedFeedbackTriggers = json_decode($faqFeedbackTriggers, true);
-    $faqFeedbackTriggers = is_array($decodedFeedbackTriggers) ? $decodedFeedbackTriggers : [];
+$faqFeedbackActionIds = $settings['faq_feedback_action_ids'] ?? [];
+if (is_string($faqFeedbackActionIds)) {
+    $decodedFeedbackActionIds = json_decode($faqFeedbackActionIds, true);
+    $faqFeedbackActionIds = is_array($decodedFeedbackActionIds) ? $decodedFeedbackActionIds : [];
 }
-$faqFeedbackTriggers = array_values(array_intersect(['link', 'whatsapp', 'call', 'coupon', 'form'], array_map('strval', is_array($faqFeedbackTriggers) ? $faqFeedbackTriggers : [])));
+$faqFeedbackActionIds = array_values(array_filter(array_map('strval', is_array($faqFeedbackActionIds) ? $faqFeedbackActionIds : []), fn($id) => preg_match('/^\d+$/', $id)));
 $verificationStatus = first_value($settings, ['verification_status'], 'Pending');
 $faqById = [];
 foreach ($faqs as $faq) {
@@ -2339,7 +2339,6 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
             <button class="faq-subtab-btn" type="button" data-faq-subtab="faq-subpanel-default">Default FAQs</button>
             <button class="faq-subtab-btn" type="button" data-faq-subtab="faq-subpanel-qa">FAQ Q&amp;A</button>
             <button class="faq-subtab-btn" type="button" data-faq-subtab="faq-subpanel-scheduled">Scheduled Actions</button>
-            <button class="faq-subtab-btn" type="button" data-faq-subtab="faq-subpanel-feedback">Feedback</button>
           </div>
           <div class="section-body faq-action-section faq-subpanel active" id="faq-subpanel-options" style="border-top:0;margin-top:0">
             <div class="inline-row" style="justify-content:space-between;gap:16px;margin-bottom:14px">
@@ -2426,6 +2425,40 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                   </div>
                 </div>
               <?php endforeach; ?>
+            </div>
+
+            <div class="faq-action-card">
+              <div class="inline-row" style="justify-content:space-between;gap:16px">
+                <div>
+                  <h3>FAQ Action Feedback</h3>
+                  <small class="input-help">Ask visitors for quick feedback after they use selected FAQ action suggestions.</small>
+                </div>
+                <label class="switch" title="Enable FAQ action feedback">
+                  <input id="faqFeedbackToggle" type="checkbox" <?php echo $faqFeedbackEnabled ? 'checked' : ''; ?> aria-label="Enable FAQ action feedback">
+                  <span class="switch-slider"></span>
+                </label>
+              </div>
+              <div class="faq-action-list" style="margin-top:14px">
+                <?php if (empty($faqActionRows)): ?>
+                  <p class="empty">Add FAQ Action Suggestions above, then select which actions should collect feedback.</p>
+                <?php endif; ?>
+                <?php foreach ($faqActionRows as $actionRow): ?>
+                  <?php $linkedFaq = $faqById[(string)($actionRow['faq_id'] ?? '')] ?? []; ?>
+                  <?php $actionId = (string)($actionRow['id'] ?? ''); ?>
+                  <div class="lead-option">
+                    <div class="inline-row" style="justify-content:space-between;gap:12px">
+                      <div>
+                        <strong><?php echo h($actionRow['label'] ?? 'FAQ action'); ?></strong>
+                        <small class="input-help"><?php echo h($linkedFaq['question'] ?? 'Deleted FAQ'); ?> · <?php echo h($actionRow['action_type'] ?? 'link'); ?></small>
+                      </div>
+                      <label class="switch" title="Collect feedback after this action">
+                        <input class="faqFeedbackAction" type="checkbox" value="<?php echo h($actionId); ?>" <?php echo in_array($actionId, $faqFeedbackActionIds, true) ? 'checked' : ''; ?> aria-label="Collect feedback after <?php echo h($actionRow['label'] ?? 'FAQ action'); ?>">
+                        <span class="switch-slider"></span>
+                      </label>
+                    </div>
+                  </div>
+                <?php endforeach; ?>
+              </div>
             </div>
 
           </div>
@@ -2518,45 +2551,6 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                     </div>
                   </div>
                 <?php endfor; ?>
-              </div>
-            </div>
-          </div>
-          <div class="section-body faq-subpanel" id="faq-subpanel-feedback">
-            <div class="faq-action-card">
-              <div class="inline-row" style="justify-content:space-between;gap:16px">
-                <div>
-                  <h3>FAQ Action Feedback</h3>
-                  <small class="input-help">Ask visitors for quick feedback after they use selected FAQ action suggestions.</small>
-                </div>
-                <label class="switch" title="Enable FAQ action feedback">
-                  <input id="faqFeedbackToggle" type="checkbox" <?php echo $faqFeedbackEnabled ? 'checked' : ''; ?> aria-label="Enable FAQ action feedback">
-                  <span class="switch-slider"></span>
-                </label>
-              </div>
-              <div class="faq-action-grid" style="margin-top:14px">
-                <?php
-                  $feedbackTriggerOptions = [
-                      'link' => ['Open page / product page', 'Ask after visitors open a page, booking, download, or track-order link.'],
-                      'whatsapp' => ['WhatsApp', 'Ask after visitors open WhatsApp.'],
-                      'call' => ['Call now', 'Ask after visitors tap a call action.'],
-                      'coupon' => ['Coupon/code', 'Ask after visitors copy a coupon or code.'],
-                      'form' => ['Enquiry form', 'Ask after visitors submit an action form.']
-                  ];
-                ?>
-                <?php foreach ($feedbackTriggerOptions as $triggerKey => [$triggerLabel, $triggerHelp]): ?>
-                  <div class="lead-option">
-                    <div class="inline-row" style="justify-content:space-between;gap:12px">
-                      <div>
-                        <strong><?php echo h($triggerLabel); ?></strong>
-                        <small class="input-help"><?php echo h($triggerHelp); ?></small>
-                      </div>
-                      <label class="switch" title="Collect feedback after <?php echo h($triggerLabel); ?>">
-                        <input class="faqFeedbackTrigger" type="checkbox" value="<?php echo h($triggerKey); ?>" <?php echo in_array($triggerKey, $faqFeedbackTriggers, true) ? 'checked' : ''; ?> aria-label="Collect feedback after <?php echo h($triggerLabel); ?>">
-                        <span class="switch-slider"></span>
-                      </label>
-                    </div>
-                  </div>
-                <?php endforeach; ?>
               </div>
             </div>
           </div>
@@ -6358,10 +6352,10 @@ document.getElementById("faqCategoryMenuToggle")?.addEventListener("change", asy
 
 async function saveFaqFeedbackSettings({live = false} = {}) {
   const enabled = !!document.getElementById("faqFeedbackToggle")?.checked;
-  const triggers = Array.from(document.querySelectorAll(".faqFeedbackTrigger:checked")).map(input => input.value);
+  const actionIds = Array.from(document.querySelectorAll(".faqFeedbackAction:checked")).map(input => input.value);
   const saved = await saveDashboardSettings({
     faq_feedback_enabled: enabled,
-    faq_feedback_triggers: triggers
+    faq_feedback_action_ids: actionIds
   });
   if (saved && live) {
     showToast(enabled ? "FAQ feedback enabled" : "FAQ feedback disabled");
@@ -6372,7 +6366,7 @@ document.getElementById("faqFeedbackToggle")?.addEventListener("change", () => {
   saveFaqFeedbackSettings({live: true});
 });
 
-document.querySelectorAll(".faqFeedbackTrigger").forEach(input => {
+document.querySelectorAll(".faqFeedbackAction").forEach(input => {
   input.addEventListener("change", () => {
     saveFaqFeedbackSettings({live: true});
   });
