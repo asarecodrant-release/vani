@@ -1405,6 +1405,62 @@ $paymentPaidCount = count(array_filter($paymentTransactionRows, fn($row) => ($ro
 $paymentCreatedCount = count(array_filter($paymentTransactionRows, fn($row) => ($row['status'] ?? '') === 'created'));
 $paymentFailedCount = count(array_filter($paymentTransactionRows, fn($row) => ($row['status'] ?? '') === 'failed'));
 $paymentUpiPendingCount = count(array_filter($paymentTransactionRows, fn($row) => ($row['payment_method'] ?? '') === 'upi' && ($row['status'] ?? '') === 'created'));
+$paymentAnalyticsRows = array_values(array_filter($paymentTransactionRows, fn($row) => date_in_range($row, 'created_at', $analyticsFrom, $analyticsTo)));
+$paymentAnalyticsCount = count($paymentAnalyticsRows);
+$paymentAnalyticsPaidCount = 0;
+$paymentAnalyticsPendingCount = 0;
+$paymentAnalyticsFailedCount = 0;
+$paymentAnalyticsRevenuePaise = 0;
+$paymentAnalyticsUniquePayers = [];
+$paymentDailyCounts = [];
+$paymentDailyRevenuePaise = [];
+$paymentStatusCounts = [];
+$paymentMethodCounts = [];
+$paymentActionCounts = [];
+foreach ($paymentAnalyticsRows as $paymentRow) {
+    $status = strtolower((string)($paymentRow['status'] ?? 'created'));
+    $method = strtoupper((string)($paymentRow['payment_method'] ?? 'razorpay'));
+    $amountPaise = (int)($paymentRow['amount_paise'] ?? 0);
+    $paymentStatusCounts[$status] = ($paymentStatusCounts[$status] ?? 0) + 1;
+    $paymentMethodCounts[$method] = ($paymentMethodCounts[$method] ?? 0) + 1;
+    if ($status === 'paid') {
+        $paymentAnalyticsPaidCount++;
+        $paymentAnalyticsRevenuePaise += $amountPaise;
+    } elseif ($status === 'failed') {
+        $paymentAnalyticsFailedCount++;
+    } else {
+        $paymentAnalyticsPendingCount++;
+    }
+    $payerKey = strtolower(trim((string)($paymentRow['payer_email'] ?? '')));
+    if ($payerKey === '') {
+        $payerKey = trim((string)($paymentRow['payer_phone'] ?? $paymentRow['user_id'] ?? $paymentRow['session_id'] ?? ''));
+    }
+    if ($payerKey !== '') {
+        $paymentAnalyticsUniquePayers[$payerKey] = true;
+    }
+    $actionId = (string)($paymentRow['payment_action_id'] ?? '');
+    $actionLabel = $actionId !== '' && isset($paymentActionById[$actionId])
+        ? trim((string)($paymentActionById[$actionId]['label'] ?? ''))
+        : '';
+    $actionLabel = $actionLabel !== '' ? $actionLabel : 'Deleted payment button';
+    $paymentActionCounts[$actionLabel] = ($paymentActionCounts[$actionLabel] ?? 0) + 1;
+    $created = (string)($paymentRow['created_at'] ?? '');
+    if ($created !== '') {
+        $day = substr($created, 0, 10);
+        $paymentDailyCounts[$day] = ($paymentDailyCounts[$day] ?? 0) + 1;
+        if ($status === 'paid') {
+            $paymentDailyRevenuePaise[$day] = ($paymentDailyRevenuePaise[$day] ?? 0) + $amountPaise;
+        }
+    }
+}
+ksort($paymentDailyCounts);
+ksort($paymentDailyRevenuePaise);
+arsort($paymentStatusCounts);
+arsort($paymentMethodCounts);
+arsort($paymentActionCounts);
+$paymentAnalyticsConversionRate = $paymentAnalyticsCount > 0 ? round(($paymentAnalyticsPaidCount / max(1, $paymentAnalyticsCount)) * 100) : 0;
+$paymentTopAction = !empty($paymentActionCounts) ? array_key_first($paymentActionCounts) : 'No payment data yet';
+$recentPaymentAnalyticsRows = array_slice($paymentAnalyticsRows, 0, 50);
 $nowTimestamp = time();
 $todayInIndia = (new DateTimeImmutable('now', new DateTimeZone('Asia/Kolkata')))->format('Y-m-d');
 $whatsappToggleDate = (string)($leadSettings['whatsapp_redirect_toggle_date'] ?? '');
@@ -3088,16 +3144,30 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
           </div>
           <div class="panel section-body">
             <h3>Payment Buttons</h3>
+            <div class="field" style="margin:12px 0">
+              <label>Create Make Payment action for FAQ</label>
+              <select id="paymentFaqActionFaqId">
+                <option value="">Select FAQ</option>
+                <?php foreach ($faqs as $faq): ?>
+                  <option value="<?php echo h($faq['id'] ?? ''); ?>"><?php echo h($faq['question'] ?? ''); ?></option>
+                <?php endforeach; ?>
+              </select>
+              <small class="input-help">Select a FAQ, then use Create Make Payment Action on a payment button below.</small>
+            </div>
             <div class="mini-chart" id="paymentActionList">
               <?php if (empty($paymentActionRows)): ?><p class="empty">No payment buttons yet.</p><?php endif; ?>
               <?php foreach ($paymentActionRows as $paymentAction): ?>
-                <div class="lead-option" data-payment-action-id="<?php echo h($paymentAction['id'] ?? ''); ?>">
+                <div class="lead-option" data-payment-action-id="<?php echo h($paymentAction['id'] ?? ''); ?>" data-payment-action-label="<?php echo h($paymentAction['label'] ?? 'Payment'); ?>">
                   <div class="inline-row" style="justify-content:space-between;gap:12px">
                     <div>
                       <strong><?php echo h($paymentAction['label'] ?? 'Payment'); ?></strong>
                       <small class="input-help">ID <?php echo h($paymentAction['id'] ?? ''); ?> | <?php echo h(strtoupper((string)($paymentAction['payment_method'] ?? 'razorpay'))); ?> | <?php echo h(billing_rupees((int)($paymentAction['amount_paise'] ?? 0))); ?> | <?php echo h($paymentAction['description'] ?? ''); ?></small>
                     </div>
-                    <button class="danger-btn payment-action-delete-btn" type="button">Delete</button>
+                    <div class="inline-row" style="gap:8px">
+                      <button class="ghost-btn payment-action-copy-btn" type="button">Copy Payment ID</button>
+                      <button class="pill-btn payment-action-create-faq-btn" type="button">Create Make Payment Action</button>
+                      <button class="danger-btn payment-action-delete-btn" type="button">Delete</button>
+                    </div>
                   </div>
                 </div>
               <?php endforeach; ?>
@@ -3206,6 +3276,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
             <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-conversations" <?php echo $canUsePartialAnalytics ? '' : 'data-premium-lock="Growth wallet plan required"'; ?>>Conversations</button>
             <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-faq" <?php echo $canUsePartialAnalytics ? '' : 'data-premium-lock="Growth wallet plan required"'; ?>>FAQ Insights</button>
             <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-feedback" <?php echo $canUsePartialAnalytics ? '' : 'data-premium-lock="Growth wallet plan required"'; ?>>Feedback</button>
+            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-payments" <?php echo $canUsePaymentCollection ? '' : 'data-premium-lock="Payment Analysis is only for Growth or Business users. Please recharge your wallet with appropriate plan."'; ?>>Payment Analysis</button>
             <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-leads" <?php echo $canUsePartialAnalytics ? '' : 'data-premium-lock="Growth wallet plan required"'; ?>>Leads</button>
             <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-pages" <?php echo $canUseAdvancedAnalytics ? '' : 'data-premium-lock="Business wallet plan required"'; ?>>Pages</button>
             <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-realtime" <?php echo $canUseAdvancedAnalytics ? '' : 'data-premium-lock="Business wallet plan required"'; ?>>Real-Time</button>
@@ -3451,6 +3522,61 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                 </tbody>
               </table>
             </div>
+          </div>
+        </div>
+        </div>
+
+        <div class="analytics-subpanel" id="analytics-payments">
+        <div class="bi-kpi-grid">
+          <div class="bi-kpi"><span>Revenue Collected</span><strong><?php echo h(billing_rupees($paymentAnalyticsRevenuePaise)); ?></strong><small>Paid visitor payments in selected range.</small></div>
+          <div class="bi-kpi"><span>Payment Conversion</span><strong><?php echo h($paymentAnalyticsConversionRate); ?>%</strong><small><?php echo h($paymentAnalyticsPaidCount); ?> paid / <?php echo h($paymentAnalyticsCount); ?> attempts.</small></div>
+          <div class="bi-kpi"><span>Pending Payments</span><strong><?php echo h($paymentAnalyticsPendingCount); ?></strong><small>Includes UPI manual verification.</small></div>
+          <div class="bi-kpi"><span>Top Payment Button</span><strong><?php echo h($paymentTopAction); ?></strong><small>Most used payment action.</small></div>
+        </div>
+
+        <div class="bi-dashboard-grid">
+          <div class="panel bi-panel">
+            <div class="bi-panel-head"><h3>Payment Revenue Trend</h3><span class="tag"><?php echo h($analyticsRangeLabel); ?></span></div>
+            <div class="bi-chart" id="analyticsPaymentRevenueChart" data-chart-title="Payment revenue trend"></div>
+          </div>
+          <div class="panel bi-panel">
+            <div class="bi-panel-head"><h3>Payment Status</h3><span class="tag"><?php echo h($paymentAnalyticsCount); ?> attempts</span></div>
+            <div class="bi-chart" id="analyticsPaymentStatusChart" data-chart-title="Payment status"></div>
+          </div>
+        </div>
+
+        <div class="bi-dashboard-grid">
+          <div class="panel bi-panel">
+            <div class="bi-panel-head"><h3>Payment Methods</h3><span class="tag"><?php echo h(count($paymentMethodCounts)); ?> methods</span></div>
+            <div class="bi-chart" id="analyticsPaymentMethodChart" data-chart-title="Payment methods"></div>
+          </div>
+          <div class="panel bi-panel">
+            <div class="bi-panel-head"><h3>Payment Buttons</h3><span class="tag"><?php echo h(count($paymentActionCounts)); ?> buttons</span></div>
+            <div class="bi-chart" id="analyticsPaymentActionChart" data-chart-title="Payment buttons"></div>
+          </div>
+        </div>
+
+        <div class="panel section-body">
+          <h3>Recent Payment Activity</h3>
+          <div class="table-wrap" style="margin-top:14px">
+            <table>
+              <thead><tr><th>Date</th><th>Status</th><th>Method</th><th>Amount</th><th>Payment Button</th><th>Payer</th><th>Reference</th></tr></thead>
+              <tbody>
+                <?php if (empty($recentPaymentAnalyticsRows)): ?><tr><td colspan="7" class="empty">No payment activity in this analytics range.</td></tr><?php endif; ?>
+                <?php foreach ($recentPaymentAnalyticsRows as $paymentRow): ?>
+                  <?php $paymentAction = $paymentActionById[(string)($paymentRow['payment_action_id'] ?? '')] ?? []; ?>
+                  <tr>
+                    <td><?php echo h(substr((string)($paymentRow['created_at'] ?? ''), 0, 16)); ?></td>
+                    <td><span class="tag <?php echo ($paymentRow['status'] ?? '') === 'paid' ? 'good' : (($paymentRow['status'] ?? '') === 'failed' ? 'bad' : ''); ?>"><?php echo h($paymentRow['status'] ?? 'created'); ?></span></td>
+                    <td><?php echo h(strtoupper((string)($paymentRow['payment_method'] ?? 'razorpay'))); ?></td>
+                    <td><?php echo h(billing_rupees((int)($paymentRow['amount_paise'] ?? 0))); ?></td>
+                    <td><?php echo h($paymentAction['label'] ?? 'Deleted payment button'); ?></td>
+                    <td><?php echo h(trim(($paymentRow['payer_name'] ?? '') . ' ' . ($paymentRow['payer_email'] ?? '')) ?: '-'); ?></td>
+                    <td><?php echo h($paymentRow['razorpay_payment_id'] ?? ($paymentRow['razorpay_order_id'] ?? '-')); ?></td>
+                  </tr>
+                <?php endforeach; ?>
+              </tbody>
+            </table>
           </div>
         </div>
         </div>
@@ -4351,6 +4477,13 @@ const analyticsReport = <?php echo js_json([
     "feedback_received" => $feedbackCount,
     "positive_feedback_percent" => $feedbackPositiveRate,
     "unique_feedback_users" => count($feedbackUniqueUsers),
+    "payment_revenue" => billing_rupees($paymentAnalyticsRevenuePaise),
+    "payment_attempts" => $paymentAnalyticsCount,
+    "paid_payments" => $paymentAnalyticsPaidCount,
+    "pending_payments" => $paymentAnalyticsPendingCount,
+    "failed_payments" => $paymentAnalyticsFailedCount,
+    "payment_conversion_percent" => $paymentAnalyticsConversionRate,
+    "unique_payers" => count($paymentAnalyticsUniquePayers),
     "active_chatbots" => $activeChatbotCount,
     "most_active_page" => $mostActivePage,
     "returning_users_percent" => $returningUsersPercent,
@@ -4365,6 +4498,8 @@ const analyticsReport = <?php echo js_json([
   "daily_unanswered_counts" => $dailyUnansweredChartCounts,
   "daily_lead_counts" => $dailyLeadChartCounts,
   "daily_feedback_counts" => $feedbackDailyCounts,
+  "daily_payment_counts" => $paymentDailyCounts,
+  "daily_payment_revenue_paise" => $paymentDailyRevenuePaise,
   "hour_counts" => $hourChartCounts,
   "devices" => $deviceCounts,
   "browsers" => $browserCounts,
@@ -4388,6 +4523,23 @@ const analyticsReport = <?php echo js_json([
   "lead_periods" => $leadPeriodStats,
   "feedback_values" => $feedbackValueCounts,
   "feedback_actions" => $feedbackActionTypeCounts,
+  "payment_statuses" => $paymentStatusCounts,
+  "payment_methods" => $paymentMethodCounts,
+  "payment_actions" => $paymentActionCounts,
+  "recent_payments" => array_values(array_map(function ($payment) use ($paymentActionById) {
+    $action = $paymentActionById[(string)($payment['payment_action_id'] ?? '')] ?? [];
+    return [
+      "date" => substr((string)($payment["created_at"] ?? ""), 0, 10),
+      "status" => (string)($payment["status"] ?? "created"),
+      "method" => strtoupper((string)($payment["payment_method"] ?? "razorpay")),
+      "amount" => billing_rupees((int)($payment["amount_paise"] ?? 0)),
+      "amount_paise" => (int)($payment["amount_paise"] ?? 0),
+      "payment_button" => (string)($action["label"] ?? "Deleted payment button"),
+      "payer" => trim((string)($payment["payer_name"] ?? "") . " " . (string)($payment["payer_email"] ?? "")),
+      "reference" => (string)($payment["razorpay_payment_id"] ?? ($payment["razorpay_order_id"] ?? "")),
+      "source_page" => (string)($payment["source_url"] ?? "")
+    ];
+  }, array_slice($recentPaymentAnalyticsRows, 0, 100))),
   "recent_feedback" => array_values(array_map(function ($feedback) use ($faqActionById) {
     $action = $faqActionById[(string)($feedback['action_id'] ?? '')] ?? [];
     return [
@@ -5006,7 +5158,9 @@ function analyticsDateSeries() {
     ...Object.keys(analyticsReport.daily_answered_counts || {}),
     ...Object.keys(analyticsReport.daily_unanswered_counts || {}),
     ...Object.keys(analyticsReport.daily_lead_counts || {}),
-    ...Object.keys(analyticsReport.daily_feedback_counts || {})
+    ...Object.keys(analyticsReport.daily_feedback_counts || {}),
+    ...Object.keys(analyticsReport.daily_payment_counts || {}),
+    ...Object.keys(analyticsReport.daily_payment_revenue_paise || {})
   ]);
   const dates = Array.from(dateSet).sort();
   return {
@@ -5015,7 +5169,9 @@ function analyticsDateSeries() {
     answered: dates.map(date => Number(analyticsReport.daily_answered_counts?.[date] || 0)),
     unanswered: dates.map(date => Number(analyticsReport.daily_unanswered_counts?.[date] || 0)),
     leads: dates.map(date => Number(analyticsReport.daily_lead_counts?.[date] || 0)),
-    feedback: dates.map(date => Number(analyticsReport.daily_feedback_counts?.[date] || 0))
+    feedback: dates.map(date => Number(analyticsReport.daily_feedback_counts?.[date] || 0)),
+    payments: dates.map(date => Number(analyticsReport.daily_payment_counts?.[date] || 0)),
+    paymentRevenue: dates.map(date => Number(analyticsReport.daily_payment_revenue_paise?.[date] || 0) / 100)
   };
 }
 
@@ -5173,6 +5329,40 @@ function renderAnalyticsBICharts() {
     yAxis: {type: "category", data: feedbackActions.map(item => item.name), axisLabel: {color: colors.muted, width: 104, overflow: "truncate"}},
     series: [{name: "Feedback", type: "bar", data: feedbackActions.map(item => item.value), label: {show: true, position: "right"}}]
   }, !feedbackActions.length);
+
+  setAnalyticsChart("analyticsPaymentRevenueChart", {
+    xAxis: {type: "category", data: series.dates, axisLabel: {color: colors.muted}},
+    yAxis: [
+      {type: "value", name: "Revenue", axisLabel: {color: colors.muted}, splitLine: {lineStyle: {color: colors.line}}},
+      {type: "value", name: "Attempts", axisLabel: {color: colors.muted}, splitLine: {show: false}}
+    ],
+    series: [
+      {name: "Revenue", type: "bar", data: series.paymentRevenue, label: {show: true, position: "top", formatter: params => params.value ? `₹${params.value}` : ""}},
+      {name: "Attempts", type: "line", yAxisIndex: 1, smooth: true, data: series.payments}
+    ]
+  }, !series.paymentRevenue.some(value => value > 0) && !series.payments.some(value => value > 0));
+
+  const paymentStatuses = analyticsEntries(analyticsReport.payment_statuses, 8);
+  setAnalyticsChart("analyticsPaymentStatusChart", {
+    tooltip: {trigger: "item", formatter: "{b}: {c} ({d}%)", confine: true},
+    legend: {bottom: 0, type: "scroll", textStyle: {color: colors.muted}},
+    series: [{type: "pie", radius: ["42%", "70%"], center: ["50%", "46%"], label: {formatter: "{b}\n{c}"}, data: paymentStatuses}]
+  }, !paymentStatuses.length);
+
+  const paymentMethods = analyticsEntries(analyticsReport.payment_methods, 8);
+  setAnalyticsChart("analyticsPaymentMethodChart", {
+    tooltip: {trigger: "item", formatter: "{b}: {c} ({d}%)", confine: true},
+    legend: {bottom: 0, type: "scroll", textStyle: {color: colors.muted}},
+    series: [{type: "pie", radius: "68%", center: ["50%", "46%"], label: {formatter: "{b}\n{c}"}, data: paymentMethods}]
+  }, !paymentMethods.length);
+
+  const paymentActions = analyticsEntries(analyticsReport.payment_actions, 10);
+  setAnalyticsChart("analyticsPaymentActionChart", {
+    grid: {left: 118, right: 18, top: 28, bottom: 28},
+    xAxis: {type: "value", axisLabel: {color: colors.muted}, splitLine: {lineStyle: {color: colors.line}}},
+    yAxis: {type: "category", data: paymentActions.map(item => item.name), axisLabel: {color: colors.muted, width: 106, overflow: "truncate"}},
+    series: [{name: "Payments", type: "bar", data: paymentActions.map(item => item.value), label: {show: true, position: "right"}}]
+  }, !paymentActions.length);
 }
 
 function renderAnalyticsVisuals() {
@@ -5441,6 +5631,12 @@ function analyticsCsv() {
     ["Daily Feedback", "Date", "Feedback"],
     ...Object.entries(analyticsReport.daily_feedback_counts || {}).map(([date, count]) => ["Daily Feedback", date, count]),
     [],
+    ["Daily Payment Revenue", "Date", "Revenue Paise"],
+    ...Object.entries(analyticsReport.daily_payment_revenue_paise || {}).map(([date, amount]) => ["Daily Payment Revenue", date, amount]),
+    [],
+    ["Daily Payment Attempts", "Date", "Attempts"],
+    ...Object.entries(analyticsReport.daily_payment_counts || {}).map(([date, count]) => ["Daily Payment Attempts", date, count]),
+    [],
     ["Hourly Counts", "Hour", "Queries"],
     ...Object.entries(analyticsReport.hour_counts || {}).map(([hour, count]) => ["Hourly Counts", `${hour}:00`, count]),
     [],
@@ -5477,6 +5673,18 @@ function analyticsCsv() {
     ["Recent Feedback", "Date", "Feedback", "Action", "Source Page"],
     ...(analyticsReport.recent_feedback || []).map(item => ["Recent Feedback", item.date, item.feedback, item.action, item.source_page]),
     [],
+    ["Payment Statuses", "Status", "Count"],
+    ...Object.entries(analyticsReport.payment_statuses || {}).map(([status, count]) => ["Payment Statuses", status, count]),
+    [],
+    ["Payment Methods", "Method", "Count"],
+    ...Object.entries(analyticsReport.payment_methods || {}).map(([method, count]) => ["Payment Methods", method, count]),
+    [],
+    ["Payment Buttons", "Button", "Count"],
+    ...Object.entries(analyticsReport.payment_actions || {}).map(([action, count]) => ["Payment Buttons", action, count]),
+    [],
+    ["Recent Payments", "Date", "Status", "Method", "Amount", "Payment Button", "Payer", "Reference", "Source Page"],
+    ...(analyticsReport.recent_payments || []).map(item => ["Recent Payments", item.date, item.status, item.method, item.amount, item.payment_button, item.payer, item.reference, item.source_page]),
+    [],
     ["Source Pages", "Page", "Conversations", "Leads", "Success Rate"],
     ...(analyticsReport.source_pages || []).map(item => ["Source Pages", item.page, item.conversations, item.leads, `${item.success_rate}%`])
   ];
@@ -5504,7 +5712,10 @@ function analyticsReportHtml(options = {}) {
     {name: "Email Contacts", value: Number(leadQuality.email) || 0},
     {name: "Mobile Contacts", value: Number(leadQuality.mobile) || 0}
   ];
-  const maxDaily = Math.max(1, ...daily.conversations, ...daily.answered, ...daily.unanswered, ...daily.leads, ...daily.feedback);
+  const paymentStatusRows = analyticsEntries(analyticsReport.payment_statuses, 8);
+  const paymentMethodRows = analyticsEntries(analyticsReport.payment_methods, 8);
+  const paymentActionRows = analyticsEntries(analyticsReport.payment_actions, 10);
+  const maxDaily = Math.max(1, ...daily.conversations, ...daily.answered, ...daily.unanswered, ...daily.leads, ...daily.feedback, ...daily.payments);
   const logo = vaniBrandLogo ? `<img src="${vaniBrandLogo}" alt="Vani AI">` : `<strong>Vani AI</strong>`;
   const card = (title, value, note = "") => `<div class="kpi"><span>${esc(title)}</span><strong>${esc(value)}</strong><small>${esc(note)}</small></div>`;
   const alertCard = (title, value, note, status = "") => `<div class="alert ${status}"><strong>${esc(title)}</strong><b>${esc(value)}</b><span>${esc(note)}</span></div>`;
@@ -5512,6 +5723,7 @@ function analyticsReportHtml(options = {}) {
     `${number(summary.total_conversations)} conversations were tracked for the selected ${analyticsReport.range_label} filter.`,
     `${number(summary.answered_queries_percent)}% answer rate and ${number(summary.unanswered_queries_percent)}% unanswered rate show current FAQ coverage.`,
     `${number(summary.leads_collected)} raw leads were captured, with ${number(summary.real_unique_leads)} real verified leads.`,
+    `${summary.payment_revenue || "Rs0.00"} payment revenue was collected from ${number(summary.paid_payments)} paid payments.`,
     `Current period is compared against ${filters.previous_date_from} to ${filters.previous_date_to}.`,
     `Country focus for the map is ${filters.country_focus}.`
   ];
@@ -5587,6 +5799,8 @@ ${card("Visitors", number(summary.unique_visitors), `${number(summary.returning_
 ${card("Answer Rate", percent(summary.answered_queries_percent), `${number(summary.unanswered_queries_percent)}% unanswered`)}
 ${card("Leads", number(summary.leads_collected), `${number(summary.unique_leads)} unique leads`)}
 ${card("OTP Verified", number(summary.otp_verified_leads), `${number(summary.real_unique_leads)} real leads`)}
+${card("Payment Revenue", summary.payment_revenue || "Rs0.00", `${number(summary.paid_payments)} paid payments`)}
+${card("Payment Conversion", percent(summary.payment_conversion_percent), `${number(summary.payment_attempts)} attempts`)}
 ${card("Avg Response", summary.avg_response_time_ms ? `${number(summary.avg_response_time_ms)}ms` : "No data", "Widget API response time")}
 ${card("Avg Duration", summary.avg_conversation_duration || "No data", "Widget session duration")}
 </section>
@@ -5601,6 +5815,10 @@ ${alertCard("Response Time", summary.avg_response_time_ms ? `${number(summary.av
 </section>
 ${chartImage("Live BI Trend Chart", "analyticsTrendChart")}
 ${chartImage("Live Conversion Funnel", "analyticsFunnelChart")}
+${chartImage("Payment Revenue Trend", "analyticsPaymentRevenueChart")}
+${chartImage("Payment Status Chart", "analyticsPaymentStatusChart")}
+${chartImage("Payment Method Chart", "analyticsPaymentMethodChart")}
+${chartImage("Payment Button Chart", "analyticsPaymentActionChart")}
 ${chartImage("World Map", "analyticsWorldMap")}
 <section class="three">
   ${breakdown("Device Mix", analyticsReport.devices)}
@@ -5619,6 +5837,12 @@ ${table("Unanswered Questions", ["Question", "Source Page", "Date"], (analyticsR
 ${table("City Location Clusters", ["Location", "Country", "Latitude", "Longitude", "Users"], (analyticsReport.city_clusters || []).map(item => `<tr><td>${esc(item.name)}</td><td>${esc(item.country || "-")}</td><td>${esc(item.lat)}</td><td>${esc(item.lon)}</td><td>${esc(item.count)}</td></tr>`))}
 ${table("Unique Leads", ["Type", "Email", "Mobile", "Email OTP", "Mobile OTP", "Captures", "WhatsApp", "Source Pages", "Location", "First Seen", "Last Seen"], (analyticsReport.unique_leads || []).map(item => `<tr><td>${esc(item.lead_type)}</td><td>${esc(item.email)}</td><td>${esc(item.phone_number)}</td><td>${esc(item.email_otp_count)}</td><td>${esc(item.mobile_otp_count)}</td><td>${esc(item.total_records)}</td><td>${esc(item.whatsapp_redirect_count)}</td><td>${esc(item.source_pages)}</td><td>${esc(item.location)}</td><td>${esc(item.first_seen)}</td><td>${esc(item.last_seen)}</td></tr>`))}
 ${table("Recent Feedback", ["Date", "Feedback", "Action", "Source Page"], (analyticsReport.recent_feedback || []).map(item => `<tr><td>${esc(item.date)}</td><td>${esc(item.feedback)}</td><td>${esc(item.action)}</td><td>${esc(item.source_page)}</td></tr>`))}
+<section class="three">
+  ${barList("Payment Statuses", paymentStatusRows)}
+  ${barList("Payment Methods", paymentMethodRows)}
+  ${barList("Payment Buttons", paymentActionRows)}
+</section>
+${table("Recent Payments", ["Date", "Status", "Method", "Amount", "Payment Button", "Payer", "Reference", "Source Page"], (analyticsReport.recent_payments || []).map(item => `<tr><td>${esc(item.date)}</td><td>${esc(item.status)}</td><td>${esc(item.method)}</td><td>${esc(item.amount)}</td><td>${esc(item.payment_button)}</td><td>${esc(item.payer || "-")}</td><td>${esc(item.reference || "-")}</td><td>${esc(item.source_page || "-")}</td></tr>`))}
 ${table("Source Pages", ["Page", "Conversations", "Leads", "Success Rate"], (analyticsReport.source_pages || []).map(item => `<tr><td>${esc(item.page)}</td><td>${esc(item.conversations)}</td><td>${esc(item.leads)}</td><td>${esc(item.success_rate)}%</td></tr>`))}
 <div class="footer"><span>Vani AI Analytics | Branded customer dashboard report</span><span>${esc(reportFileBase())}</span></div>
 </main>
@@ -5701,6 +5925,14 @@ async function captureAnalyticsChartImages() {
   renderAnalyticsBICharts();
   await waitForAnalyticsPaint(250);
   ["analyticsFeedbackTrendChart", "analyticsFeedbackValueChart", "analyticsFeedbackActionChart"].forEach(id => {
+    captureChart(id, analyticsCharts.get(id));
+  });
+
+  openAnalyticsTab("analytics-payments", false);
+  await waitForAnalyticsPaint();
+  renderAnalyticsBICharts();
+  await waitForAnalyticsPaint(250);
+  ["analyticsPaymentRevenueChart", "analyticsPaymentStatusChart", "analyticsPaymentMethodChart", "analyticsPaymentActionChart"].forEach(id => {
     captureChart(id, analyticsCharts.get(id));
   });
 
@@ -7024,9 +7256,56 @@ document.getElementById("paymentActionForm")?.addEventListener("submit", async e
 });
 
 document.getElementById("paymentActionList")?.addEventListener("click", async event => {
-  const button = event.target.closest(".payment-action-delete-btn");
   const row = event.target.closest("[data-payment-action-id]");
-  if (!button || !row) return;
+  if (!row) return;
+  const copyButton = event.target.closest(".payment-action-copy-btn");
+  if (copyButton) {
+    await navigator.clipboard.writeText(row.dataset.paymentActionId || "");
+    showToast("Payment ID copied");
+    return;
+  }
+  const createButton = event.target.closest(".payment-action-create-faq-btn");
+  if (createButton) {
+    if (!businessFeatures.faq_action_suggestions) {
+      showToast("FAQ Action Suggestions requires Starter, Growth, or Business plan");
+      openTab("subscription");
+      return;
+    }
+    if (!document.getElementById("faqActionsToggle")?.checked) {
+      showToast("Turn ON FAQ Action Suggestions first");
+      openTab("faqs");
+      openFaqSubtab("faq-subpanel-options");
+      return;
+    }
+    const customerId = document.getElementById("paymentCustomerId")?.value || "";
+    const faqId = document.getElementById("paymentFaqActionFaqId")?.value || "";
+    if (!customerId) return showToast("Select a bot first");
+    if (!faqId) return showToast("Select FAQ for Make Payment action");
+    createButton.disabled = true;
+    createButton.textContent = "Creating...";
+    const response = await fetch("/api.php?action=save_faq_action", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        customer_id: customerId,
+        faq_id: faqId,
+        label: "Make Payment",
+        action_type: "payment",
+        action_value: row.dataset.paymentActionId || "",
+        display_order: 0,
+        is_active: true
+      })
+    });
+    const data = await response.json().catch(() => ({}));
+    createButton.disabled = false;
+    createButton.textContent = "Create Make Payment Action";
+    if (!data.success) return showToast(data.message || "Make Payment action could not be created");
+    showToast("Make Payment action created");
+    setTimeout(() => location.reload(), 700);
+    return;
+  }
+  const button = event.target.closest(".payment-action-delete-btn");
+  if (!button) return;
   if (!confirm("Delete this payment button?")) return;
   const customerId = document.getElementById("paymentCustomerId")?.value || "";
   button.disabled = true;
