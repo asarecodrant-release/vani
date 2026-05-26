@@ -1,6 +1,7 @@
 <?php
 header_remove('X-Frame-Options');
 header_remove('Content-Security-Policy');
+header('Cache-Control: private, max-age=60, stale-while-revalidate=120');
 $customerId = preg_replace('/[^a-zA-Z0-9_-]/', '', (string)($_GET['id'] ?? ''));
 $sourceUrl = filter_var((string)($_GET['source_url'] ?? ''), FILTER_VALIDATE_URL) ? (string)$_GET['source_url'] : '';
 $forceOpenHint = (string)($_GET['open'] ?? '') === '1';

@@ -21,6 +21,50 @@ $MSG91_WIDGET_ID = $_ENV['MSG91_WIDGET_ID'] ?? getenv('MSG91_WIDGET_ID') ?: '';
 $MSG91_TOKEN_AUTH = $_ENV['MSG91_TOKEN_AUTH'] ?? getenv('MSG91_TOKEN_AUTH') ?: '';
 $MSG91_AUTH_KEY = $_ENV['MSG91_AUTH_KEY'] ?? getenv('MSG91_AUTH_KEY') ?: '';
 
+function widget_cache_dir(): string {
+    $dir = rtrim(sys_get_temp_dir(), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'vani_widget_cache';
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0775, true);
+    }
+    return $dir;
+}
+
+function widget_cache_key(string $prefix, array $parts): string {
+    return $prefix . '_' . hash('sha256', json_encode($parts, JSON_UNESCAPED_SLASHES));
+}
+
+function widget_cache_get(string $key): ?array {
+    $file = widget_cache_dir() . DIRECTORY_SEPARATOR . $key . '.json';
+    if (!is_file($file)) {
+        return null;
+    }
+    $payload = json_decode((string)@file_get_contents($file), true);
+    if (!is_array($payload) || (int)($payload['expires_at'] ?? 0) < time() || !is_array($payload['data'] ?? null)) {
+        @unlink($file);
+        return null;
+    }
+    header('X-Vani-Cache: HIT');
+    return $payload['data'];
+}
+
+function widget_cache_set(string $key, array $data, int $ttlSeconds): void {
+    if ($ttlSeconds <= 0) {
+        return;
+    }
+    $file = widget_cache_dir() . DIRECTORY_SEPARATOR . $key . '.json';
+    $payload = [
+        "expires_at" => time() + $ttlSeconds,
+        "data" => $data
+    ];
+    @file_put_contents($file, json_encode($payload, JSON_UNESCAPED_SLASHES), LOCK_EX);
+}
+
+function widget_cached_json_response(string $key, array $data, int $ttlSeconds): void {
+    widget_cache_set($key, $data, $ttlSeconds);
+    header('X-Vani-Cache: MISS');
+    widget_json_response($data);
+}
+
 function widget_customer_id(array $data = []): string {
     return trim((string)($data['customer_id'] ?? $_GET['customer_id'] ?? ''));
 }
@@ -1709,13 +1753,18 @@ if ($action === "get_widget_config" || $action === "get_theme") {
     if (!$customerId) {
         widget_json_response(["success" => false, "message" => "Missing customer_id"], 400);
     }
+    $sourceUrl = widget_request_source_url();
+    $cacheKey = widget_cache_key("widget_config", [$customerId, widget_host_from_value($sourceUrl), $action]);
+    if ($cached = widget_cache_get($cacheKey)) {
+        widget_json_response($cached);
+    }
 
     $settings = widget_get_settings($customerId);
     $signup = widget_get_signup($customerId);
     $leadSettings = widget_get_lead_settings($customerId);
     $activePlan = widget_billing_plan_for_customer($customerId);
     $leadSettings = widget_renew_whatsapp_redirect_if_due($customerId, $leadSettings, (string)($signup['email'] ?? ''), $activePlan, $signup);
-    $access = widget_access_result($settings, $signup, widget_request_source_url(), billing_feature_enabled($activePlan, 'allowed_domains'));
+    $access = widget_access_result($settings, $signup, $sourceUrl, billing_feature_enabled($activePlan, 'allowed_domains'));
     if (($settings['verification_status'] ?? '') !== $access['status']) {
         supabase(
             "PATCH",
@@ -1746,8 +1795,8 @@ if ($action === "get_widget_config" || $action === "get_theme") {
     if (!$canUseFaqFeedback) {
         $faqFeedbackActionIds = [];
     }
-    $paymentSettings = widget_customer_payment_settings($customerId);
     $canUsePaymentCollection = billing_feature_enabled($activePlan, 'payment_collection');
+    $paymentSettings = $canUsePaymentCollection ? widget_customer_payment_settings($customerId) : [];
     $paymentCollectionEnabled = $canUsePaymentCollection && widget_bool($paymentSettings['is_enabled'] ?? false);
     $razorpayCollectionEnabled = $paymentCollectionEnabled && widget_bool($paymentSettings['razorpay_enabled'] ?? false);
     $upiCollectionEnabled = $paymentCollectionEnabled && widget_bool($paymentSettings['upi_enabled'] ?? false);
@@ -1760,7 +1809,7 @@ if ($action === "get_widget_config" || $action === "get_theme") {
         return $method === 'upi' ? $upiCollectionEnabled : $razorpayCollectionEnabled;
     }));
 
-    widget_json_response([
+    $payload = [
         "success" => true,
         "theme_color" => $themeColor,
         "theme_pattern" => $themePattern,
@@ -1831,13 +1880,18 @@ if ($action === "get_widget_config" || $action === "get_theme") {
             "token_auth" => $MSG91_TOKEN_AUTH,
             "configured" => ($MSG91_WIDGET_ID !== '' && $MSG91_TOKEN_AUTH !== '')
         ]
-    ]);
+    ];
+    widget_cached_json_response($cacheKey, $payload, 30);
 }
 
 if ($action === "get_open_hint") {
     $customerId = widget_customer_id();
     if (!$customerId) {
         widget_json_response(["success" => false, "message" => "Missing customer_id"], 400);
+    }
+    $cacheKey = widget_cache_key("open_hint", [$customerId]);
+    if ($cached = widget_cache_get($cacheKey)) {
+        widget_json_response($cached);
     }
 
     $rows = widget_safe_rows(supabase(
@@ -1848,11 +1902,11 @@ if ($action === "get_open_hint") {
     $isActive = widget_bool($settings['is_active'] ?? true, true);
     $open = $isActive && widget_bool($settings['chat_open_by_default'] ?? false);
 
-    widget_json_response([
+    widget_cached_json_response($cacheKey, [
         "success" => true,
         "open" => $open,
         "position" => ($settings['position'] ?? 'right') === 'left' ? 'left' : 'right'
-    ]);
+    ], 20);
 }
 
 if ($action === "chat") {
@@ -2028,13 +2082,17 @@ if ($action === "get_top_faqs") {
     if (!$customerId) {
         widget_json_response(["success" => false, "message" => "Missing customer_id"], 400);
     }
+    $cacheKey = widget_cache_key("top_faqs", [$customerId, $showAll ? "all" : "top"]);
+    if ($cached = widget_cache_get($cacheKey)) {
+        widget_json_response($cached);
+    }
 
     if ($showAll) {
         $res = supabase(
             "GET",
             "faq_questions?select=id,question&customer_id=eq." . urlencode($customerId) . widget_faq_active_query_suffix($customerId, "category.asc,question.asc")
         );
-        widget_json_response(["success" => true, "data" => widget_safe_rows($res)]);
+        widget_cached_json_response($cacheKey, ["success" => true, "data" => widget_safe_rows($res)], 45);
     }
 
     $usageRows = widget_safe_rows(supabase(
@@ -2058,7 +2116,7 @@ if ($action === "get_top_faqs") {
             "GET",
             "faq_questions?select=id,question&customer_id=eq." . urlencode($customerId) . widget_faq_active_query_suffix($customerId) . "&limit=5"
         );
-        widget_json_response(["success" => true, "data" => widget_safe_rows($res)]);
+        widget_cached_json_response($cacheKey, ["success" => true, "data" => widget_safe_rows($res)], 45);
     }
 
     $res = supabase(
@@ -2074,13 +2132,17 @@ if ($action === "get_top_faqs") {
     $activeIds = array_flip(array_map(fn($row) => (string)($row['id'] ?? ''), $activeRows));
     $questions = array_values(array_filter($questions, fn($row) => isset($activeIds[(string)($row['id'] ?? '')])));
     usort($questions, fn($a, $b) => ($counts[$b['id']] ?? 0) <=> ($counts[$a['id']] ?? 0));
-    widget_json_response(["success" => true, "data" => $questions]);
+    widget_cached_json_response($cacheKey, ["success" => true, "data" => $questions], 30);
 }
 
 if ($action === "get_faq_categories") {
     $customerId = widget_customer_id();
     if (!$customerId) {
         widget_json_response(["success" => false, "message" => "Missing customer_id"], 400);
+    }
+    $cacheKey = widget_cache_key("faq_categories", [$customerId]);
+    if ($cached = widget_cache_get($cacheKey)) {
+        widget_json_response($cached);
     }
 
     $rows = widget_safe_rows(supabase(
@@ -2100,7 +2162,7 @@ if ($action === "get_faq_categories") {
         $categories[$key]["count"]++;
     }
 
-    widget_json_response(["success" => true, "data" => array_values($categories)]);
+    widget_cached_json_response($cacheKey, ["success" => true, "data" => array_values($categories)], 45);
 }
 
 if ($action === "get_faqs_by_category") {
@@ -2110,13 +2172,17 @@ if ($action === "get_faqs_by_category") {
     if (!$customerId || $category === '') {
         widget_json_response(["success" => false, "message" => "Missing customer_id or category"], 400);
     }
+    $cacheKey = widget_cache_key("faqs_by_category", [$customerId, $category, $showAll ? "all" : "limited"]);
+    if ($cached = widget_cache_get($cacheKey)) {
+        widget_json_response($cached);
+    }
 
     $res = supabase(
         "GET",
         "faq_questions?select=id,question,category&customer_id=eq." . urlencode($customerId) . "&category=eq." . urlencode($category) . widget_faq_active_query_suffix($customerId)
     );
     $rows = widget_safe_rows($res);
-    widget_json_response(["success" => true, "data" => $showAll ? $rows : array_slice($rows, 0, 6)]);
+    widget_cached_json_response($cacheKey, ["success" => true, "data" => $showAll ? $rows : array_slice($rows, 0, 6)], 45);
 }
 
 if ($action === "track_widget_session") {
@@ -2784,6 +2850,10 @@ if ($action === "search_faqs") {
     if (!$customerId) {
         widget_json_response(["success" => false, "message" => "Missing customer_id"], 400);
     }
+    $cacheKey = widget_cache_key("search_faqs", [$customerId, strtolower($q)]);
+    if ($cached = widget_cache_get($cacheKey)) {
+        widget_json_response($cached);
+    }
 
     $query = "faq_questions?select=id,question&customer_id=eq." . urlencode($customerId);
     if ($q !== '') {
@@ -2792,7 +2862,7 @@ if ($action === "search_faqs") {
     $query .= widget_faq_active_query_suffix($customerId);
 
     $res = supabase("GET", $query);
-    widget_json_response(["success" => true, "data" => widget_safe_rows($res)]);
+    widget_cached_json_response($cacheKey, ["success" => true, "data" => widget_safe_rows($res)], $q === '' ? 45 : 30);
 }
 
 if ($action === "track_faq_usage") {
