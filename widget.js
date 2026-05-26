@@ -866,6 +866,78 @@
     suggestionsBox.appendChild(notice);
   }
 
+  function normalizedFeedbackActionType(actionType) {
+    if (["download", "booking", "track_order"].includes(actionType)) return "link";
+    return actionType;
+  }
+
+  function faqFeedbackEnabledFor(actionType) {
+    if (!isEnabled(config.faq_feedback_enabled)) return false;
+    const triggers = Array.isArray(config.faq_feedback_triggers) ? config.faq_feedback_triggers : [];
+    return triggers.includes(normalizedFeedbackActionType(actionType));
+  }
+
+  function renderFaqActionFeedback(action, context = {}, suggestionsBox = null) {
+    if (!suggestionsBox || !faqFeedbackEnabledFor(action.action_type || "link")) return;
+    suggestionsBox.style.display = "grid";
+    const panel = document.createElement("div");
+    panel.className = "vani-action-panel";
+    css(panel, {
+      display: "grid",
+      gap: "8px",
+      padding: "10px",
+      borderRadius: "16px",
+      background: "rgba(255,255,255,.96)",
+      border: "1px solid rgba(199,210,254,.75)",
+      boxShadow: "0 14px 34px rgba(15,23,42,.10)",
+      marginTop: "7px"
+    });
+    const title = document.createElement("strong");
+    title.textContent = "Was this action helpful?";
+    css(title, {color: "#0f172a", fontSize: "13px"});
+    const grid = document.createElement("div");
+    css(grid, {display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: "6px"});
+    ["Great", "Helpful", "Okay", "Poor", "Need help"].forEach(value => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = value;
+      css(button, {
+        border: "1px solid #e2e8f0",
+        borderRadius: "10px",
+        background: "#fff",
+        color: "#0f172a",
+        cursor: "pointer",
+        fontSize: "11px",
+        fontWeight: "800",
+        padding: "8px 6px"
+      });
+      button.onclick = async () => {
+        grid.querySelectorAll("button").forEach(item => item.disabled = true);
+        await api("submit_faq_action_feedback", "POST", {
+          customer_id: customerId,
+          user_id: userId,
+          session_id: sessionId,
+          source_url: sourceUrl,
+          faq_id: action.faq_id || context.matched_faq_id || null,
+          action_id: action.id || null,
+          action_type: normalizedFeedbackActionType(action.action_type || "link"),
+          feedback_value: value
+        });
+        title.textContent = "Thanks for the feedback.";
+        grid.remove();
+      };
+      grid.appendChild(button);
+    });
+    panel.appendChild(title);
+    panel.appendChild(grid);
+    suggestionsBox.appendChild(panel);
+  }
+
+  function showFaqActionFeedback(action, context = {}, suggestionsBox = null, delay = 0) {
+    if (!faqFeedbackEnabledFor(action.action_type || "link")) return;
+    window.setTimeout(() => renderFaqActionFeedback(action, context, suggestionsBox), delay);
+  }
+
   async function copyText(value, suggestionsBox) {
     try {
       await navigator.clipboard.writeText(value);
@@ -997,6 +1069,7 @@
       });
       if (response.success) {
         setStatus("Request sent. The business team can follow up from their dashboard.", true);
+        showFaqActionFeedback(action, context, suggestionsBox, 200);
         submit.textContent = "Sent";
         nameInput.disabled = true;
         emailInput.disabled = true;
@@ -1045,16 +1118,19 @@
     });
     if (["link", "download", "booking", "track_order"].includes(actionType)) {
       openHttps(value);
+      showFaqActionFeedback(action, context, suggestionsBox, 190);
       return;
     }
     if (actionType === "whatsapp") {
       const phone = cleanPhone(value);
       if (/^[1-9][0-9]{7,14}$/.test(phone)) window.open(`https://wa.me/${phone}`, "_blank", "noopener,noreferrer");
+      showFaqActionFeedback(action, context, suggestionsBox, 190);
       return;
     }
     if (actionType === "call") {
       const phone = cleanPhone(value);
       if (/^[1-9][0-9]{7,14}$/.test(phone)) window.open(`tel:+${phone}`, "_blank");
+      showFaqActionFeedback(action, context, suggestionsBox, 190);
       return;
     }
     if (actionType === "email") {
@@ -1063,6 +1139,7 @@
     }
     if (actionType === "coupon") {
       copyText(value, suggestionsBox);
+      showFaqActionFeedback(action, context, suggestionsBox, 120);
       return;
     }
     if (actionType === "map") {

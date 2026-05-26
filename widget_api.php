@@ -1598,6 +1598,12 @@ if ($action === "get_widget_config" || $action === "get_theme") {
     if ($botName === '') {
         $botName = 'Chat Support';
     }
+    $faqFeedbackTriggers = $settings['faq_feedback_triggers'] ?? [];
+    if (is_string($faqFeedbackTriggers)) {
+        $decodedFeedbackTriggers = json_decode($faqFeedbackTriggers, true);
+        $faqFeedbackTriggers = is_array($decodedFeedbackTriggers) ? $decodedFeedbackTriggers : [];
+    }
+    $faqFeedbackTriggers = array_values(array_intersect(['link', 'whatsapp', 'call', 'coupon', 'form'], array_map('strval', is_array($faqFeedbackTriggers) ? $faqFeedbackTriggers : [])));
 
     widget_json_response([
         "success" => true,
@@ -1626,6 +1632,8 @@ if ($action === "get_widget_config" || $action === "get_theme") {
         "live_chat_actions_enabled" => widget_bool($settings['live_chat_actions_enabled'] ?? false) && billing_feature_enabled($activePlan, 'live_chat_actions'),
         "faq_actions_enabled" => widget_bool($settings['faq_actions_enabled'] ?? false) && billing_feature_enabled($activePlan, 'faq_action_suggestions'),
         "faq_category_menu_enabled" => widget_bool($settings['faq_category_menu_enabled'] ?? false),
+        "faq_feedback_enabled" => widget_bool($settings['faq_feedback_enabled'] ?? false),
+        "faq_feedback_triggers" => $faqFeedbackTriggers,
         "scheduled_faq_actions" => widget_scheduled_faq_actions($customerId, $settings, $activePlan),
         "verification_status" => $access['status'],
         "access_allowed" => $access['allowed'],
@@ -1966,6 +1974,31 @@ if ($action === "submit_faq_action_form") {
         ]);
     }
     widget_json_response(["success" => $ok, "ticket" => $res['data'][0] ?? null]);
+}
+
+if ($action === "submit_faq_action_feedback") {
+    $data = widget_get_json();
+    $customerId = widget_customer_id($data);
+    $feedbackValue = trim((string)($data['feedback_value'] ?? ''));
+    if (!$customerId || $feedbackValue === '') {
+        widget_json_response(["success" => false, "message" => "Missing feedback"], 400);
+    }
+
+    $payload = [
+        "customer_id" => $customerId,
+        "faq_id" => !empty($data['faq_id']) ? (int)$data['faq_id'] : null,
+        "action_id" => !empty($data['action_id']) && is_numeric($data['action_id']) ? (int)$data['action_id'] : null,
+        "action_type" => trim((string)($data['action_type'] ?? '')),
+        "feedback_value" => substr($feedbackValue, 0, 80),
+        "user_id" => trim((string)($data['user_id'] ?? '')) ?: null,
+        "session_id" => trim((string)($data['session_id'] ?? '')) ?: null,
+        "source_url" => trim((string)($data['source_url'] ?? '')) ?: null
+    ];
+    $res = supabase("POST", "faq_action_feedback", [$payload]);
+    widget_json_response([
+        "success" => $res['status'] >= 200 && $res['status'] < 300,
+        "feedback" => $res['data'][0] ?? null
+    ]);
 }
 
 // Create a lead record (generic) - used for location or simple lead saves

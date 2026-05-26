@@ -4692,6 +4692,11 @@ if ($action === "save_dashboard_settings") {
         }
         $data['default_faq_settings'] = $cleanDefaultFaqs;
     }
+    if (array_key_exists('faq_feedback_triggers', $data)) {
+        $allowedFeedbackTriggers = ['link', 'whatsapp', 'call', 'coupon', 'form'];
+        $incomingFeedbackTriggers = is_array($data['faq_feedback_triggers']) ? $data['faq_feedback_triggers'] : [];
+        $data['faq_feedback_triggers'] = array_values(array_intersect($allowedFeedbackTriggers, array_map('strval', $incomingFeedbackTriggers)));
+    }
 
     $allowed = [
         "bot_name",
@@ -4717,6 +4722,8 @@ if ($action === "save_dashboard_settings") {
         "live_chat_actions_enabled",
         "faq_actions_enabled",
         "faq_category_menu_enabled",
+        "faq_feedback_enabled",
+        "faq_feedback_triggers",
         "default_faq_settings",
         "verification_status"
     ];
