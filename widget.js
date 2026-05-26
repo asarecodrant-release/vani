@@ -377,8 +377,18 @@
     await api("track_widget_session", "POST", payload);
   }
 
+  let pendingSessionTrackTimer = null;
+  let pendingSessionTrackExtra = null;
+
   function trackWidgetSessionSoon(extra = {}) {
-    trackWidgetSession(extra).catch(() => {});
+    pendingSessionTrackExtra = {...(pendingSessionTrackExtra || {}), ...extra};
+    window.clearTimeout(pendingSessionTrackTimer);
+    pendingSessionTrackTimer = window.setTimeout(() => {
+      const payload = pendingSessionTrackExtra || {};
+      pendingSessionTrackExtra = null;
+      pendingSessionTrackTimer = null;
+      trackWidgetSession(payload).catch(() => {});
+    }, extra.ended_at ? 0 : 120);
   }
 
   function css(node, styles) {
@@ -2069,6 +2079,9 @@
     }
     let debounce;
     let clearActiveActionTypingTimer;
+    let topLoadInFlight = null;
+    let topLoadKey = "";
+    let initialTopLoadedForOpen = false;
 
     addMessage(messages, greetingText, "bot");
 
@@ -2086,26 +2099,47 @@
     }
 
     async function loadTop(options = {}) {
-      if (activeFaqActions.length && userInputEnabled()) {
-        renderSuggestions(suggestionsBox, input, [], {
-          includeFaqs: false,
+      const key = [
+        selectedFaqCategory || "",
+        userInputEnabled() ? "input" : "readonly",
+        isEnabled(config.faq_category_menu_enabled) ? "categories" : "top",
+        options.preserveActions ? "preserve" : "fresh"
+      ].join("|");
+      if (topLoadInFlight && topLoadKey === key) {
+        return topLoadInFlight;
+      }
+      topLoadKey = key;
+      const loadPromise = (async () => {
+        if (activeFaqActions.length && userInputEnabled()) {
+          renderSuggestions(suggestionsBox, input, [], {
+            includeFaqs: false,
+            showCategorySwitcher: isEnabled(config.faq_category_menu_enabled),
+            currentCategory: selectedFaqCategory,
+            onChangeCategory: loadCategoryMenu
+          });
+          return;
+        }
+        if (isEnabled(config.faq_category_menu_enabled)) {
+          if (await loadSelectedCategoryFaqs({preserveActions: !!options.preserveActions})) return;
+          await loadCategoryMenu();
+          return;
+        }
+        const response = await api("get_top_faqs", "GET", null, `&customer_id=${encodeURIComponent(customerId)}${fullFaqListQueryFlag()}`);
+        renderSuggestions(suggestionsBox, input, response.data || [], {
           showCategorySwitcher: isEnabled(config.faq_category_menu_enabled),
           currentCategory: selectedFaqCategory,
           onChangeCategory: loadCategoryMenu
         });
-        return;
+      })();
+      topLoadInFlight = loadPromise;
+      try {
+        return await loadPromise;
+      } finally {
+        if (topLoadInFlight === loadPromise) {
+          topLoadInFlight = null;
+          topLoadKey = "";
+        }
       }
-      if (isEnabled(config.faq_category_menu_enabled)) {
-        if (await loadSelectedCategoryFaqs({preserveActions: !!options.preserveActions})) return;
-        await loadCategoryMenu();
-        return;
-      }
-      const response = await api("get_top_faqs", "GET", null, `&customer_id=${encodeURIComponent(customerId)}${fullFaqListQueryFlag()}`);
-      renderSuggestions(suggestionsBox, input, response.data || [], {
-        showCategorySwitcher: isEnabled(config.faq_category_menu_enabled),
-        currentCategory: selectedFaqCategory,
-        onChangeCategory: loadCategoryMenu
-      });
     }
 
     async function searchFaqs(query) {
@@ -3245,7 +3279,10 @@
       sessionOpenedAt = sessionOpenedAt || new Date().toISOString();
       emitLiveAction("chatOpened", {opened_at: sessionOpenedAt});
       trackWidgetSessionSoon({opened_at: sessionOpenedAt});
-      loadTop();
+      if (!initialTopLoadedForOpen) {
+        initialTopLoadedForOpen = true;
+        loadTop();
+      }
       if (userInputEnabled()) {
         suppressNextInputFocusLoad = true;
         input.focus();
@@ -3265,6 +3302,7 @@
       applyEmbeddedLayout(false);
       notifyFrameState(false, true);
       trackWidgetSessionSoon();
+      initialTopLoadedForOpen = false;
     }
 
     icon.onclick = () => {
