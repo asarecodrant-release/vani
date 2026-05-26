@@ -7529,10 +7529,70 @@ async function autosavePaymentSwitch(toggle, message) {
   if (!saved) toggle.checked = previous;
 }
 
+function paymentsGloballyEnabled() {
+  return !!document.getElementById("paymentEnabledToggle")?.checked && !!businessFeatures.payment_collection;
+}
+
+function syncPaymentCollectionSwitchState() {
+  const globalEnabled = paymentsGloballyEnabled();
+  const toggles = [
+    "paymentCollectEmailToggle",
+    "paymentCollectPhoneToggle",
+    "paymentVerifyEmailOtpToggle",
+    "paymentVerifyPhoneOtpToggle",
+    "paymentRazorpayEnabledToggle",
+    "paymentUpiEnabledToggle",
+    "paymentUpiTransactionIdToggle"
+  ];
+  toggles.forEach(id => {
+    const toggle = document.getElementById(id);
+    if (!toggle) return;
+    if (!globalEnabled) toggle.checked = false;
+    const needsEmailOtp = id === "paymentVerifyEmailOtpToggle";
+    const needsMobileOtp = id === "paymentVerifyPhoneOtpToggle";
+    toggle.disabled = !globalEnabled || (needsEmailOtp && !leadPaidFeatures.email_otp) || (needsMobileOtp && !leadPaidFeatures.mobile_otp);
+  });
+  document.querySelectorAll(".payment-action-active-toggle").forEach(toggle => {
+    if (!globalEnabled) toggle.checked = false;
+    toggle.disabled = !globalEnabled;
+  });
+  document.querySelectorAll(".payment-action-form [data-payment-field='active']").forEach(toggle => {
+    toggle.disabled = !globalEnabled;
+    if (!globalEnabled) toggle.checked = false;
+  });
+}
+
+function blockWhenPaymentCollectionOff(toggle) {
+  if (paymentsGloballyEnabled()) return false;
+  if (toggle) toggle.checked = false;
+  showToast("Turn ON Enable payment collection first");
+  return true;
+}
+
+function turnOffDependentPaymentSwitches() {
+  [
+    "paymentCollectEmailToggle",
+    "paymentCollectPhoneToggle",
+    "paymentVerifyEmailOtpToggle",
+    "paymentVerifyPhoneOtpToggle",
+    "paymentRazorpayEnabledToggle",
+    "paymentUpiEnabledToggle",
+    "paymentUpiTransactionIdToggle"
+  ].forEach(id => {
+    const toggle = document.getElementById(id);
+    if (toggle) toggle.checked = false;
+  });
+  document.querySelectorAll(".payment-action-active-toggle, .payment-action-form [data-payment-field='active']").forEach(toggle => {
+    toggle.checked = false;
+  });
+}
+
 async function confirmPaymentOtpToggle(toggle, kind) {
   if (!toggle) return;
+  if (toggle.checked && blockWhenPaymentCollectionOff(toggle)) return;
   if (!toggle.checked) {
     await autosavePaymentSwitch(toggle, kind === "email" ? "Payment email OTP disabled" : "Payment mobile OTP disabled");
+    syncPaymentCollectionSwitchState();
     return;
   }
   const collectToggle = document.getElementById(kind === "email" ? "paymentCollectEmailToggle" : "paymentCollectPhoneToggle");
@@ -7554,6 +7614,7 @@ async function confirmPaymentOtpToggle(toggle, kind) {
     }
   }
   await autosavePaymentSwitch(toggle, kind === "email" ? "Payment email OTP enabled" : "Payment mobile OTP enabled");
+  syncPaymentCollectionSwitchState();
 }
 
 document.getElementById("paymentEnabledToggle")?.addEventListener("change", async event => {
@@ -7563,23 +7624,31 @@ document.getElementById("paymentEnabledToggle")?.addEventListener("change", asyn
     openTab("subscription");
     return;
   }
+  if (!event.currentTarget.checked) {
+    turnOffDependentPaymentSwitches();
+  }
   await autosavePaymentSwitch(event.currentTarget, event.currentTarget.checked ? "Payment collection enabled" : "Payment collection disabled");
+  syncPaymentCollectionSwitchState();
 });
 
 document.getElementById("paymentCollectEmailToggle")?.addEventListener("change", async event => {
+  if (event.currentTarget.checked && blockWhenPaymentCollectionOff(event.currentTarget)) return;
   if (!event.currentTarget.checked) {
     const verifyToggle = document.getElementById("paymentVerifyEmailOtpToggle");
     if (verifyToggle) verifyToggle.checked = false;
   }
   await autosavePaymentSwitch(event.currentTarget, event.currentTarget.checked ? "Email collection enabled" : "Email collection disabled");
+  syncPaymentCollectionSwitchState();
 });
 
 document.getElementById("paymentCollectPhoneToggle")?.addEventListener("change", async event => {
+  if (event.currentTarget.checked && blockWhenPaymentCollectionOff(event.currentTarget)) return;
   if (!event.currentTarget.checked) {
     const verifyToggle = document.getElementById("paymentVerifyPhoneOtpToggle");
     if (verifyToggle) verifyToggle.checked = false;
   }
   await autosavePaymentSwitch(event.currentTarget, event.currentTarget.checked ? "Mobile number collection enabled" : "Mobile number collection disabled");
+  syncPaymentCollectionSwitchState();
 });
 
 document.getElementById("paymentVerifyEmailOtpToggle")?.addEventListener("change", async event => {
@@ -7591,7 +7660,9 @@ document.getElementById("paymentVerifyPhoneOtpToggle")?.addEventListener("change
 });
 
 document.getElementById("paymentUpiTransactionIdToggle")?.addEventListener("change", async event => {
+  if (event.currentTarget.checked && blockWhenPaymentCollectionOff(event.currentTarget)) return;
   await autosavePaymentSwitch(event.currentTarget, event.currentTarget.checked ? "UPI transaction ID prompt enabled" : "UPI transaction ID prompt disabled");
+  syncPaymentCollectionSwitchState();
 });
 
 function openRazorpayConsentModal() {
@@ -7608,12 +7679,14 @@ function closeRazorpayConsentModal() {
 }
 
 document.getElementById("paymentRazorpayEnabledToggle")?.addEventListener("change", async event => {
+  if (event.currentTarget.checked && blockWhenPaymentCollectionOff(event.currentTarget)) return;
   if (event.currentTarget.checked) {
     razorpayTermsAccepted = false;
     openRazorpayConsentModal();
     return;
   }
   await autosavePaymentSwitch(event.currentTarget, "Razorpay Checkout disabled");
+  syncPaymentCollectionSwitchState();
 });
 
 razorpayConsentCancelBtn?.addEventListener("click", () => {
@@ -7629,9 +7702,14 @@ razorpayConsentAcceptBtn?.addEventListener("click", async () => {
   }
   razorpayTermsAccepted = true;
   const razorpayToggle = document.getElementById("paymentRazorpayEnabledToggle");
+  if (blockWhenPaymentCollectionOff(razorpayToggle)) {
+    closeRazorpayConsentModal();
+    return;
+  }
   if (razorpayToggle) razorpayToggle.checked = true;
   closeRazorpayConsentModal();
   await autosavePaymentSwitch(razorpayToggle, "Razorpay Checkout enabled");
+  syncPaymentCollectionSwitchState();
 });
 
 function openUpiConsentModal() {
@@ -7648,12 +7726,14 @@ function closeUpiConsentModal() {
 }
 
 document.getElementById("paymentUpiEnabledToggle")?.addEventListener("change", async event => {
+  if (event.currentTarget.checked && blockWhenPaymentCollectionOff(event.currentTarget)) return;
   if (event.currentTarget.checked) {
     upiTermsAccepted = false;
     openUpiConsentModal();
     return;
   }
   await autosavePaymentSwitch(event.currentTarget, "UPI Redirect disabled");
+  syncPaymentCollectionSwitchState();
 });
 
 upiConsentCancelBtn?.addEventListener("click", () => {
@@ -7669,10 +7749,17 @@ upiConsentAcceptBtn?.addEventListener("click", async () => {
   }
   upiTermsAccepted = true;
   const upiToggle = document.getElementById("paymentUpiEnabledToggle");
+  if (blockWhenPaymentCollectionOff(upiToggle)) {
+    closeUpiConsentModal();
+    return;
+  }
   if (upiToggle) upiToggle.checked = true;
   closeUpiConsentModal();
   await autosavePaymentSwitch(upiToggle, "UPI Redirect enabled");
+  syncPaymentCollectionSwitchState();
 });
+
+syncPaymentCollectionSwitchState();
 
 function openPaymentSubtab(target) {
   const id = document.getElementById(target) ? target : "payment-subpanel-setup";
@@ -7735,6 +7822,7 @@ document.getElementById("paymentActionList")?.addEventListener("click", async ev
   if (!row) return;
   const activeToggle = event.target.closest(".payment-action-active-toggle");
   if (activeToggle) {
+    if (activeToggle.checked && blockWhenPaymentCollectionOff(activeToggle)) return;
     const customerId = document.getElementById("paymentCustomerId")?.value || "";
     const previousState = !activeToggle.checked;
     activeToggle.disabled = true;
@@ -7749,12 +7837,13 @@ document.getElementById("paymentActionList")?.addEventListener("click", async ev
     });
     const data = await response.json().catch(() => ({}));
     activeToggle.disabled = false;
-    if (!data.success) {
-      activeToggle.checked = previousState;
-      return showToast(data.message || "Payment button status could not be updated");
-    }
-    showToast(activeToggle.checked ? "Payment button activated" : "Payment button deactivated");
-    setTimeout(() => location.reload(), 500);
+  if (!data.success) {
+    activeToggle.checked = previousState;
+    return showToast(data.message || "Payment button status could not be updated");
+  }
+  showToast(activeToggle.checked ? "Payment button activated" : "Payment button deactivated");
+  syncPaymentCollectionSwitchState();
+  setTimeout(() => location.reload(), 500);
     return;
   }
   const copyButton = event.target.closest(".payment-action-copy-btn");

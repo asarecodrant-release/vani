@@ -4660,13 +4660,21 @@ if ($action === "save_payment_settings") {
     $verifyPayerPhoneOtp = array_key_exists('verify_payer_phone_otp', $data)
         ? filter_var($data['verify_payer_phone_otp'], FILTER_VALIDATE_BOOLEAN)
         : false;
-    if ($verifyPayerEmailOtp && !billing_feature_enabled($activePlan, 'email_otp')) {
+    if ($enablePayments && $verifyPayerEmailOtp && !billing_feature_enabled($activePlan, 'email_otp')) {
         echo json_encode(["success" => false, "message" => "Payment email OTP requires an active paid plan"]);
         exit;
     }
-    if ($verifyPayerPhoneOtp && !billing_feature_enabled($activePlan, 'mobile_otp')) {
+    if ($enablePayments && $verifyPayerPhoneOtp && !billing_feature_enabled($activePlan, 'mobile_otp')) {
         echo json_encode(["success" => false, "message" => "Payment mobile OTP requires an active paid plan"]);
         exit;
+    }
+    if (!$enablePayments) {
+        $enableRazorpay = false;
+        $enableUpi = false;
+        $collectPayerEmail = false;
+        $collectPayerPhone = false;
+        $verifyPayerEmailOtp = false;
+        $verifyPayerPhoneOtp = false;
     }
     $existingRazorpayTermsAccepted = filter_var($existingPaymentSettings['razorpay_terms_accepted'] ?? false, FILTER_VALIDATE_BOOLEAN);
     $acceptRazorpayTerms = filter_var($data['razorpay_terms_accepted'] ?? false, FILTER_VALIDATE_BOOLEAN);
@@ -4674,6 +4682,9 @@ if ($action === "save_payment_settings") {
     $upiTransactionIdRequired = array_key_exists('upi_transaction_id_required', $data)
         ? filter_var($data['upi_transaction_id_required'], FILTER_VALIDATE_BOOLEAN)
         : true;
+    if (!$enablePayments) {
+        $upiTransactionIdRequired = false;
+    }
     $existingUpiTermsAccepted = filter_var($existingPaymentSettings['upi_terms_accepted'] ?? false, FILTER_VALIDATE_BOOLEAN);
     $acceptUpiTerms = filter_var($data['upi_terms_accepted'] ?? false, FILTER_VALIDATE_BOOLEAN);
     $upiTermsAccepted = $existingUpiTermsAccepted || $acceptUpiTerms;
