@@ -1718,6 +1718,10 @@ if ($action === "get_widget_config" || $action === "get_theme") {
     if (!$canUseFaqFeedback) {
         $faqFeedbackActionIds = [];
     }
+    $paymentActions = widget_safe_rows(supabase(
+        "GET",
+        "customer_payment_actions?select=id,label,amount_paise,currency,payment_method,is_active&customer_id=eq." . urlencode($customerId) . "&is_active=eq.true&order=created_at.desc&limit=100"
+    ));
 
     widget_json_response([
         "success" => true,
@@ -1751,6 +1755,13 @@ if ($action === "get_widget_config" || $action === "get_theme") {
         "faq_feedback_type" => $faqFeedbackType,
         "faq_feedback_action_ids" => $faqFeedbackActionIds,
         "faq_feedback_email_enabled" => $canUseFaqFeedback && widget_bool($settings['faq_feedback_email_enabled'] ?? false),
+        "payment_actions" => array_values(array_map(fn($row) => [
+            "id" => (string)($row['id'] ?? ''),
+            "label" => (string)($row['label'] ?? 'Payment'),
+            "amount_paise" => (int)($row['amount_paise'] ?? 0),
+            "currency" => (string)($row['currency'] ?? 'INR'),
+            "payment_method" => (string)($row['payment_method'] ?? 'razorpay')
+        ], $paymentActions)),
         "scheduled_faq_actions" => widget_scheduled_faq_actions($customerId, $settings, $activePlan),
         "verification_status" => $access['status'],
         "access_allowed" => $access['allowed'],
@@ -2146,6 +2157,52 @@ if ($action === "create_customer_payment_order") {
     if (empty($paymentAction)) {
         widget_json_response(["success" => false, "message" => "Payment button not found"], 404);
     }
+    $paymentMethod = (string)($paymentAction['payment_method'] ?? 'razorpay');
+    if ($paymentMethod === 'upi') {
+        $amountPaise = (int)($paymentAction['amount_paise'] ?? 0);
+        $upiId = trim((string)($paymentAction['upi_id'] ?? ''));
+        if ($upiId === '') {
+            widget_json_response(["success" => false, "message" => "UPI ID is not configured"], 400);
+        }
+        $upiPayee = trim((string)($paymentAction['upi_payee_name'] ?? '')) ?: trim((string)($settings['business_name'] ?? ''));
+        $upiNote = trim((string)($paymentAction['upi_note'] ?? '')) ?: trim((string)($paymentAction['description'] ?? $paymentAction['label'] ?? 'Payment'));
+        $upiLink = 'upi://pay?pa=' . rawurlencode($upiId)
+            . '&pn=' . rawurlencode($upiPayee ?: 'Payment')
+            . '&am=' . rawurlencode(number_format($amountPaise / 100, 2, '.', ''))
+            . '&cu=' . rawurlencode((string)($paymentAction['currency'] ?? 'INR'))
+            . '&tn=' . rawurlencode($upiNote);
+        $txn = supabase("POST", "customer_payment_transactions", [[
+            "customer_id" => $customerId,
+            "payment_action_id" => $paymentActionId,
+            "faq_action_id" => !empty($data['faq_action_id']) ? (int)$data['faq_action_id'] : null,
+            "faq_id" => !empty($data['faq_id']) ? (int)$data['faq_id'] : null,
+            "user_id" => trim((string)($data['user_id'] ?? '')) ?: null,
+            "session_id" => trim((string)($data['session_id'] ?? '')) ?: null,
+            "source_url" => trim((string)($data['source_url'] ?? '')) ?: null,
+            "payer_name" => trim((string)($data['payer_name'] ?? '')) ?: null,
+            "payer_email" => trim((string)($data['payer_email'] ?? '')) ?: null,
+            "payer_phone" => trim((string)($data['payer_phone'] ?? '')) ?: null,
+            "amount_paise" => $amountPaise,
+            "currency" => (string)($paymentAction['currency'] ?? 'INR'),
+            "status" => "created",
+            "payment_method" => "upi",
+            "metadata" => (object)["upi_id" => $upiId, "manual_verification_required" => true, "payment_action_label" => $paymentAction['label'] ?? 'Payment']
+        ]]);
+        widget_json_response([
+            "success" => $txn['status'] >= 200 && $txn['status'] < 300,
+            "payment_method" => "upi",
+            "upi_link" => $upiLink,
+            "transaction" => $txn['data'][0] ?? null,
+            "payment_action" => [
+                "id" => (string)$paymentActionId,
+                "label" => (string)($paymentAction['label'] ?? 'Payment'),
+                "description" => (string)($paymentAction['description'] ?? ''),
+                "amount_paise" => $amountPaise,
+                "currency" => (string)($paymentAction['currency'] ?? 'INR')
+            ],
+            "success_message" => "UPI app opened. Payment will show as pending until the business verifies it."
+        ]);
+    }
     $amountPaise = (int)($paymentAction['amount_paise'] ?? 0);
     $receipt = substr("pay_" . $customerId . "_" . time() . "_" . bin2hex(random_bytes(3)), 0, 40);
     $order = widget_customer_razorpay_request($settings, "POST", "orders", [
@@ -2173,6 +2230,7 @@ if ($action === "create_customer_payment_order") {
         "amount_paise" => $amountPaise,
         "currency" => (string)($paymentAction['currency'] ?? 'INR'),
         "status" => "created",
+        "payment_method" => "razorpay",
         "razorpay_order_id" => (string)$order['data']['id'],
         "metadata" => (object)["payment_action_label" => $paymentAction['label'] ?? 'Payment']
     ]]);

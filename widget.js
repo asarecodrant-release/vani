@@ -1193,6 +1193,34 @@
       event.preventDefault();
       submit.disabled = true;
       submit.textContent = "Preparing...";
+      const createPayload = {
+        customer_id: customerId,
+        payment_action_id: action.action_value,
+        faq_action_id: action.id || null,
+        faq_id: action.faq_id || context.matched_faq_id || null,
+        user_id: userId,
+        session_id: sessionId,
+        source_url: sourceUrl,
+        payer_name: nameInput.value.trim(),
+        payer_email: emailInput.value.trim(),
+        payer_phone: phoneInput.value.trim()
+      };
+      const selectedPaymentAction = (config.payment_actions || []).find(item => String(item.id) === String(action.action_value));
+      if (selectedPaymentAction?.payment_method === "upi") {
+        const upiResponse = await api("create_customer_payment_order", "POST", createPayload);
+        if (!upiResponse.success || !upiResponse.upi_link) {
+          submit.disabled = false;
+          submit.textContent = "Open UPI app";
+          setStatus(upiResponse.message || "UPI payment could not be started.");
+          return;
+        }
+        window.location.href = upiResponse.upi_link;
+        setStatus("UPI app opened. Payment will remain pending until the business verifies it.", true);
+        submit.disabled = false;
+        submit.textContent = "Open UPI app again";
+        showFaqActionFeedback(action, context, suggestionsBox, 250);
+        return;
+      }
       const loaded = await loadRazorpayCheckout();
       if (!loaded || !window.Razorpay) {
         submit.disabled = false;
@@ -1200,15 +1228,7 @@
         setStatus("Payment checkout could not be loaded.");
         return;
       }
-      const orderResponse = await api("create_customer_payment_order", "POST", {
-        customer_id: customerId,
-        payment_action_id: action.action_value,
-        faq_action_id: action.id || null,
-        faq_id: action.faq_id || context.matched_faq_id || null,
-        user_id: userId,
-        session_id: sessionId,
-        source_url: sourceUrl
-      });
+      const orderResponse = await api("create_customer_payment_order", "POST", createPayload);
       if (!orderResponse.success) {
         submit.disabled = false;
         submit.textContent = "Continue to payment";

@@ -1404,6 +1404,7 @@ $paymentPaidTotalPaise = array_sum(array_map(fn($row) => ($row['status'] ?? '') 
 $paymentPaidCount = count(array_filter($paymentTransactionRows, fn($row) => ($row['status'] ?? '') === 'paid'));
 $paymentCreatedCount = count(array_filter($paymentTransactionRows, fn($row) => ($row['status'] ?? '') === 'created'));
 $paymentFailedCount = count(array_filter($paymentTransactionRows, fn($row) => ($row['status'] ?? '') === 'failed'));
+$paymentUpiPendingCount = count(array_filter($paymentTransactionRows, fn($row) => ($row['payment_method'] ?? '') === 'upi' && ($row['status'] ?? '') === 'created'));
 $nowTimestamp = time();
 $todayInIndia = (new DateTimeImmutable('now', new DateTimeZone('Asia/Kolkata')))->format('Y-m-d');
 $whatsappToggleDate = (string)($leadSettings['whatsapp_redirect_toggle_date'] ?? '');
@@ -3036,7 +3037,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
           <div class="panel metric"><span>Collected</span><strong><?php echo h(billing_rupees($paymentPaidTotalPaise)); ?></strong><small>Successful visitor payments.</small></div>
           <div class="panel metric"><span>Paid Orders</span><strong><?php echo h($paymentPaidCount); ?></strong><small>Captured payments.</small></div>
           <div class="panel metric"><span>Pending Orders</span><strong><?php echo h($paymentCreatedCount); ?></strong><small>Created but not verified yet.</small></div>
-          <div class="panel metric"><span>Failed Orders</span><strong><?php echo h($paymentFailedCount); ?></strong><small>Failed checkout attempts.</small></div>
+          <div class="panel metric"><span>UPI Pending</span><strong><?php echo h($paymentUpiPendingCount); ?></strong><small>Manual verification needed.</small></div>
         </div>
 
         <div class="panel section-body">
@@ -3068,8 +3069,18 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
           <div class="panel section-body">
             <h3>Create Payment Button</h3>
             <form id="paymentActionForm" class="form-grid" style="margin-top:12px">
+              <div class="field">
+                <label>Payment method</label>
+                <select id="paymentActionMethod">
+                  <option value="razorpay">Razorpay Checkout</option>
+                  <option value="upi">UPI Redirect</option>
+                </select>
+              </div>
               <div class="field"><label>Label</label><input id="paymentActionLabel" placeholder="Pay booking amount"></div>
               <div class="field"><label>Amount (INR)</label><input id="paymentActionAmount" type="number" min="1" step="1" placeholder="999"></div>
+              <div class="field payment-upi-field"><label>UPI ID</label><input id="paymentActionUpiId" placeholder="business@upi"></div>
+              <div class="field payment-upi-field"><label>UPI payee name</label><input id="paymentActionUpiName" placeholder="<?php echo h($paymentBusinessName); ?>"></div>
+              <div class="field full payment-upi-field"><label>UPI note</label><input id="paymentActionUpiNote" placeholder="Booking advance"></div>
               <div class="field full"><label>Description</label><textarea id="paymentActionDescription" placeholder="Advance payment for appointment or order"></textarea></div>
               <div class="field"><label>Status</label><label class="switch"><input id="paymentActionActive" type="checkbox" checked><span class="switch-slider"></span></label></div>
               <div class="field"><label>&nbsp;</label><button class="pill-btn" type="submit">Add payment button</button></div>
@@ -3084,7 +3095,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                   <div class="inline-row" style="justify-content:space-between;gap:12px">
                     <div>
                       <strong><?php echo h($paymentAction['label'] ?? 'Payment'); ?></strong>
-                      <small class="input-help">ID <?php echo h($paymentAction['id'] ?? ''); ?> | <?php echo h(billing_rupees((int)($paymentAction['amount_paise'] ?? 0))); ?> | <?php echo h($paymentAction['description'] ?? ''); ?></small>
+                      <small class="input-help">ID <?php echo h($paymentAction['id'] ?? ''); ?> | <?php echo h(strtoupper((string)($paymentAction['payment_method'] ?? 'razorpay'))); ?> | <?php echo h(billing_rupees((int)($paymentAction['amount_paise'] ?? 0))); ?> | <?php echo h($paymentAction['description'] ?? ''); ?></small>
                     </div>
                     <button class="danger-btn payment-action-delete-btn" type="button">Delete</button>
                   </div>
@@ -3098,14 +3109,15 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
           <h3>Payment Transactions</h3>
           <div class="table-wrap" style="margin-top:14px">
             <table>
-              <thead><tr><th>Date</th><th>Status</th><th>Amount</th><th>Payment Button</th><th>Payer</th><th>Razorpay Payment</th><th>Source</th></tr></thead>
+              <thead><tr><th>Date</th><th>Status</th><th>Method</th><th>Amount</th><th>Payment Button</th><th>Payer</th><th>Reference</th><th>Source</th></tr></thead>
               <tbody>
-                <?php if (empty($paymentTransactionRows)): ?><tr><td colspan="7" class="empty">No visitor payments yet.</td></tr><?php endif; ?>
+                <?php if (empty($paymentTransactionRows)): ?><tr><td colspan="8" class="empty">No visitor payments yet.</td></tr><?php endif; ?>
                 <?php foreach ($paymentTransactionRows as $paymentTxn): ?>
                   <?php $paymentAction = $paymentActionById[(string)($paymentTxn['payment_action_id'] ?? '')] ?? []; ?>
                   <tr>
                     <td><?php echo h(substr((string)($paymentTxn['created_at'] ?? ''), 0, 16)); ?></td>
                     <td><span class="tag <?php echo ($paymentTxn['status'] ?? '') === 'paid' ? 'good' : (($paymentTxn['status'] ?? '') === 'failed' ? 'bad' : ''); ?>"><?php echo h($paymentTxn['status'] ?? 'created'); ?></span></td>
+                    <td><?php echo h(strtoupper((string)($paymentTxn['payment_method'] ?? 'razorpay'))); ?></td>
                     <td><?php echo h(billing_rupees((int)($paymentTxn['amount_paise'] ?? 0))); ?></td>
                     <td><?php echo h($paymentAction['label'] ?? 'Deleted payment button'); ?></td>
                     <td><?php echo h(trim(($paymentTxn['payer_name'] ?? '') . ' ' . ($paymentTxn['payer_email'] ?? '')) ?: '-'); ?></td>
@@ -4299,6 +4311,7 @@ const paymentActions = <?php echo js_json(array_values(array_map(fn($row) => [
   "id" => (string)($row["id"] ?? ""),
   "label" => (string)($row["label"] ?? ""),
   "amount_paise" => (int)($row["amount_paise"] ?? 0),
+  "payment_method" => (string)($row["payment_method"] ?? "razorpay"),
   "is_active" => filter_var($row["is_active"] ?? true, FILTER_VALIDATE_BOOLEAN)
 ], $paymentActionRows))); ?>;
 const leadWalletCharges = <?php echo js_json([
@@ -6965,13 +6978,25 @@ document.getElementById("paymentEnabledToggle")?.addEventListener("change", even
   }
 });
 
+function updatePaymentActionMethodFields() {
+  const method = document.getElementById("paymentActionMethod")?.value || "razorpay";
+  document.querySelectorAll(".payment-upi-field").forEach(field => {
+    field.style.display = method === "upi" ? "" : "none";
+  });
+}
+document.getElementById("paymentActionMethod")?.addEventListener("change", updatePaymentActionMethodFields);
+updatePaymentActionMethodFields();
+
 document.getElementById("paymentActionForm")?.addEventListener("submit", async event => {
   event.preventDefault();
   const customerId = document.getElementById("paymentCustomerId")?.value || "";
+  const method = document.getElementById("paymentActionMethod")?.value || "razorpay";
   const label = document.getElementById("paymentActionLabel")?.value.trim() || "";
   const amount = document.getElementById("paymentActionAmount")?.value || "";
+  const upiId = document.getElementById("paymentActionUpiId")?.value.trim() || "";
   if (!customerId) return showToast("Select a bot first");
   if (!label || !amount) return showToast("Payment label and amount are required");
+  if (method === "upi" && !upiId) return showToast("UPI ID is required");
   const button = event.currentTarget.querySelector("button[type='submit']");
   button.disabled = true;
   button.textContent = "Saving...";
@@ -6980,9 +7005,13 @@ document.getElementById("paymentActionForm")?.addEventListener("submit", async e
     headers: {"Content-Type": "application/json"},
     body: JSON.stringify({
       customer_id: customerId,
+      payment_method: method,
       label,
       amount_rupees: amount,
       description: document.getElementById("paymentActionDescription")?.value.trim() || "",
+      upi_id: upiId,
+      upi_payee_name: document.getElementById("paymentActionUpiName")?.value.trim() || "",
+      upi_note: document.getElementById("paymentActionUpiNote")?.value.trim() || "",
       is_active: !!document.getElementById("paymentActionActive")?.checked
     })
   });

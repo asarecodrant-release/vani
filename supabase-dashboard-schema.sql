@@ -203,14 +203,37 @@ create table if not exists public.customer_payment_settings (
 create table if not exists public.customer_payment_actions (
   id bigserial primary key,
   customer_id uuid not null references public.chatbot_signups(customer_id) on delete cascade,
+  payment_method text not null default 'razorpay' check (payment_method in ('razorpay', 'upi')),
   label text not null,
   description text,
   amount_paise integer not null check (amount_paise > 0),
   currency text not null default 'INR',
+  upi_id text,
+  upi_payee_name text,
+  upi_note text,
   is_active boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.customer_payment_actions
+  add column if not exists payment_method text not null default 'razorpay';
+
+alter table public.customer_payment_actions
+  add column if not exists upi_id text;
+
+alter table public.customer_payment_actions
+  add column if not exists upi_payee_name text;
+
+alter table public.customer_payment_actions
+  add column if not exists upi_note text;
+
+alter table public.customer_payment_actions
+  drop constraint if exists customer_payment_actions_payment_method_check;
+
+alter table public.customer_payment_actions
+  add constraint customer_payment_actions_payment_method_check
+  check (payment_method in ('razorpay', 'upi'));
 
 create table if not exists public.customer_payment_transactions (
   id bigserial primary key,
@@ -227,6 +250,7 @@ create table if not exists public.customer_payment_transactions (
   amount_paise integer not null,
   currency text not null default 'INR',
   status text not null default 'created' check (status in ('created', 'paid', 'failed')),
+  payment_method text not null default 'razorpay' check (payment_method in ('razorpay', 'upi')),
   razorpay_order_id text unique,
   razorpay_payment_id text,
   razorpay_signature text,
@@ -234,6 +258,23 @@ create table if not exists public.customer_payment_transactions (
   paid_at timestamptz,
   created_at timestamptz not null default now()
 );
+
+alter table public.customer_payment_transactions
+  add column if not exists payment_method text not null default 'razorpay';
+
+alter table public.customer_payment_transactions
+  drop constraint if exists customer_payment_transactions_payment_method_check;
+
+alter table public.customer_payment_transactions
+  add constraint customer_payment_transactions_payment_method_check
+  check (payment_method in ('razorpay', 'upi'));
+
+alter table public.customer_payment_transactions
+  drop constraint if exists customer_payment_transactions_status_check;
+
+alter table public.customer_payment_transactions
+  add constraint customer_payment_transactions_status_check
+  check (status in ('created', 'paid', 'failed'));
 
 create table if not exists public.chatbot_sessions (
   id bigserial primary key,

@@ -4478,18 +4478,32 @@ if ($action === "save_payment_action") {
     $data = getJSON();
     $customerId = trim((string)($data['customer_id'] ?? ''));
     $label = trim((string)($data['label'] ?? ''));
+    $paymentMethod = trim((string)($data['payment_method'] ?? 'razorpay'));
     $amountPaise = (int)round(((float)($data['amount_rupees'] ?? 0)) * 100);
     if (!$customerId || $label === '' || $amountPaise <= 0) {
         echo json_encode(["success" => false, "message" => "Payment label and amount are required"]);
         exit;
     }
+    if (!in_array($paymentMethod, ['razorpay', 'upi'], true)) {
+        echo json_encode(["success" => false, "message" => "Invalid payment method"]);
+        exit;
+    }
+    $upiId = trim((string)($data['upi_id'] ?? ''));
+    if ($paymentMethod === 'upi' && !preg_match('/^[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z]{2,64}$/', $upiId)) {
+        echo json_encode(["success" => false, "message" => "Enter a valid UPI ID"]);
+        exit;
+    }
     require_customer_mutation_access($customerId);
     $payload = [
         "customer_id" => $customerId,
+        "payment_method" => $paymentMethod,
         "label" => substr($label, 0, 100),
         "description" => trim(substr((string)($data['description'] ?? ''), 0, 400)),
         "amount_paise" => $amountPaise,
         "currency" => "INR",
+        "upi_id" => $paymentMethod === 'upi' ? $upiId : null,
+        "upi_payee_name" => $paymentMethod === 'upi' ? trim(substr((string)($data['upi_payee_name'] ?? ''), 0, 120)) : null,
+        "upi_note" => $paymentMethod === 'upi' ? trim(substr((string)($data['upi_note'] ?? ''), 0, 160)) : null,
         "is_active" => filter_var($data['is_active'] ?? true, FILTER_VALIDATE_BOOLEAN)
     ];
     $res = supabase("POST", "customer_payment_actions", [$payload]);
