@@ -978,6 +978,15 @@
         action_type: normalizedFeedbackActionType(action.action_type || "link"),
         feedback_value: value
       });
+      if ((action.action_type || "") === "payment") {
+        if (suggestionsBox) {
+          suggestionsBox.innerHTML = "";
+          suggestionsBox.style.display = "none";
+        }
+        const messageBox = chatMessagesContainer();
+        if (messageBox) addMessage(messageBox, "How can I help you further?", "bot");
+        return;
+      }
       title.textContent = "Thanks for the feedback.";
       if (container) container.remove();
     };
@@ -1371,7 +1380,7 @@
           suggestionsBox.style.display = "none";
         }
         const messageBox = chatMessagesContainer();
-        if (messageBox) addMessage(messageBox, "How Can I help you further?", "bot");
+        if (messageBox) addMessage(messageBox, "How can I help you further?", "bot");
       }, 1000);
     };
     panel.onsubmit = async event => {
