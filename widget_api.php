@@ -1771,6 +1771,8 @@ if ($action === "get_widget_config" || $action === "get_theme") {
         "upi_transaction_id_required" => widget_bool($paymentSettings['upi_transaction_id_required'] ?? true, true),
         "payment_collect_payer_email" => widget_bool($paymentSettings['collect_payer_email'] ?? true, true),
         "payment_collect_payer_phone" => widget_bool($paymentSettings['collect_payer_phone'] ?? true, true),
+        "payment_verify_payer_email_otp" => widget_bool($paymentSettings['verify_payer_email_otp'] ?? false) && billing_feature_enabled($activePlan, 'email_otp'),
+        "payment_verify_payer_phone_otp" => widget_bool($paymentSettings['verify_payer_phone_otp'] ?? false) && billing_feature_enabled($activePlan, 'mobile_otp'),
         "payment_actions" => array_values(array_map(fn($row) => [
             "id" => (string)($row['id'] ?? ''),
             "label" => (string)($row['label'] ?? 'Payment'),

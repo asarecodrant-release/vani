@@ -1400,6 +1400,8 @@ $paymentUpiTransactionIdRequired = filter_var($paymentSettings['upi_transaction_
 $paymentUpiTermsAccepted = filter_var($paymentSettings['upi_terms_accepted'] ?? false, FILTER_VALIDATE_BOOLEAN);
 $paymentCollectPayerEmail = filter_var($paymentSettings['collect_payer_email'] ?? true, FILTER_VALIDATE_BOOLEAN);
 $paymentCollectPayerPhone = filter_var($paymentSettings['collect_payer_phone'] ?? true, FILTER_VALIDATE_BOOLEAN);
+$paymentVerifyPayerEmailOtp = filter_var($paymentSettings['verify_payer_email_otp'] ?? false, FILTER_VALIDATE_BOOLEAN);
+$paymentVerifyPayerPhoneOtp = filter_var($paymentSettings['verify_payer_phone_otp'] ?? false, FILTER_VALIDATE_BOOLEAN);
 $paymentBusinessName = first_value($paymentSettings, ['business_name'], $websiteName ?: $botName);
 $paymentRazorpayKeyId = first_value($paymentSettings, ['razorpay_key_id'], '');
 $paymentRazorpaySecretSaved = trim((string)($paymentSettings['razorpay_key_secret'] ?? '')) !== '';
@@ -3204,12 +3206,28 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                 <small class="input-help">Name is always required. Email is useful for receipts and follow-up.</small>
               </div>
               <div class="field">
+                <label>Verify payment email by OTP</label>
+                <label class="switch" title="Verify visitor email before payment">
+                  <input id="paymentVerifyEmailOtpToggle" type="checkbox" <?php echo $paymentVerifyPayerEmailOtp ? 'checked' : ''; ?> <?php echo ($canUsePaymentCollection && $canUseEmailOtp) ? '' : 'disabled'; ?> aria-label="Verify payment email by OTP">
+                  <span class="switch-slider"></span>
+                </label>
+                <small class="input-help <?php echo $canUseEmailOtp ? '' : 'error'; ?>"><?php echo $canUseEmailOtp ? 'Requires Ask for email to be ON. Uses wallet Email OTP charges.' : 'Email OTP requires an active paid plan.'; ?></small>
+              </div>
+              <div class="field">
                 <label>Ask for mobile number</label>
                 <label class="switch" title="Ask visitor for mobile number before payment">
                   <input id="paymentCollectPhoneToggle" type="checkbox" <?php echo $paymentCollectPayerPhone ? 'checked' : ''; ?> <?php echo $canUsePaymentCollection ? '' : 'disabled'; ?> aria-label="Ask visitor for mobile number before payment">
                   <span class="switch-slider"></span>
                 </label>
                 <small class="input-help">Mobile number helps the business confirm payment or resolve issues.</small>
+              </div>
+              <div class="field">
+                <label>Verify payment mobile by OTP</label>
+                <label class="switch" title="Verify visitor mobile before payment">
+                  <input id="paymentVerifyPhoneOtpToggle" type="checkbox" <?php echo $paymentVerifyPayerPhoneOtp ? 'checked' : ''; ?> <?php echo ($canUsePaymentCollection && $canUseMobileOtp) ? '' : 'disabled'; ?> aria-label="Verify payment mobile by OTP">
+                  <span class="switch-slider"></span>
+                </label>
+                <small class="input-help <?php echo $canUseMobileOtp ? '' : 'error'; ?>"><?php echo $canUseMobileOtp ? 'Requires Ask for mobile number to be ON. Uses wallet Mobile OTP charges.' : 'Mobile OTP requires an active paid plan.'; ?></small>
               </div>
               <div class="field full"><button class="pill-btn" type="submit">Save payment setup</button></div>
             </form>
@@ -4662,6 +4680,10 @@ const leadPaidFeatures = <?php echo js_json([
   "email_otp" => $canUseEmailOtp,
   "mobile_otp" => $canUseMobileOtp,
   "whatsapp_redirect" => $canUseWhatsappRedirect
+]); ?>;
+const leadOtpAlreadyEnabled = <?php echo js_json([
+  "email" => $leadVerifyEmailOtp && $canUseEmailOtp,
+  "mobile" => $leadVerifyMobileOtp && $canUseMobileOtp
 ]); ?>;
 const businessFeatures = <?php echo js_json([
   "api_access" => $canUseBusinessApi,
@@ -7408,53 +7430,75 @@ document.getElementById("feedbackEmailToggle")?.addEventListener("change", async
   }
 });
 
-async function savePaymentSettings(button, savedLabel = "Save payment setup") {
+async function savePaymentSettings(button = null, savedLabel = "Save payment setup", options = {}) {
+  const shouldReload = options.reload !== false;
+  const requireConsent = options.requireConsent !== false;
+  const successMessage = options.successMessage || "Payment setup saved";
   const paymentToggle = document.getElementById("paymentEnabledToggle");
   if (paymentToggle?.checked && !businessFeatures.payment_collection) {
     paymentToggle.checked = false;
     alert("This feature is only for Growth or Business users. Please recharge your wallet with appropriate plan.");
     openTab("subscription");
-    return;
+    return false;
   }
   const customerId = document.getElementById("paymentCustomerId")?.value || "";
-  if (!customerId) return showToast("Select a bot first");
+  if (!customerId) {
+    showToast("Select a bot first");
+    return false;
+  }
   const razorpayToggle = document.getElementById("paymentRazorpayEnabledToggle");
-  if (razorpayToggle?.checked && !razorpayTermsAccepted) {
+  if (requireConsent && razorpayToggle?.checked && !razorpayTermsAccepted) {
     openRazorpayConsentModal();
-    return;
+    return false;
   }
   const upiToggle = document.getElementById("paymentUpiEnabledToggle");
-  if (upiToggle?.checked && !upiTermsAccepted) {
+  if (requireConsent && upiToggle?.checked && !upiTermsAccepted) {
     openUpiConsentModal();
-    return;
+    return false;
   }
-  button.disabled = true;
-  button.textContent = "Saving...";
-  const response = await fetch("/api.php?action=save_payment_settings", {
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({
-      customer_id: customerId,
-      is_enabled: !!document.getElementById("paymentEnabledToggle")?.checked,
-      razorpay_enabled: !!document.getElementById("paymentRazorpayEnabledToggle")?.checked,
-      razorpay_terms_accepted: razorpayTermsAccepted,
-      upi_enabled: !!document.getElementById("paymentUpiEnabledToggle")?.checked,
-      upi_transaction_id_required: !!document.getElementById("paymentUpiTransactionIdToggle")?.checked,
-      upi_terms_accepted: upiTermsAccepted,
-      business_name: document.getElementById("paymentBusinessNameInput")?.value.trim() || "",
-      collect_payer_email: !!document.getElementById("paymentCollectEmailToggle")?.checked,
-      collect_payer_phone: !!document.getElementById("paymentCollectPhoneToggle")?.checked,
-      razorpay_key_id: document.getElementById("paymentKeyIdInput")?.value.trim() || "",
-      razorpay_key_secret: document.getElementById("paymentKeySecretInput")?.value.trim() || "",
-      success_message: document.getElementById("paymentSuccessMessageInput")?.value.trim() || ""
-    })
-  });
-  const data = await response.json().catch(() => ({}));
-  button.disabled = false;
-  button.textContent = savedLabel;
-  if (!data.success) return showToast(data.message || "Payment setup could not be saved");
-  showToast("Payment setup saved");
-  setTimeout(() => location.reload(), 700);
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Saving...";
+  }
+  try {
+    const response = await fetch("/api.php?action=save_payment_settings", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        customer_id: customerId,
+        is_enabled: !!document.getElementById("paymentEnabledToggle")?.checked,
+        razorpay_enabled: !!document.getElementById("paymentRazorpayEnabledToggle")?.checked,
+        razorpay_terms_accepted: razorpayTermsAccepted,
+        upi_enabled: !!document.getElementById("paymentUpiEnabledToggle")?.checked,
+        upi_transaction_id_required: !!document.getElementById("paymentUpiTransactionIdToggle")?.checked,
+        upi_terms_accepted: upiTermsAccepted,
+        business_name: document.getElementById("paymentBusinessNameInput")?.value.trim() || "",
+        collect_payer_email: !!document.getElementById("paymentCollectEmailToggle")?.checked,
+        collect_payer_phone: !!document.getElementById("paymentCollectPhoneToggle")?.checked,
+        verify_payer_email_otp: !!document.getElementById("paymentVerifyEmailOtpToggle")?.checked,
+        verify_payer_phone_otp: !!document.getElementById("paymentVerifyPhoneOtpToggle")?.checked,
+        razorpay_key_id: document.getElementById("paymentKeyIdInput")?.value.trim() || "",
+        razorpay_key_secret: document.getElementById("paymentKeySecretInput")?.value.trim() || "",
+        success_message: document.getElementById("paymentSuccessMessageInput")?.value.trim() || ""
+      })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!data.success) {
+      showToast(data.message || "Payment setup could not be saved");
+      return false;
+    }
+    showToast(successMessage);
+    if (shouldReload) setTimeout(() => location.reload(), 700);
+    return true;
+  } catch (error) {
+    showToast("Payment setup could not be saved");
+    return false;
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = savedLabel;
+    }
+  }
 }
 
 document.getElementById("paymentSettingsForm")?.addEventListener("submit", async event => {
@@ -7472,12 +7516,82 @@ document.getElementById("paymentUpiSettingsForm")?.addEventListener("submit", as
   await savePaymentSettings(event.currentTarget.querySelector("button[type='submit']"), "Save UPI redirect");
 });
 
-document.getElementById("paymentEnabledToggle")?.addEventListener("change", event => {
+async function autosavePaymentSwitch(toggle, message) {
+  if (!toggle) return;
+  const previous = !toggle.checked;
+  toggle.disabled = true;
+  const saved = await savePaymentSettings(null, "Save payment setup", {
+    reload: false,
+    requireConsent: false,
+    successMessage: message || "Payment setup saved"
+  });
+  toggle.disabled = false;
+  if (!saved) toggle.checked = previous;
+}
+
+async function confirmPaymentOtpToggle(toggle, kind) {
+  if (!toggle) return;
+  if (!toggle.checked) {
+    await autosavePaymentSwitch(toggle, kind === "email" ? "Payment email OTP disabled" : "Payment mobile OTP disabled");
+    return;
+  }
+  const collectToggle = document.getElementById(kind === "email" ? "paymentCollectEmailToggle" : "paymentCollectPhoneToggle");
+  if (collectToggle && !collectToggle.checked) {
+    collectToggle.checked = true;
+  }
+  const featureKey = kind === "email" ? "email_otp" : "mobile_otp";
+  if (!leadPaidFeatures[featureKey]) {
+    toggle.checked = false;
+    showToast(kind === "email" ? "Email OTP requires an active paid plan" : "Mobile OTP requires an active paid plan");
+    return;
+  }
+  if (leadOtpAlreadyEnabled[kind]) {
+    const label = kind === "email" ? "email" : "mobile number";
+    const confirmed = confirm(`Lead Generation is already verifying the user's ${label} with OTP before payment. Enable this only if you want to verify the ${label} again during payment.`);
+    if (!confirmed) {
+      toggle.checked = false;
+      return;
+    }
+  }
+  await autosavePaymentSwitch(toggle, kind === "email" ? "Payment email OTP enabled" : "Payment mobile OTP enabled");
+}
+
+document.getElementById("paymentEnabledToggle")?.addEventListener("change", async event => {
   if (event.currentTarget.checked && !businessFeatures.payment_collection) {
     event.currentTarget.checked = false;
     alert("This feature is only for Growth or Business users. Please recharge your wallet with appropriate plan.");
     openTab("subscription");
+    return;
   }
+  await autosavePaymentSwitch(event.currentTarget, event.currentTarget.checked ? "Payment collection enabled" : "Payment collection disabled");
+});
+
+document.getElementById("paymentCollectEmailToggle")?.addEventListener("change", async event => {
+  if (!event.currentTarget.checked) {
+    const verifyToggle = document.getElementById("paymentVerifyEmailOtpToggle");
+    if (verifyToggle) verifyToggle.checked = false;
+  }
+  await autosavePaymentSwitch(event.currentTarget, event.currentTarget.checked ? "Email collection enabled" : "Email collection disabled");
+});
+
+document.getElementById("paymentCollectPhoneToggle")?.addEventListener("change", async event => {
+  if (!event.currentTarget.checked) {
+    const verifyToggle = document.getElementById("paymentVerifyPhoneOtpToggle");
+    if (verifyToggle) verifyToggle.checked = false;
+  }
+  await autosavePaymentSwitch(event.currentTarget, event.currentTarget.checked ? "Mobile number collection enabled" : "Mobile number collection disabled");
+});
+
+document.getElementById("paymentVerifyEmailOtpToggle")?.addEventListener("change", async event => {
+  await confirmPaymentOtpToggle(event.currentTarget, "email");
+});
+
+document.getElementById("paymentVerifyPhoneOtpToggle")?.addEventListener("change", async event => {
+  await confirmPaymentOtpToggle(event.currentTarget, "mobile");
+});
+
+document.getElementById("paymentUpiTransactionIdToggle")?.addEventListener("change", async event => {
+  await autosavePaymentSwitch(event.currentTarget, event.currentTarget.checked ? "UPI transaction ID prompt enabled" : "UPI transaction ID prompt disabled");
 });
 
 function openRazorpayConsentModal() {
@@ -7493,19 +7607,22 @@ function closeRazorpayConsentModal() {
   razorpayConsentModal?.setAttribute("aria-hidden", "true");
 }
 
-document.getElementById("paymentRazorpayEnabledToggle")?.addEventListener("change", event => {
-  if (event.currentTarget.checked && !razorpayTermsAccepted) {
+document.getElementById("paymentRazorpayEnabledToggle")?.addEventListener("change", async event => {
+  if (event.currentTarget.checked) {
+    razorpayTermsAccepted = false;
     openRazorpayConsentModal();
+    return;
   }
+  await autosavePaymentSwitch(event.currentTarget, "Razorpay Checkout disabled");
 });
 
 razorpayConsentCancelBtn?.addEventListener("click", () => {
   const razorpayToggle = document.getElementById("paymentRazorpayEnabledToggle");
-  if (!razorpayTermsAccepted && razorpayToggle) razorpayToggle.checked = false;
+  if (razorpayToggle) razorpayToggle.checked = false;
   closeRazorpayConsentModal();
 });
 
-razorpayConsentAcceptBtn?.addEventListener("click", () => {
+razorpayConsentAcceptBtn?.addEventListener("click", async () => {
   if (!razorpayConsentCheckbox?.checked) {
     showToast("Please accept the Razorpay Checkout terms to continue");
     return;
@@ -7514,7 +7631,7 @@ razorpayConsentAcceptBtn?.addEventListener("click", () => {
   const razorpayToggle = document.getElementById("paymentRazorpayEnabledToggle");
   if (razorpayToggle) razorpayToggle.checked = true;
   closeRazorpayConsentModal();
-  showToast("Razorpay Checkout terms accepted. Save Razorpay checkout to apply.");
+  await autosavePaymentSwitch(razorpayToggle, "Razorpay Checkout enabled");
 });
 
 function openUpiConsentModal() {
@@ -7530,19 +7647,22 @@ function closeUpiConsentModal() {
   upiConsentModal?.setAttribute("aria-hidden", "true");
 }
 
-document.getElementById("paymentUpiEnabledToggle")?.addEventListener("change", event => {
-  if (event.currentTarget.checked && !upiTermsAccepted) {
+document.getElementById("paymentUpiEnabledToggle")?.addEventListener("change", async event => {
+  if (event.currentTarget.checked) {
+    upiTermsAccepted = false;
     openUpiConsentModal();
+    return;
   }
+  await autosavePaymentSwitch(event.currentTarget, "UPI Redirect disabled");
 });
 
 upiConsentCancelBtn?.addEventListener("click", () => {
   const upiToggle = document.getElementById("paymentUpiEnabledToggle");
-  if (!upiTermsAccepted && upiToggle) upiToggle.checked = false;
+  if (upiToggle) upiToggle.checked = false;
   closeUpiConsentModal();
 });
 
-upiConsentAcceptBtn?.addEventListener("click", () => {
+upiConsentAcceptBtn?.addEventListener("click", async () => {
   if (!upiConsentCheckbox?.checked) {
     showToast("Please accept the UPI Redirect terms to continue");
     return;
@@ -7551,7 +7671,7 @@ upiConsentAcceptBtn?.addEventListener("click", () => {
   const upiToggle = document.getElementById("paymentUpiEnabledToggle");
   if (upiToggle) upiToggle.checked = true;
   closeUpiConsentModal();
-  showToast("UPI Redirect terms accepted. Save UPI redirect to apply.");
+  await autosavePaymentSwitch(upiToggle, "UPI Redirect enabled");
 });
 
 function openPaymentSubtab(target) {

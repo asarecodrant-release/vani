@@ -4654,6 +4654,20 @@ if ($action === "save_payment_settings") {
     $collectPayerPhone = array_key_exists('collect_payer_phone', $data)
         ? filter_var($data['collect_payer_phone'], FILTER_VALIDATE_BOOLEAN)
         : true;
+    $verifyPayerEmailOtp = array_key_exists('verify_payer_email_otp', $data)
+        ? filter_var($data['verify_payer_email_otp'], FILTER_VALIDATE_BOOLEAN)
+        : false;
+    $verifyPayerPhoneOtp = array_key_exists('verify_payer_phone_otp', $data)
+        ? filter_var($data['verify_payer_phone_otp'], FILTER_VALIDATE_BOOLEAN)
+        : false;
+    if ($verifyPayerEmailOtp && !billing_feature_enabled($activePlan, 'email_otp')) {
+        echo json_encode(["success" => false, "message" => "Payment email OTP requires an active paid plan"]);
+        exit;
+    }
+    if ($verifyPayerPhoneOtp && !billing_feature_enabled($activePlan, 'mobile_otp')) {
+        echo json_encode(["success" => false, "message" => "Payment mobile OTP requires an active paid plan"]);
+        exit;
+    }
     $existingRazorpayTermsAccepted = filter_var($existingPaymentSettings['razorpay_terms_accepted'] ?? false, FILTER_VALIDATE_BOOLEAN);
     $acceptRazorpayTerms = filter_var($data['razorpay_terms_accepted'] ?? false, FILTER_VALIDATE_BOOLEAN);
     $razorpayTermsAccepted = $existingRazorpayTermsAccepted || $acceptRazorpayTerms;
@@ -4694,6 +4708,8 @@ if ($action === "save_payment_settings") {
         "business_name" => trim(substr((string)($data['business_name'] ?? ''), 0, 120)),
         "collect_payer_email" => $collectPayerEmail,
         "collect_payer_phone" => $collectPayerPhone,
+        "verify_payer_email_otp" => $collectPayerEmail && $verifyPayerEmailOtp,
+        "verify_payer_phone_otp" => $collectPayerPhone && $verifyPayerPhoneOtp,
         "success_message" => trim(substr((string)($data['success_message'] ?? 'Payment received. Thank you.'), 0, 240))
     ];
     if ($keyId !== '') {
@@ -4720,10 +4736,10 @@ if ($action === "save_payment_settings") {
             $payload['razorpay_key_secret'] = $encryptedSecret;
         }
     }
-    if ($acceptUpiTerms && !$existingUpiTermsAccepted) {
+    if ($acceptUpiTerms) {
         $payload['upi_terms_accepted_at'] = gmdate('Y-m-d\TH:i:s\Z');
     }
-    if ($acceptRazorpayTerms && !$existingRazorpayTermsAccepted) {
+    if ($acceptRazorpayTerms) {
         $payload['razorpay_terms_accepted_at'] = gmdate('Y-m-d\TH:i:s\Z');
     }
 

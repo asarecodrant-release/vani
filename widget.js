@@ -1200,6 +1200,8 @@
     const isUpiPayment = (paymentAction?.payment_method || action.payment_method || "").toLowerCase() === "upi";
     const collectPayerEmail = !(config.payment_collect_payer_email === false || config.payment_collect_payer_email === 0 || config.payment_collect_payer_email === "0" || config.payment_collect_payer_email === "false");
     const collectPayerPhone = !(config.payment_collect_payer_phone === false || config.payment_collect_payer_phone === 0 || config.payment_collect_payer_phone === "0" || config.payment_collect_payer_phone === "false");
+    const verifyPayerEmailOtp = collectPayerEmail && isEnabled(config.payment_verify_payer_email_otp);
+    const verifyPayerPhoneOtp = collectPayerPhone && isEnabled(config.payment_verify_payer_phone_otp);
     suggestionsBox.innerHTML = "";
     suggestionsBox.style.display = "grid";
     const panel = document.createElement("form");
@@ -1211,6 +1213,10 @@
     const nameInput = document.createElement("input");
     const emailInput = document.createElement("input");
     const phoneInput = document.createElement("input");
+    const emailOtpInput = document.createElement("input");
+    let emailOtpLeadId = "";
+    let emailVerifiedValue = "";
+    let phoneVerifiedValue = "";
     const contactFields = [[nameInput, "Your name"]];
     if (collectPayerEmail) contactFields.push([emailInput, "Email address"]);
     if (collectPayerPhone) contactFields.push([phoneInput, "Mobile number"]);
@@ -1220,6 +1226,11 @@
     });
     emailInput.type = "email";
     phoneInput.type = "tel";
+    emailOtpInput.type = "text";
+    emailOtpInput.inputMode = "numeric";
+    emailOtpInput.maxLength = 6;
+    emailOtpInput.placeholder = "Email OTP";
+    css(emailOtpInput, {display: "none", width: "100%", boxSizing: "border-box", border: "1px solid #c7d2fe", borderRadius: "12px", padding: "9px 10px", font: "inherit", fontSize: "12px", outline: "none"});
     const submit = document.createElement("button");
     submit.type = "submit";
     submit.textContent = "Continue to payment";
@@ -1326,10 +1337,108 @@
         nameInput.focus();
         return;
       }
-      if (collectPayerEmail && emailInput.value.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailInput.value.trim())) {
+      const payerEmail = collectPayerEmail ? emailInput.value.trim() : "";
+      const payerPhone = collectPayerPhone ? normalizePhone(phoneInput.value.trim()) : "";
+      if (collectPayerEmail && payerEmail && !validEmail(payerEmail)) {
         setStatus("Enter a valid email address.");
         emailInput.focus();
         return;
+      }
+      if (verifyPayerEmailOtp) {
+        if (!payerEmail || !validEmail(payerEmail)) {
+          setStatus("Enter a valid email address to verify.");
+          emailInput.focus();
+          return;
+        }
+        if (emailVerifiedValue !== payerEmail) {
+          if (!emailOtpLeadId) {
+            submit.disabled = true;
+            submit.textContent = "Sending email OTP...";
+            const emailRes = await api("create_lead_send_email_otp", "POST", {
+              customer_id: customerId,
+              user_id: userId,
+              email: payerEmail,
+              source_url: sourceUrl,
+              suppress_notification: true
+            });
+            submit.disabled = false;
+            submit.textContent = "Verify email OTP";
+            if (!emailRes.success || !emailRes.lead) {
+              setStatus(emailRes.email_error || emailRes.message || "Could not send email OTP. Try again.");
+              return;
+            }
+            emailOtpLeadId = emailRes.lead.id || "";
+            emailInput.disabled = true;
+            emailOtpInput.style.display = "block";
+            emailOtpInput.focus();
+            setStatus("Email OTP sent. Enter it to continue.", true);
+            return;
+          }
+          const emailOtp = emailOtpInput.value.trim();
+          if (!/^[0-9]{6}$/.test(emailOtp)) {
+            setStatus("Enter the 6-digit email OTP.");
+            emailOtpInput.focus();
+            return;
+          }
+          submit.disabled = true;
+          submit.textContent = "Verifying email...";
+          const verifyEmailRes = await api("verify_lead_email_otp", "POST", {
+            customer_id: customerId,
+            lead_id: emailOtpLeadId,
+            otp: emailOtp,
+            suppress_notification: true,
+            notification_event: "payment"
+          });
+          submit.disabled = false;
+          if (!verifyEmailRes.success) {
+            submit.textContent = "Verify email OTP";
+            setStatus(verifyEmailRes.message || "Email OTP verification failed.");
+            return;
+          }
+          emailVerifiedValue = payerEmail;
+          emailOtpInput.disabled = true;
+          emailOtpInput.style.display = "none";
+          submit.textContent = "Continue to payment";
+          setStatus("Email verified.", true);
+        }
+      }
+      if (verifyPayerPhoneOtp) {
+        if (!payerPhone || !validPhone(payerPhone)) {
+          setStatus("Enter a valid mobile number with country code to verify.");
+          phoneInput.focus();
+          return;
+        }
+        if (phoneVerifiedValue !== payerPhone) {
+          submit.disabled = true;
+          submit.textContent = "Verifying mobile...";
+          try {
+            const verified = await openMobileOtpWidget(payerPhone);
+            const mobileRes = await api("verify_lead_mobile_msg91", "POST", {
+              customer_id: customerId,
+              user_id: userId,
+              phone_number: verified.phone || payerPhone,
+              msg91_access_token: verified.msg91_access_token || "",
+              source_url: sourceUrl,
+              msg91_response: verified.msg91_response || null,
+              suppress_notification: true
+            });
+            if (!mobileRes.success || !mobileRes.lead) {
+              submit.disabled = false;
+              submit.textContent = "Continue to payment";
+              setStatus(mobileRes.message || "Mobile OTP verification failed.");
+              return;
+            }
+            const verifiedPhone = normalizePhone(mobileRes.lead.phone_number || verified.phone || payerPhone);
+            phoneInput.value = verifiedPhone;
+            phoneVerifiedValue = verifiedPhone;
+            setStatus("Mobile number verified.", true);
+          } catch (error) {
+            submit.disabled = false;
+            submit.textContent = "Continue to payment";
+            setStatus("Mobile OTP verification was not completed.");
+            return;
+          }
+        }
       }
       submit.disabled = true;
       submit.textContent = "Preparing...";
@@ -1430,6 +1539,7 @@
     panel.appendChild(title);
     panel.appendChild(nameInput);
     if (collectPayerEmail) panel.appendChild(emailInput);
+    if (verifyPayerEmailOtp) panel.appendChild(emailOtpInput);
     if (collectPayerPhone) panel.appendChild(phoneInput);
     panel.appendChild(submit);
     panel.appendChild(status);
