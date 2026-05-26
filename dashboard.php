@@ -1579,6 +1579,10 @@ $analyticsRangeLabel = [
   --panel-strong:#fff;
   --soft:#f8fafc;
   --shadow:0 18px 45px rgba(15,23,42,.09);
+  --scroll-track:rgba(226,232,240,.58);
+  --scroll-thumb:linear-gradient(180deg,rgba(99,102,241,.72),rgba(236,72,153,.68));
+  --scroll-thumb-solid:#818cf8;
+  --scroll-thumb-hover:#6366f1;
 }
 html{
   -webkit-text-size-adjust:100%;
@@ -1598,11 +1602,25 @@ body.dark{
   --panel-strong:#111827;
   --soft:#0f172a;
   --shadow:0 18px 45px rgba(0,0,0,.24);
+  --scroll-track:rgba(15,23,42,.54);
+  --scroll-thumb:linear-gradient(180deg,rgba(129,140,248,.86),rgba(236,72,153,.76));
+  --scroll-thumb-solid:#818cf8;
+  --scroll-thumb-hover:#c084fc;
   background:linear-gradient(135deg,#0f172a,#1e1b4b,#3b0764);
 }
 a{text-decoration:none;color:inherit}
 button,input,select,textarea{font:inherit}
 button{touch-action:manipulation}
+html{scrollbar-width:thin;scrollbar-color:var(--scroll-thumb-solid) var(--scroll-track)}
+body,.nav-tabs,.table-wrap,.profile-prompt,.pattern-grid,.bi-drilldown-body,.suggested-faq-list,.bulk-report-modal,.bulk-report-table,.sidebar,.top-actions{scrollbar-width:thin;scrollbar-color:var(--scroll-thumb-solid) transparent}
+::-webkit-scrollbar{width:11px;height:11px}
+::-webkit-scrollbar-track{background:var(--scroll-track)}
+::-webkit-scrollbar-thumb{border:3px solid transparent;border-radius:999px;background:var(--scroll-thumb);background-clip:padding-box;box-shadow:inset 0 0 0 1px rgba(255,255,255,.2)}
+::-webkit-scrollbar-thumb:hover{background:var(--scroll-thumb-hover);background-clip:padding-box}
+::-webkit-scrollbar-corner{background:transparent}
+.nav-tabs::-webkit-scrollbar,.table-wrap::-webkit-scrollbar,.profile-prompt::-webkit-scrollbar,.pattern-grid::-webkit-scrollbar,.bi-drilldown-body::-webkit-scrollbar,.suggested-faq-list::-webkit-scrollbar,.bulk-report-modal::-webkit-scrollbar,.bulk-report-table::-webkit-scrollbar,.sidebar::-webkit-scrollbar,.top-actions::-webkit-scrollbar{width:8px;height:8px}
+.nav-tabs::-webkit-scrollbar-track,.table-wrap::-webkit-scrollbar-track,.profile-prompt::-webkit-scrollbar-track,.pattern-grid::-webkit-scrollbar-track,.bi-drilldown-body::-webkit-scrollbar-track,.suggested-faq-list::-webkit-scrollbar-track,.bulk-report-modal::-webkit-scrollbar-track,.bulk-report-table::-webkit-scrollbar-track,.sidebar::-webkit-scrollbar-track,.top-actions::-webkit-scrollbar-track{background:transparent}
+.nav-tabs::-webkit-scrollbar-thumb,.table-wrap::-webkit-scrollbar-thumb,.profile-prompt::-webkit-scrollbar-thumb,.pattern-grid::-webkit-scrollbar-thumb,.bi-drilldown-body::-webkit-scrollbar-thumb,.suggested-faq-list::-webkit-scrollbar-thumb,.bulk-report-modal::-webkit-scrollbar-thumb,.bulk-report-table::-webkit-scrollbar-thumb,.sidebar::-webkit-scrollbar-thumb,.top-actions::-webkit-scrollbar-thumb{border:2px solid transparent}
 .dashboard-shell{min-height:100vh;display:grid;grid-template-columns:260px minmax(0,1fr);width:100%;overflow-x:hidden}
 .drawer-overlay{
   position:fixed;

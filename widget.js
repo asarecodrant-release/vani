@@ -114,7 +114,16 @@
         headers: {"Content-Type": "application/json"},
         body: body ? JSON.stringify(body) : null
       });
-      const payload = await response.json();
+      const rawPayload = await response.text();
+      let payload = {};
+      try {
+        payload = rawPayload ? JSON.parse(rawPayload) : {};
+      } catch (parseError) {
+        payload = {
+          success: false,
+          message: response.ok ? "Unexpected API response." : "Payment service returned an unexpected error."
+        };
+      }
       if (!response.ok) {
         console.warn("Vani widget API returned an error:", action, payload);
       }

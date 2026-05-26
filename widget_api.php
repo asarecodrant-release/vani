@@ -2159,7 +2159,7 @@ if ($action === "create_customer_payment_order") {
         widget_json_response(["success" => false, "message" => "Missing payment action"], 400);
     }
     $settings = widget_customer_payment_settings($customerId);
-    $activePlan = billing_active_plan_from_account(billing_account_for_customer($customerId));
+    $activePlan = billing_active_plan_from_account(widget_billing_account_for_customer($customerId));
     if (!billing_feature_enabled($activePlan, 'payment_collection')) {
         widget_json_response(["success" => false, "requires_growth" => true, "message" => "Payment collection requires Growth or Business plan"], 403);
     }
