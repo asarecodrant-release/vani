@@ -1342,6 +1342,32 @@
       choices.appendChild(other);
       panel.insertBefore(choices, submit);
     };
+    const finishSuccessfulPayment = message => {
+      setStatus(message, true);
+      addMessage(messages, message, "bot");
+      if (faqFeedbackEnabledFor(action)) {
+        suggestionsBox.innerHTML = "";
+        suggestionsBox.style.display = "grid";
+        window.setTimeout(() => renderFaqActionFeedback(action, context, suggestionsBox), 250);
+        return;
+      }
+      let remaining = 5;
+      submit.disabled = true;
+      submit.textContent = `Closing in ${remaining}s`;
+      const timer = window.setInterval(() => {
+        remaining -= 1;
+        if (remaining > 0) {
+          submit.textContent = `Closing in ${remaining}s`;
+          return;
+        }
+        window.clearInterval(timer);
+        panel.remove();
+        if (!suggestionsBox.children.length) {
+          suggestionsBox.style.display = "none";
+        }
+        addMessage(messages, "How Can I help you further?", "bot");
+      }, 1000);
+    };
     panel.onsubmit = async event => {
       event.preventDefault();
       if (!nameInput.value.trim()) {
@@ -1517,10 +1543,7 @@
         });
         if (verify.success) {
           const message = verify.message || successText;
-          setStatus(message, true);
-          addMessage(messages, message, "bot");
-          submit.textContent = "Paid";
-          showFaqActionFeedback(action, context, suggestionsBox, 250);
+          finishSuccessfulPayment(message);
         } else {
           submit.disabled = false;
           submit.textContent = "Try payment again";
