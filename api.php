@@ -4588,11 +4588,20 @@ if ($action === "save_payment_settings") {
 
     $keyId = trim((string)($data['razorpay_key_id'] ?? ''));
     $keySecret = trim((string)($data['razorpay_key_secret'] ?? ''));
-    $existingSettings = safe_rows(supabase("GET", "customer_payment_settings?select=id,razorpay_key_id,razorpay_key_secret&customer_id=eq." . urlencode($customerId) . "&limit=1"));
+    $existingSettings = safe_rows(supabase("GET", "customer_payment_settings?select=id,razorpay_key_id,razorpay_key_secret,razorpay_terms_accepted,upi_terms_accepted&customer_id=eq." . urlencode($customerId) . "&limit=1"));
     $existingPaymentSettings = $existingSettings[0] ?? [];
     $enablePayments = filter_var($data['is_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
     $enableRazorpay = filter_var($data['razorpay_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
     $enableUpi = filter_var($data['upi_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
+    $existingRazorpayTermsAccepted = filter_var($existingPaymentSettings['razorpay_terms_accepted'] ?? false, FILTER_VALIDATE_BOOLEAN);
+    $acceptRazorpayTerms = filter_var($data['razorpay_terms_accepted'] ?? false, FILTER_VALIDATE_BOOLEAN);
+    $razorpayTermsAccepted = $existingRazorpayTermsAccepted || $acceptRazorpayTerms;
+    $upiTransactionIdRequired = array_key_exists('upi_transaction_id_required', $data)
+        ? filter_var($data['upi_transaction_id_required'], FILTER_VALIDATE_BOOLEAN)
+        : true;
+    $existingUpiTermsAccepted = filter_var($existingPaymentSettings['upi_terms_accepted'] ?? false, FILTER_VALIDATE_BOOLEAN);
+    $acceptUpiTerms = filter_var($data['upi_terms_accepted'] ?? false, FILTER_VALIDATE_BOOLEAN);
+    $upiTermsAccepted = $existingUpiTermsAccepted || $acceptUpiTerms;
     $effectiveKeyId = $keyId !== '' ? $keyId : trim((string)($existingPaymentSettings['razorpay_key_id'] ?? ''));
     $effectiveSecret = $keySecret !== '' ? $keySecret : app_decrypt_secret((string)($existingPaymentSettings['razorpay_key_secret'] ?? ''));
     $hasAnyRazorpaySecret = $keySecret !== '' || trim((string)($existingPaymentSettings['razorpay_key_secret'] ?? '')) !== '';
@@ -4604,11 +4613,22 @@ if ($action === "save_payment_settings") {
         echo json_encode(["success" => false, "message" => "Razorpay Key ID and Key Secret are required before switching ON Razorpay Checkout"]);
         exit;
     }
+    if ($enablePayments && $enableRazorpay && !$razorpayTermsAccepted) {
+        echo json_encode(["success" => false, "message" => "Accept the Razorpay Checkout terms before enabling Razorpay payments"]);
+        exit;
+    }
+    if ($enablePayments && $enableUpi && !$upiTermsAccepted) {
+        echo json_encode(["success" => false, "message" => "Accept the UPI Redirect terms before enabling UPI payments"]);
+        exit;
+    }
     $payload = [
         "customer_id" => $customerId,
         "is_enabled" => billing_feature_enabled($activePlan, 'payment_collection') && filter_var($data['is_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN),
         "razorpay_enabled" => billing_feature_enabled($activePlan, 'payment_collection') && $enablePayments && $enableRazorpay,
+        "razorpay_terms_accepted" => $razorpayTermsAccepted,
         "upi_enabled" => billing_feature_enabled($activePlan, 'payment_collection') && $enablePayments && $enableUpi,
+        "upi_transaction_id_required" => $upiTransactionIdRequired,
+        "upi_terms_accepted" => $upiTermsAccepted,
         "provider" => "razorpay",
         "business_name" => trim(substr((string)($data['business_name'] ?? ''), 0, 120)),
         "success_message" => trim(substr((string)($data['success_message'] ?? 'Payment received. Thank you.'), 0, 240))
@@ -4636,6 +4656,12 @@ if ($action === "save_payment_settings") {
         if ($encryptedSecret !== '') {
             $payload['razorpay_key_secret'] = $encryptedSecret;
         }
+    }
+    if ($acceptUpiTerms && !$existingUpiTermsAccepted) {
+        $payload['upi_terms_accepted_at'] = gmdate('Y-m-d\TH:i:s\Z');
+    }
+    if ($acceptRazorpayTerms && !$existingRazorpayTermsAccepted) {
+        $payload['razorpay_terms_accepted_at'] = gmdate('Y-m-d\TH:i:s\Z');
     }
 
     $res = !empty($existingSettings)

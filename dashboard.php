@@ -1394,7 +1394,10 @@ $leadNotificationEmail = first_value($leadSettings, ['notification_email'], $ema
 $leadWhatsappNumber = first_value($leadSettings, ['whatsapp_mobile_number'], '');
 $paymentsEnabled = filter_var($paymentSettings['is_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
 $paymentRazorpayEnabled = filter_var($paymentSettings['razorpay_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
+$paymentRazorpayTermsAccepted = filter_var($paymentSettings['razorpay_terms_accepted'] ?? false, FILTER_VALIDATE_BOOLEAN);
 $paymentUpiEnabled = filter_var($paymentSettings['upi_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
+$paymentUpiTransactionIdRequired = filter_var($paymentSettings['upi_transaction_id_required'] ?? true, FILTER_VALIDATE_BOOLEAN);
+$paymentUpiTermsAccepted = filter_var($paymentSettings['upi_terms_accepted'] ?? false, FILTER_VALIDATE_BOOLEAN);
 $paymentBusinessName = first_value($paymentSettings, ['business_name'], $websiteName ?: $botName);
 $paymentRazorpayKeyId = first_value($paymentSettings, ['razorpay_key_id'], '');
 $paymentRazorpaySecretSaved = trim((string)($paymentSettings['razorpay_key_secret'] ?? '')) !== '';
@@ -2090,6 +2093,26 @@ body.dark .default-faq-card{background:rgba(15,23,42,.44)}
 .bulk-report-summary .metric{box-shadow:none;border:1px solid var(--line)}
 .bulk-report-table{max-height:280px;overflow:auto;border:1px solid var(--line);border-radius:14px}
 .bulk-report-table table{min-width:720px}
+.upi-consent-backdrop{position:fixed;inset:0;z-index:160;display:none;place-items:center;padding:20px;background:rgba(15,23,42,.58);backdrop-filter:blur(12px)}
+.upi-consent-backdrop.active{display:grid}
+.upi-consent-card{width:min(680px,100%);max-height:90vh;overflow:auto;background:var(--panel-strong);color:var(--ink);border:1px solid var(--line);border-radius:20px;box-shadow:0 26px 80px rgba(15,23,42,.34);padding:22px}
+.upi-consent-card h3{font-size:22px;margin-bottom:8px}
+.upi-consent-card p,.upi-consent-card li{color:var(--muted);line-height:1.62;font-size:14px}
+.upi-consent-card ul{display:grid;gap:8px;margin:14px 0 0;padding-left:18px}
+.upi-consent-check{display:flex;align-items:flex-start;gap:10px;margin-top:16px;padding:12px;border:1px solid rgba(245,158,11,.28);border-radius:14px;background:rgba(245,158,11,.1)}
+.upi-consent-check input{width:auto;margin-top:3px;flex:0 0 auto}
+.upi-consent-check span{font-size:13px;line-height:1.55;color:var(--ink);font-weight:700}
+.upi-consent-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px;flex-wrap:wrap}
+.razorpay-consent-backdrop{position:fixed;inset:0;z-index:160;display:none;place-items:center;padding:20px;background:rgba(15,23,42,.58);backdrop-filter:blur(12px)}
+.razorpay-consent-backdrop.active{display:grid}
+.razorpay-consent-card{width:min(680px,100%);max-height:90vh;overflow:auto;background:var(--panel-strong);color:var(--ink);border:1px solid var(--line);border-radius:20px;box-shadow:0 26px 80px rgba(15,23,42,.34);padding:22px}
+.razorpay-consent-card h3{font-size:22px;margin-bottom:8px}
+.razorpay-consent-card p,.razorpay-consent-card li{color:var(--muted);line-height:1.62;font-size:14px}
+.razorpay-consent-card ul{display:grid;gap:8px;margin:14px 0 0;padding-left:18px}
+.razorpay-consent-check{display:flex;align-items:flex-start;gap:10px;margin-top:16px;padding:12px;border:1px solid rgba(99,102,241,.28);border-radius:14px;background:rgba(99,102,241,.1)}
+.razorpay-consent-check input{width:auto;margin-top:3px;flex:0 0 auto}
+.razorpay-consent-check span{font-size:13px;line-height:1.55;color:var(--ink);font-weight:700}
+.razorpay-consent-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px;flex-wrap:wrap}
 .lead-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
 .lead-master{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px;border:1px solid var(--line);border-radius:18px;background:rgba(255,255,255,.42);margin-top:16px}
 body.dark .lead-master{background:rgba(15,23,42,.44)}
@@ -3225,6 +3248,14 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                 </label>
                 <small class="input-help">Uses a UPI ID on each UPI payment button.</small>
               </div>
+              <div class="field">
+                <label>Ask for UPI transaction ID</label>
+                <label class="switch" title="Ask visitor to submit UPI transaction ID after payment">
+                  <input id="paymentUpiTransactionIdToggle" type="checkbox" <?php echo $paymentUpiTransactionIdRequired ? 'checked' : ''; ?> <?php echo $canUsePaymentCollection ? '' : 'disabled'; ?> aria-label="Ask visitor to submit UPI transaction ID">
+                  <span class="switch-slider"></span>
+                </label>
+                <small class="input-help">After opening a UPI app, ask the visitor to enter their UPI transaction ID for manual verification.</small>
+              </div>
               <div class="field full"><button class="pill-btn" type="submit">Save UPI redirect</button></div>
             </form>
           </div>
@@ -3298,7 +3329,10 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                     $paymentStatus = (string)($paymentTxn['status'] ?? 'created');
                     $paymentMetadata = is_array($paymentTxn['metadata'] ?? null) ? $paymentTxn['metadata'] : [];
                     $upiReference = $paymentMethod === 'upi' ? ('VANI' . preg_replace('/\D+/', '', (string)($paymentTxn['id'] ?? ''))) : '';
-                    $paymentReference = $paymentMethod === 'upi' ? $upiReference : ($paymentTxn['razorpay_payment_id'] ?? ($paymentTxn['razorpay_order_id'] ?? '-'));
+                    $customerUpiReference = trim((string)($paymentMetadata['customer_upi_transaction_id'] ?? ''));
+                    $paymentReference = $paymentMethod === 'upi'
+                      ? trim(($customerUpiReference !== '' ? $customerUpiReference . ' | ' : '') . $upiReference)
+                      : ($paymentTxn['razorpay_payment_id'] ?? ($paymentTxn['razorpay_order_id'] ?? '-'));
                     $payerDisplay = trim(implode(' ', array_filter([
                       (string)($paymentTxn['payer_name'] ?? ''),
                       (string)($paymentTxn['payer_phone'] ?? ''),
@@ -4493,6 +4527,46 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
   </main>
 </div>
 <div class="toast" id="toast">Copied</div>
+<div class="razorpay-consent-backdrop" id="razorpayConsentModal" aria-hidden="true">
+  <div class="razorpay-consent-card" role="dialog" aria-modal="true" aria-labelledby="razorpayConsentTitle">
+    <h3 id="razorpayConsentTitle">Razorpay Checkout consent</h3>
+    <p>Razorpay Checkout lets visitors pay directly through the Razorpay account and credentials configured by you for this chatbot.</p>
+    <ul>
+      <li>You are responsible for using your own valid Razorpay account, keeping credentials secure, and complying with Razorpay rules, payment laws, tax rules, refund rules, and customer protection requirements.</li>
+      <li>You are responsible for the products, services, amounts, descriptions, fulfillment, refunds, chargebacks, disputes, and customer communication related to payments collected through your Razorpay account.</li>
+      <li>Codrant and Vani AI do not receive any benefit from your customer payments and are not responsible for failed payments, disputes, refunds, chargebacks, fraud, misleading claims, delivery issues, or misuse by your business.</li>
+      <li>You must not mislead visitors, collect unlawful payments, or use Razorpay Checkout for fraudulent activity. If misuse, fraud, or customer harm is identified, Codrant may permanently block your account and chatbot, preserve evidence, and pursue legal action where appropriate.</li>
+    </ul>
+    <label class="razorpay-consent-check">
+      <input id="razorpayConsentCheckbox" type="checkbox">
+      <span>I understand and accept full responsibility for Razorpay payment collection, customer disputes, refunds, fulfillment, compliance, credentials, and all payment-related communication for this chatbot.</span>
+    </label>
+    <div class="razorpay-consent-actions">
+      <button class="ghost-btn" type="button" id="razorpayConsentCancelBtn">Cancel</button>
+      <button class="pill-btn" type="button" id="razorpayConsentAcceptBtn">Accept and enable Razorpay</button>
+    </div>
+  </div>
+</div>
+<div class="upi-consent-backdrop" id="upiConsentModal" aria-hidden="true">
+  <div class="upi-consent-card" role="dialog" aria-modal="true" aria-labelledby="upiConsentTitle">
+    <h3 id="upiConsentTitle">UPI Redirect consent</h3>
+    <p>UPI Redirect opens the visitor's UPI app and records the payment as pending. It does not automatically verify whether money was received.</p>
+    <ul>
+      <li>You are responsible for manually verifying every UPI payment before confirming an order, booking, delivery, or service.</li>
+      <li>You may ask visitors to submit their UPI transaction ID to help with manual verification.</li>
+      <li>Codrant and Vani AI do not receive any benefit from payments collected through your UPI ID and are not responsible for failed payments, disputes, fraud, refunds, delivery issues, misleading claims, or misuse by your business.</li>
+      <li>You must not mislead visitors, collect unlawful payments, or use UPI Redirect for fraudulent activity. If misuse, fraud, or customer harm is identified, Codrant may permanently block your account and chatbot, preserve evidence, and pursue legal action where appropriate.</li>
+    </ul>
+    <label class="upi-consent-check">
+      <input id="upiConsentCheckbox" type="checkbox">
+      <span>I understand and accept full responsibility for UPI payment collection, manual verification, customer communication, disputes, refunds, and compliance for this chatbot.</span>
+    </label>
+    <div class="upi-consent-actions">
+      <button class="ghost-btn" type="button" id="upiConsentCancelBtn">Cancel</button>
+      <button class="pill-btn" type="button" id="upiConsentAcceptBtn">Accept and enable UPI</button>
+    </div>
+  </div>
+</div>
 <?php if ($profileNeedsSetup): ?>
 <div class="profile-prompt-backdrop" id="profileSetupPrompt" aria-hidden="true">
   <div class="profile-prompt" role="dialog" aria-modal="true" aria-labelledby="profileSetupTitle">
@@ -4545,8 +4619,18 @@ const accountToggle = document.getElementById("accountToggle");
 const drawerOverlay = document.getElementById("drawerOverlay");
 const accountToggleText = accountToggle?.textContent || "";
 const dashboardLoadingOverlay = document.getElementById("dashboardLoadingOverlay");
+const razorpayConsentModal = document.getElementById("razorpayConsentModal");
+const razorpayConsentCheckbox = document.getElementById("razorpayConsentCheckbox");
+const razorpayConsentAcceptBtn = document.getElementById("razorpayConsentAcceptBtn");
+const razorpayConsentCancelBtn = document.getElementById("razorpayConsentCancelBtn");
+const upiConsentModal = document.getElementById("upiConsentModal");
+const upiConsentCheckbox = document.getElementById("upiConsentCheckbox");
+const upiConsentAcceptBtn = document.getElementById("upiConsentAcceptBtn");
+const upiConsentCancelBtn = document.getElementById("upiConsentCancelBtn");
 const profileNeedsSetup = <?php echo js_json($profileNeedsSetup); ?>;
 const profilePromptKey = <?php echo js_json($profilePromptKey); ?>;
+let upiTermsAccepted = <?php echo js_json($paymentUpiTermsAccepted); ?>;
+let razorpayTermsAccepted = <?php echo js_json($paymentRazorpayTermsAccepted); ?>;
 let currentFaqCount = <?php echo js_json($faqCount); ?>;
 const freeFaqLimit = <?php echo js_json($freeFaqLimit); ?>;
 const faqLimitIsUnlimited = <?php echo js_json($planFaqLimit === PHP_INT_MAX); ?>;
@@ -7313,6 +7397,16 @@ async function savePaymentSettings(button, savedLabel = "Save payment setup") {
   }
   const customerId = document.getElementById("paymentCustomerId")?.value || "";
   if (!customerId) return showToast("Select a bot first");
+  const razorpayToggle = document.getElementById("paymentRazorpayEnabledToggle");
+  if (razorpayToggle?.checked && !razorpayTermsAccepted) {
+    openRazorpayConsentModal();
+    return;
+  }
+  const upiToggle = document.getElementById("paymentUpiEnabledToggle");
+  if (upiToggle?.checked && !upiTermsAccepted) {
+    openUpiConsentModal();
+    return;
+  }
   button.disabled = true;
   button.textContent = "Saving...";
   const response = await fetch("/api.php?action=save_payment_settings", {
@@ -7322,7 +7416,10 @@ async function savePaymentSettings(button, savedLabel = "Save payment setup") {
       customer_id: customerId,
       is_enabled: !!document.getElementById("paymentEnabledToggle")?.checked,
       razorpay_enabled: !!document.getElementById("paymentRazorpayEnabledToggle")?.checked,
+      razorpay_terms_accepted: razorpayTermsAccepted,
       upi_enabled: !!document.getElementById("paymentUpiEnabledToggle")?.checked,
+      upi_transaction_id_required: !!document.getElementById("paymentUpiTransactionIdToggle")?.checked,
+      upi_terms_accepted: upiTermsAccepted,
       business_name: document.getElementById("paymentBusinessNameInput")?.value.trim() || "",
       razorpay_key_id: document.getElementById("paymentKeyIdInput")?.value.trim() || "",
       razorpay_key_secret: document.getElementById("paymentKeySecretInput")?.value.trim() || "",
@@ -7358,6 +7455,80 @@ document.getElementById("paymentEnabledToggle")?.addEventListener("change", even
     alert("This feature is only for Growth or Business users. Please recharge your wallet with appropriate plan.");
     openTab("subscription");
   }
+});
+
+function openRazorpayConsentModal() {
+  if (!razorpayConsentModal) return;
+  if (razorpayConsentCheckbox) razorpayConsentCheckbox.checked = false;
+  razorpayConsentModal.classList.add("active");
+  razorpayConsentModal.setAttribute("aria-hidden", "false");
+  razorpayConsentCheckbox?.focus();
+}
+
+function closeRazorpayConsentModal() {
+  razorpayConsentModal?.classList.remove("active");
+  razorpayConsentModal?.setAttribute("aria-hidden", "true");
+}
+
+document.getElementById("paymentRazorpayEnabledToggle")?.addEventListener("change", event => {
+  if (event.currentTarget.checked && !razorpayTermsAccepted) {
+    openRazorpayConsentModal();
+  }
+});
+
+razorpayConsentCancelBtn?.addEventListener("click", () => {
+  const razorpayToggle = document.getElementById("paymentRazorpayEnabledToggle");
+  if (!razorpayTermsAccepted && razorpayToggle) razorpayToggle.checked = false;
+  closeRazorpayConsentModal();
+});
+
+razorpayConsentAcceptBtn?.addEventListener("click", () => {
+  if (!razorpayConsentCheckbox?.checked) {
+    showToast("Please accept the Razorpay Checkout terms to continue");
+    return;
+  }
+  razorpayTermsAccepted = true;
+  const razorpayToggle = document.getElementById("paymentRazorpayEnabledToggle");
+  if (razorpayToggle) razorpayToggle.checked = true;
+  closeRazorpayConsentModal();
+  showToast("Razorpay Checkout terms accepted. Save Razorpay checkout to apply.");
+});
+
+function openUpiConsentModal() {
+  if (!upiConsentModal) return;
+  if (upiConsentCheckbox) upiConsentCheckbox.checked = false;
+  upiConsentModal.classList.add("active");
+  upiConsentModal.setAttribute("aria-hidden", "false");
+  upiConsentCheckbox?.focus();
+}
+
+function closeUpiConsentModal() {
+  upiConsentModal?.classList.remove("active");
+  upiConsentModal?.setAttribute("aria-hidden", "true");
+}
+
+document.getElementById("paymentUpiEnabledToggle")?.addEventListener("change", event => {
+  if (event.currentTarget.checked && !upiTermsAccepted) {
+    openUpiConsentModal();
+  }
+});
+
+upiConsentCancelBtn?.addEventListener("click", () => {
+  const upiToggle = document.getElementById("paymentUpiEnabledToggle");
+  if (!upiTermsAccepted && upiToggle) upiToggle.checked = false;
+  closeUpiConsentModal();
+});
+
+upiConsentAcceptBtn?.addEventListener("click", () => {
+  if (!upiConsentCheckbox?.checked) {
+    showToast("Please accept the UPI Redirect terms to continue");
+    return;
+  }
+  upiTermsAccepted = true;
+  const upiToggle = document.getElementById("paymentUpiEnabledToggle");
+  if (upiToggle) upiToggle.checked = true;
+  closeUpiConsentModal();
+  showToast("UPI Redirect terms accepted. Save UPI redirect to apply.");
 });
 
 function openPaymentSubtab(target) {

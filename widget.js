@@ -1205,6 +1205,93 @@
       status.style.background = ok ? "rgba(34,197,94,.12)" : "rgba(239,68,68,.1)";
       status.style.color = ok ? "#166534" : "#991b1b";
     };
+    const renderUpiReferenceForm = transactionId => {
+      if (!transactionId || panel.querySelector(".vani-upi-reference-form")) return;
+      const referenceWrap = document.createElement("div");
+      referenceWrap.className = "vani-upi-reference-form";
+      css(referenceWrap, {display: "grid", gap: "8px", padding: "10px", borderRadius: "14px", background: "rgba(240,253,244,.9)", border: "1px solid rgba(34,197,94,.22)"});
+      const help = document.createElement("small");
+      help.textContent = "After payment, enter your UPI transaction ID so the business can verify and confirm on your mobile number.";
+      css(help, {color: "#166534", fontWeight: "700", lineHeight: "1.45"});
+      const referenceInput = document.createElement("input");
+      referenceInput.placeholder = "UPI transaction ID";
+      css(referenceInput, {width: "100%", boxSizing: "border-box", border: "1px solid #bbf7d0", borderRadius: "12px", padding: "9px 10px", font: "inherit", fontSize: "12px", outline: "none"});
+      const referenceButton = document.createElement("button");
+      referenceButton.type = "button";
+      referenceButton.textContent = "Submit transaction ID";
+      css(referenceButton, {border: "0", borderRadius: "12px", background: "#16a34a", color: "#fff", cursor: "pointer", fontWeight: "800", padding: "10px 12px"});
+      referenceButton.onclick = async () => {
+        const upiReference = referenceInput.value.trim();
+        if (!upiReference) {
+          setStatus("Enter the UPI transaction ID after payment.");
+          referenceInput.focus();
+          return;
+        }
+        referenceButton.disabled = true;
+        referenceButton.textContent = "Saving...";
+        const saveResponse = await api("submit_upi_transaction_reference", "POST", {
+          customer_id: customerId,
+          transaction_id: transactionId,
+          upi_reference: upiReference
+        });
+        referenceButton.disabled = false;
+        referenceButton.textContent = "Submit transaction ID";
+        if (!saveResponse.success) {
+          setStatus(saveResponse.message || "Transaction ID could not be saved.");
+          return;
+        }
+        referenceInput.disabled = true;
+        referenceButton.disabled = true;
+        referenceButton.textContent = "Submitted";
+        setStatus(saveResponse.message || "Transaction ID saved. The business will verify and confirm.", true);
+      };
+      referenceWrap.appendChild(help);
+      referenceWrap.appendChild(referenceInput);
+      referenceWrap.appendChild(referenceButton);
+      panel.insertBefore(referenceWrap, status);
+    };
+    const openUpiLink = (link, transactionId = "") => {
+      window.location.href = link;
+      setStatus("UPI app opened. Payment will remain pending until the business verifies it.", true);
+      submit.disabled = false;
+      submit.textContent = "Open UPI options again";
+      if (config.upi_transaction_id_required !== false && config.upi_transaction_id_required !== 0 && config.upi_transaction_id_required !== "0" && config.upi_transaction_id_required !== "false") {
+        renderUpiReferenceForm(transactionId);
+      }
+      showFaqActionFeedback(action, context, suggestionsBox, 250);
+    };
+    const upiIntentLink = (upiLink, packageName = "") => {
+      const intentPath = upiLink.replace(/^upi:\/\//i, "");
+      return `intent://${intentPath}#Intent;scheme=upi;${packageName ? `package=${packageName};` : ""}end`;
+    };
+    const renderUpiChoices = (upiLink, transactionId = "") => {
+      let choices = panel.querySelector(".vani-upi-choice-grid");
+      if (choices) choices.remove();
+      choices = document.createElement("div");
+      choices.className = "vani-upi-choice-grid";
+      css(choices, {display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px"});
+      const apps = [
+        ["Google Pay", "com.google.android.apps.nbu.paisa.user"],
+        ["PhonePe", "com.phonepe.app"],
+        ["Paytm", "net.one97.paytm"],
+        ["BHIM", "in.org.npci.upiapp"]
+      ];
+      apps.forEach(([label, packageName]) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = label;
+        css(button, {border: "1px solid #e2e8f0", borderRadius: "12px", background: "#fff", color: "#0f172a", cursor: "pointer", fontWeight: "800", padding: "9px 10px", fontSize: "12px"});
+        button.onclick = () => openUpiLink(upiIntentLink(upiLink, packageName), transactionId);
+        choices.appendChild(button);
+      });
+      const other = document.createElement("button");
+      other.type = "button";
+      other.textContent = "Other UPI app";
+      css(other, {gridColumn: "1 / -1", border: "0", borderRadius: "12px", background: themeBackground(), color: "#fff", cursor: "pointer", fontWeight: "800", padding: "10px 12px"});
+      other.onclick = () => openUpiLink(upiIntentLink(upiLink), transactionId);
+      choices.appendChild(other);
+      panel.insertBefore(choices, submit);
+    };
     panel.onsubmit = async event => {
       event.preventDefault();
       if (isUpiPayment && (!nameInput.value.trim() || !phoneInput.value.trim())) {
@@ -1239,11 +1326,10 @@
           setStatus(orderResponse.message || "UPI payment could not be started.");
           return;
         }
-        window.location.href = orderResponse.upi_link;
-        setStatus("UPI app opened. Payment will remain pending until the business verifies it.", true);
+        renderUpiChoices(orderResponse.upi_link, orderResponse.transaction?.id || "");
+        setStatus("Choose the UPI app you want to use.", true);
         submit.disabled = false;
-        submit.textContent = "Open UPI app again";
-        showFaqActionFeedback(action, context, suggestionsBox, 250);
+        submit.textContent = "Refresh UPI options";
         return;
       }
       const loaded = await loadRazorpayCheckout();

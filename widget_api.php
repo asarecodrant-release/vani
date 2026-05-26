@@ -1768,6 +1768,7 @@ if ($action === "get_widget_config" || $action === "get_theme") {
         "payment_collection_enabled" => $paymentCollectionEnabled,
         "razorpay_payment_enabled" => $razorpayCollectionEnabled,
         "upi_payment_enabled" => $upiCollectionEnabled,
+        "upi_transaction_id_required" => widget_bool($paymentSettings['upi_transaction_id_required'] ?? true, true),
         "payment_actions" => array_values(array_map(fn($row) => [
             "id" => (string)($row['id'] ?? ''),
             "label" => (string)($row['label'] ?? 'Payment'),
@@ -2290,6 +2291,40 @@ if ($action === "create_customer_payment_order") {
         ],
         "business_name" => (string)($settings['business_name'] ?? 'Payment'),
         "success_message" => (string)($settings['success_message'] ?? 'Payment received. Thank you.')
+    ]);
+}
+
+if ($action === "submit_upi_transaction_reference") {
+    $data = widget_get_json();
+    $customerId = widget_customer_id($data);
+    $transactionId = trim((string)($data['transaction_id'] ?? ''));
+    $upiReference = trim((string)($data['upi_reference'] ?? ''));
+    if (!$customerId || $transactionId === '' || $upiReference === '') {
+        widget_json_response(["success" => false, "message" => "Enter the UPI transaction ID"], 400);
+    }
+    $upiReference = substr($upiReference, 0, 120);
+    $rows = widget_safe_rows(supabase(
+        "GET",
+        "customer_payment_transactions?select=id,metadata,payer_phone&customer_id=eq." . urlencode($customerId)
+        . "&id=eq." . urlencode($transactionId)
+        . "&payment_method=eq.upi&limit=1"
+    ));
+    $txn = $rows[0] ?? [];
+    if (empty($txn)) {
+        widget_json_response(["success" => false, "message" => "UPI payment record not found"], 404);
+    }
+    $metadata = is_array($txn['metadata'] ?? null) ? $txn['metadata'] : [];
+    $metadata['customer_upi_transaction_id'] = $upiReference;
+    $metadata['customer_upi_transaction_id_submitted_at'] = gmdate('Y-m-d\TH:i:s\Z');
+    $res = supabase(
+        "PATCH",
+        "customer_payment_transactions?customer_id=eq." . urlencode($customerId) . "&id=eq." . urlencode($transactionId),
+        ["metadata" => (object)$metadata]
+    );
+    widget_json_response([
+        "success" => $res['status'] >= 200 && $res['status'] < 300,
+        "message" => "UPI transaction ID saved. The business will verify and confirm.",
+        "transaction" => $res['data'][0] ?? null
     ]);
 }
 
