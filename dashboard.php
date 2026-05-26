@@ -716,6 +716,21 @@ foreach ($faqActionRows as $actionRow) {
     $faqActionById[(string)($actionRow['id'] ?? '')] = $actionRow;
 }
 
+$paymentSettingsRows = $selectedBotId
+    ? safe_data(supabase("GET", "customer_payment_settings?select=*&customer_id=eq." . urlencode($selectedBotId) . "&limit=1"))
+    : [];
+$paymentSettings = $paymentSettingsRows[0] ?? [];
+$paymentActionRows = $selectedBotId
+    ? safe_data(supabase("GET", "customer_payment_actions?select=*&customer_id=eq." . urlencode($selectedBotId) . "&order=created_at.desc"))
+    : [];
+$paymentTransactionRows = $selectedBotId
+    ? safe_data(supabase("GET", "customer_payment_transactions?select=*&customer_id=eq." . urlencode($selectedBotId) . "&order=created_at.desc&limit=500"))
+    : [];
+$paymentActionById = [];
+foreach ($paymentActionRows as $paymentActionRow) {
+    $paymentActionById[(string)($paymentActionRow['id'] ?? '')] = $paymentActionRow;
+}
+
 $allFeedbackRows = $selectedBotId
     ? safe_data(supabase(
         "GET",
@@ -1376,6 +1391,15 @@ $leadRedirectWhatsapp = filter_var($leadSettings['redirect_whatsapp'] ?? false, 
 $leadVerifyMobileOtp = filter_var($leadSettings['verify_mobile_otp'] ?? false, FILTER_VALIDATE_BOOLEAN);
 $leadNotificationEmail = first_value($leadSettings, ['notification_email'], $email);
 $leadWhatsappNumber = first_value($leadSettings, ['whatsapp_mobile_number'], '');
+$paymentsEnabled = filter_var($paymentSettings['is_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
+$paymentBusinessName = first_value($paymentSettings, ['business_name'], $websiteName ?: $botName);
+$paymentRazorpayKeyId = first_value($paymentSettings, ['razorpay_key_id'], '');
+$paymentRazorpaySecretSaved = trim((string)($paymentSettings['razorpay_key_secret'] ?? '')) !== '';
+$paymentSuccessMessage = first_value($paymentSettings, ['success_message'], 'Payment received. Thank you.');
+$paymentPaidTotalPaise = array_sum(array_map(fn($row) => ($row['status'] ?? '') === 'paid' ? (int)($row['amount_paise'] ?? 0) : 0, $paymentTransactionRows));
+$paymentPaidCount = count(array_filter($paymentTransactionRows, fn($row) => ($row['status'] ?? '') === 'paid'));
+$paymentCreatedCount = count(array_filter($paymentTransactionRows, fn($row) => ($row['status'] ?? '') === 'created'));
+$paymentFailedCount = count(array_filter($paymentTransactionRows, fn($row) => ($row['status'] ?? '') === 'failed'));
 $nowTimestamp = time();
 $todayInIndia = (new DateTimeImmutable('now', new DateTimeZone('Asia/Kolkata')))->format('Y-m-d');
 $whatsappToggleDate = (string)($leadSettings['whatsapp_redirect_toggle_date'] ?? '');
@@ -2152,6 +2176,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
       <button class="tab-btn chatbot-nav-item" data-tab="faqs">FAQ Management</button>
       <button class="tab-btn chatbot-nav-item" data-tab="outside-faqs">Outside FAQs</button>
       <button class="tab-btn chatbot-nav-item" data-tab="feedback-received" <?php echo $canUseFaqFeedback ? '' : 'data-premium-lock="This feature is only for Growth or Business users. Please recharge your wallet with appropriate plan."'; ?>>Feedback Received</button>
+      <button class="tab-btn chatbot-nav-item" data-tab="payments-collection">Payments Collection</button>
       <!-- Conversations tab hidden for now; keep this code for later.
       <button class="tab-btn" data-tab="logs">Conversations</button>
       -->
@@ -2504,6 +2529,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                     <option value="form">Show enquiry form</option>
                     <option value="track_order">Track order / status link</option>
                     <option value="category">Show FAQ category</option>
+                    <option value="payment">Collect payment</option>
                     <option value="event">Website event</option>
                   </select>
                 </div>
@@ -2514,7 +2540,14 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                 <button class="pill-btn" type="submit" <?php echo $canUseFaqActionSuggestions ? '' : 'disabled'; ?>>Add action</button>
                 <div class="field full" style="grid-column:1/-1">
                   <label>Action value</label>
-                  <input id="faqActionValue" placeholder="https://example.com/demo, +919876543210, or customEventName" <?php echo $canUseFaqActionSuggestions ? '' : 'disabled'; ?>>
+                  <input id="faqActionValue" list="paymentActionValueList" placeholder="https://example.com/demo, +919876543210, or customEventName" <?php echo $canUseFaqActionSuggestions ? '' : 'disabled'; ?>>
+                  <datalist id="paymentActionValueList">
+                    <?php foreach ($paymentActionRows as $paymentAction): ?>
+                      <?php if (filter_var($paymentAction['is_active'] ?? true, FILTER_VALIDATE_BOOLEAN)): ?>
+                        <option value="<?php echo h($paymentAction['id'] ?? ''); ?>"><?php echo h(($paymentAction['label'] ?? 'Payment') . ' - ' . billing_rupees((int)($paymentAction['amount_paise'] ?? 0))); ?></option>
+                      <?php endif; ?>
+                    <?php endforeach; ?>
+                  </datalist>
                   <small class="input-help" id="faqActionValueHelp">Choose an action type to see the required value format.</small>
                 </div>
               </div>
@@ -2642,7 +2675,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                         <label>Action type</label>
                         <select class="scheduledActionType" <?php echo $canUseFaqActionSuggestions ? '' : 'disabled'; ?>>
                           <?php $scheduledType = (string)($scheduled['action_type'] ?? 'link'); ?>
-                          <?php foreach (['link' => 'Open page / product page', 'whatsapp' => 'Open WhatsApp', 'call' => 'Call now', 'email' => 'Send email', 'download' => 'Download file', 'coupon' => 'Copy coupon/code', 'booking' => 'Book appointment', 'map' => 'Open map location', 'form' => 'Show enquiry form', 'track_order' => 'Track order / status link', 'category' => 'Show FAQ category', 'event' => 'Website event'] as $type => $label): ?>
+                          <?php foreach (['link' => 'Open page / product page', 'whatsapp' => 'Open WhatsApp', 'call' => 'Call now', 'email' => 'Send email', 'download' => 'Download file', 'coupon' => 'Copy coupon/code', 'booking' => 'Book appointment', 'map' => 'Open map location', 'form' => 'Show enquiry form', 'track_order' => 'Track order / status link', 'category' => 'Show FAQ category', 'payment' => 'Collect payment', 'event' => 'Website event'] as $type => $label): ?>
                             <option value="<?php echo h($type); ?>" <?php echo $scheduledType === $type ? 'selected' : ''; ?>><?php echo h($label); ?></option>
                           <?php endforeach; ?>
                         </select>
@@ -2982,6 +3015,104 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
         </div>
       </section>
       <?php endif; ?>
+
+      <section class="tab-panel" id="payments-collection">
+        <div class="panel section-body">
+          <div class="section-head" style="padding:0">
+            <div>
+              <span class="eyebrow">Payments Collection</span>
+              <h3 style="margin-top:8px">Collect Payments Directly To Customer</h3>
+              <p class="muted">Connect this chatbot customer's own Razorpay account. Visitor payments go to that customer's Razorpay account, not to Vani AI.</p>
+            </div>
+            <span class="tag <?php echo $paymentsEnabled ? 'good' : 'bad'; ?>"><?php echo $paymentsEnabled ? 'Enabled' : 'Off'; ?></span>
+          </div>
+        </div>
+
+        <div class="metrics">
+          <div class="panel metric"><span>Collected</span><strong><?php echo h(billing_rupees($paymentPaidTotalPaise)); ?></strong><small>Successful visitor payments.</small></div>
+          <div class="panel metric"><span>Paid Orders</span><strong><?php echo h($paymentPaidCount); ?></strong><small>Captured payments.</small></div>
+          <div class="panel metric"><span>Pending Orders</span><strong><?php echo h($paymentCreatedCount); ?></strong><small>Created but not verified yet.</small></div>
+          <div class="panel metric"><span>Failed Orders</span><strong><?php echo h($paymentFailedCount); ?></strong><small>Failed checkout attempts.</small></div>
+        </div>
+
+        <div class="panel section-body">
+          <div class="section-head" style="padding:0 0 14px">
+            <div>
+              <h3>Razorpay Account</h3>
+              <p class="muted">Use the customer's Razorpay Key ID and Key Secret. Secret is used only on the server to create and verify orders.</p>
+            </div>
+          </div>
+          <form id="paymentSettingsForm" class="form-grid">
+            <input type="hidden" id="paymentCustomerId" value="<?php echo h($selectedBotId); ?>">
+            <div class="field">
+              <label>Enable payment collection</label>
+              <label class="switch" title="Enable payment collection">
+                <input id="paymentEnabledToggle" type="checkbox" <?php echo $paymentsEnabled ? 'checked' : ''; ?> aria-label="Enable payment collection">
+                <span class="switch-slider"></span>
+              </label>
+            </div>
+            <div class="field"><label>Business name on checkout</label><input id="paymentBusinessNameInput" value="<?php echo h($paymentBusinessName); ?>" placeholder="<?php echo h($botName); ?>"></div>
+            <div class="field"><label>Razorpay Key ID</label><input id="paymentKeyIdInput" value="<?php echo h($paymentRazorpayKeyId); ?>" placeholder="rzp_live_xxxxx"></div>
+            <div class="field"><label>Razorpay Key Secret</label><input id="paymentKeySecretInput" type="password" placeholder="<?php echo $paymentRazorpaySecretSaved ? 'Saved. Leave blank to keep existing secret.' : 'Enter Razorpay key secret'; ?>"></div>
+            <div class="field full"><label>Success message</label><input id="paymentSuccessMessageInput" value="<?php echo h($paymentSuccessMessage); ?>" placeholder="Payment received. Thank you."></div>
+            <div class="field full"><button class="pill-btn" type="submit">Save payment setup</button></div>
+          </form>
+        </div>
+
+        <div class="analytics-grid two">
+          <div class="panel section-body">
+            <h3>Create Payment Button</h3>
+            <form id="paymentActionForm" class="form-grid" style="margin-top:12px">
+              <div class="field"><label>Label</label><input id="paymentActionLabel" placeholder="Pay booking amount"></div>
+              <div class="field"><label>Amount (INR)</label><input id="paymentActionAmount" type="number" min="1" step="1" placeholder="999"></div>
+              <div class="field full"><label>Description</label><textarea id="paymentActionDescription" placeholder="Advance payment for appointment or order"></textarea></div>
+              <div class="field"><label>Status</label><label class="switch"><input id="paymentActionActive" type="checkbox" checked><span class="switch-slider"></span></label></div>
+              <div class="field"><label>&nbsp;</label><button class="pill-btn" type="submit">Add payment button</button></div>
+            </form>
+          </div>
+          <div class="panel section-body">
+            <h3>Payment Buttons</h3>
+            <div class="mini-chart" id="paymentActionList">
+              <?php if (empty($paymentActionRows)): ?><p class="empty">No payment buttons yet.</p><?php endif; ?>
+              <?php foreach ($paymentActionRows as $paymentAction): ?>
+                <div class="lead-option" data-payment-action-id="<?php echo h($paymentAction['id'] ?? ''); ?>">
+                  <div class="inline-row" style="justify-content:space-between;gap:12px">
+                    <div>
+                      <strong><?php echo h($paymentAction['label'] ?? 'Payment'); ?></strong>
+                      <small class="input-help">ID <?php echo h($paymentAction['id'] ?? ''); ?> | <?php echo h(billing_rupees((int)($paymentAction['amount_paise'] ?? 0))); ?> | <?php echo h($paymentAction['description'] ?? ''); ?></small>
+                    </div>
+                    <button class="danger-btn payment-action-delete-btn" type="button">Delete</button>
+                  </div>
+                </div>
+              <?php endforeach; ?>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel section-body">
+          <h3>Payment Transactions</h3>
+          <div class="table-wrap" style="margin-top:14px">
+            <table>
+              <thead><tr><th>Date</th><th>Status</th><th>Amount</th><th>Payment Button</th><th>Payer</th><th>Razorpay Payment</th><th>Source</th></tr></thead>
+              <tbody>
+                <?php if (empty($paymentTransactionRows)): ?><tr><td colspan="7" class="empty">No visitor payments yet.</td></tr><?php endif; ?>
+                <?php foreach ($paymentTransactionRows as $paymentTxn): ?>
+                  <?php $paymentAction = $paymentActionById[(string)($paymentTxn['payment_action_id'] ?? '')] ?? []; ?>
+                  <tr>
+                    <td><?php echo h(substr((string)($paymentTxn['created_at'] ?? ''), 0, 16)); ?></td>
+                    <td><span class="tag <?php echo ($paymentTxn['status'] ?? '') === 'paid' ? 'good' : (($paymentTxn['status'] ?? '') === 'failed' ? 'bad' : ''); ?>"><?php echo h($paymentTxn['status'] ?? 'created'); ?></span></td>
+                    <td><?php echo h(billing_rupees((int)($paymentTxn['amount_paise'] ?? 0))); ?></td>
+                    <td><?php echo h($paymentAction['label'] ?? 'Deleted payment button'); ?></td>
+                    <td><?php echo h(trim(($paymentTxn['payer_name'] ?? '') . ' ' . ($paymentTxn['payer_email'] ?? '')) ?: '-'); ?></td>
+                    <td><?php echo h($paymentTxn['razorpay_payment_id'] ?? ($paymentTxn['razorpay_order_id'] ?? '-')); ?></td>
+                    <td><?php echo h($paymentTxn['source_url'] ?? '-'); ?></td>
+                  </tr>
+                <?php endforeach; ?>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
 
       <!-- Conversations tab content hidden for now; keep this code for later.
       <section class="tab-panel" id="logs">
@@ -4158,6 +4289,12 @@ const businessFeatures = <?php echo js_json([
   "faq_action_suggestions" => $canUseFaqActionSuggestions,
   "faq_feedback" => $canUseFaqFeedback
 ]); ?>;
+const paymentActions = <?php echo js_json(array_values(array_map(fn($row) => [
+  "id" => (string)($row["id"] ?? ""),
+  "label" => (string)($row["label"] ?? ""),
+  "amount_paise" => (int)($row["amount_paise"] ?? 0),
+  "is_active" => filter_var($row["is_active"] ?? true, FILTER_VALIDATE_BOOLEAN)
+], $paymentActionRows))); ?>;
 const leadWalletCharges = <?php echo js_json([
   "fresh_email_lead" => billing_wallet_charge_paise($activePlanId, "fresh_email_lead"),
   "repeat_email_lead" => billing_wallet_charge_paise($activePlanId, "repeat_email_lead"),
@@ -6780,6 +6917,85 @@ document.getElementById("feedbackEmailToggle")?.addEventListener("change", async
   }
 });
 
+document.getElementById("paymentSettingsForm")?.addEventListener("submit", async event => {
+  event.preventDefault();
+  const button = event.currentTarget.querySelector("button[type='submit']");
+  const customerId = document.getElementById("paymentCustomerId")?.value || "";
+  if (!customerId) return showToast("Select a bot first");
+  button.disabled = true;
+  button.textContent = "Saving...";
+  const response = await fetch("/api.php?action=save_payment_settings", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      customer_id: customerId,
+      is_enabled: !!document.getElementById("paymentEnabledToggle")?.checked,
+      business_name: document.getElementById("paymentBusinessNameInput")?.value.trim() || "",
+      razorpay_key_id: document.getElementById("paymentKeyIdInput")?.value.trim() || "",
+      razorpay_key_secret: document.getElementById("paymentKeySecretInput")?.value.trim() || "",
+      success_message: document.getElementById("paymentSuccessMessageInput")?.value.trim() || ""
+    })
+  });
+  const data = await response.json().catch(() => ({}));
+  button.disabled = false;
+  button.textContent = "Save payment setup";
+  if (!data.success) return showToast(data.message || "Payment setup could not be saved");
+  showToast("Payment setup saved");
+  setTimeout(() => location.reload(), 700);
+});
+
+document.getElementById("paymentActionForm")?.addEventListener("submit", async event => {
+  event.preventDefault();
+  const customerId = document.getElementById("paymentCustomerId")?.value || "";
+  const label = document.getElementById("paymentActionLabel")?.value.trim() || "";
+  const amount = document.getElementById("paymentActionAmount")?.value || "";
+  if (!customerId) return showToast("Select a bot first");
+  if (!label || !amount) return showToast("Payment label and amount are required");
+  const button = event.currentTarget.querySelector("button[type='submit']");
+  button.disabled = true;
+  button.textContent = "Saving...";
+  const response = await fetch("/api.php?action=save_payment_action", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      customer_id: customerId,
+      label,
+      amount_rupees: amount,
+      description: document.getElementById("paymentActionDescription")?.value.trim() || "",
+      is_active: !!document.getElementById("paymentActionActive")?.checked
+    })
+  });
+  const data = await response.json().catch(() => ({}));
+  button.disabled = false;
+  button.textContent = "Add payment button";
+  if (!data.success) return showToast(data.message || "Payment button could not be saved");
+  showToast("Payment button saved");
+  setTimeout(() => location.reload(), 700);
+});
+
+document.getElementById("paymentActionList")?.addEventListener("click", async event => {
+  const button = event.target.closest(".payment-action-delete-btn");
+  const row = event.target.closest("[data-payment-action-id]");
+  if (!button || !row) return;
+  if (!confirm("Delete this payment button?")) return;
+  const customerId = document.getElementById("paymentCustomerId")?.value || "";
+  button.disabled = true;
+  button.textContent = "Deleting...";
+  const response = await fetch("/api.php?action=delete_payment_action", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({customer_id: customerId, id: row.dataset.paymentActionId || ""})
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!data.success) {
+    button.disabled = false;
+    button.textContent = "Delete";
+    return showToast(data.message || "Payment button could not be deleted");
+  }
+  row.remove();
+  showToast("Payment button deleted");
+});
+
 const faqActionHelp = {
   link: ["https://example.com/product", "Use a secure https:// page, service, or product URL."],
   whatsapp: ["+919876543210", "Use a WhatsApp number with country code."],
@@ -6792,6 +7008,7 @@ const faqActionHelp = {
   form: ["Callback request", "Enter the form title or purpose. The widget will show name, email, mobile, and message fields."],
   track_order: ["https://example.com/track-order", "Use a secure https:// tracking or status page URL."],
   category: ["Pricing", "Enter the FAQ category name to show related FAQs in the chatbot."],
+  payment: [paymentActions.find(action => action.is_active)?.id || "Create a payment button first", "Enter/select the Payment Button ID from Payments Collection. The visitor will pay directly to the customer's Razorpay account."],
   event: ["openPricing", "Enter a website event name. Your site can listen for window event vani:openPricing."]
 };
 
@@ -6802,6 +7019,9 @@ function updateFaqActionHelp() {
   const info = faqActionHelp[type] || faqActionHelp.link;
   if (valueInput) valueInput.placeholder = info[0];
   if (help) help.textContent = info[1];
+  if (type === "payment" && valueInput && paymentActions.find(action => action.is_active)) {
+    valueInput.value = valueInput.value || paymentActions.find(action => action.is_active).id;
+  }
 }
 
 document.getElementById("faqActionType")?.addEventListener("change", updateFaqActionHelp);

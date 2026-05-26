@@ -41,6 +41,40 @@ function widget_get_signup(string $customerId): array {
     return $rows[0] ?? [];
 }
 
+function widget_customer_payment_settings(string $customerId): array {
+    $rows = widget_safe_rows(supabase(
+        "GET",
+        "customer_payment_settings?select=*&customer_id=eq." . urlencode($customerId) . "&limit=1"
+    ));
+    return $rows[0] ?? [];
+}
+
+function widget_customer_razorpay_request(array $paymentSettings, string $method, string $endpoint, array $payload = []): array {
+    $keyId = trim((string)($paymentSettings['razorpay_key_id'] ?? ''));
+    $secret = trim((string)($paymentSettings['razorpay_key_secret'] ?? ''));
+    if ($keyId === '' || $secret === '') {
+        return ["status" => 500, "data" => [], "raw" => "Customer Razorpay credentials missing"];
+    }
+    $headers = "Content-Type: application/json\r\nAuthorization: Basic " . base64_encode($keyId . ":" . $secret) . "\r\n";
+    $options = [
+        "http" => [
+            "method" => $method,
+            "header" => $headers,
+            "ignore_errors" => true,
+            "timeout" => 20
+        ]
+    ];
+    if (!empty($payload)) {
+        $options["http"]["content"] = json_encode($payload);
+    }
+    $raw = file_get_contents("https://api.razorpay.com/v1/" . ltrim($endpoint, "/"), false, stream_context_create($options));
+    $statusLine = $http_response_header[0] ?? "HTTP/1.1 500";
+    preg_match('/\s(\d{3})\s/', $statusLine, $matches);
+    $status = (int)($matches[1] ?? 500);
+    $data = json_decode((string)$raw, true);
+    return ["status" => $status, "data" => is_array($data) ? $data : [], "raw" => $raw];
+}
+
 function widget_faq_action_suggestions(string $customerId, $faqId, array $settings, string $activePlan): array {
     $faqId = (int)$faqId;
     if ($customerId === '' || $faqId <= 0) {
@@ -2091,6 +2125,106 @@ if ($action === "submit_faq_action_feedback") {
         "feedback" => $res['data'][0] ?? null,
         "email_sent" => $emailSent
     ]);
+}
+
+if ($action === "create_customer_payment_order") {
+    $data = widget_get_json();
+    $customerId = widget_customer_id($data);
+    $paymentActionId = (int)($data['payment_action_id'] ?? $data['action_value'] ?? 0);
+    if (!$customerId || $paymentActionId <= 0) {
+        widget_json_response(["success" => false, "message" => "Missing payment action"], 400);
+    }
+    $settings = widget_customer_payment_settings($customerId);
+    if (!widget_bool($settings['is_enabled'] ?? false)) {
+        widget_json_response(["success" => false, "message" => "Payment collection is not enabled"], 403);
+    }
+    $paymentActions = widget_safe_rows(supabase(
+        "GET",
+        "customer_payment_actions?select=*&id=eq." . urlencode((string)$paymentActionId) . "&customer_id=eq." . urlencode($customerId) . "&is_active=eq.true&limit=1"
+    ));
+    $paymentAction = $paymentActions[0] ?? [];
+    if (empty($paymentAction)) {
+        widget_json_response(["success" => false, "message" => "Payment button not found"], 404);
+    }
+    $amountPaise = (int)($paymentAction['amount_paise'] ?? 0);
+    $receipt = substr("pay_" . $customerId . "_" . time() . "_" . bin2hex(random_bytes(3)), 0, 40);
+    $order = widget_customer_razorpay_request($settings, "POST", "orders", [
+        "amount" => $amountPaise,
+        "currency" => (string)($paymentAction['currency'] ?? 'INR'),
+        "receipt" => $receipt,
+        "payment_capture" => true,
+        "notes" => [
+            "customer_id" => $customerId,
+            "payment_action_id" => (string)$paymentActionId,
+            "source" => "vani_widget_customer_payment"
+        ]
+    ]);
+    if ($order['status'] < 200 || $order['status'] >= 300 || empty($order['data']['id'])) {
+        widget_json_response(["success" => false, "message" => $order['data']['error']['description'] ?? "Payment order could not be created"], 500);
+    }
+    $txn = supabase("POST", "customer_payment_transactions", [[
+        "customer_id" => $customerId,
+        "payment_action_id" => $paymentActionId,
+        "faq_action_id" => !empty($data['faq_action_id']) ? (int)$data['faq_action_id'] : null,
+        "faq_id" => !empty($data['faq_id']) ? (int)$data['faq_id'] : null,
+        "user_id" => trim((string)($data['user_id'] ?? '')) ?: null,
+        "session_id" => trim((string)($data['session_id'] ?? '')) ?: null,
+        "source_url" => trim((string)($data['source_url'] ?? '')) ?: null,
+        "amount_paise" => $amountPaise,
+        "currency" => (string)($paymentAction['currency'] ?? 'INR'),
+        "status" => "created",
+        "razorpay_order_id" => (string)$order['data']['id'],
+        "metadata" => (object)["payment_action_label" => $paymentAction['label'] ?? 'Payment']
+    ]]);
+    widget_json_response([
+        "success" => $txn['status'] >= 200 && $txn['status'] < 300,
+        "key_id" => (string)($settings['razorpay_key_id'] ?? ''),
+        "order" => $order['data'],
+        "payment_action" => [
+            "id" => (string)$paymentActionId,
+            "label" => (string)($paymentAction['label'] ?? 'Payment'),
+            "description" => (string)($paymentAction['description'] ?? ''),
+            "amount_paise" => $amountPaise,
+            "currency" => (string)($paymentAction['currency'] ?? 'INR')
+        ],
+        "business_name" => (string)($settings['business_name'] ?? 'Payment'),
+        "success_message" => (string)($settings['success_message'] ?? 'Payment received. Thank you.')
+    ]);
+}
+
+if ($action === "verify_customer_payment") {
+    $data = widget_get_json();
+    $customerId = widget_customer_id($data);
+    $orderId = trim((string)($data['razorpay_order_id'] ?? ''));
+    $paymentId = trim((string)($data['razorpay_payment_id'] ?? ''));
+    $signature = trim((string)($data['razorpay_signature'] ?? ''));
+    $settings = widget_customer_payment_settings($customerId);
+    $secret = trim((string)($settings['razorpay_key_secret'] ?? ''));
+    if (!$customerId || !$orderId || !$paymentId || !$signature || $secret === '') {
+        widget_json_response(["success" => false, "message" => "Missing payment verification data"], 400);
+    }
+    $expected = hash_hmac('sha256', $orderId . "|" . $paymentId, $secret);
+    if (!hash_equals($expected, $signature)) {
+        supabase("PATCH", "customer_payment_transactions?razorpay_order_id=eq." . urlencode($orderId) . "&customer_id=eq." . urlencode($customerId), ["status" => "failed"]);
+        widget_json_response(["success" => false, "message" => "Payment signature verification failed"], 400);
+    }
+    $payment = widget_customer_razorpay_request($settings, "GET", "payments/" . rawurlencode($paymentId), []);
+    if ($payment['status'] < 200 || $payment['status'] >= 300 || empty($payment['data']['id']) || (($payment['data']['order_id'] ?? '') !== $orderId)) {
+        widget_json_response(["success" => false, "message" => "Payment could not be verified"], 400);
+    }
+    $paymentStatus = (string)($payment['data']['status'] ?? '');
+    $captured = $paymentStatus === 'captured' || !empty($payment['data']['captured']);
+    supabase("PATCH", "customer_payment_transactions?razorpay_order_id=eq." . urlencode($orderId) . "&customer_id=eq." . urlencode($customerId), [
+        "status" => $captured ? "paid" : "failed",
+        "razorpay_payment_id" => $paymentId,
+        "razorpay_signature" => $signature,
+        "payer_name" => trim((string)($data['payer_name'] ?? '')) ?: null,
+        "payer_email" => trim((string)($data['payer_email'] ?? '')) ?: null,
+        "payer_phone" => trim((string)($data['payer_phone'] ?? '')) ?: null,
+        "paid_at" => $captured ? gmdate('Y-m-d\TH:i:s\Z') : null,
+        "metadata" => (object)["payment_status" => $paymentStatus]
+    ]);
+    widget_json_response(["success" => $captured, "message" => $captured ? (string)($settings['success_message'] ?? 'Payment received. Thank you.') : "Payment is not captured yet"]);
 }
 
 // Create a lead record (generic) - used for location or simple lead saves

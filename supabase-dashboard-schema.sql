@@ -138,7 +138,7 @@ create table if not exists public.faq_action_suggestions (
   customer_id uuid not null references public.chatbot_signups(customer_id) on delete cascade,
   faq_id bigint not null references public.faq_questions(id) on delete cascade,
   label text not null,
-  action_type text not null default 'link' check (action_type in ('link', 'whatsapp', 'event', 'call', 'email', 'download', 'coupon', 'booking', 'map', 'form', 'track_order', 'category')),
+  action_type text not null default 'link' check (action_type in ('link', 'whatsapp', 'event', 'call', 'email', 'download', 'coupon', 'booking', 'map', 'form', 'track_order', 'category', 'payment')),
   action_value text,
   is_active boolean not null default true,
   display_order integer not null default 0,
@@ -152,7 +152,7 @@ create table if not exists public.faq_scheduled_action_suggestions (
   slot_no integer not null check (slot_no between 1 and 3),
   trigger_after_questions integer not null default 3 check (trigger_after_questions between 1 and 50),
   label text not null,
-  action_type text not null default 'link' check (action_type in ('link', 'whatsapp', 'event', 'call', 'email', 'download', 'coupon', 'booking', 'map', 'form', 'track_order', 'category')),
+  action_type text not null default 'link' check (action_type in ('link', 'whatsapp', 'event', 'call', 'email', 'download', 'coupon', 'booking', 'map', 'form', 'track_order', 'category', 'payment')),
   action_value text,
   is_active boolean not null default true,
   created_at timestamptz not null default now(),
@@ -178,14 +178,62 @@ alter table public.faq_scheduled_action_suggestions
 
 alter table public.faq_scheduled_action_suggestions
   add constraint faq_scheduled_action_suggestions_action_type_check
-  check (action_type in ('link', 'whatsapp', 'event', 'call', 'email', 'download', 'coupon', 'booking', 'map', 'form', 'track_order', 'category'));
+  check (action_type in ('link', 'whatsapp', 'event', 'call', 'email', 'download', 'coupon', 'booking', 'map', 'form', 'track_order', 'category', 'payment'));
 
 alter table public.faq_action_suggestions
   drop constraint if exists faq_action_suggestions_action_type_check;
 
 alter table public.faq_action_suggestions
   add constraint faq_action_suggestions_action_type_check
-  check (action_type in ('link', 'whatsapp', 'event', 'call', 'email', 'download', 'coupon', 'booking', 'map', 'form', 'track_order', 'category'));
+  check (action_type in ('link', 'whatsapp', 'event', 'call', 'email', 'download', 'coupon', 'booking', 'map', 'form', 'track_order', 'category', 'payment'));
+
+create table if not exists public.customer_payment_settings (
+  id bigserial primary key,
+  customer_id uuid not null unique references public.chatbot_signups(customer_id) on delete cascade,
+  is_enabled boolean not null default false,
+  provider text not null default 'razorpay',
+  business_name text,
+  razorpay_key_id text,
+  razorpay_key_secret text,
+  success_message text default 'Payment received. Thank you.',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.customer_payment_actions (
+  id bigserial primary key,
+  customer_id uuid not null references public.chatbot_signups(customer_id) on delete cascade,
+  label text not null,
+  description text,
+  amount_paise integer not null check (amount_paise > 0),
+  currency text not null default 'INR',
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.customer_payment_transactions (
+  id bigserial primary key,
+  customer_id uuid not null references public.chatbot_signups(customer_id) on delete cascade,
+  payment_action_id bigint references public.customer_payment_actions(id) on delete set null,
+  faq_action_id bigint references public.faq_action_suggestions(id) on delete set null,
+  faq_id bigint references public.faq_questions(id) on delete set null,
+  user_id text,
+  session_id text,
+  source_url text,
+  payer_name text,
+  payer_email text,
+  payer_phone text,
+  amount_paise integer not null,
+  currency text not null default 'INR',
+  status text not null default 'created' check (status in ('created', 'paid', 'failed')),
+  razorpay_order_id text unique,
+  razorpay_payment_id text,
+  razorpay_signature text,
+  metadata jsonb not null default '{}'::jsonb,
+  paid_at timestamptz,
+  created_at timestamptz not null default now()
+);
 
 create table if not exists public.chatbot_sessions (
   id bigserial primary key,
@@ -496,6 +544,9 @@ alter table public.faq_questions
 
 alter table public.faq_questions enable row level security;
 alter table public.faq_action_suggestions enable row level security;
+alter table public.customer_payment_settings enable row level security;
+alter table public.customer_payment_actions enable row level security;
+alter table public.customer_payment_transactions enable row level security;
 alter table public.faq_scheduled_action_suggestions enable row level security;
 
 create index if not exists idx_chatbot_settings_customer_id
@@ -524,6 +575,10 @@ create index if not exists idx_faq_questions_customer_category
 
 create index if not exists idx_faq_action_suggestions_customer_faq
   on public.faq_action_suggestions(customer_id, faq_id, display_order);
+create index if not exists idx_customer_payment_actions_customer
+  on public.customer_payment_actions(customer_id, is_active, created_at desc);
+create index if not exists idx_customer_payment_transactions_customer_created
+  on public.customer_payment_transactions(customer_id, created_at desc);
 
 create index if not exists idx_faq_scheduled_action_suggestions_customer_slot
   on public.faq_scheduled_action_suggestions(customer_id, slot_no);
@@ -1045,6 +1100,29 @@ for delete
 to anon, authenticated
 using (true);
 
+drop policy if exists "customer payment settings readable" on public.customer_payment_settings;
+create policy "customer payment settings readable" on public.customer_payment_settings for select to anon, authenticated using (true);
+drop policy if exists "customer payment settings insertable" on public.customer_payment_settings;
+create policy "customer payment settings insertable" on public.customer_payment_settings for insert to anon, authenticated with check (true);
+drop policy if exists "customer payment settings updatable" on public.customer_payment_settings;
+create policy "customer payment settings updatable" on public.customer_payment_settings for update to anon, authenticated using (true) with check (true);
+
+drop policy if exists "customer payment actions readable" on public.customer_payment_actions;
+create policy "customer payment actions readable" on public.customer_payment_actions for select to anon, authenticated using (true);
+drop policy if exists "customer payment actions insertable" on public.customer_payment_actions;
+create policy "customer payment actions insertable" on public.customer_payment_actions for insert to anon, authenticated with check (true);
+drop policy if exists "customer payment actions updatable" on public.customer_payment_actions;
+create policy "customer payment actions updatable" on public.customer_payment_actions for update to anon, authenticated using (true) with check (true);
+drop policy if exists "customer payment actions deletable" on public.customer_payment_actions;
+create policy "customer payment actions deletable" on public.customer_payment_actions for delete to anon, authenticated using (true);
+
+drop policy if exists "customer payment transactions readable" on public.customer_payment_transactions;
+create policy "customer payment transactions readable" on public.customer_payment_transactions for select to anon, authenticated using (true);
+drop policy if exists "customer payment transactions insertable" on public.customer_payment_transactions;
+create policy "customer payment transactions insertable" on public.customer_payment_transactions for insert to anon, authenticated with check (true);
+drop policy if exists "customer payment transactions updatable" on public.customer_payment_transactions;
+create policy "customer payment transactions updatable" on public.customer_payment_transactions for update to anon, authenticated using (true) with check (true);
+
 grant select, insert, update, delete on public.chatbot_settings to anon, authenticated;
 grant select, insert, update, delete on public.chatbot_signups to anon, authenticated;
 grant select, insert, update, delete on public.chatbot_conversations to anon, authenticated;
@@ -1054,6 +1132,9 @@ grant select, insert, update, delete on public.customer_profiles to anon, authen
 grant select, insert, update, delete on public.faq_questions to anon, authenticated;
 grant select, insert, update, delete on public.faq_action_suggestions to anon, authenticated;
 grant select, insert, update, delete on public.faq_scheduled_action_suggestions to anon, authenticated;
+grant select, insert, update on public.customer_payment_settings to anon, authenticated;
+grant select, insert, update, delete on public.customer_payment_actions to anon, authenticated;
+grant select, insert, update on public.customer_payment_transactions to anon, authenticated;
 grant select, insert, update, delete on public.lead_generation_settings to anon, authenticated;
 grant select, insert, update, delete on public.lead_generation_leads to anon, authenticated;
 grant select, insert, update, delete on public.billing_accounts to anon, authenticated;
@@ -1123,6 +1204,9 @@ grant usage, select on sequence public.faq_action_feedback_id_seq to anon, authe
 grant usage, select on sequence public.chatbot_sessions_id_seq to anon, authenticated;
 grant usage, select on sequence public.customer_profiles_id_seq to anon, authenticated;
 grant usage, select on sequence public.faq_action_suggestions_id_seq to anon, authenticated;
+grant usage, select on sequence public.customer_payment_settings_id_seq to anon, authenticated;
+grant usage, select on sequence public.customer_payment_actions_id_seq to anon, authenticated;
+grant usage, select on sequence public.customer_payment_transactions_id_seq to anon, authenticated;
 grant usage, select on sequence public.faq_scheduled_action_suggestions_id_seq to anon, authenticated;
 grant usage, select on sequence public.lead_generation_settings_id_seq to anon, authenticated;
 grant usage, select on sequence public.lead_generation_leads_id_seq to anon, authenticated;

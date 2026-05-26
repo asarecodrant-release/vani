@@ -4404,6 +4404,83 @@ if ($action === "chat") {
 }
 
 // ==========================
+// CUSTOMER PAYMENT COLLECTION
+// ==========================
+if ($action === "save_payment_settings") {
+    $data = getJSON();
+    $customerId = trim((string)($data['customer_id'] ?? ''));
+    if (!$customerId) {
+        echo json_encode(["success" => false, "message" => "Select a bot first"]);
+        exit;
+    }
+    require_customer_mutation_access($customerId);
+
+    $keyId = trim((string)($data['razorpay_key_id'] ?? ''));
+    $keySecret = trim((string)($data['razorpay_key_secret'] ?? ''));
+    $payload = [
+        "customer_id" => $customerId,
+        "is_enabled" => filter_var($data['is_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN),
+        "provider" => "razorpay",
+        "business_name" => trim(substr((string)($data['business_name'] ?? ''), 0, 120)),
+        "success_message" => trim(substr((string)($data['success_message'] ?? 'Payment received. Thank you.'), 0, 240))
+    ];
+    if ($keyId !== '') {
+        if (!preg_match('/^rzp_(test|live)_[A-Za-z0-9]+$/', $keyId)) {
+            echo json_encode(["success" => false, "message" => "Enter a valid Razorpay Key ID"]);
+            exit;
+        }
+        $payload['razorpay_key_id'] = $keyId;
+    }
+    if ($keySecret !== '') {
+        $payload['razorpay_key_secret'] = $keySecret;
+    }
+
+    $existing = safe_rows(supabase("GET", "customer_payment_settings?select=id&customer_id=eq." . urlencode($customerId) . "&limit=1"));
+    $res = !empty($existing)
+        ? supabase("PATCH", "customer_payment_settings?customer_id=eq." . urlencode($customerId), $payload)
+        : supabase("POST", "customer_payment_settings", [$payload]);
+    echo json_encode(["success" => $res['status'] >= 200 && $res['status'] < 300, "settings" => $res['data'][0] ?? null, "debug" => $res]);
+    exit;
+}
+
+if ($action === "save_payment_action") {
+    $data = getJSON();
+    $customerId = trim((string)($data['customer_id'] ?? ''));
+    $label = trim((string)($data['label'] ?? ''));
+    $amountPaise = (int)round(((float)($data['amount_rupees'] ?? 0)) * 100);
+    if (!$customerId || $label === '' || $amountPaise <= 0) {
+        echo json_encode(["success" => false, "message" => "Payment label and amount are required"]);
+        exit;
+    }
+    require_customer_mutation_access($customerId);
+    $payload = [
+        "customer_id" => $customerId,
+        "label" => substr($label, 0, 100),
+        "description" => trim(substr((string)($data['description'] ?? ''), 0, 400)),
+        "amount_paise" => $amountPaise,
+        "currency" => "INR",
+        "is_active" => filter_var($data['is_active'] ?? true, FILTER_VALIDATE_BOOLEAN)
+    ];
+    $res = supabase("POST", "customer_payment_actions", [$payload]);
+    echo json_encode(["success" => $res['status'] >= 200 && $res['status'] < 300, "payment_action" => $res['data'][0] ?? null, "debug" => $res]);
+    exit;
+}
+
+if ($action === "delete_payment_action") {
+    $data = getJSON();
+    $customerId = trim((string)($data['customer_id'] ?? ''));
+    $id = trim((string)($data['id'] ?? ''));
+    if (!$customerId || !$id) {
+        echo json_encode(["success" => false, "message" => "Missing payment button"]);
+        exit;
+    }
+    require_customer_mutation_access($customerId);
+    $res = supabase("DELETE", "customer_payment_actions?id=eq." . urlencode($id) . "&customer_id=eq." . urlencode($customerId));
+    echo json_encode(["success" => $res['status'] >= 200 && $res['status'] < 300, "debug" => $res]);
+    exit;
+}
+
+// ==========================
 // SAVE FAQ ACTION SUGGESTION
 // ==========================
 if ($action === "save_faq_action") {
@@ -4439,7 +4516,7 @@ if ($action === "save_faq_action") {
         exit;
     }
 
-    $allowedActionTypes = ['link', 'whatsapp', 'event', 'call', 'email', 'download', 'coupon', 'booking', 'map', 'form', 'track_order', 'category'];
+    $allowedActionTypes = ['link', 'whatsapp', 'event', 'call', 'email', 'download', 'coupon', 'booking', 'map', 'form', 'track_order', 'category', 'payment'];
     if (!in_array($action_type, $allowedActionTypes, true)) {
         echo json_encode(["success" => false, "message" => "Invalid action type"]);
         exit;
@@ -4463,6 +4540,16 @@ if ($action === "save_faq_action") {
     if ($action_type === 'event' && !preg_match('/^[a-zA-Z][a-zA-Z0-9_.:-]{1,80}$/', $action_value)) {
         echo json_encode(["success" => false, "message" => "Event name can use letters, numbers, dash, dot, underscore, or colon"]);
         exit;
+    }
+    if ($action_type === 'payment') {
+        $paymentRows = safe_rows(supabase(
+            "GET",
+            "customer_payment_actions?select=id&id=eq." . urlencode($action_value) . "&customer_id=eq." . urlencode($customer_id) . "&is_active=eq.true&limit=1"
+        ));
+        if (empty($paymentRows)) {
+            echo json_encode(["success" => false, "message" => "Select an active payment button"]);
+            exit;
+        }
     }
     if (in_array($action_type, ['coupon', 'form', 'category', 'map'], true) && strlen($action_value) > 300) {
         echo json_encode(["success" => false, "message" => "Action value is too long"]);
@@ -4554,7 +4641,7 @@ if ($action === "save_scheduled_faq_actions") {
         exit;
     }
 
-    $allowedActionTypes = ['link', 'whatsapp', 'event', 'call', 'email', 'download', 'coupon', 'booking', 'map', 'form', 'track_order', 'category'];
+    $allowedActionTypes = ['link', 'whatsapp', 'event', 'call', 'email', 'download', 'coupon', 'booking', 'map', 'form', 'track_order', 'category', 'payment'];
     $rows = [];
     foreach ($actions as $index => $row) {
         $slotNo = max(1, min(3, (int)($row['slot_no'] ?? ($index + 1))));
