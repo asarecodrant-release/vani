@@ -3116,24 +3116,6 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
           </div>
         </div>
 
-        <div class="metrics">
-          <div class="panel metric"><span>Collected</span><strong><?php echo h(billing_rupees($paymentPaidTotalPaise)); ?></strong><small>Successful visitor payments.</small></div>
-          <div class="panel metric"><span>Paid Orders</span><strong><?php echo h($paymentPaidCount); ?></strong><small>Captured payments.</small></div>
-          <div class="panel metric"><span>Pending Orders</span><strong><?php echo h($paymentCreatedCount); ?></strong><small>Created but not verified yet.</small></div>
-          <div class="panel metric"><span>UPI Pending</span><strong><?php echo h($paymentUpiPendingCount); ?></strong><small>Manual verification needed.</small></div>
-        </div>
-
-        <div class="panel section-body">
-          <div class="payment-subtabs" role="tablist" aria-label="Payment collection sections">
-            <button class="payment-subtab-btn active" type="button" data-payment-subtab="payment-subpanel-setup">Payment Setup</button>
-            <button class="payment-subtab-btn" type="button" data-payment-subtab="payment-subpanel-razorpay">Razorpay Checkout</button>
-            <button class="payment-subtab-btn" type="button" data-payment-subtab="payment-subpanel-upi">UPI Redirect</button>
-            <button class="payment-subtab-btn" type="button" data-payment-subtab="payment-subpanel-buttons">Payment Buttons</button>
-            <button class="payment-subtab-btn" type="button" data-payment-subtab="payment-subpanel-transactions">Transactions</button>
-          </div>
-        </div>
-
-        <div class="payment-subpanel active" id="payment-subpanel-setup">
         <div class="panel section-body">
           <div class="section-head" style="padding:0 0 14px">
             <div>
@@ -3151,35 +3133,53 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
               </label>
               <?php if (!$canUsePaymentCollection): ?><small class="input-help error">Growth or Business plan required to switch ON payment collection.</small><?php endif; ?>
             </div>
-            <div class="field">
-              <label>Enable Razorpay Checkout</label>
-              <label class="switch" title="Enable Razorpay Checkout">
-                <input id="paymentRazorpayEnabledToggle" type="checkbox" <?php echo $paymentRazorpayEnabled && $canUsePaymentCollection ? 'checked' : ''; ?> <?php echo $canUsePaymentCollection ? '' : 'disabled'; ?> aria-label="Enable Razorpay Checkout">
-                <span class="switch-slider"></span>
-              </label>
-              <small class="input-help">Requires Razorpay Key ID and Key Secret.</small>
-            </div>
-            <div class="field">
-              <label>Enable UPI Redirect</label>
-              <label class="switch" title="Enable UPI Redirect">
-                <input id="paymentUpiEnabledToggle" type="checkbox" <?php echo $paymentUpiEnabled && $canUsePaymentCollection ? 'checked' : ''; ?> <?php echo $canUsePaymentCollection ? '' : 'disabled'; ?> aria-label="Enable UPI Redirect">
-                <span class="switch-slider"></span>
-              </label>
-              <small class="input-help">Uses a UPI ID on each UPI payment button.</small>
-            </div>
             <div class="field"><label>Business name on checkout</label><input id="paymentBusinessNameInput" value="<?php echo h($paymentBusinessName); ?>" placeholder="<?php echo h($botName); ?>"></div>
-            <div class="field"><label>Razorpay Key ID</label><input id="paymentKeyIdInput" value="<?php echo h($paymentRazorpayKeyId); ?>" placeholder="rzp_live_xxxxx"></div>
-            <div class="field"><label>Razorpay Key Secret</label><input id="paymentKeySecretInput" type="password" placeholder="<?php echo $paymentRazorpaySecretSaved ? 'Saved. Leave blank to keep existing secret.' : 'Enter Razorpay key secret'; ?>"></div>
-            <div class="field full"><label>Success message</label><input id="paymentSuccessMessageInput" value="<?php echo h($paymentSuccessMessage); ?>" placeholder="Payment received. Thank you."></div>
             <div class="field full"><button class="pill-btn" type="submit">Save payment setup</button></div>
           </form>
         </div>
+
+        <div class="metrics">
+          <div class="panel metric"><span>Collected</span><strong><?php echo h(billing_rupees($paymentPaidTotalPaise)); ?></strong><small>Successful visitor payments.</small></div>
+          <div class="panel metric"><span>Paid Orders</span><strong><?php echo h($paymentPaidCount); ?></strong><small>Captured payments.</small></div>
+          <div class="panel metric"><span>Pending Orders</span><strong><?php echo h($paymentCreatedCount); ?></strong><small>Created but not verified yet.</small></div>
+          <div class="panel metric"><span>UPI Pending</span><strong><?php echo h($paymentUpiPendingCount); ?></strong><small>Manual verification needed.</small></div>
         </div>
 
-        <div class="payment-subpanel" id="payment-subpanel-razorpay">
+        <div class="panel section-body">
+          <div class="payment-subtabs" role="tablist" aria-label="Payment collection sections">
+            <button class="payment-subtab-btn active" type="button" data-payment-subtab="payment-subpanel-razorpay">Razorpay Checkout</button>
+            <button class="payment-subtab-btn" type="button" data-payment-subtab="payment-subpanel-upi">UPI Redirect</button>
+            <button class="payment-subtab-btn" type="button" data-payment-subtab="payment-subpanel-buttons">Payment Buttons</button>
+            <button class="payment-subtab-btn" type="button" data-payment-subtab="payment-subpanel-transactions">Transactions</button>
+          </div>
+        </div>
+
+        <div class="payment-subpanel active" id="payment-subpanel-razorpay">
+          <div class="panel section-body">
+            <div class="section-head" style="padding:0 0 14px">
+              <div>
+                <h3>Razorpay Checkout Setup</h3>
+                <p class="muted">Enable Razorpay Checkout and save the customer's Razorpay credentials for checkout buttons.</p>
+              </div>
+            </div>
+            <form id="paymentRazorpaySettingsForm" class="form-grid">
+              <div class="field">
+                <label>Enable Razorpay Checkout</label>
+                <label class="switch" title="Enable Razorpay Checkout">
+                  <input id="paymentRazorpayEnabledToggle" type="checkbox" <?php echo $paymentRazorpayEnabled && $canUsePaymentCollection ? 'checked' : ''; ?> <?php echo $canUsePaymentCollection ? '' : 'disabled'; ?> aria-label="Enable Razorpay Checkout">
+                  <span class="switch-slider"></span>
+                </label>
+                <small class="input-help">Requires Razorpay Key ID and Key Secret.</small>
+              </div>
+              <div class="field"><label>Razorpay Key ID</label><input id="paymentKeyIdInput" value="<?php echo h($paymentRazorpayKeyId); ?>" placeholder="rzp_live_xxxxx"></div>
+              <div class="field"><label>Razorpay Key Secret</label><input id="paymentKeySecretInput" type="password" placeholder="<?php echo $paymentRazorpaySecretSaved ? 'Saved. Leave blank to keep existing secret.' : 'Enter Razorpay key secret'; ?>"></div>
+              <div class="field full"><label>Success message</label><input id="paymentSuccessMessageInput" value="<?php echo h($paymentSuccessMessage); ?>" placeholder="Payment received. Thank you."></div>
+              <div class="field full"><button class="pill-btn" type="submit">Save Razorpay checkout</button></div>
+            </form>
+          </div>
           <div class="panel section-body">
             <h3>Create Razorpay Checkout Button</h3>
-            <p class="muted" style="margin:8px 0 14px">Use this for card, netbanking, UPI through Razorpay, and wallet checkout. Razorpay Key ID and Key Secret must be saved in Payment Setup first.</p>
+            <p class="muted" style="margin:8px 0 14px">Use this for card, netbanking, UPI through Razorpay, and wallet checkout. Razorpay Key ID and Key Secret must be saved above first.</p>
             <form class="form-grid payment-action-form" data-payment-method="razorpay">
               <div class="field"><label>Label</label><input data-payment-field="label" placeholder="Pay booking amount"></div>
               <div class="field"><label>Amount (INR)</label><input data-payment-field="amount" type="number" min="1" step="1" placeholder="999"></div>
@@ -3191,6 +3191,25 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
         </div>
 
         <div class="payment-subpanel" id="payment-subpanel-upi">
+          <div class="panel section-body">
+            <div class="section-head" style="padding:0 0 14px">
+              <div>
+                <h3>UPI Redirect Setup</h3>
+                <p class="muted">Enable UPI Redirect for simple UPI app payment buttons. Each UPI button still needs its own UPI ID.</p>
+              </div>
+            </div>
+            <form id="paymentUpiSettingsForm" class="form-grid">
+              <div class="field">
+                <label>Enable UPI Redirect</label>
+                <label class="switch" title="Enable UPI Redirect">
+                  <input id="paymentUpiEnabledToggle" type="checkbox" <?php echo $paymentUpiEnabled && $canUsePaymentCollection ? 'checked' : ''; ?> <?php echo $canUsePaymentCollection ? '' : 'disabled'; ?> aria-label="Enable UPI Redirect">
+                  <span class="switch-slider"></span>
+                </label>
+                <small class="input-help">Uses a UPI ID on each UPI payment button.</small>
+              </div>
+              <div class="field full"><button class="pill-btn" type="submit">Save UPI redirect</button></div>
+            </form>
+          </div>
           <div class="panel section-body">
             <h3>Create UPI Redirect Button</h3>
             <p class="muted" style="margin:8px 0 14px">Use this for the simplest UPI app redirect. Payments are created as pending and should be manually verified by the business.</p>
@@ -3223,13 +3242,18 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
             <div class="mini-chart" id="paymentActionList">
               <?php if (empty($paymentActionRows)): ?><p class="empty">No payment buttons yet.</p><?php endif; ?>
               <?php foreach ($paymentActionRows as $paymentAction): ?>
+                <?php $paymentActionActive = filter_var($paymentAction['is_active'] ?? true, FILTER_VALIDATE_BOOLEAN); ?>
                 <div class="lead-option" data-payment-action-id="<?php echo h($paymentAction['id'] ?? ''); ?>" data-payment-action-label="<?php echo h($paymentAction['label'] ?? 'Payment'); ?>">
                   <div class="inline-row" style="justify-content:space-between;gap:12px">
                     <div>
                       <strong><?php echo h($paymentAction['label'] ?? 'Payment'); ?></strong>
-                      <small class="input-help">ID <?php echo h($paymentAction['id'] ?? ''); ?> | <?php echo h(strtoupper((string)($paymentAction['payment_method'] ?? 'razorpay'))); ?> | <?php echo h(billing_rupees((int)($paymentAction['amount_paise'] ?? 0))); ?> | <?php echo h($paymentAction['description'] ?? ''); ?></small>
+                      <small class="input-help">ID <?php echo h($paymentAction['id'] ?? ''); ?> | <?php echo h(strtoupper((string)($paymentAction['payment_method'] ?? 'razorpay'))); ?> | <?php echo h(billing_rupees((int)($paymentAction['amount_paise'] ?? 0))); ?> | <?php echo $paymentActionActive ? 'Active' : 'Inactive'; ?> | <?php echo h($paymentAction['description'] ?? ''); ?></small>
                     </div>
                     <div class="inline-row" style="gap:8px">
+                      <label class="switch" title="Enable or disable this payment button">
+                        <input class="payment-action-active-toggle" type="checkbox" <?php echo $paymentActionActive ? 'checked' : ''; ?> aria-label="Enable payment button <?php echo h($paymentAction['label'] ?? 'Payment'); ?>">
+                        <span class="switch-slider"></span>
+                      </label>
                       <button class="ghost-btn payment-action-copy-btn" type="button">Copy Payment ID</button>
                       <button class="pill-btn payment-action-create-faq-btn" type="button">Create Make Payment Action</button>
                       <button class="danger-btn payment-action-delete-btn" type="button">Delete</button>
@@ -3245,21 +3269,43 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
         <div class="panel section-body">
           <h3>Payment Transactions</h3>
           <div class="table-wrap" style="margin-top:14px">
-            <table>
-              <thead><tr><th>Date</th><th>Status</th><th>Method</th><th>Amount</th><th>Payment Button</th><th>Payer</th><th>Reference</th><th>Source</th></tr></thead>
+            <table id="paymentTransactionsTable">
+              <thead><tr><th>Date</th><th>Status</th><th>Method</th><th>Amount</th><th>Payment Button</th><th>Payer</th><th>Reference</th><th>Source</th><th>Actions</th></tr></thead>
               <tbody>
-                <?php if (empty($paymentTransactionRows)): ?><tr><td colspan="8" class="empty">No visitor payments yet.</td></tr><?php endif; ?>
+                <?php if (empty($paymentTransactionRows)): ?><tr><td colspan="9" class="empty">No visitor payments yet.</td></tr><?php endif; ?>
                 <?php foreach ($paymentTransactionRows as $paymentTxn): ?>
                   <?php $paymentAction = $paymentActionById[(string)($paymentTxn['payment_action_id'] ?? '')] ?? []; ?>
-                  <tr>
+                  <?php
+                    $paymentMethod = (string)($paymentTxn['payment_method'] ?? 'razorpay');
+                    $paymentStatus = (string)($paymentTxn['status'] ?? 'created');
+                    $paymentMetadata = is_array($paymentTxn['metadata'] ?? null) ? $paymentTxn['metadata'] : [];
+                    $upiReference = $paymentMethod === 'upi' ? ('VANI' . preg_replace('/\D+/', '', (string)($paymentTxn['id'] ?? ''))) : '';
+                    $paymentReference = $paymentMethod === 'upi' ? $upiReference : ($paymentTxn['razorpay_payment_id'] ?? ($paymentTxn['razorpay_order_id'] ?? '-'));
+                    $payerDisplay = trim(implode(' ', array_filter([
+                      (string)($paymentTxn['payer_name'] ?? ''),
+                      (string)($paymentTxn['payer_phone'] ?? ''),
+                      (string)($paymentTxn['payer_email'] ?? '')
+                    ]))) ?: '-';
+                  ?>
+                  <tr data-payment-transaction-id="<?php echo h($paymentTxn['id'] ?? ''); ?>">
                     <td><?php echo h(substr((string)($paymentTxn['created_at'] ?? ''), 0, 16)); ?></td>
-                    <td><span class="tag <?php echo ($paymentTxn['status'] ?? '') === 'paid' ? 'good' : (($paymentTxn['status'] ?? '') === 'failed' ? 'bad' : ''); ?>"><?php echo h($paymentTxn['status'] ?? 'created'); ?></span></td>
-                    <td><?php echo h(strtoupper((string)($paymentTxn['payment_method'] ?? 'razorpay'))); ?></td>
+                    <td><span class="tag <?php echo $paymentStatus === 'paid' ? 'good' : ($paymentStatus === 'failed' ? 'bad' : ''); ?>"><?php echo h($paymentStatus); ?></span></td>
+                    <td><?php echo h(strtoupper($paymentMethod)); ?></td>
                     <td><?php echo h(billing_rupees((int)($paymentTxn['amount_paise'] ?? 0))); ?></td>
                     <td><?php echo h($paymentAction['label'] ?? 'Deleted payment button'); ?></td>
-                    <td><?php echo h(trim(($paymentTxn['payer_name'] ?? '') . ' ' . ($paymentTxn['payer_email'] ?? '')) ?: '-'); ?></td>
-                    <td><?php echo h($paymentTxn['razorpay_payment_id'] ?? ($paymentTxn['razorpay_order_id'] ?? '-')); ?></td>
+                    <td><?php echo h($payerDisplay); ?></td>
+                    <td><?php echo h($paymentReference); ?></td>
                     <td><?php echo h($paymentTxn['source_url'] ?? '-'); ?></td>
+                    <td>
+                      <?php if ($paymentMethod === 'upi' && $paymentStatus === 'created'): ?>
+                        <div class="inline-row" style="gap:8px">
+                          <button class="pill-btn payment-transaction-status-btn" type="button" data-payment-status="paid">Mark Paid</button>
+                          <button class="danger-btn payment-transaction-status-btn" type="button" data-payment-status="failed">Mark Failed</button>
+                        </div>
+                      <?php else: ?>
+                        <span class="muted">-</span>
+                      <?php endif; ?>
+                    </td>
                   </tr>
                 <?php endforeach; ?>
               </tbody>
@@ -7239,8 +7285,7 @@ document.getElementById("feedbackEmailToggle")?.addEventListener("change", async
   }
 });
 
-document.getElementById("paymentSettingsForm")?.addEventListener("submit", async event => {
-  event.preventDefault();
+async function savePaymentSettings(button, savedLabel = "Save payment setup") {
   const paymentToggle = document.getElementById("paymentEnabledToggle");
   if (paymentToggle?.checked && !businessFeatures.payment_collection) {
     paymentToggle.checked = false;
@@ -7248,7 +7293,6 @@ document.getElementById("paymentSettingsForm")?.addEventListener("submit", async
     openTab("subscription");
     return;
   }
-  const button = event.currentTarget.querySelector("button[type='submit']");
   const customerId = document.getElementById("paymentCustomerId")?.value || "";
   if (!customerId) return showToast("Select a bot first");
   button.disabled = true;
@@ -7269,10 +7313,25 @@ document.getElementById("paymentSettingsForm")?.addEventListener("submit", async
   });
   const data = await response.json().catch(() => ({}));
   button.disabled = false;
-  button.textContent = "Save payment setup";
+  button.textContent = savedLabel;
   if (!data.success) return showToast(data.message || "Payment setup could not be saved");
   showToast("Payment setup saved");
   setTimeout(() => location.reload(), 700);
+}
+
+document.getElementById("paymentSettingsForm")?.addEventListener("submit", async event => {
+  event.preventDefault();
+  await savePaymentSettings(event.currentTarget.querySelector("button[type='submit']"), "Save payment setup");
+});
+
+document.getElementById("paymentRazorpaySettingsForm")?.addEventListener("submit", async event => {
+  event.preventDefault();
+  await savePaymentSettings(event.currentTarget.querySelector("button[type='submit']"), "Save Razorpay checkout");
+});
+
+document.getElementById("paymentUpiSettingsForm")?.addEventListener("submit", async event => {
+  event.preventDefault();
+  await savePaymentSettings(event.currentTarget.querySelector("button[type='submit']"), "Save UPI redirect");
 });
 
 document.getElementById("paymentEnabledToggle")?.addEventListener("change", event => {
@@ -7284,7 +7343,7 @@ document.getElementById("paymentEnabledToggle")?.addEventListener("change", even
 });
 
 function openPaymentSubtab(target) {
-  const id = document.getElementById(target) ? target : "payment-subpanel-setup";
+  const id = document.getElementById(target) ? target : "payment-subpanel-razorpay";
   document.querySelectorAll(".payment-subtab-btn").forEach(button => {
     button.classList.toggle("active", button.dataset.paymentSubtab === id);
   });
@@ -7294,7 +7353,7 @@ function openPaymentSubtab(target) {
 }
 
 document.querySelectorAll(".payment-subtab-btn").forEach(button => {
-  button.addEventListener("click", () => openPaymentSubtab(button.dataset.paymentSubtab || "payment-subpanel-setup"));
+  button.addEventListener("click", () => openPaymentSubtab(button.dataset.paymentSubtab || "payment-subpanel-razorpay"));
 });
 
 async function submitPaymentActionForm(event) {
@@ -7342,6 +7401,30 @@ document.querySelectorAll(".payment-action-form").forEach(form => {
 document.getElementById("paymentActionList")?.addEventListener("click", async event => {
   const row = event.target.closest("[data-payment-action-id]");
   if (!row) return;
+  const activeToggle = event.target.closest(".payment-action-active-toggle");
+  if (activeToggle) {
+    const customerId = document.getElementById("paymentCustomerId")?.value || "";
+    const previousState = !activeToggle.checked;
+    activeToggle.disabled = true;
+    const response = await fetch("/api.php?action=update_payment_action_status", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        customer_id: customerId,
+        id: row.dataset.paymentActionId || "",
+        is_active: !!activeToggle.checked
+      })
+    });
+    const data = await response.json().catch(() => ({}));
+    activeToggle.disabled = false;
+    if (!data.success) {
+      activeToggle.checked = previousState;
+      return showToast(data.message || "Payment button status could not be updated");
+    }
+    showToast(activeToggle.checked ? "Payment button activated" : "Payment button deactivated");
+    setTimeout(() => location.reload(), 500);
+    return;
+  }
   const copyButton = event.target.closest(".payment-action-copy-btn");
   if (copyButton) {
     await navigator.clipboard.writeText(row.dataset.paymentActionId || "");
@@ -7407,6 +7490,34 @@ document.getElementById("paymentActionList")?.addEventListener("click", async ev
   }
   row.remove();
   showToast("Payment button deleted");
+});
+
+document.getElementById("paymentTransactionsTable")?.addEventListener("click", async event => {
+  const button = event.target.closest(".payment-transaction-status-btn");
+  if (!button) return;
+  const row = button.closest("[data-payment-transaction-id]");
+  const customerId = document.getElementById("paymentCustomerId")?.value || "";
+  const status = button.dataset.paymentStatus || "";
+  if (!row || !customerId || !status) return;
+  if (!confirm(`Mark this UPI payment as ${status}?`)) return;
+  const originalText = button.textContent;
+  button.disabled = true;
+  button.textContent = "Saving...";
+  const response = await fetch("/api.php?action=update_payment_transaction_status", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      customer_id: customerId,
+      id: row.dataset.paymentTransactionId || "",
+      status
+    })
+  });
+  const data = await response.json().catch(() => ({}));
+  button.disabled = false;
+  button.textContent = originalText;
+  if (!data.success) return showToast(data.message || "Payment status could not be updated");
+  showToast(status === "paid" ? "UPI payment marked paid" : "UPI payment marked failed");
+  setTimeout(() => location.reload(), 500);
 });
 
 const faqActionHelp = {

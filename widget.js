@@ -1160,6 +1160,10 @@
 
   function renderPaymentForm(action, context, suggestionsBox) {
     if (!suggestionsBox) return;
+    const paymentAction = Array.isArray(config.payment_actions)
+      ? config.payment_actions.find(item => String(item.id || "") === String(action.action_value || ""))
+      : null;
+    const isUpiPayment = (paymentAction?.payment_method || action.payment_method || "").toLowerCase() === "upi";
     suggestionsBox.innerHTML = "";
     suggestionsBox.style.display = "grid";
     const panel = document.createElement("form");
@@ -1171,7 +1175,10 @@
     const nameInput = document.createElement("input");
     const emailInput = document.createElement("input");
     const phoneInput = document.createElement("input");
-    [[nameInput, "Your name"], [emailInput, "Email address"], [phoneInput, "Mobile number"]].forEach(([field, placeholder]) => {
+    const contactFields = isUpiPayment
+      ? [[nameInput, "Your name"], [phoneInput, "Mobile number"]]
+      : [[nameInput, "Your name"], [emailInput, "Email address"], [phoneInput, "Mobile number"]];
+    contactFields.forEach(([field, placeholder]) => {
       field.placeholder = placeholder;
       css(field, {width: "100%", boxSizing: "border-box", border: "1px solid #e2e8f0", borderRadius: "12px", padding: "9px 10px", font: "inherit", fontSize: "12px", outline: "none"});
     });
@@ -1191,6 +1198,10 @@
     };
     panel.onsubmit = async event => {
       event.preventDefault();
+      if (isUpiPayment && (!nameInput.value.trim() || !phoneInput.value.trim())) {
+        setStatus("Enter your name and mobile number to continue.");
+        return;
+      }
       submit.disabled = true;
       submit.textContent = "Preparing...";
       const createPayload = {
@@ -1202,7 +1213,7 @@
         session_id: sessionId,
         source_url: sourceUrl,
         payer_name: nameInput.value.trim(),
-        payer_email: emailInput.value.trim(),
+        payer_email: isUpiPayment ? "" : emailInput.value.trim(),
         payer_phone: phoneInput.value.trim()
       };
       const orderResponse = await api("create_customer_payment_order", "POST", createPayload);
@@ -1275,7 +1286,7 @@
     };
     panel.appendChild(title);
     panel.appendChild(nameInput);
-    panel.appendChild(emailInput);
+    if (!isUpiPayment) panel.appendChild(emailInput);
     panel.appendChild(phoneInput);
     panel.appendChild(submit);
     panel.appendChild(status);

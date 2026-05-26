@@ -4596,7 +4596,7 @@ if ($action === "save_payment_settings") {
     $effectiveKeyId = $keyId !== '' ? $keyId : trim((string)($existingPaymentSettings['razorpay_key_id'] ?? ''));
     $effectiveSecret = $keySecret !== '' ? $keySecret : app_decrypt_secret((string)($existingPaymentSettings['razorpay_key_secret'] ?? ''));
     $hasAnyRazorpaySecret = $keySecret !== '' || trim((string)($existingPaymentSettings['razorpay_key_secret'] ?? '')) !== '';
-    if ($enablePayments && $hasAnyRazorpaySecret && app_secret_encryption_key() === '') {
+    if ($enablePayments && $enableRazorpay && $hasAnyRazorpaySecret && app_secret_encryption_key() === '') {
         echo json_encode(["success" => false, "message" => "Payment secret encryption key is missing. Set APP_ENCRYPTION_KEY before switching ON payment collection."]);
         exit;
     }
@@ -4720,6 +4720,42 @@ if ($action === "delete_payment_action") {
     require_customer_mutation_access($customerId);
     $res = supabase("DELETE", "customer_payment_actions?id=eq." . urlencode($id) . "&customer_id=eq." . urlencode($customerId));
     echo json_encode(["success" => $res['status'] >= 200 && $res['status'] < 300, "debug" => $res]);
+    exit;
+}
+
+if ($action === "update_payment_action_status") {
+    $data = getJSON();
+    $customerId = trim((string)($data['customer_id'] ?? ''));
+    $id = trim((string)($data['id'] ?? ''));
+    if (!$customerId || !$id) {
+        echo json_encode(["success" => false, "message" => "Missing payment button"]);
+        exit;
+    }
+    require_customer_mutation_access($customerId);
+    $isActive = filter_var($data['is_active'] ?? false, FILTER_VALIDATE_BOOLEAN);
+    $res = supabase("PATCH", "customer_payment_actions?id=eq." . urlencode($id) . "&customer_id=eq." . urlencode($customerId), [
+        "is_active" => $isActive
+    ]);
+    echo json_encode(["success" => $res['status'] >= 200 && $res['status'] < 300, "payment_action" => $res['data'][0] ?? null, "debug" => $res]);
+    exit;
+}
+
+if ($action === "update_payment_transaction_status") {
+    $data = getJSON();
+    $customerId = trim((string)($data['customer_id'] ?? ''));
+    $id = trim((string)($data['id'] ?? ''));
+    $status = trim((string)($data['status'] ?? ''));
+    if (!$customerId || !$id || !in_array($status, ['paid', 'failed'], true)) {
+        echo json_encode(["success" => false, "message" => "Missing payment transaction or invalid status"]);
+        exit;
+    }
+    require_customer_mutation_access($customerId);
+    $payload = [
+        "status" => $status,
+        "paid_at" => $status === 'paid' ? gmdate('Y-m-d\TH:i:s\Z') : null
+    ];
+    $res = supabase("PATCH", "customer_payment_transactions?id=eq." . urlencode($id) . "&customer_id=eq." . urlencode($customerId), $payload);
+    echo json_encode(["success" => $res['status'] >= 200 && $res['status'] < 300, "transaction" => $res['data'][0] ?? null, "debug" => $res]);
     exit;
 }
 

@@ -2189,11 +2189,6 @@ if ($action === "create_customer_payment_order") {
         }
         $upiPayee = trim((string)($paymentAction['upi_payee_name'] ?? '')) ?: trim((string)($settings['business_name'] ?? ''));
         $upiNote = trim((string)($paymentAction['upi_note'] ?? '')) ?: trim((string)($paymentAction['description'] ?? $paymentAction['label'] ?? 'Payment'));
-        $upiLink = 'upi://pay?pa=' . rawurlencode($upiId)
-            . '&pn=' . rawurlencode($upiPayee ?: 'Payment')
-            . '&am=' . rawurlencode(number_format($amountPaise / 100, 2, '.', ''))
-            . '&cu=' . rawurlencode((string)($paymentAction['currency'] ?? 'INR'))
-            . '&tn=' . rawurlencode($upiNote);
         $txn = supabase("POST", "customer_payment_transactions", [[
             "customer_id" => $customerId,
             "payment_action_id" => $paymentActionId,
@@ -2218,11 +2213,19 @@ if ($action === "create_customer_payment_order") {
                 "message" => "UPI payment record could not be created. Please run the latest database migration and try again."
             ], 500);
         }
+        $txnRow = $txn['data'][0] ?? [];
+        $upiReference = 'VANI' . preg_replace('/\D+/', '', (string)($txnRow['id'] ?? time()));
+        $upiLink = 'upi://pay?pa=' . rawurlencode($upiId)
+            . '&pn=' . rawurlencode($upiPayee ?: 'Payment')
+            . '&am=' . rawurlencode(number_format($amountPaise / 100, 2, '.', ''))
+            . '&cu=' . rawurlencode((string)($paymentAction['currency'] ?? 'INR'))
+            . '&tr=' . rawurlencode($upiReference)
+            . '&tn=' . rawurlencode(trim($upiNote . ' ' . $upiReference));
         widget_json_response([
             "success" => true,
             "payment_method" => "upi",
             "upi_link" => $upiLink,
-            "transaction" => $txn['data'][0] ?? null,
+            "transaction" => $txnRow,
             "payment_action" => [
                 "id" => (string)$paymentActionId,
                 "label" => (string)($paymentAction['label'] ?? 'Payment'),
