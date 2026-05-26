@@ -1393,12 +1393,16 @@ $leadVerifyMobileOtp = filter_var($leadSettings['verify_mobile_otp'] ?? false, F
 $leadNotificationEmail = first_value($leadSettings, ['notification_email'], $email);
 $leadWhatsappNumber = first_value($leadSettings, ['whatsapp_mobile_number'], '');
 $paymentsEnabled = filter_var($paymentSettings['is_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
+$paymentRazorpayEnabled = filter_var($paymentSettings['razorpay_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
+$paymentUpiEnabled = filter_var($paymentSettings['upi_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
 $paymentBusinessName = first_value($paymentSettings, ['business_name'], $websiteName ?: $botName);
 $paymentRazorpayKeyId = first_value($paymentSettings, ['razorpay_key_id'], '');
 $paymentRazorpaySecretSaved = trim((string)($paymentSettings['razorpay_key_secret'] ?? '')) !== '';
 $paymentSuccessMessage = first_value($paymentSettings, ['success_message'], 'Payment received. Thank you.');
 if (!$canUsePaymentCollection) {
     $paymentsEnabled = false;
+    $paymentRazorpayEnabled = false;
+    $paymentUpiEnabled = false;
 }
 $paymentPaidTotalPaise = array_sum(array_map(fn($row) => ($row['status'] ?? '') === 'paid' ? (int)($row['amount_paise'] ?? 0) : 0, $paymentTransactionRows));
 $paymentPaidCount = count(array_filter($paymentTransactionRows, fn($row) => ($row['status'] ?? '') === 'paid'));
@@ -3132,6 +3136,22 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                 <span class="switch-slider"></span>
               </label>
               <?php if (!$canUsePaymentCollection): ?><small class="input-help error">Growth or Business plan required to switch ON payment collection.</small><?php endif; ?>
+            </div>
+            <div class="field">
+              <label>Enable Razorpay Checkout</label>
+              <label class="switch" title="Enable Razorpay Checkout">
+                <input id="paymentRazorpayEnabledToggle" type="checkbox" <?php echo $paymentRazorpayEnabled && $canUsePaymentCollection ? 'checked' : ''; ?> <?php echo $canUsePaymentCollection ? '' : 'disabled'; ?> aria-label="Enable Razorpay Checkout">
+                <span class="switch-slider"></span>
+              </label>
+              <small class="input-help">Requires Razorpay Key ID and Key Secret.</small>
+            </div>
+            <div class="field">
+              <label>Enable UPI Redirect</label>
+              <label class="switch" title="Enable UPI Redirect">
+                <input id="paymentUpiEnabledToggle" type="checkbox" <?php echo $paymentUpiEnabled && $canUsePaymentCollection ? 'checked' : ''; ?> <?php echo $canUsePaymentCollection ? '' : 'disabled'; ?> aria-label="Enable UPI Redirect">
+                <span class="switch-slider"></span>
+              </label>
+              <small class="input-help">Uses a UPI ID on each UPI payment button.</small>
             </div>
             <div class="field"><label>Business name on checkout</label><input id="paymentBusinessNameInput" value="<?php echo h($paymentBusinessName); ?>" placeholder="<?php echo h($botName); ?>"></div>
             <div class="field"><label>Razorpay Key ID</label><input id="paymentKeyIdInput" value="<?php echo h($paymentRazorpayKeyId); ?>" placeholder="rzp_live_xxxxx"></div>
@@ -7225,6 +7245,8 @@ document.getElementById("paymentSettingsForm")?.addEventListener("submit", async
     body: JSON.stringify({
       customer_id: customerId,
       is_enabled: !!document.getElementById("paymentEnabledToggle")?.checked,
+      razorpay_enabled: !!document.getElementById("paymentRazorpayEnabledToggle")?.checked,
+      upi_enabled: !!document.getElementById("paymentUpiEnabledToggle")?.checked,
       business_name: document.getElementById("paymentBusinessNameInput")?.value.trim() || "",
       razorpay_key_id: document.getElementById("paymentKeyIdInput")?.value.trim() || "",
       razorpay_key_secret: document.getElementById("paymentKeySecretInput")?.value.trim() || "",

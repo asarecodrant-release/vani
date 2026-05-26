@@ -191,6 +191,8 @@ create table if not exists public.customer_payment_settings (
   id bigserial primary key,
   customer_id uuid not null unique references public.chatbot_signups(customer_id) on delete cascade,
   is_enabled boolean not null default false,
+  razorpay_enabled boolean not null default false,
+  upi_enabled boolean not null default false,
   provider text not null default 'razorpay',
   business_name text,
   razorpay_key_id text,
@@ -199,6 +201,12 @@ create table if not exists public.customer_payment_settings (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.customer_payment_settings
+  add column if not exists razorpay_enabled boolean not null default false;
+
+alter table public.customer_payment_settings
+  add column if not exists upi_enabled boolean not null default false;
 
 create table if not exists public.customer_payment_actions (
   id bigserial primary key,

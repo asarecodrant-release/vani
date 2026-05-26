@@ -1721,10 +1721,16 @@ if ($action === "get_widget_config" || $action === "get_theme") {
     $paymentSettings = widget_customer_payment_settings($customerId);
     $canUsePaymentCollection = billing_feature_enabled($activePlan, 'payment_collection');
     $paymentCollectionEnabled = $canUsePaymentCollection && widget_bool($paymentSettings['is_enabled'] ?? false);
+    $razorpayCollectionEnabled = $paymentCollectionEnabled && widget_bool($paymentSettings['razorpay_enabled'] ?? false);
+    $upiCollectionEnabled = $paymentCollectionEnabled && widget_bool($paymentSettings['upi_enabled'] ?? false);
     $paymentActions = $paymentCollectionEnabled ? widget_safe_rows(supabase(
         "GET",
         "customer_payment_actions?select=id,label,amount_paise,currency,payment_method,is_active&customer_id=eq." . urlencode($customerId) . "&is_active=eq.true&order=created_at.desc&limit=100"
     )) : [];
+    $paymentActions = array_values(array_filter($paymentActions, function ($row) use ($razorpayCollectionEnabled, $upiCollectionEnabled) {
+        $method = (string)($row['payment_method'] ?? 'razorpay');
+        return $method === 'upi' ? $upiCollectionEnabled : $razorpayCollectionEnabled;
+    }));
 
     widget_json_response([
         "success" => true,
@@ -1760,6 +1766,8 @@ if ($action === "get_widget_config" || $action === "get_theme") {
         "faq_feedback_action_ids" => $faqFeedbackActionIds,
         "faq_feedback_email_enabled" => $canUseFaqFeedback && widget_bool($settings['faq_feedback_email_enabled'] ?? false),
         "payment_collection_enabled" => $paymentCollectionEnabled,
+        "razorpay_payment_enabled" => $razorpayCollectionEnabled,
+        "upi_payment_enabled" => $upiCollectionEnabled,
         "payment_actions" => array_values(array_map(fn($row) => [
             "id" => (string)($row['id'] ?? ''),
             "label" => (string)($row['label'] ?? 'Payment'),
@@ -2167,6 +2175,12 @@ if ($action === "create_customer_payment_order") {
         widget_json_response(["success" => false, "message" => "Payment button not found"], 404);
     }
     $paymentMethod = (string)($paymentAction['payment_method'] ?? 'razorpay');
+    if ($paymentMethod === 'upi' && !widget_bool($settings['upi_enabled'] ?? false)) {
+        widget_json_response(["success" => false, "payment_method" => "upi", "message" => "UPI Redirect is not enabled for this chatbot"], 403);
+    }
+    if ($paymentMethod !== 'upi' && !widget_bool($settings['razorpay_enabled'] ?? false)) {
+        widget_json_response(["success" => false, "payment_method" => "razorpay", "message" => "Razorpay Checkout is not enabled for this chatbot"], 403);
+    }
     if ($paymentMethod === 'upi') {
         $amountPaise = (int)($paymentAction['amount_paise'] ?? 0);
         $upiId = trim((string)($paymentAction['upi_id'] ?? ''));

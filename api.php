@@ -4591,6 +4591,8 @@ if ($action === "save_payment_settings") {
     $existingSettings = safe_rows(supabase("GET", "customer_payment_settings?select=id,razorpay_key_id,razorpay_key_secret&customer_id=eq." . urlencode($customerId) . "&limit=1"));
     $existingPaymentSettings = $existingSettings[0] ?? [];
     $enablePayments = filter_var($data['is_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
+    $enableRazorpay = filter_var($data['razorpay_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
+    $enableUpi = filter_var($data['upi_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
     $effectiveKeyId = $keyId !== '' ? $keyId : trim((string)($existingPaymentSettings['razorpay_key_id'] ?? ''));
     $effectiveSecret = $keySecret !== '' ? $keySecret : app_decrypt_secret((string)($existingPaymentSettings['razorpay_key_secret'] ?? ''));
     $hasAnyRazorpaySecret = $keySecret !== '' || trim((string)($existingPaymentSettings['razorpay_key_secret'] ?? '')) !== '';
@@ -4598,9 +4600,15 @@ if ($action === "save_payment_settings") {
         echo json_encode(["success" => false, "message" => "Payment secret encryption key is missing. Set APP_ENCRYPTION_KEY before switching ON payment collection."]);
         exit;
     }
+    if ($enablePayments && $enableRazorpay && ($effectiveKeyId === '' || $effectiveSecret === '')) {
+        echo json_encode(["success" => false, "message" => "Razorpay Key ID and Key Secret are required before switching ON Razorpay Checkout"]);
+        exit;
+    }
     $payload = [
         "customer_id" => $customerId,
         "is_enabled" => billing_feature_enabled($activePlan, 'payment_collection') && filter_var($data['is_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN),
+        "razorpay_enabled" => billing_feature_enabled($activePlan, 'payment_collection') && $enablePayments && $enableRazorpay,
+        "upi_enabled" => billing_feature_enabled($activePlan, 'payment_collection') && $enablePayments && $enableUpi,
         "provider" => "razorpay",
         "business_name" => trim(substr((string)($data['business_name'] ?? ''), 0, 120)),
         "success_message" => trim(substr((string)($data['success_message'] ?? 'Payment received. Thank you.'), 0, 240))
@@ -4662,9 +4670,21 @@ if ($action === "save_payment_action") {
         echo json_encode(["success" => false, "requires_growth" => true, "message" => "Payment collection requires Growth or Business plan"]);
         exit;
     }
+    $paymentSettingsRows = safe_rows(supabase("GET", "customer_payment_settings?select=is_enabled,razorpay_enabled,upi_enabled,razorpay_key_id,razorpay_key_secret&customer_id=eq." . urlencode($customerId) . "&limit=1"));
+    $paymentSettings = $paymentSettingsRows[0] ?? [];
+    if (!filter_var($paymentSettings['is_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+        echo json_encode(["success" => false, "message" => "Switch ON payment collection before creating payment buttons"]);
+        exit;
+    }
+    if ($paymentMethod === 'upi' && !filter_var($paymentSettings['upi_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+        echo json_encode(["success" => false, "message" => "Switch ON UPI Redirect in Payment Setup before creating UPI buttons"]);
+        exit;
+    }
+    if ($paymentMethod === 'razorpay' && !filter_var($paymentSettings['razorpay_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+        echo json_encode(["success" => false, "message" => "Switch ON Razorpay Checkout in Payment Setup before creating Razorpay buttons"]);
+        exit;
+    }
     if ($paymentMethod === 'razorpay') {
-        $paymentSettingsRows = safe_rows(supabase("GET", "customer_payment_settings?select=razorpay_key_id,razorpay_key_secret&customer_id=eq." . urlencode($customerId) . "&limit=1"));
-        $paymentSettings = $paymentSettingsRows[0] ?? [];
         $hasRazorpayKeyId = trim((string)($paymentSettings['razorpay_key_id'] ?? '')) !== '';
         $hasRazorpaySecret = app_decrypt_secret((string)($paymentSettings['razorpay_key_secret'] ?? '')) !== '';
         if (!$hasRazorpayKeyId || !$hasRazorpaySecret) {
