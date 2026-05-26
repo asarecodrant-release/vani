@@ -4660,6 +4660,12 @@ if ($action === "save_payment_settings") {
     $verifyPayerPhoneOtp = array_key_exists('verify_payer_phone_otp', $data)
         ? filter_var($data['verify_payer_phone_otp'], FILTER_VALIDATE_BOOLEAN)
         : false;
+    $razorpayNotifyStatusEmail = array_key_exists('razorpay_notify_status_email', $data)
+        ? filter_var($data['razorpay_notify_status_email'], FILTER_VALIDATE_BOOLEAN)
+        : false;
+    $razorpayNotifyStatusMobile = array_key_exists('razorpay_notify_status_mobile', $data)
+        ? filter_var($data['razorpay_notify_status_mobile'], FILTER_VALIDATE_BOOLEAN)
+        : false;
     if ($enablePayments && $verifyPayerEmailOtp && !billing_feature_enabled($activePlan, 'email_otp')) {
         echo json_encode(["success" => false, "message" => "Payment email OTP requires an active paid plan"]);
         exit;
@@ -4675,6 +4681,8 @@ if ($action === "save_payment_settings") {
         $collectPayerPhone = false;
         $verifyPayerEmailOtp = false;
         $verifyPayerPhoneOtp = false;
+        $razorpayNotifyStatusEmail = false;
+        $razorpayNotifyStatusMobile = false;
     }
     $existingRazorpayTermsAccepted = filter_var($existingPaymentSettings['razorpay_terms_accepted'] ?? false, FILTER_VALIDATE_BOOLEAN);
     $acceptRazorpayTerms = filter_var($data['razorpay_terms_accepted'] ?? false, FILTER_VALIDATE_BOOLEAN);
@@ -4721,6 +4729,8 @@ if ($action === "save_payment_settings") {
         "collect_payer_phone" => $collectPayerPhone,
         "verify_payer_email_otp" => $collectPayerEmail && $verifyPayerEmailOtp,
         "verify_payer_phone_otp" => $collectPayerPhone && $verifyPayerPhoneOtp,
+        "razorpay_notify_status_email" => $collectPayerEmail && $verifyPayerEmailOtp && $razorpayNotifyStatusEmail,
+        "razorpay_notify_status_mobile" => $collectPayerPhone && $verifyPayerPhoneOtp && $razorpayNotifyStatusMobile,
         "success_message" => trim(substr((string)($data['success_message'] ?? 'Payment received. Thank you.'), 0, 240))
     ];
     if ($keyId !== '') {

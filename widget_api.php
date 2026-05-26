@@ -1397,6 +1397,34 @@ function widget_msg91_verify_access_token(string $accessToken): array {
     return ["status" => $status, "data" => is_array($data) ? $data : [], "raw" => $raw];
 }
 
+function widget_payment_status_email_html(array $txn, string $status, string $message): string {
+    $safeName = htmlspecialchars((string)($txn['payer_name'] ?? 'there'), ENT_QUOTES, 'UTF-8');
+    $safeStatus = htmlspecialchars(ucfirst($status), ENT_QUOTES, 'UTF-8');
+    $safeMessage = htmlspecialchars($message, ENT_QUOTES, 'UTF-8');
+    $amount = htmlspecialchars(billing_rupees((int)($txn['amount_paise'] ?? 0)), ENT_QUOTES, 'UTF-8');
+    $metadata = is_array($txn['metadata'] ?? null) ? $txn['metadata'] : [];
+    $label = htmlspecialchars((string)($metadata['payment_action_label'] ?? 'Payment'), ENT_QUOTES, 'UTF-8');
+    $reference = htmlspecialchars((string)($txn['razorpay_payment_id'] ?? $txn['razorpay_order_id'] ?? ''), ENT_QUOTES, 'UTF-8');
+    return '<!doctype html><html><body style="margin:0;background:#f8fafc;font-family:Arial,sans-serif;color:#0f172a;">'
+        . '<div style="max-width:620px;margin:0 auto;padding:24px 14px;"><div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:18px;overflow:hidden;">'
+        . '<div style="padding:24px;background:#ecfdf5;color:#14532d;"><h1 style="margin:0;font-size:24px;">Payment ' . $safeStatus . '</h1></div>'
+        . '<div style="padding:24px;line-height:1.7;"><p>Hi ' . $safeName . ',</p><p>' . $safeMessage . '</p>'
+        . '<p><strong>Payment:</strong> ' . $label . '<br><strong>Amount:</strong> ' . $amount . '<br><strong>Reference:</strong> ' . $reference . '</p>'
+        . '</div></div></div></body></html>';
+}
+
+function widget_notify_payment_status_by_email(array $settings, array $txn, string $status, string $message): bool {
+    if (!widget_bool($settings['razorpay_notify_status_email'] ?? false)) {
+        return false;
+    }
+    $toEmail = trim((string)($txn['payer_email'] ?? ''));
+    if (!filter_var($toEmail, FILTER_VALIDATE_EMAIL)) {
+        return false;
+    }
+    require_once __DIR__ . '/email.php';
+    return sendBrevoEmail($toEmail, 'Payment ' . ucfirst($status), widget_payment_status_email_html($txn, $status, $message));
+}
+
 function widget_nested_value(array $data, array $keys): string {
     foreach ($keys as $key) {
         $parts = explode('.', $key);
@@ -1773,6 +1801,8 @@ if ($action === "get_widget_config" || $action === "get_theme") {
         "payment_collect_payer_phone" => widget_bool($paymentSettings['collect_payer_phone'] ?? true, true),
         "payment_verify_payer_email_otp" => widget_bool($paymentSettings['verify_payer_email_otp'] ?? false) && billing_feature_enabled($activePlan, 'email_otp'),
         "payment_verify_payer_phone_otp" => widget_bool($paymentSettings['verify_payer_phone_otp'] ?? false) && billing_feature_enabled($activePlan, 'mobile_otp'),
+        "razorpay_notify_status_email" => widget_bool($paymentSettings['razorpay_notify_status_email'] ?? false),
+        "razorpay_notify_status_mobile" => widget_bool($paymentSettings['razorpay_notify_status_mobile'] ?? false),
         "payment_actions" => array_values(array_map(fn($row) => [
             "id" => (string)($row['id'] ?? ''),
             "label" => (string)($row['label'] ?? 'Payment'),
@@ -2359,12 +2389,13 @@ if ($action === "verify_customer_payment") {
     $captured = $paymentStatus === 'captured' || !empty($payment['data']['captured']);
     $txnRows = widget_safe_rows(supabase(
         "GET",
-        "customer_payment_transactions?select=metadata&razorpay_order_id=eq." . urlencode($orderId) . "&customer_id=eq." . urlencode($customerId) . "&limit=1"
+        "customer_payment_transactions?select=*&razorpay_order_id=eq." . urlencode($orderId) . "&customer_id=eq." . urlencode($customerId) . "&limit=1"
     ));
-    $metadata = is_array($txnRows[0]['metadata'] ?? null) ? $txnRows[0]['metadata'] : [];
+    $txnBeforeUpdate = $txnRows[0] ?? [];
+    $metadata = is_array($txnBeforeUpdate['metadata'] ?? null) ? $txnBeforeUpdate['metadata'] : [];
     $metadata['payment_status'] = $paymentStatus;
     $metadata['razorpay_payment_method'] = (string)($payment['data']['method'] ?? '');
-    supabase("PATCH", "customer_payment_transactions?razorpay_order_id=eq." . urlencode($orderId) . "&customer_id=eq." . urlencode($customerId), [
+    $updatePayload = [
         "status" => $captured ? "paid" : "failed",
         "razorpay_payment_id" => $paymentId,
         "razorpay_signature" => $signature,
@@ -2373,8 +2404,59 @@ if ($action === "verify_customer_payment") {
         "payer_phone" => trim((string)($data['payer_phone'] ?? '')) ?: null,
         "paid_at" => $captured ? gmdate('Y-m-d\TH:i:s\Z') : null,
         "metadata" => (object)$metadata
+    ];
+    $updateRes = supabase("PATCH", "customer_payment_transactions?razorpay_order_id=eq." . urlencode($orderId) . "&customer_id=eq." . urlencode($customerId), $updatePayload);
+    $txnAfterUpdate = $updateRes['data'][0] ?? array_merge($txnBeforeUpdate, $updatePayload, ["metadata" => $metadata]);
+    $message = $captured ? (string)($settings['success_message'] ?? 'Payment received. Thank you.') : "Payment is not captured yet";
+    $emailSent = widget_notify_payment_status_by_email($settings, $txnAfterUpdate, $captured ? 'successful' : 'failed', $message);
+    widget_json_response([
+        "success" => $captured,
+        "message" => $message,
+        "payment_status_email_sent" => $emailSent,
+        "payment_status_mobile_sent" => false,
+        "payment_status_mobile_message" => widget_bool($settings['razorpay_notify_status_mobile'] ?? false) ? "Mobile status notification needs a configured SMS provider." : ""
     ]);
-    widget_json_response(["success" => $captured, "message" => $captured ? (string)($settings['success_message'] ?? 'Payment received. Thank you.') : "Payment is not captured yet"]);
+}
+
+if ($action === "record_customer_payment_failure") {
+    $data = widget_get_json();
+    $customerId = widget_customer_id($data);
+    $orderId = trim((string)($data['razorpay_order_id'] ?? ''));
+    $paymentId = trim((string)($data['razorpay_payment_id'] ?? ''));
+    if (!$customerId || $orderId === '') {
+        widget_json_response(["success" => false, "message" => "Missing payment failure data"], 400);
+    }
+    $settings = widget_customer_payment_settings($customerId);
+    $txnRows = widget_safe_rows(supabase(
+        "GET",
+        "customer_payment_transactions?select=*&razorpay_order_id=eq." . urlencode($orderId) . "&customer_id=eq." . urlencode($customerId) . "&limit=1"
+    ));
+    $txn = $txnRows[0] ?? [];
+    if (empty($txn)) {
+        widget_json_response(["success" => false, "message" => "Payment transaction not found"], 404);
+    }
+    $metadata = is_array($txn['metadata'] ?? null) ? $txn['metadata'] : [];
+    $metadata['payment_failed'] = true;
+    $metadata['failure'] = is_array($data['error'] ?? null) ? $data['error'] : [];
+    $message = trim((string)($data['message'] ?? 'Payment failed or was cancelled.'));
+    $updatePayload = [
+        "status" => "failed",
+        "razorpay_payment_id" => $paymentId !== '' ? $paymentId : null,
+        "payer_name" => trim((string)($data['payer_name'] ?? '')) ?: ($txn['payer_name'] ?? null),
+        "payer_email" => trim((string)($data['payer_email'] ?? '')) ?: ($txn['payer_email'] ?? null),
+        "payer_phone" => trim((string)($data['payer_phone'] ?? '')) ?: ($txn['payer_phone'] ?? null),
+        "metadata" => (object)$metadata
+    ];
+    $updateRes = supabase("PATCH", "customer_payment_transactions?razorpay_order_id=eq." . urlencode($orderId) . "&customer_id=eq." . urlencode($customerId), $updatePayload);
+    $txnAfterUpdate = $updateRes['data'][0] ?? array_merge($txn, $updatePayload, ["metadata" => $metadata]);
+    $emailSent = widget_notify_payment_status_by_email($settings, $txnAfterUpdate, 'failed', $message);
+    widget_json_response([
+        "success" => $updateRes['status'] >= 200 && $updateRes['status'] < 300,
+        "message" => $message,
+        "payment_status_email_sent" => $emailSent,
+        "payment_status_mobile_sent" => false,
+        "payment_status_mobile_message" => widget_bool($settings['razorpay_notify_status_mobile'] ?? false) ? "Mobile status notification needs a configured SMS provider." : ""
+    ]);
 }
 
 // Create a lead record (generic) - used for location or simple lead saves

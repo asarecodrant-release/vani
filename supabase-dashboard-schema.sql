@@ -204,6 +204,8 @@ create table if not exists public.customer_payment_settings (
   collect_payer_phone boolean not null default true,
   verify_payer_email_otp boolean not null default false,
   verify_payer_phone_otp boolean not null default false,
+  razorpay_notify_status_email boolean not null default false,
+  razorpay_notify_status_mobile boolean not null default false,
   razorpay_key_id text,
   razorpay_key_secret text,
   success_message text default 'Payment received. Thank you.',
@@ -231,6 +233,12 @@ alter table public.customer_payment_settings
 
 alter table public.customer_payment_settings
   add column if not exists verify_payer_phone_otp boolean not null default false;
+
+alter table public.customer_payment_settings
+  add column if not exists razorpay_notify_status_email boolean not null default false;
+
+alter table public.customer_payment_settings
+  add column if not exists razorpay_notify_status_mobile boolean not null default false;
 
 alter table public.customer_payment_settings
   add column if not exists upi_enabled boolean not null default false;

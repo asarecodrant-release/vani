@@ -848,6 +848,18 @@
     });
   }
 
+  function validEmail(value) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+  }
+
+  function validPhone(value) {
+    return /^\+?[1-9][0-9]{7,14}$/.test(value);
+  }
+
+  function normalizePhone(value) {
+    return (value || "").trim().replace(/[^\d+]/g, "").replace(/(?!^)\+/g, "");
+  }
+
   function cleanPhone(value) {
     return String(value || "").replace(/[^\d+]/g, "").replace(/(?!^)\+/g, "").replace(/\D+/g, "");
   }
@@ -881,8 +893,8 @@
       const requestId = "rzp_" + Date.now() + "_" + Math.random().toString(16).slice(2);
       const timeout = window.setTimeout(() => {
         window.removeEventListener("message", handleResult);
-        resolve({success: false, message: "Razorpay checkout did not respond. Please try again."});
-      }, 90000);
+        resolve({success: false, message: "Razorpay response was not received yet. If money was deducted, the business can verify it from the dashboard."});
+      }, 300000);
       function handleResult(event) {
         const data = event.data || {};
         if (event.source !== window.parent || data.type !== "vani:razorpay-result" || data.customer_id !== customerId || data.request_id !== requestId) return;
@@ -1492,6 +1504,8 @@
         theme: {color: themeAccent()}
       };
       const verifyRazorpayPayment = async response => {
+        const successText = orderResponse.success_message || "Payment received. Thank you.";
+        setStatus("Payment completed. Confirming it now...", true);
         const verify = await api("verify_customer_payment", "POST", {
           customer_id: customerId,
           razorpay_order_id: response.razorpay_order_id,
@@ -1502,7 +1516,9 @@
           payer_phone: collectPayerPhone ? phoneInput.value.trim() : ""
         });
         if (verify.success) {
-          setStatus(verify.message || orderResponse.success_message || "Payment received. Thank you.", true);
+          const message = verify.message || successText;
+          setStatus(message, true);
+          addMessage(messages, message, "bot");
           submit.textContent = "Paid";
           showFaqActionFeedback(action, context, suggestionsBox, 250);
         } else {
@@ -1516,6 +1532,18 @@
         if (parentResult?.success && parentResult.response) {
           await verifyRazorpayPayment(parentResult.response);
         } else {
+          if (parentResult?.error || parentResult?.payment_id) {
+            await api("record_customer_payment_failure", "POST", {
+              customer_id: customerId,
+              razorpay_order_id: orderResponse.order?.id || "",
+              razorpay_payment_id: parentResult?.error?.metadata?.payment_id || parentResult?.payment_id || "",
+              message: parentResult?.message || "Payment failed or was cancelled.",
+              error: parentResult?.error || null,
+              payer_name: nameInput.value.trim(),
+              payer_email: collectPayerEmail ? emailInput.value.trim() : "",
+              payer_phone: collectPayerPhone ? phoneInput.value.trim() : ""
+            });
+          }
           submit.disabled = false;
           submit.textContent = "Continue to payment";
           if (!parentResult?.dismissed) setStatus(parentResult?.message || "Payment checkout could not be opened.");
@@ -1529,12 +1557,36 @@
         setStatus("Payment checkout could not be loaded.");
         return;
       }
-      const checkout = new Razorpay({
-        ...checkoutOptions,
-        handler: verifyRazorpayPayment,
-        modal: {ondismiss: () => { submit.disabled = false; submit.textContent = "Continue to payment"; }}
-      });
-      checkout.open();
+      try {
+        const checkout = new Razorpay({
+          ...checkoutOptions,
+          handler: verifyRazorpayPayment,
+          modal: {ondismiss: () => { submit.disabled = false; submit.textContent = "Continue to payment"; }}
+        });
+        if (typeof checkout.on === "function") {
+          checkout.on("payment.failed", async response => {
+            const message = response?.error?.description || "Payment failed or was cancelled.";
+            await api("record_customer_payment_failure", "POST", {
+              customer_id: customerId,
+              razorpay_order_id: orderResponse.order?.id || "",
+              razorpay_payment_id: response?.error?.metadata?.payment_id || "",
+              message,
+              error: response?.error || null,
+              payer_name: nameInput.value.trim(),
+              payer_email: collectPayerEmail ? emailInput.value.trim() : "",
+              payer_phone: collectPayerPhone ? phoneInput.value.trim() : ""
+            });
+            submit.disabled = false;
+            submit.textContent = "Try payment again";
+            setStatus(message);
+          });
+        }
+        checkout.open();
+      } catch (error) {
+        submit.disabled = false;
+        submit.textContent = "Continue to payment";
+        setStatus(error?.message || "Payment checkout could not be opened.");
+      }
     };
     panel.appendChild(title);
     panel.appendChild(nameInput);

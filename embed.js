@@ -115,6 +115,15 @@
             handler: response => sendRazorpayResult(requestId, {success: true, response}),
             modal: {ondismiss: () => sendRazorpayResult(requestId, {success: false, dismissed: true})}
           });
+          if (typeof checkout.on === "function") {
+            checkout.on("payment.failed", response => {
+              sendRazorpayResult(requestId, {
+                success: false,
+                message: response?.error?.description || "Payment failed in Razorpay checkout.",
+                error: response?.error || null
+              });
+            });
+          }
           checkout.open();
         } catch (error) {
           sendRazorpayResult(requestId, {success: false, message: error?.message || "Razorpay checkout could not be opened."});

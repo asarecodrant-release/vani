@@ -1402,6 +1402,8 @@ $paymentCollectPayerEmail = filter_var($paymentSettings['collect_payer_email'] ?
 $paymentCollectPayerPhone = filter_var($paymentSettings['collect_payer_phone'] ?? true, FILTER_VALIDATE_BOOLEAN);
 $paymentVerifyPayerEmailOtp = filter_var($paymentSettings['verify_payer_email_otp'] ?? false, FILTER_VALIDATE_BOOLEAN);
 $paymentVerifyPayerPhoneOtp = filter_var($paymentSettings['verify_payer_phone_otp'] ?? false, FILTER_VALIDATE_BOOLEAN);
+$paymentRazorpayNotifyStatusEmail = filter_var($paymentSettings['razorpay_notify_status_email'] ?? false, FILTER_VALIDATE_BOOLEAN);
+$paymentRazorpayNotifyStatusMobile = filter_var($paymentSettings['razorpay_notify_status_mobile'] ?? false, FILTER_VALIDATE_BOOLEAN);
 $paymentBusinessName = first_value($paymentSettings, ['business_name'], $websiteName ?: $botName);
 $paymentRazorpayKeyId = first_value($paymentSettings, ['razorpay_key_id'], '');
 $paymentRazorpaySecretSaved = trim((string)($paymentSettings['razorpay_key_secret'] ?? '')) !== '';
@@ -3254,6 +3256,22 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
               <div class="field"><label>Razorpay Key ID</label><input id="paymentKeyIdInput" value="<?php echo h($paymentRazorpayKeyId); ?>" placeholder="rzp_live_xxxxx"></div>
               <div class="field"><label>Razorpay Key Secret</label><input id="paymentKeySecretInput" type="password" placeholder="<?php echo $paymentRazorpaySecretSaved ? 'Saved. Leave blank to keep existing secret.' : 'Enter Razorpay key secret'; ?>"></div>
               <div class="field full"><label>Success message</label><input id="paymentSuccessMessageInput" value="<?php echo h($paymentSuccessMessage); ?>" placeholder="Payment received. Thank you."></div>
+              <div class="field">
+                <label>Email payment status to user</label>
+                <label class="switch" title="Email payment status after Razorpay success or failure">
+                  <input id="paymentRazorpayNotifyEmailToggle" type="checkbox" <?php echo $paymentRazorpayNotifyStatusEmail ? 'checked' : ''; ?> <?php echo ($canUsePaymentCollection && $paymentVerifyPayerEmailOtp) ? '' : 'disabled'; ?> aria-label="Email payment status to user">
+                  <span class="switch-slider"></span>
+                </label>
+                <small class="input-help">Requires Payment Setup -> Verify payment email by OTP.</small>
+              </div>
+              <div class="field">
+                <label>Mobile payment status to user</label>
+                <label class="switch" title="Mobile payment status after Razorpay success or failure">
+                  <input id="paymentRazorpayNotifyMobileToggle" type="checkbox" <?php echo $paymentRazorpayNotifyStatusMobile ? 'checked' : ''; ?> <?php echo ($canUsePaymentCollection && $paymentVerifyPayerPhoneOtp) ? '' : 'disabled'; ?> aria-label="Mobile payment status to user">
+                  <span class="switch-slider"></span>
+                </label>
+                <small class="input-help">Requires Payment Setup -> Verify payment mobile by OTP. SMS delivery needs a configured mobile notification provider.</small>
+              </div>
               <div class="field full"><button class="pill-btn" type="submit">Save Razorpay checkout</button></div>
             </form>
           </div>
@@ -5071,10 +5089,12 @@ function bindAutoRechargeMandate() {
           setTimeout(() => location.reload(), 900);
         }
       });
-      checkout.on("payment.failed", async response => {
-        await recordRazorpayFailure({order_id: orderData.order.id}, response, "auto_recharge_mandate");
-        showToast(razorpayFailureMessage(response, "Mandate authorization failed"));
-      });
+      if (typeof checkout.on === "function") {
+        checkout.on("payment.failed", async response => {
+          await recordRazorpayFailure({order_id: orderData.order.id}, response, "auto_recharge_mandate");
+          showToast(razorpayFailureMessage(response, "Mandate authorization failed"));
+        });
+      }
       checkout.open();
     } catch (error) {
       button.disabled = false;
@@ -6375,13 +6395,15 @@ async function startPlanCheckout(planId, button) {
     checkoutOptions.order_id = orderData.order.id;
   }
   const checkout = new Razorpay(checkoutOptions);
-  checkout.on("payment.failed", async response => {
-    await recordRazorpayFailure({
-      order_id: orderData.order?.id || "",
-      subscription_id: orderData.subscription_id || ""
-    }, response, paymentMode === "auto" ? "wallet_recharge_auto_payment" : "wallet_recharge_one_time");
-    showToast(razorpayFailureMessage(response, "Payment authorization failed"));
-  });
+  if (typeof checkout.on === "function") {
+    checkout.on("payment.failed", async response => {
+      await recordRazorpayFailure({
+        order_id: orderData.order?.id || "",
+        subscription_id: orderData.subscription_id || ""
+      }, response, paymentMode === "auto" ? "wallet_recharge_auto_payment" : "wallet_recharge_one_time");
+      showToast(razorpayFailureMessage(response, "Payment authorization failed"));
+    });
+  }
   checkout.open();
 }
 
@@ -7477,6 +7499,8 @@ async function savePaymentSettings(button = null, savedLabel = "Save payment set
         collect_payer_phone: !!document.getElementById("paymentCollectPhoneToggle")?.checked,
         verify_payer_email_otp: !!document.getElementById("paymentVerifyEmailOtpToggle")?.checked,
         verify_payer_phone_otp: !!document.getElementById("paymentVerifyPhoneOtpToggle")?.checked,
+        razorpay_notify_status_email: !!document.getElementById("paymentRazorpayNotifyEmailToggle")?.checked,
+        razorpay_notify_status_mobile: !!document.getElementById("paymentRazorpayNotifyMobileToggle")?.checked,
         razorpay_key_id: document.getElementById("paymentKeyIdInput")?.value.trim() || "",
         razorpay_key_secret: document.getElementById("paymentKeySecretInput")?.value.trim() || "",
         success_message: document.getElementById("paymentSuccessMessageInput")?.value.trim() || ""
@@ -7541,6 +7565,8 @@ function syncPaymentCollectionSwitchState() {
     "paymentVerifyEmailOtpToggle",
     "paymentVerifyPhoneOtpToggle",
     "paymentRazorpayEnabledToggle",
+    "paymentRazorpayNotifyEmailToggle",
+    "paymentRazorpayNotifyMobileToggle",
     "paymentUpiEnabledToggle",
     "paymentUpiTransactionIdToggle"
   ];
@@ -7550,7 +7576,18 @@ function syncPaymentCollectionSwitchState() {
     if (!globalEnabled) toggle.checked = false;
     const needsEmailOtp = id === "paymentVerifyEmailOtpToggle";
     const needsMobileOtp = id === "paymentVerifyPhoneOtpToggle";
-    toggle.disabled = !globalEnabled || (needsEmailOtp && !leadPaidFeatures.email_otp) || (needsMobileOtp && !leadPaidFeatures.mobile_otp);
+    const mappedToPaymentEmailOtp = id === "paymentRazorpayNotifyEmailToggle";
+    const mappedToPaymentMobileOtp = id === "paymentRazorpayNotifyMobileToggle";
+    const paymentEmailOtpOn = !!document.getElementById("paymentVerifyEmailOtpToggle")?.checked;
+    const paymentMobileOtpOn = !!document.getElementById("paymentVerifyPhoneOtpToggle")?.checked;
+    if ((mappedToPaymentEmailOtp && !paymentEmailOtpOn) || (mappedToPaymentMobileOtp && !paymentMobileOtpOn)) {
+      toggle.checked = false;
+    }
+    toggle.disabled = !globalEnabled
+      || (needsEmailOtp && !leadPaidFeatures.email_otp)
+      || (needsMobileOtp && !leadPaidFeatures.mobile_otp)
+      || (mappedToPaymentEmailOtp && !paymentEmailOtpOn)
+      || (mappedToPaymentMobileOtp && !paymentMobileOtpOn);
   });
   document.querySelectorAll(".payment-action-active-toggle").forEach(toggle => {
     if (!globalEnabled) toggle.checked = false;
@@ -7576,6 +7613,8 @@ function turnOffDependentPaymentSwitches() {
     "paymentVerifyEmailOtpToggle",
     "paymentVerifyPhoneOtpToggle",
     "paymentRazorpayEnabledToggle",
+    "paymentRazorpayNotifyEmailToggle",
+    "paymentRazorpayNotifyMobileToggle",
     "paymentUpiEnabledToggle",
     "paymentUpiTransactionIdToggle"
   ].forEach(id => {
@@ -7636,6 +7675,8 @@ document.getElementById("paymentCollectEmailToggle")?.addEventListener("change",
   if (!event.currentTarget.checked) {
     const verifyToggle = document.getElementById("paymentVerifyEmailOtpToggle");
     if (verifyToggle) verifyToggle.checked = false;
+    const notifyToggle = document.getElementById("paymentRazorpayNotifyEmailToggle");
+    if (notifyToggle) notifyToggle.checked = false;
   }
   await autosavePaymentSwitch(event.currentTarget, event.currentTarget.checked ? "Email collection enabled" : "Email collection disabled");
   syncPaymentCollectionSwitchState();
@@ -7646,17 +7687,49 @@ document.getElementById("paymentCollectPhoneToggle")?.addEventListener("change",
   if (!event.currentTarget.checked) {
     const verifyToggle = document.getElementById("paymentVerifyPhoneOtpToggle");
     if (verifyToggle) verifyToggle.checked = false;
+    const notifyToggle = document.getElementById("paymentRazorpayNotifyMobileToggle");
+    if (notifyToggle) notifyToggle.checked = false;
   }
   await autosavePaymentSwitch(event.currentTarget, event.currentTarget.checked ? "Mobile number collection enabled" : "Mobile number collection disabled");
   syncPaymentCollectionSwitchState();
 });
 
 document.getElementById("paymentVerifyEmailOtpToggle")?.addEventListener("change", async event => {
+  if (!event.currentTarget.checked) {
+    const notifyToggle = document.getElementById("paymentRazorpayNotifyEmailToggle");
+    if (notifyToggle) notifyToggle.checked = false;
+  }
   await confirmPaymentOtpToggle(event.currentTarget, "email");
 });
 
 document.getElementById("paymentVerifyPhoneOtpToggle")?.addEventListener("change", async event => {
+  if (!event.currentTarget.checked) {
+    const notifyToggle = document.getElementById("paymentRazorpayNotifyMobileToggle");
+    if (notifyToggle) notifyToggle.checked = false;
+  }
   await confirmPaymentOtpToggle(event.currentTarget, "mobile");
+});
+
+document.getElementById("paymentRazorpayNotifyEmailToggle")?.addEventListener("change", async event => {
+  if (event.currentTarget.checked && blockWhenPaymentCollectionOff(event.currentTarget)) return;
+  if (event.currentTarget.checked && !document.getElementById("paymentVerifyEmailOtpToggle")?.checked) {
+    event.currentTarget.checked = false;
+    showToast("Turn ON Verify payment email by OTP first");
+    return;
+  }
+  await autosavePaymentSwitch(event.currentTarget, event.currentTarget.checked ? "Razorpay email status alerts enabled" : "Razorpay email status alerts disabled");
+  syncPaymentCollectionSwitchState();
+});
+
+document.getElementById("paymentRazorpayNotifyMobileToggle")?.addEventListener("change", async event => {
+  if (event.currentTarget.checked && blockWhenPaymentCollectionOff(event.currentTarget)) return;
+  if (event.currentTarget.checked && !document.getElementById("paymentVerifyPhoneOtpToggle")?.checked) {
+    event.currentTarget.checked = false;
+    showToast("Turn ON Verify payment mobile by OTP first");
+    return;
+  }
+  await autosavePaymentSwitch(event.currentTarget, event.currentTarget.checked ? "Razorpay mobile status alerts enabled" : "Razorpay mobile status alerts disabled");
+  syncPaymentCollectionSwitchState();
 });
 
 document.getElementById("paymentUpiTransactionIdToggle")?.addEventListener("change", async event => {
