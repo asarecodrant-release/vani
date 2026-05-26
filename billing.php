@@ -119,6 +119,68 @@ function billing_auto_recharge_rule(string $planId): array {
     ];
 }
 
+function billing_auto_payment_fee_percent(): float {
+    $value = getenv('RAZORPAY_RECHARGE_FEE_PERCENT');
+    if ($value === false || trim((string)$value) === '') {
+        $value = getenv('RAZORPAY_AUTO_PAYMENT_FEE_PERCENT');
+    }
+    if ($value === false || trim((string)$value) === '') {
+        return 2.36;
+    }
+    return max(0.0, min(50.0, (float)$value));
+}
+
+function billing_auto_payment_fee_fixed_paise(): int {
+    $value = getenv('RAZORPAY_RECHARGE_FEE_FIXED_PAISE');
+    if ($value === false || trim((string)$value) === '') {
+        $value = getenv('RAZORPAY_AUTO_PAYMENT_FEE_FIXED_PAISE');
+    }
+    if ($value === false || trim((string)$value) === '') {
+        return 0;
+    }
+    return max(0, (int)$value);
+}
+
+function billing_auto_payment_charge_paise(int $walletCreditPaise): int {
+    if ($walletCreditPaise <= 0) {
+        return 0;
+    }
+    $rate = billing_auto_payment_fee_percent() / 100;
+    $fixedPaise = billing_auto_payment_fee_fixed_paise();
+    if ($rate <= 0 && $fixedPaise <= 0) {
+        return $walletCreditPaise;
+    }
+    $denominator = max(0.01, 1 - $rate);
+    return max($walletCreditPaise, (int)ceil(($walletCreditPaise + $fixedPaise) / $denominator));
+}
+
+function billing_auto_payment_charge_metadata(int $walletCreditPaise): array {
+    $chargePaise = billing_auto_payment_charge_paise($walletCreditPaise);
+    return [
+        'wallet_credit_paise' => $walletCreditPaise,
+        'auto_payment_charge_paise' => $chargePaise,
+        'auto_payment_extra_charge_paise' => max(0, $chargePaise - $walletCreditPaise),
+        'auto_payment_fee_percent' => billing_auto_payment_fee_percent(),
+        'auto_payment_fee_fixed_paise' => billing_auto_payment_fee_fixed_paise()
+    ];
+}
+
+function billing_recharge_charge_paise(int $walletCreditPaise): int {
+    return billing_auto_payment_charge_paise($walletCreditPaise);
+}
+
+function billing_recharge_charge_metadata(int $walletCreditPaise, string $paymentMode): array {
+    $chargePaise = billing_recharge_charge_paise($walletCreditPaise);
+    return [
+        'wallet_credit_paise' => $walletCreditPaise,
+        'recharge_charge_paise' => $chargePaise,
+        'recharge_extra_charge_paise' => max(0, $chargePaise - $walletCreditPaise),
+        'recharge_fee_percent' => billing_auto_payment_fee_percent(),
+        'recharge_fee_fixed_paise' => billing_auto_payment_fee_fixed_paise(),
+        'recharge_fee_recovery_mode' => $paymentMode
+    ];
+}
+
 function billing_active_plan_from_account(array $account): string {
     $planId = (string)($account['current_plan'] ?? 'free');
     if ($planId === 'automation' || $planId === 'enterprise') {

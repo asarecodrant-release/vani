@@ -1286,34 +1286,53 @@ function razorpay_failure_payload(array $error): array {
     ];
 }
 
-function razorpay_subscription_plan_id(string $planId): array {
+function razorpay_payment_fee_metadata(array $paymentData, int $walletCreditPaise): array {
+    return [
+        "wallet_credit_paise" => $walletCreditPaise,
+        "razorpay_amount_paise" => (int)($paymentData['amount'] ?? 0),
+        "razorpay_base_amount_paise" => (int)($paymentData['base_amount'] ?? 0),
+        "razorpay_fee_paise" => (int)($paymentData['fee'] ?? 0),
+        "razorpay_tax_paise" => (int)($paymentData['tax'] ?? 0),
+        "razorpay_fee_bearer" => (string)($paymentData['fee_bearer'] ?? ''),
+        "razorpay_method" => (string)($paymentData['method'] ?? '')
+    ];
+}
+
+function razorpay_subscription_plan_id(string $planId, ?int $planAmountPaise = null): array {
+    $plan = billing_plan($planId);
+    $amountPaise = $planAmountPaise ?? (int)$plan["price_paise"];
+    $baseAmountPaise = (int)$plan["price_paise"];
+    $isGrossAutoPlan = $amountPaise !== $baseAmountPaise;
     $envKey = 'RAZORPAY_PLAN_ID_' . strtoupper($planId);
     $configured = trim((string)($_ENV[$envKey] ?? getenv($envKey) ?: ''));
     if ($configured !== '') {
         return ["success" => true, "plan_id" => $configured, "created" => false];
     }
 
-    $configuredPlans = [
-        "starter" => "plan_Ssuci9JskBXtOf",
-        "growth" => "plan_SsudP0drwgU02z",
-        "business" => "plan_Ssue604VjkkUMQ"
-    ];
-    if (!empty($configuredPlans[$planId])) {
-        return ["success" => true, "plan_id" => $configuredPlans[$planId], "created" => false];
+    if (!$isGrossAutoPlan) {
+        $configuredPlans = [
+            "starter" => "plan_Ssuci9JskBXtOf",
+            "growth" => "plan_SsudP0drwgU02z",
+            "business" => "plan_Ssue604VjkkUMQ"
+        ];
+        if (!empty($configuredPlans[$planId])) {
+            return ["success" => true, "plan_id" => $configuredPlans[$planId], "created" => false];
+        }
     }
 
-    $plan = billing_plan($planId);
     $create = razorpay_request("POST", "plans", [
         "period" => "monthly",
         "interval" => 1,
         "item" => [
-            "name" => "Vani " . $plan["name"] . " Plan",
-            "amount" => (int)$plan["price_paise"],
+            "name" => "Vani " . $plan["name"] . ($isGrossAutoPlan ? " Auto Payment" : " Plan"),
+            "amount" => $amountPaise,
             "currency" => "INR",
-            "description" => "Vani wallet recharge authorization"
+            "description" => $isGrossAutoPlan ? "Vani wallet auto payment including gateway charge recovery" : "Vani wallet recharge authorization"
         ],
         "notes" => [
-            "vani_plan_id" => $planId
+            "vani_plan_id" => $planId,
+            "wallet_credit_paise" => $baseAmountPaise,
+            "auto_payment_charge_paise" => $amountPaise
         ]
     ]);
 
@@ -1326,12 +1345,14 @@ function razorpay_subscription_plan_id(string $planId): array {
 
 function razorpay_auto_recharge_wallet(string $email, string $customerId, array $account, string $planId): array {
     $autoRecharge = wallet_auto_recharge_context($account, $planId);
-    $amountPaise = (int)$autoRecharge['amount_paise'];
+    $walletCreditPaise = (int)$autoRecharge['amount_paise'];
+    $chargePaise = billing_auto_payment_charge_paise($walletCreditPaise);
+    $chargeMetadata = billing_auto_payment_charge_metadata($walletCreditPaise);
     $token = trim((string)($autoRecharge['payment_method_reference'] ?? ''));
     $razorpayCustomerId = trim((string)($account['saved_payment_method_customer_id'] ?? ''));
     $contact = trim((string)($account['saved_payment_method_contact'] ?? ''));
 
-    if (empty($autoRecharge['enabled']) || $amountPaise <= 0) {
+    if (empty($autoRecharge['enabled']) || $walletCreditPaise <= 0 || $chargePaise <= 0) {
         return ["success" => false, "message" => "Auto recharge is not enabled"];
     }
     if ($autoRecharge['payment_method_status'] !== 'active' || $token === '' || $razorpayCustomerId === '') {
@@ -1340,7 +1361,7 @@ function razorpay_auto_recharge_wallet(string $email, string $customerId, array 
 
     $receipt = substr("auto_" . $planId . "_" . time() . "_" . bin2hex(random_bytes(3)), 0, 40);
     $order = razorpay_request("POST", "orders", [
-        "amount" => $amountPaise,
+        "amount" => $chargePaise,
         "currency" => "INR",
         "payment_capture" => true,
         "receipt" => $receipt,
@@ -1348,7 +1369,8 @@ function razorpay_auto_recharge_wallet(string $email, string $customerId, array 
             "email" => $email,
             "customer_id" => $customerId,
             "plan_id" => $planId,
-            "order_type" => "wallet_auto_recharge"
+            "order_type" => "wallet_auto_recharge",
+            "wallet_credit_paise" => $walletCreditPaise
         ]
     ]);
     if ($order['status'] < 200 || $order['status'] >= 300 || empty($order['data']['id'])) {
@@ -1360,18 +1382,18 @@ function razorpay_auto_recharge_wallet(string $email, string $customerId, array 
         "customer_id" => $customerId ?: null,
         "plan_id" => $planId,
         "order_type" => "wallet",
-        "amount_paise" => $amountPaise,
+        "amount_paise" => $walletCreditPaise,
         "currency" => "INR",
         "status" => "created",
         "razorpay_order_id" => $order['data']['id'],
         "receipt" => $receipt,
-        "metadata" => (object)["auto_recharge" => true]
+        "metadata" => (object)array_merge(["auto_recharge" => true], $chargeMetadata)
     ]]);
 
     $payment = razorpay_request("POST", "payments/create/recurring", [
         "email" => $email,
         "contact" => $contact,
-        "amount" => $amountPaise,
+        "amount" => $chargePaise,
         "currency" => "INR",
         "order_id" => $order['data']['id'],
         "customer_id" => $razorpayCustomerId,
@@ -1386,10 +1408,11 @@ function razorpay_auto_recharge_wallet(string $email, string $customerId, array 
     ]);
     $paymentId = (string)($payment['data']['razorpay_payment_id'] ?? $payment['data']['id'] ?? '');
     $paymentStatus = (string)($payment['data']['status'] ?? '');
+    $paymentFeeMetadata = is_array($payment['data'] ?? null) ? razorpay_payment_fee_metadata($payment['data'], $walletCreditPaise) : [];
     if ($payment['status'] < 200 || $payment['status'] >= 300 || $paymentId === '') {
         supabase("PATCH", "billing_orders?razorpay_order_id=eq." . urlencode((string)$order['data']['id']), [
             "status" => "failed",
-            "metadata" => (object)["auto_recharge" => true, "payment_response" => $payment['data'] ?? []]
+            "metadata" => (object)array_merge(["auto_recharge" => true, "payment_response" => $payment['data'] ?? []], $chargeMetadata)
         ]);
         supabase("PATCH", "billing_accounts?" . billing_account_filter($customerId, $email), [
             "subscription_status" => ((int)($account['wallet_balance_paise'] ?? 0) > 0 ? "cancelled" : "free"),
@@ -1406,14 +1429,14 @@ function razorpay_auto_recharge_wallet(string $email, string $customerId, array 
     if (!in_array($paymentStatus, ['captured', 'authorized'], true)) {
         supabase("PATCH", "billing_orders?razorpay_order_id=eq." . urlencode((string)$order['data']['id']), [
             "razorpay_payment_id" => $paymentId,
-            "metadata" => (object)["auto_recharge" => true, "payment_status" => $paymentStatus]
+            "metadata" => (object)array_merge(["auto_recharge" => true, "payment_status" => $paymentStatus], $chargeMetadata, $paymentFeeMetadata)
         ]);
         mark_auto_payment_failed_keep_wallet_access($email, $account, 'auto_payment_pending_or_failed');
         return ["success" => false, "pending" => true, "message" => "Auto recharge payment is pending", "payment_status" => $paymentStatus];
     }
 
     $accountAfterOrder = $customerId !== '' ? billing_account_for_customer($customerId) : billing_account_for_email($email);
-    $newBalance = (int)($accountAfterOrder['wallet_balance_paise'] ?? 0) + $amountPaise;
+    $newBalance = (int)($accountAfterOrder['wallet_balance_paise'] ?? 0) + $walletCreditPaise;
     supabase("PATCH", "billing_accounts?" . billing_account_filter($customerId, $email), [
         "wallet_balance_paise" => $newBalance,
         "saved_payment_method_status" => "active"
@@ -1422,34 +1445,35 @@ function razorpay_auto_recharge_wallet(string $email, string $customerId, array 
         "email" => $email,
         "customer_id" => $customerId ?: null,
         "transaction_type" => "credit",
-        "amount_paise" => $amountPaise,
+        "amount_paise" => $walletCreditPaise,
         "balance_after_paise" => $newBalance,
         "description" => "Auto wallet recharge: " . billing_plan($planId)['name'],
         "reference_type" => "razorpay_auto_recharge",
         "reference_id" => $paymentId,
-        "metadata" => (object)["plan_id" => $planId, "threshold_paise" => $autoRecharge['threshold_paise']]
+        "metadata" => (object)array_merge(["plan_id" => $planId, "threshold_paise" => $autoRecharge['threshold_paise']], $chargeMetadata, $paymentFeeMetadata)
     ]]);
     supabase("PATCH", "billing_orders?razorpay_order_id=eq." . urlencode((string)$order['data']['id']), [
         "status" => "paid",
         "razorpay_payment_id" => $paymentId,
-        "paid_at" => gmdate('Y-m-d\TH:i:s\Z')
+        "paid_at" => gmdate('Y-m-d\TH:i:s\Z'),
+        "metadata" => (object)array_merge(["auto_recharge" => true, "payment_status" => $paymentStatus], $chargeMetadata, $paymentFeeMetadata)
     ]);
 
     $invoice = create_customer_invoice(
         $customerId,
         $email,
         $planId,
-        $amountPaise,
+        $walletCreditPaise,
         $paymentId,
         (string)$order['data']['id'],
         'auto_recharge',
-        ["source" => "wallet_auto_recharge", "threshold_paise" => $autoRecharge['threshold_paise']]
+        array_merge(["source" => "wallet_auto_recharge", "threshold_paise" => $autoRecharge['threshold_paise']], $chargeMetadata, $paymentFeeMetadata)
     );
     if (!empty($invoice)) {
         send_customer_invoice_email($invoice);
     }
 
-    return ["success" => true, "amount_paise" => $amountPaise, "balance_after_paise" => $newBalance, "payment_id" => $paymentId];
+    return ["success" => true, "amount_paise" => $walletCreditPaise, "charged_paise" => $chargePaise, "balance_after_paise" => $newBalance, "payment_id" => $paymentId];
 }
 
 function wallet_credit_subscription(string $email, string $customerId, string $planId, int $amountPaise, string $paymentId): void {
@@ -2545,14 +2569,16 @@ if ($action === "create_auto_recharge_mandate_order") {
         "amount_paise" => (int)$autoRechargeRule['amount_paise']
     ];
     $amountPaise = (int)$autoRecharge['amount_paise'];
-    if ($amountPaise <= 0) {
+    $chargePaise = billing_auto_payment_charge_paise($amountPaise);
+    $chargeMetadata = billing_auto_payment_charge_metadata($amountPaise);
+    if ($amountPaise <= 0 || $chargePaise <= 0) {
         echo json_encode(["success" => false, "message" => "Auto recharge amount is not configured"]);
         exit;
     }
 
     $receipt = substr("mandate_" . $planId . "_" . time() . "_" . bin2hex(random_bytes(3)), 0, 40);
     $order = razorpay_request("POST", "orders", [
-        "amount" => $amountPaise,
+        "amount" => $chargePaise,
         "currency" => "INR",
         "payment_capture" => true,
         "receipt" => $receipt,
@@ -2562,6 +2588,7 @@ if ($action === "create_auto_recharge_mandate_order") {
             "plan_id" => $planId,
             "order_type" => "auto_recharge_mandate",
             "initial_plan_purchase" => $requestedPlanId !== '',
+            "wallet_credit_paise" => $amountPaise,
             "razorpay_customer_id" => $razorpayCustomerId
         ]
     ]);
@@ -2580,12 +2607,12 @@ if ($action === "create_auto_recharge_mandate_order") {
         "status" => "created",
         "razorpay_order_id" => $order['data']['id'],
         "receipt" => $receipt,
-        "metadata" => (object)[
+        "metadata" => (object)array_merge([
             "auto_recharge" => true,
             "initial_plan_purchase" => $requestedPlanId !== '',
             "threshold_paise" => $autoRecharge['threshold_paise'],
             "razorpay_customer_id" => $razorpayCustomerId
-        ]
+        ], $chargeMetadata)
     ]]);
     if ($storedOrder['status'] < 200 || $storedOrder['status'] >= 300) {
         echo json_encode([
@@ -2604,6 +2631,7 @@ if ($action === "create_auto_recharge_mandate_order") {
         "razorpay_customer_id" => $razorpayCustomerId,
         "contact" => $customer['contact'] ?? ($account['saved_payment_method_contact'] ?? ''),
         "amount_paise" => $amountPaise,
+        "charged_paise" => $chargePaise,
         "threshold_paise" => $autoRecharge['threshold_paise'],
         "plan" => billing_plan($planId)
     ]);
@@ -2670,6 +2698,9 @@ if ($action === "verify_auto_recharge_mandate") {
     $amountPaise = (int)$order['amount_paise'];
     $planId = (string)$order['plan_id'];
     $autoRechargeRule = billing_auto_recharge_rule($planId);
+    $existingMetadata = is_array($order['metadata'] ?? null) ? $order['metadata'] : [];
+    $chargeMetadata = billing_auto_payment_charge_metadata($amountPaise);
+    $paymentFeeMetadata = razorpay_payment_fee_metadata($paymentData, $amountPaise);
     $periodStart = gmdate('Y-m-d\TH:i:s\Z');
     $periodEnd = gmdate('Y-m-d\TH:i:s\Z', strtotime('+30 days'));
     $paymentStatus = (string)($paymentData['status'] ?? '');
@@ -2686,7 +2717,7 @@ if ($action === "verify_auto_recharge_mandate") {
             "description" => "Auto recharge mandate authorization funded wallet: " . billing_plan($planId)['name'],
             "reference_type" => "razorpay_mandate_authorization",
             "reference_id" => $paymentId,
-            "metadata" => (object)["plan_id" => $planId, "token_id" => $tokenId]
+            "metadata" => (object)array_merge(["plan_id" => $planId, "token_id" => $tokenId], $chargeMetadata, $paymentFeeMetadata)
         ]]);
         $credited = true;
     }
@@ -2711,12 +2742,12 @@ if ($action === "verify_auto_recharge_mandate") {
         "razorpay_payment_id" => $paymentId,
         "razorpay_signature" => $signature,
         "paid_at" => gmdate('Y-m-d\TH:i:s\Z'),
-        "metadata" => (object)[
+        "metadata" => merge_order_metadata($existingMetadata, array_merge([
             "auto_recharge" => true,
             "token_id" => $tokenId,
             "payment_status" => $paymentStatus,
             "wallet_credited" => $credited
-        ]
+        ], $chargeMetadata, $paymentFeeMetadata))
     ]);
 
     $invoice = [];
@@ -2729,7 +2760,7 @@ if ($action === "verify_auto_recharge_mandate") {
             $paymentId,
             $orderId,
             !empty(((array)($order['metadata'] ?? []))['initial_plan_purchase']) ? 'subscription' : 'auto_recharge',
-            ["source" => "razorpay_mandate_authorization", "token_id" => $tokenId]
+            array_merge(["source" => "razorpay_mandate_authorization", "token_id" => $tokenId], $chargeMetadata, $paymentFeeMetadata)
         );
         if (!empty($invoice)) {
             send_customer_invoice_email($invoice);
@@ -2839,7 +2870,10 @@ if ($action === "create_razorpay_subscription_checkout") {
     }
 
     $plan = billing_plan($planId);
-    $planReference = razorpay_subscription_plan_id($planId);
+    $walletCreditPaise = (int)$plan['price_paise'];
+    $chargePaise = billing_auto_payment_charge_paise($walletCreditPaise);
+    $chargeMetadata = billing_auto_payment_charge_metadata($walletCreditPaise);
+    $planReference = razorpay_subscription_plan_id($planId, $chargePaise);
     if (empty($planReference['success'])) {
         echo json_encode($planReference);
         exit;
@@ -2854,6 +2888,8 @@ if ($action === "create_razorpay_subscription_checkout") {
             "email" => $email,
             "customer_id" => $customerId,
             "plan_id" => $planId,
+            "wallet_credit_paise" => $walletCreditPaise,
+            "auto_payment_charge_paise" => $chargePaise,
             "source" => "vani_dashboard_plan_purchase"
         ]
     ]);
@@ -2873,17 +2909,17 @@ if ($action === "create_razorpay_subscription_checkout") {
         "customer_id" => $customerId ?: null,
         "plan_id" => $planId,
         "order_type" => "subscription",
-        "amount_paise" => (int)$plan['price_paise'],
+        "amount_paise" => $walletCreditPaise,
         "currency" => "INR",
         "status" => "created",
         "razorpay_order_id" => $subscriptionId,
         "receipt" => $receipt,
-        "metadata" => (object)[
+        "metadata" => (object)array_merge([
             "subscription_checkout" => true,
             "razorpay_plan_id" => $planReference['plan_id'],
             "subscription_status" => $subscription['data']['status'] ?? '',
-            "razorpay_customer_id" => $customer['razorpay_customer_id'] ?? ''
-        ]
+            "razorpay_customer_id" => $customer['razorpay_customer_id'] ?? '',
+        ], $chargeMetadata)
     ]]);
     if ($storedOrder['status'] < 200 || $storedOrder['status'] >= 300) {
         echo json_encode([
@@ -2901,7 +2937,8 @@ if ($action === "create_razorpay_subscription_checkout") {
         "subscription_id" => $subscriptionId,
         "razorpay_customer_id" => $customer['razorpay_customer_id'] ?? '',
         "contact" => $customer['contact'] ?? '',
-        "amount_paise" => (int)$plan['price_paise'],
+        "amount_paise" => $walletCreditPaise,
+        "charged_paise" => $chargePaise,
         "plan" => $plan
     ]);
     exit;
@@ -2966,6 +3003,8 @@ if ($action === "verify_razorpay_subscription_payment") {
     $amountPaise = (int)$order['amount_paise'];
     $autoRechargeRule = billing_auto_recharge_rule($planId);
     $account = $customerId !== '' ? billing_account_for_customer($customerId) : billing_account_for_email($email);
+    $existingMetadata = is_array($order['metadata'] ?? null) ? $order['metadata'] : [];
+    $paymentFeeMetadata = razorpay_payment_fee_metadata($paymentData, $amountPaise);
 
     wallet_credit_subscription($email, $customerId, $planId, $amountPaise, $paymentId);
     $accountUpdate = [
@@ -2987,13 +3026,13 @@ if ($action === "verify_razorpay_subscription_payment") {
         "razorpay_payment_id" => $paymentId,
         "razorpay_signature" => $signature,
         "paid_at" => gmdate('Y-m-d\TH:i:s\Z'),
-        "metadata" => (object)[
+        "metadata" => merge_order_metadata($existingMetadata, array_merge([
             "subscription_checkout" => true,
             "subscription_id" => $subscriptionId,
             "subscription_status" => $subscriptionData['status'] ?? '',
             "payment_status" => $paymentStatus,
             "razorpay_customer_id" => $subscriptionData['customer_id'] ?? $paymentData['customer_id'] ?? ''
-        ]
+        ], $paymentFeeMetadata))
     ]);
 
     $invoice = create_customer_invoice(
@@ -3004,7 +3043,7 @@ if ($action === "verify_razorpay_subscription_payment") {
         $paymentId,
         $subscriptionId,
         'subscription',
-        ["source" => "razorpay_subscription_checkout", "subscription_id" => $subscriptionId]
+        array_merge(["source" => "razorpay_subscription_checkout", "subscription_id" => $subscriptionId], $paymentFeeMetadata)
     );
     if (!empty($invoice)) {
         send_customer_invoice_email($invoice);
@@ -3066,16 +3105,19 @@ if ($action === "create_public_razorpay_order") {
     }
     $plan = billing_plan($planId);
     $amountPaise = (int)$plan['price_paise'];
+    $chargePaise = billing_recharge_charge_paise($amountPaise);
+    $chargeMetadata = billing_recharge_charge_metadata($amountPaise, 'public_one_time');
     $receipt = substr("pub_" . $planId . "_" . time() . "_" . bin2hex(random_bytes(3)), 0, 40);
     $order = razorpay_request("POST", "orders", [
-        "amount" => $amountPaise,
+        "amount" => $chargePaise,
         "currency" => "INR",
         "receipt" => $receipt,
         "notes" => [
             "email" => $email,
             "plan_id" => $planId,
             "order_type" => "public_subscription",
-            "payment_mode" => "one_time"
+            "payment_mode" => "one_time",
+            "wallet_credit_paise" => $amountPaise
         ]
     ]);
     if ($order['status'] < 200 || $order['status'] >= 300 || empty($order['data']['id'])) {
@@ -3092,13 +3134,13 @@ if ($action === "create_public_razorpay_order") {
         "status" => "created",
         "razorpay_order_id" => $order['data']['id'],
         "receipt" => $receipt,
-        "metadata" => (object)[
+        "metadata" => (object)array_merge([
             "plan_name" => $plan['name'],
             "payment_mode" => "one_time",
             "public_subscription_checkout" => true,
             "customer_name" => $name,
-            "customer_contact" => $contact
-        ]
+            "customer_contact" => $contact,
+        ], $chargeMetadata)
     ]]);
     if ($storedOrder['status'] < 200 || $storedOrder['status'] >= 300) {
         echo json_encode(["success" => false, "message" => "Payment order could not be saved", "debug" => $storedOrder]);
@@ -3109,6 +3151,8 @@ if ($action === "create_public_razorpay_order") {
         "success" => true,
         "key_id" => $keyId,
         "order" => $order['data'],
+        "amount_paise" => $amountPaise,
+        "charged_paise" => $chargePaise,
         "plan" => $plan,
         "prefill" => ["name" => $name, "email" => $email, "contact" => $contact]
     ]);
@@ -3209,6 +3253,7 @@ if ($action === "verify_public_razorpay_payment") {
     $amountPaise = (int)$order['amount_paise'];
     $name = trim((string)($metadata['customer_name'] ?? ''));
     $contact = trim((string)($metadata['customer_contact'] ?? ''));
+    $paymentFeeMetadata = razorpay_payment_fee_metadata($paymentData, $amountPaise);
     $password = public_subscription_temp_password();
     $customer = public_subscription_customer_upsert($email, $password);
     if (empty($customer['success'])) {
@@ -3233,7 +3278,7 @@ if ($action === "verify_public_razorpay_payment") {
             "payment_status" => $paymentStatus,
             "account_created" => !empty($customer['is_new']),
             "subscription_email_sent" => $emailSent
-        ])
+        ], $paymentFeeMetadata)
     ]);
     echo json_encode([
         "success" => true,
@@ -3323,10 +3368,12 @@ if ($action === "create_razorpay_order") {
     }
     $plan = billing_plan($planId);
     $amountPaise = (int)$plan['price_paise'];
+    $chargePaise = billing_recharge_charge_paise($amountPaise);
+    $chargeMetadata = billing_recharge_charge_metadata($amountPaise, 'dashboard_one_time');
     $email = authenticated_email();
     $receipt = substr("sub_" . $planId . "_" . time() . "_" . bin2hex(random_bytes(3)), 0, 40);
     $order = razorpay_request("POST", "orders", [
-        "amount" => $amountPaise,
+        "amount" => $chargePaise,
         "currency" => "INR",
         "receipt" => $receipt,
         "notes" => [
@@ -3334,7 +3381,8 @@ if ($action === "create_razorpay_order") {
             "customer_id" => $customerId,
             "plan_id" => $planId,
             "order_type" => "subscription",
-            "payment_mode" => "one_time"
+            "payment_mode" => "one_time",
+            "wallet_credit_paise" => $amountPaise
         ]
     ]);
     if ($order['status'] < 200 || $order['status'] >= 300 || empty($order['data']['id'])) {
@@ -3351,7 +3399,10 @@ if ($action === "create_razorpay_order") {
         "status" => "created",
         "razorpay_order_id" => $order['data']['id'],
         "receipt" => $receipt,
-        "metadata" => (object)["plan_name" => $plan['name'], "payment_mode" => "one_time"]
+        "metadata" => (object)array_merge([
+            "plan_name" => $plan['name'],
+            "payment_mode" => "one_time",
+        ], $chargeMetadata)
     ]]);
     if ($storedOrder['status'] < 200 || $storedOrder['status'] >= 300) {
         echo json_encode([
@@ -3366,6 +3417,8 @@ if ($action === "create_razorpay_order") {
         "success" => true,
         "key_id" => $keyId,
         "order" => $order['data'],
+        "amount_paise" => $amountPaise,
+        "charged_paise" => $chargePaise,
         "plan" => $plan
     ]);
     exit;
@@ -3424,6 +3477,8 @@ if ($action === "verify_razorpay_payment") {
     $amountPaise = (int)$order['amount_paise'];
     $email = authenticated_email();
     wallet_credit_subscription($email, $customerId, $planId, $amountPaise, $paymentId);
+    $existingMetadata = is_array($order['metadata'] ?? null) ? $order['metadata'] : [];
+    $paymentFeeMetadata = razorpay_payment_fee_metadata($paymentData, $amountPaise);
     supabase("PATCH", "billing_accounts?" . billing_account_filter($customerId, $email), [
         "auto_recharge_enabled" => false,
         "saved_payment_method_status" => "missing",
@@ -3434,10 +3489,10 @@ if ($action === "verify_razorpay_payment") {
         "razorpay_payment_id" => $paymentId,
         "razorpay_signature" => $signature,
         "paid_at" => gmdate('Y-m-d\TH:i:s\Z'),
-        "metadata" => (object)[
+        "metadata" => merge_order_metadata($existingMetadata, array_merge([
             "payment_mode" => "one_time",
             "payment_status" => $paymentStatus
-        ]
+        ], $paymentFeeMetadata))
     ]);
     $invoice = create_customer_invoice(
         $customerId,
@@ -3447,7 +3502,7 @@ if ($action === "verify_razorpay_payment") {
         $paymentId,
         $orderId,
         'subscription',
-        ["source" => "razorpay_one_time_checkout", "payment_mode" => "one_time"]
+        array_merge(["source" => "razorpay_one_time_checkout", "payment_mode" => "one_time"], $paymentFeeMetadata)
     );
     if (!empty($invoice)) {
         send_customer_invoice_email($invoice);
