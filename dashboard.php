@@ -2343,7 +2343,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
             <button class="faq-subtab-btn" type="button" data-faq-subtab="faq-subpanel-default">Default FAQs</button>
             <button class="faq-subtab-btn" type="button" data-faq-subtab="faq-subpanel-qa">FAQ Q&amp;A</button>
             <button class="faq-subtab-btn" type="button" data-faq-subtab="faq-subpanel-scheduled">Scheduled Actions</button>
-            <button class="faq-subtab-btn" type="button" data-faq-subtab="faq-subpanel-feedback-type">Feedback type</button>
+            <button class="faq-subtab-btn" type="button" data-faq-subtab="faq-subpanel-feedback-type">Collect Feedback From Users</button>
           </div>
           <div class="section-body faq-action-section faq-subpanel active" id="faq-subpanel-options" style="border-top:0;margin-top:0">
             <div class="inline-row" style="justify-content:space-between;gap:16px;margin-bottom:14px">
