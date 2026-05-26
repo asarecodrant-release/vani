@@ -6,10 +6,7 @@ $customerId = preg_replace('/[^a-zA-Z0-9_-]/', '', (string)($_GET['id'] ?? ''));
 $sourceUrl = filter_var((string)($_GET['source_url'] ?? ''), FILTER_VALIDATE_URL) ? (string)$_GET['source_url'] : '';
 $forceOpenHint = (string)($_GET['open'] ?? '') === '1';
 $openByDefaultHint = $forceOpenHint || (string)($_GET['open_hint'] ?? '') === '1';
-$widgetVersion = max(
-    is_file(__DIR__ . '/widget.js') ? filemtime(__DIR__ . '/widget.js') : time(),
-    is_file(__DIR__ . '/widget-payment.js') ? filemtime(__DIR__ . '/widget-payment.js') : 0
-);
+$widgetVersion = is_file(__DIR__ . '/widget.js') ? filemtime(__DIR__ . '/widget.js') : time();
 ?><!doctype html>
 <html lang="en">
 <head>
