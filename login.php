@@ -645,6 +645,77 @@ body.bright .remember-row strong{
   font-size:14px;
 }
 
+.auth-loading-overlay{
+  position:fixed;
+  inset:0;
+  z-index:200;
+  display:none;
+  place-items:center;
+  padding:24px;
+  background:rgba(2,6,23,.62);
+  backdrop-filter:blur(12px);
+}
+
+body.auth-loading{
+  overflow:hidden;
+}
+
+body.auth-loading .auth-loading-overlay{
+  display:grid;
+}
+
+.auth-loading-card{
+  width:min(360px,calc(100vw - 40px));
+  padding:24px;
+  border-radius:20px;
+  border:1px solid rgba(56,189,248,.24);
+  background:linear-gradient(145deg,rgba(15,23,42,.96),rgba(30,41,59,.9));
+  box-shadow:0 24px 72px rgba(0,0,0,.36);
+  color:#f8fafc;
+  text-align:center;
+  display:grid;
+  justify-items:center;
+  gap:12px;
+}
+
+body.bright .auth-loading-card{
+  background:rgba(255,255,255,.96);
+  border-color:rgba(217,119,6,.22);
+  color:#111827;
+}
+
+.auth-loading-spinner{
+  width:46px;
+  height:46px;
+  border-radius:50%;
+  border:4px solid rgba(56,189,248,.18);
+  border-top-color:#38bdf8;
+  animation:authSpin .8s linear infinite;
+}
+
+body.bright .auth-loading-spinner{
+  border-color:rgba(217,119,6,.2);
+  border-top-color:#d97706;
+}
+
+.auth-loading-card strong{
+  font-size:18px;
+}
+
+.auth-loading-card span{
+  color:#cbd5e1;
+  font-size:14px;
+  line-height:1.5;
+}
+
+body.bright .auth-loading-card span{
+  color:#64748b;
+}
+
+@keyframes authSpin{
+  to{transform:rotate(360deg)}
+}
+
 .page-actions{
   position:fixed;
   top:18px;
@@ -753,6 +824,14 @@ try {
 
 <div class="bg-circle bg1"></div>
 <div class="bg-circle bg2"></div>
+
+<div class="auth-loading-overlay" id="authLoadingOverlay" aria-hidden="true">
+  <div class="auth-loading-card" role="status" aria-live="polite">
+    <div class="auth-loading-spinner" aria-hidden="true"></div>
+    <strong>Signing you in</strong>
+    <span>Please wait while Google authentication completes.</span>
+  </div>
+</div>
 
 <div class="container">
 
@@ -895,7 +974,45 @@ Get Started
 const themeToggle = document.getElementById("themeToggle");
 const siteBgCanvas = document.getElementById("siteBgCanvas");
 const siteBgCtx = siteBgCanvas?.getContext("2d");
+const authLoadingOverlay = document.getElementById("authLoadingOverlay");
 let siteBgNodes = [];
+let googleAuthInProgress = false;
+
+function setLoginAuthLoading(active, message = "Please wait while Google authentication completes.") {
+    googleAuthInProgress = !!active;
+    document.body.classList.toggle("auth-loading", !!active);
+    authLoadingOverlay?.setAttribute("aria-hidden", active ? "false" : "true");
+    const messageNode = authLoadingOverlay?.querySelector("span");
+    if (messageNode) {
+        messageNode.textContent = message;
+    }
+    document.querySelectorAll("input, button, a").forEach(element => {
+        if (authLoadingOverlay?.contains(element)) return;
+        if (active) {
+            if (!element.dataset.authPreviousTabindex && element.hasAttribute("tabindex")) {
+                element.dataset.authPreviousTabindex = element.getAttribute("tabindex") || "";
+            }
+            element.setAttribute("aria-disabled", "true");
+            element.setAttribute("tabindex", "-1");
+            if (element instanceof HTMLInputElement || element instanceof HTMLButtonElement) {
+                element.dataset.authWasDisabled = element.disabled ? "1" : "0";
+                element.disabled = true;
+            }
+        } else {
+            element.removeAttribute("aria-disabled");
+            if (element.dataset.authPreviousTabindex !== undefined) {
+                element.setAttribute("tabindex", element.dataset.authPreviousTabindex);
+                delete element.dataset.authPreviousTabindex;
+            } else {
+                element.removeAttribute("tabindex");
+            }
+            if (element instanceof HTMLInputElement || element instanceof HTMLButtonElement) {
+                element.disabled = element.dataset.authWasDisabled === "1";
+                delete element.dataset.authWasDisabled;
+            }
+        }
+    });
+}
 
 function setVaniTheme(mode) {
     const dark = mode === "dark";
@@ -1011,11 +1128,17 @@ function parseJwt(token) {
 function handleCredentialResponse(
     response
 ) {
+    if (googleAuthInProgress) {
+        return;
+    }
+
+    setLoginAuthLoading(true);
 
     const data =
         parseJwt(response.credential);
 
     if (!data || !data.email) {
+        setLoginAuthLoading(false);
 
         alert(
             "Google login failed"
@@ -1062,6 +1185,7 @@ function handleCredentialResponse(
     .then(data => {
 
         if (data.success) {
+            setLoginAuthLoading(true, "Authentication completed. Redirecting...");
 
             if (data.first_login) {
 
@@ -1075,6 +1199,7 @@ function handleCredentialResponse(
             }
 
         } else {
+            setLoginAuthLoading(false);
 
             alert(
                 data.message ||
@@ -1086,6 +1211,7 @@ function handleCredentialResponse(
     .catch(err => {
 
         console.error(err);
+        setLoginAuthLoading(false);
 
         alert(
             "Something went wrong"
