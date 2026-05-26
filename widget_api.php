@@ -2197,8 +2197,15 @@ if ($action === "create_customer_payment_order") {
             "payment_method" => "upi",
             "metadata" => (object)["upi_id" => $upiId, "manual_verification_required" => true, "payment_action_label" => $paymentAction['label'] ?? 'Payment']
         ]]);
+        if ($txn['status'] < 200 || $txn['status'] >= 300) {
+            widget_json_response([
+                "success" => false,
+                "payment_method" => "upi",
+                "message" => "UPI payment record could not be created. Please run the latest database migration and try again."
+            ], 500);
+        }
         widget_json_response([
-            "success" => $txn['status'] >= 200 && $txn['status'] < 300,
+            "success" => true,
             "payment_method" => "upi",
             "upi_link" => $upiLink,
             "transaction" => $txn['data'][0] ?? null,
@@ -2246,8 +2253,15 @@ if ($action === "create_customer_payment_order") {
         "razorpay_order_id" => (string)$order['data']['id'],
         "metadata" => (object)["payment_action_label" => $paymentAction['label'] ?? 'Payment']
     ]]);
+    if ($txn['status'] < 200 || $txn['status'] >= 300) {
+        widget_json_response([
+            "success" => false,
+            "payment_method" => "razorpay",
+            "message" => "Razorpay order was created but could not be saved. Please run the latest database migration and try again."
+        ], 500);
+    }
     widget_json_response([
-        "success" => $txn['status'] >= 200 && $txn['status'] < 300,
+        "success" => true,
         "key_id" => (string)($settings['razorpay_key_id'] ?? ''),
         "order" => $order['data'],
         "payment_action" => [
