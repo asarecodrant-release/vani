@@ -1667,7 +1667,7 @@ body.dark .sidebar{background:rgba(15,23,42,.66)}
 .nadara-pill:before{content:"";width:9px;height:9px;border-radius:50%;background:#22c55e;box-shadow:0 0 0 4px rgba(34,197,94,.14)}
 body.dark .nadara-pill{color:#86efac;background:linear-gradient(135deg,rgba(34,197,94,.16),rgba(21,128,61,.28));border-color:rgba(74,222,128,.34)}
 .ai-upgrade-btn{min-height:44px;max-width:100%;border-radius:13px;padding:6px 18px;border:1px solid rgba(234,179,8,.72);background:linear-gradient(135deg,#fef08a,#facc15,#d97706);color:#050505;font-size:14px;font-weight:950;display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;line-height:1.12;box-shadow:0 12px 26px rgba(234,179,8,.28);white-space:nowrap;text-align:center}
-.ai-upgrade-btn small{font-size:10px;font-weight:800;line-height:1.15}
+.ai-upgrade-btn small{font-size:10px;font-weight:900;line-height:1.15;color:#fff;padding:2px 7px;border-radius:999px;background:rgba(15,23,42,.28);box-shadow:inset 0 0 0 1px rgba(255,255,255,.28),0 3px 10px rgba(120,53,15,.18);text-shadow:0 1px 2px rgba(0,0,0,.34)}
 .ai-upgrade-btn:hover{transform:translateY(-1px);box-shadow:0 16px 34px rgba(234,179,8,.34)}
 .mobile-ai-upgrade{display:none}
 .main{min-width:0;width:100%;max-width:100vw;overflow-x:hidden}
