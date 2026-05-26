@@ -1769,6 +1769,8 @@ if ($action === "get_widget_config" || $action === "get_theme") {
         "razorpay_payment_enabled" => $razorpayCollectionEnabled,
         "upi_payment_enabled" => $upiCollectionEnabled,
         "upi_transaction_id_required" => widget_bool($paymentSettings['upi_transaction_id_required'] ?? true, true),
+        "payment_collect_payer_email" => widget_bool($paymentSettings['collect_payer_email'] ?? true, true),
+        "payment_collect_payer_phone" => widget_bool($paymentSettings['collect_payer_phone'] ?? true, true),
         "payment_actions" => array_values(array_map(fn($row) => [
             "id" => (string)($row['id'] ?? ''),
             "label" => (string)($row['label'] ?? 'Payment'),
@@ -2264,6 +2266,9 @@ if ($action === "create_customer_payment_order") {
         "user_id" => trim((string)($data['user_id'] ?? '')) ?: null,
         "session_id" => trim((string)($data['session_id'] ?? '')) ?: null,
         "source_url" => trim((string)($data['source_url'] ?? '')) ?: null,
+        "payer_name" => trim((string)($data['payer_name'] ?? '')) ?: null,
+        "payer_email" => trim((string)($data['payer_email'] ?? '')) ?: null,
+        "payer_phone" => trim((string)($data['payer_phone'] ?? '')) ?: null,
         "amount_paise" => $amountPaise,
         "currency" => (string)($paymentAction['currency'] ?? 'INR'),
         "status" => "created",
@@ -2350,6 +2355,13 @@ if ($action === "verify_customer_payment") {
     }
     $paymentStatus = (string)($payment['data']['status'] ?? '');
     $captured = $paymentStatus === 'captured' || !empty($payment['data']['captured']);
+    $txnRows = widget_safe_rows(supabase(
+        "GET",
+        "customer_payment_transactions?select=metadata&razorpay_order_id=eq." . urlencode($orderId) . "&customer_id=eq." . urlencode($customerId) . "&limit=1"
+    ));
+    $metadata = is_array($txnRows[0]['metadata'] ?? null) ? $txnRows[0]['metadata'] : [];
+    $metadata['payment_status'] = $paymentStatus;
+    $metadata['razorpay_payment_method'] = (string)($payment['data']['method'] ?? '');
     supabase("PATCH", "customer_payment_transactions?razorpay_order_id=eq." . urlencode($orderId) . "&customer_id=eq." . urlencode($customerId), [
         "status" => $captured ? "paid" : "failed",
         "razorpay_payment_id" => $paymentId,
@@ -2358,7 +2370,7 @@ if ($action === "verify_customer_payment") {
         "payer_email" => trim((string)($data['payer_email'] ?? '')) ?: null,
         "payer_phone" => trim((string)($data['payer_phone'] ?? '')) ?: null,
         "paid_at" => $captured ? gmdate('Y-m-d\TH:i:s\Z') : null,
-        "metadata" => (object)["payment_status" => $paymentStatus]
+        "metadata" => (object)$metadata
     ]);
     widget_json_response(["success" => $captured, "message" => $captured ? (string)($settings['success_message'] ?? 'Payment received. Thank you.') : "Payment is not captured yet"]);
 }

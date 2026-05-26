@@ -44,6 +44,30 @@
   });
 
   let frameState = {open: false, default_open: false, position: "right"};
+  let razorpayLoadPromise = null;
+
+  function loadRazorpayCheckout() {
+    if (window.Razorpay) return Promise.resolve(true);
+    if (razorpayLoadPromise) return razorpayLoadPromise;
+    razorpayLoadPromise = new Promise(resolve => {
+      const checkoutScript = document.createElement("script");
+      checkoutScript.src = "https://checkout.razorpay.com/v1/checkout.js";
+      checkoutScript.async = true;
+      checkoutScript.onload = () => resolve(!!window.Razorpay);
+      checkoutScript.onerror = () => resolve(false);
+      document.head.appendChild(checkoutScript);
+    });
+    return razorpayLoadPromise;
+  }
+
+  function sendRazorpayResult(requestId, payload) {
+    iframe.contentWindow?.postMessage({
+      type: "vani:razorpay-result",
+      customer_id: customerId,
+      request_id: requestId,
+      ...payload
+    }, scriptUrl.origin);
+  }
 
   function applyFrameState(state = frameState) {
     frameState = {...frameState, ...state};
@@ -78,6 +102,26 @@
   window.addEventListener("message", (event) => {
     if (event.origin !== scriptUrl.origin) return;
     const data = event.data || {};
+    if (data.type === "vani:open-razorpay" && data.customer_id === customerId) {
+      const requestId = data.request_id || "";
+      loadRazorpayCheckout().then(loaded => {
+        if (!loaded || !window.Razorpay) {
+          sendRazorpayResult(requestId, {success: false, message: "Razorpay checkout could not be loaded on this website."});
+          return;
+        }
+        try {
+          const checkout = new Razorpay({
+            ...(data.options || {}),
+            handler: response => sendRazorpayResult(requestId, {success: true, response}),
+            modal: {ondismiss: () => sendRazorpayResult(requestId, {success: false, dismissed: true})}
+          });
+          checkout.open();
+        } catch (error) {
+          sendRazorpayResult(requestId, {success: false, message: error?.message || "Razorpay checkout could not be opened."});
+        }
+      });
+      return;
+    }
     if (data.type !== "vani:frame-state" || data.customer_id !== customerId) return;
     applyFrameState(data);
   });

@@ -1398,6 +1398,8 @@ $paymentRazorpayTermsAccepted = filter_var($paymentSettings['razorpay_terms_acce
 $paymentUpiEnabled = filter_var($paymentSettings['upi_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
 $paymentUpiTransactionIdRequired = filter_var($paymentSettings['upi_transaction_id_required'] ?? true, FILTER_VALIDATE_BOOLEAN);
 $paymentUpiTermsAccepted = filter_var($paymentSettings['upi_terms_accepted'] ?? false, FILTER_VALIDATE_BOOLEAN);
+$paymentCollectPayerEmail = filter_var($paymentSettings['collect_payer_email'] ?? true, FILTER_VALIDATE_BOOLEAN);
+$paymentCollectPayerPhone = filter_var($paymentSettings['collect_payer_phone'] ?? true, FILTER_VALIDATE_BOOLEAN);
 $paymentBusinessName = first_value($paymentSettings, ['business_name'], $websiteName ?: $botName);
 $paymentRazorpayKeyId = first_value($paymentSettings, ['razorpay_key_id'], '');
 $paymentRazorpaySecretSaved = trim((string)($paymentSettings['razorpay_key_secret'] ?? '')) !== '';
@@ -3157,28 +3159,6 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
           </div>
         </div>
 
-        <div class="panel section-body">
-          <div class="section-head" style="padding:0 0 14px">
-            <div>
-              <h3>Payment Setup</h3>
-              <p class="muted">Switch ON payment collection globally. Razorpay credentials are needed only for Razorpay Checkout buttons. UPI buttons need only a valid UPI ID.</p>
-            </div>
-          </div>
-          <form id="paymentSettingsForm" class="form-grid">
-            <input type="hidden" id="paymentCustomerId" value="<?php echo h($selectedBotId); ?>">
-            <div class="field">
-              <label>Enable payment collection</label>
-              <label class="switch" title="Enable payment collection">
-                <input id="paymentEnabledToggle" type="checkbox" <?php echo $paymentsEnabled && $canUsePaymentCollection ? 'checked' : ''; ?> <?php echo $canUsePaymentCollection ? '' : 'data-premium-lock="This feature is only for Growth or Business users. Please recharge your wallet with appropriate plan."'; ?> aria-label="Enable payment collection">
-                <span class="switch-slider"></span>
-              </label>
-              <?php if (!$canUsePaymentCollection): ?><small class="input-help error">Growth or Business plan required to switch ON payment collection.</small><?php endif; ?>
-            </div>
-            <div class="field"><label>Business name on checkout</label><input id="paymentBusinessNameInput" value="<?php echo h($paymentBusinessName); ?>" placeholder="<?php echo h($botName); ?>"></div>
-            <div class="field full"><button class="pill-btn" type="submit">Save payment setup</button></div>
-          </form>
-        </div>
-
         <div class="metrics">
           <div class="panel metric"><span>Collected</span><strong><?php echo h(billing_rupees($paymentPaidTotalPaise)); ?></strong><small>Successful visitor payments.</small></div>
           <div class="panel metric"><span>Paid Orders</span><strong><?php echo h($paymentPaidCount); ?></strong><small>Captured payments.</small></div>
@@ -3188,14 +3168,55 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
 
         <div class="panel section-body">
           <div class="payment-subtabs" role="tablist" aria-label="Payment collection sections">
-            <button class="payment-subtab-btn active" type="button" data-payment-subtab="payment-subpanel-razorpay">Razorpay Checkout</button>
+            <button class="payment-subtab-btn active" type="button" data-payment-subtab="payment-subpanel-setup">Payment Setup</button>
+            <button class="payment-subtab-btn" type="button" data-payment-subtab="payment-subpanel-razorpay">Razorpay Checkout</button>
             <button class="payment-subtab-btn" type="button" data-payment-subtab="payment-subpanel-upi">UPI Redirect</button>
             <button class="payment-subtab-btn" type="button" data-payment-subtab="payment-subpanel-buttons">Payment Buttons</button>
             <button class="payment-subtab-btn" type="button" data-payment-subtab="payment-subpanel-transactions">Transactions</button>
           </div>
         </div>
 
-        <div class="payment-subpanel active" id="payment-subpanel-razorpay">
+        <div class="payment-subpanel active" id="payment-subpanel-setup">
+          <div class="panel section-body">
+            <div class="section-head" style="padding:0 0 14px">
+              <div>
+                <h3>Payment Setup</h3>
+                <p class="muted">Switch ON payment collection globally. Name is always collected. Choose whether the chatbot should also ask visitors for email, mobile number, or both before payment.</p>
+              </div>
+            </div>
+            <form id="paymentSettingsForm" class="form-grid">
+              <input type="hidden" id="paymentCustomerId" value="<?php echo h($selectedBotId); ?>">
+              <div class="field">
+                <label>Enable payment collection</label>
+                <label class="switch" title="Enable payment collection">
+                  <input id="paymentEnabledToggle" type="checkbox" <?php echo $paymentsEnabled && $canUsePaymentCollection ? 'checked' : ''; ?> <?php echo $canUsePaymentCollection ? '' : 'data-premium-lock="This feature is only for Growth or Business users. Please recharge your wallet with appropriate plan."'; ?> aria-label="Enable payment collection">
+                  <span class="switch-slider"></span>
+                </label>
+                <?php if (!$canUsePaymentCollection): ?><small class="input-help error">Growth or Business plan required to switch ON payment collection.</small><?php endif; ?>
+              </div>
+              <div class="field"><label>Business name on checkout</label><input id="paymentBusinessNameInput" value="<?php echo h($paymentBusinessName); ?>" placeholder="<?php echo h($botName); ?>"></div>
+              <div class="field">
+                <label>Ask for email</label>
+                <label class="switch" title="Ask visitor for email before payment">
+                  <input id="paymentCollectEmailToggle" type="checkbox" <?php echo $paymentCollectPayerEmail ? 'checked' : ''; ?> <?php echo $canUsePaymentCollection ? '' : 'disabled'; ?> aria-label="Ask visitor for email before payment">
+                  <span class="switch-slider"></span>
+                </label>
+                <small class="input-help">Name is always required. Email is useful for receipts and follow-up.</small>
+              </div>
+              <div class="field">
+                <label>Ask for mobile number</label>
+                <label class="switch" title="Ask visitor for mobile number before payment">
+                  <input id="paymentCollectPhoneToggle" type="checkbox" <?php echo $paymentCollectPayerPhone ? 'checked' : ''; ?> <?php echo $canUsePaymentCollection ? '' : 'disabled'; ?> aria-label="Ask visitor for mobile number before payment">
+                  <span class="switch-slider"></span>
+                </label>
+                <small class="input-help">Mobile number helps the business confirm payment or resolve issues.</small>
+              </div>
+              <div class="field full"><button class="pill-btn" type="submit">Save payment setup</button></div>
+            </form>
+          </div>
+        </div>
+
+        <div class="payment-subpanel" id="payment-subpanel-razorpay">
           <div class="panel section-body">
             <div class="section-head" style="padding:0 0 14px">
               <div>
@@ -7421,6 +7442,8 @@ async function savePaymentSettings(button, savedLabel = "Save payment setup") {
       upi_transaction_id_required: !!document.getElementById("paymentUpiTransactionIdToggle")?.checked,
       upi_terms_accepted: upiTermsAccepted,
       business_name: document.getElementById("paymentBusinessNameInput")?.value.trim() || "",
+      collect_payer_email: !!document.getElementById("paymentCollectEmailToggle")?.checked,
+      collect_payer_phone: !!document.getElementById("paymentCollectPhoneToggle")?.checked,
       razorpay_key_id: document.getElementById("paymentKeyIdInput")?.value.trim() || "",
       razorpay_key_secret: document.getElementById("paymentKeySecretInput")?.value.trim() || "",
       success_message: document.getElementById("paymentSuccessMessageInput")?.value.trim() || ""
@@ -7532,7 +7555,7 @@ upiConsentAcceptBtn?.addEventListener("click", () => {
 });
 
 function openPaymentSubtab(target) {
-  const id = document.getElementById(target) ? target : "payment-subpanel-razorpay";
+  const id = document.getElementById(target) ? target : "payment-subpanel-setup";
   document.querySelectorAll(".payment-subtab-btn").forEach(button => {
     button.classList.toggle("active", button.dataset.paymentSubtab === id);
   });
@@ -7542,7 +7565,7 @@ function openPaymentSubtab(target) {
 }
 
 document.querySelectorAll(".payment-subtab-btn").forEach(button => {
-  button.addEventListener("click", () => openPaymentSubtab(button.dataset.paymentSubtab || "payment-subpanel-razorpay"));
+  button.addEventListener("click", () => openPaymentSubtab(button.dataset.paymentSubtab || "payment-subpanel-setup"));
 });
 
 async function submitPaymentActionForm(event) {

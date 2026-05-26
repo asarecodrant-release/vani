@@ -875,6 +875,31 @@
     });
   }
 
+  function openRazorpayOnParent(options) {
+    if (window.parent === window) return Promise.resolve(null);
+    return new Promise(resolve => {
+      const requestId = "rzp_" + Date.now() + "_" + Math.random().toString(16).slice(2);
+      const timeout = window.setTimeout(() => {
+        window.removeEventListener("message", handleResult);
+        resolve({success: false, message: "Razorpay checkout did not respond. Please try again."});
+      }, 90000);
+      function handleResult(event) {
+        const data = event.data || {};
+        if (event.source !== window.parent || data.type !== "vani:razorpay-result" || data.customer_id !== customerId || data.request_id !== requestId) return;
+        window.clearTimeout(timeout);
+        window.removeEventListener("message", handleResult);
+        resolve(data);
+      }
+      window.addEventListener("message", handleResult);
+      window.parent.postMessage({
+        type: "vani:open-razorpay",
+        customer_id: customerId,
+        request_id: requestId,
+        options
+      }, "*");
+    });
+  }
+
   function showInlineActionNotice(suggestionsBox, text, tone = "success") {
     if (!suggestionsBox) return;
     suggestionsBox.innerHTML = "";
@@ -1173,6 +1198,8 @@
       ? config.payment_actions.find(item => String(item.id || "") === String(action.action_value || ""))
       : null;
     const isUpiPayment = (paymentAction?.payment_method || action.payment_method || "").toLowerCase() === "upi";
+    const collectPayerEmail = !(config.payment_collect_payer_email === false || config.payment_collect_payer_email === 0 || config.payment_collect_payer_email === "0" || config.payment_collect_payer_email === "false");
+    const collectPayerPhone = !(config.payment_collect_payer_phone === false || config.payment_collect_payer_phone === 0 || config.payment_collect_payer_phone === "0" || config.payment_collect_payer_phone === "false");
     suggestionsBox.innerHTML = "";
     suggestionsBox.style.display = "grid";
     const panel = document.createElement("form");
@@ -1184,9 +1211,9 @@
     const nameInput = document.createElement("input");
     const emailInput = document.createElement("input");
     const phoneInput = document.createElement("input");
-    const contactFields = isUpiPayment
-      ? [[nameInput, "Your name"], [phoneInput, "Mobile number"]]
-      : [[nameInput, "Your name"], [emailInput, "Email address"], [phoneInput, "Mobile number"]];
+    const contactFields = [[nameInput, "Your name"]];
+    if (collectPayerEmail) contactFields.push([emailInput, "Email address"]);
+    if (collectPayerPhone) contactFields.push([phoneInput, "Mobile number"]);
     contactFields.forEach(([field, placeholder]) => {
       field.placeholder = placeholder;
       css(field, {width: "100%", boxSizing: "border-box", border: "1px solid #e2e8f0", borderRadius: "12px", padding: "9px 10px", font: "inherit", fontSize: "12px", outline: "none"});
@@ -1294,8 +1321,14 @@
     };
     panel.onsubmit = async event => {
       event.preventDefault();
-      if (isUpiPayment && (!nameInput.value.trim() || !phoneInput.value.trim())) {
-        setStatus("Enter your name and mobile number to continue.");
+      if (!nameInput.value.trim()) {
+        setStatus("Enter your name to continue.");
+        nameInput.focus();
+        return;
+      }
+      if (collectPayerEmail && emailInput.value.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailInput.value.trim())) {
+        setStatus("Enter a valid email address.");
+        emailInput.focus();
         return;
       }
       submit.disabled = true;
@@ -1309,8 +1342,8 @@
         session_id: sessionId,
         source_url: sourceUrl,
         payer_name: nameInput.value.trim(),
-        payer_email: isUpiPayment ? "" : emailInput.value.trim(),
-        payer_phone: phoneInput.value.trim()
+        payer_email: collectPayerEmail ? emailInput.value.trim() : "",
+        payer_phone: collectPayerPhone ? phoneInput.value.trim() : ""
       };
       const orderResponse = await api("create_customer_payment_order", "POST", createPayload);
       if (!orderResponse.success) {
@@ -1332,13 +1365,6 @@
         submit.textContent = "Refresh UPI options";
         return;
       }
-      const loaded = await loadRazorpayCheckout();
-      if (!loaded || !window.Razorpay) {
-        submit.disabled = false;
-        submit.textContent = "Continue to payment";
-        setStatus("Payment checkout could not be loaded.");
-        return;
-      }
       if (!orderResponse.order?.id) {
         submit.disabled = false;
         submit.textContent = "Continue to payment";
@@ -1346,43 +1372,65 @@
         return;
       }
       const paymentAction = orderResponse.payment_action || {};
-      const checkout = new Razorpay({
+      const checkoutOptions = {
         key: orderResponse.key_id,
         amount: paymentAction.amount_paise,
         currency: paymentAction.currency || "INR",
         name: orderResponse.business_name || config.bot_name || "Payment",
         description: paymentAction.description || paymentAction.label || action.label || "Payment",
         order_id: orderResponse.order?.id,
-        prefill: {name: nameInput.value.trim(), email: emailInput.value.trim(), contact: phoneInput.value.trim()},
-        theme: {color: themeAccent()},
-        handler: async response => {
-          const verify = await api("verify_customer_payment", "POST", {
-            customer_id: customerId,
-            razorpay_order_id: response.razorpay_order_id,
-            razorpay_payment_id: response.razorpay_payment_id,
-            razorpay_signature: response.razorpay_signature,
-            payer_name: nameInput.value.trim(),
-            payer_email: emailInput.value.trim(),
-            payer_phone: phoneInput.value.trim()
-          });
-          if (verify.success) {
-            setStatus(verify.message || orderResponse.success_message || "Payment received. Thank you.", true);
-            submit.textContent = "Paid";
-            showFaqActionFeedback(action, context, suggestionsBox, 250);
-          } else {
-            submit.disabled = false;
-            submit.textContent = "Try payment again";
-            setStatus(verify.message || "Payment verification failed.");
-          }
-        },
+        prefill: {name: nameInput.value.trim(), email: collectPayerEmail ? emailInput.value.trim() : "", contact: collectPayerPhone ? phoneInput.value.trim() : ""},
+        theme: {color: themeAccent()}
+      };
+      const verifyRazorpayPayment = async response => {
+        const verify = await api("verify_customer_payment", "POST", {
+          customer_id: customerId,
+          razorpay_order_id: response.razorpay_order_id,
+          razorpay_payment_id: response.razorpay_payment_id,
+          razorpay_signature: response.razorpay_signature,
+          payer_name: nameInput.value.trim(),
+          payer_email: collectPayerEmail ? emailInput.value.trim() : "",
+          payer_phone: collectPayerPhone ? phoneInput.value.trim() : ""
+        });
+        if (verify.success) {
+          setStatus(verify.message || orderResponse.success_message || "Payment received. Thank you.", true);
+          submit.textContent = "Paid";
+          showFaqActionFeedback(action, context, suggestionsBox, 250);
+        } else {
+          submit.disabled = false;
+          submit.textContent = "Try payment again";
+          setStatus(verify.message || "Payment verification failed.");
+        }
+      };
+      if (window.parent !== window) {
+        const parentResult = await openRazorpayOnParent(checkoutOptions);
+        if (parentResult?.success && parentResult.response) {
+          await verifyRazorpayPayment(parentResult.response);
+        } else {
+          submit.disabled = false;
+          submit.textContent = "Continue to payment";
+          if (!parentResult?.dismissed) setStatus(parentResult?.message || "Payment checkout could not be opened.");
+        }
+        return;
+      }
+      const loaded = await loadRazorpayCheckout();
+      if (!loaded || !window.Razorpay) {
+        submit.disabled = false;
+        submit.textContent = "Continue to payment";
+        setStatus("Payment checkout could not be loaded.");
+        return;
+      }
+      const checkout = new Razorpay({
+        ...checkoutOptions,
+        handler: verifyRazorpayPayment,
         modal: {ondismiss: () => { submit.disabled = false; submit.textContent = "Continue to payment"; }}
       });
       checkout.open();
     };
     panel.appendChild(title);
     panel.appendChild(nameInput);
-    if (!isUpiPayment) panel.appendChild(emailInput);
-    panel.appendChild(phoneInput);
+    if (collectPayerEmail) panel.appendChild(emailInput);
+    if (collectPayerPhone) panel.appendChild(phoneInput);
     panel.appendChild(submit);
     panel.appendChild(status);
     suggestionsBox.appendChild(panel);

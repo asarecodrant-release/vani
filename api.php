@@ -4593,6 +4593,12 @@ if ($action === "save_payment_settings") {
     $enablePayments = filter_var($data['is_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
     $enableRazorpay = filter_var($data['razorpay_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
     $enableUpi = filter_var($data['upi_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
+    $collectPayerEmail = array_key_exists('collect_payer_email', $data)
+        ? filter_var($data['collect_payer_email'], FILTER_VALIDATE_BOOLEAN)
+        : true;
+    $collectPayerPhone = array_key_exists('collect_payer_phone', $data)
+        ? filter_var($data['collect_payer_phone'], FILTER_VALIDATE_BOOLEAN)
+        : true;
     $existingRazorpayTermsAccepted = filter_var($existingPaymentSettings['razorpay_terms_accepted'] ?? false, FILTER_VALIDATE_BOOLEAN);
     $acceptRazorpayTerms = filter_var($data['razorpay_terms_accepted'] ?? false, FILTER_VALIDATE_BOOLEAN);
     $razorpayTermsAccepted = $existingRazorpayTermsAccepted || $acceptRazorpayTerms;
@@ -4631,6 +4637,8 @@ if ($action === "save_payment_settings") {
         "upi_terms_accepted" => $upiTermsAccepted,
         "provider" => "razorpay",
         "business_name" => trim(substr((string)($data['business_name'] ?? ''), 0, 120)),
+        "collect_payer_email" => $collectPayerEmail,
+        "collect_payer_phone" => $collectPayerPhone,
         "success_message" => trim(substr((string)($data['success_message'] ?? 'Payment received. Thank you.'), 0, 240))
     ];
     if ($keyId !== '') {
