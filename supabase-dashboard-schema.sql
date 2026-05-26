@@ -32,6 +32,7 @@ create table if not exists public.chatbot_settings (
   faq_feedback_enabled boolean not null default false,
   faq_feedback_type text not null default 'labels',
   faq_feedback_action_ids jsonb not null default '[]'::jsonb,
+  faq_feedback_email_enabled boolean not null default false,
   default_faq_settings jsonb not null default '{}'::jsonb,
   verification_status text default 'Pending',
   created_at timestamptz not null default now(),
@@ -79,6 +80,9 @@ alter table public.chatbot_settings
 
 alter table public.chatbot_settings
   add column if not exists faq_feedback_action_ids jsonb not null default '[]'::jsonb;
+
+alter table public.chatbot_settings
+  add column if not exists faq_feedback_email_enabled boolean not null default false;
 
 alter table public.chatbot_settings
   add column if not exists default_faq_settings jsonb not null default '{}'::jsonb;

@@ -12,6 +12,7 @@ function billing_plans(): array {
                 'whatsapp_redirect' => false,
                 'human_handoff' => false,
                 'faq_action_suggestions' => false,
+                'faq_feedback' => false,
                 'export_reports' => false,
                 'partial_analytics' => false,
                 'advanced_analytics' => false
@@ -28,6 +29,7 @@ function billing_plans(): array {
                 'webhook_support' => true,
                 'human_handoff' => false,
                 'faq_action_suggestions' => true,
+                'faq_feedback' => false,
                 'export_reports' => false,
                 'partial_analytics' => false,
                 'advanced_analytics' => false
@@ -44,6 +46,7 @@ function billing_plans(): array {
                 'webhook_support' => true,
                 'human_handoff' => true,
                 'faq_action_suggestions' => true,
+                'faq_feedback' => true,
                 'export_reports' => false,
                 'partial_analytics' => true,
                 'advanced_analytics' => false
@@ -64,6 +67,7 @@ function billing_plans(): array {
                 'webhook_support' => true,
                 'human_handoff' => true,
                 'faq_action_suggestions' => true,
+                'faq_feedback' => true,
                 'combined_widget' => true,
                 'allowed_domains' => true,
                 'live_chat_actions' => true

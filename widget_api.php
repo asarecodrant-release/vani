@@ -1263,6 +1263,78 @@ function widget_create_handoff_ticket_if_enabled(string $customerId, array $sett
     }
 }
 
+function widget_notify_feedback_by_email(string $customerId, array $feedback, array $settings = []): bool {
+    if (!widget_bool($settings['faq_feedback_email_enabled'] ?? false)) {
+        return false;
+    }
+
+    $signup = widget_get_signup($customerId);
+    $notificationEmail = trim((string)($signup['email'] ?? ''));
+    if (!filter_var($notificationEmail, FILTER_VALIDATE_EMAIL)) {
+        return false;
+    }
+
+    $faqQuestion = '';
+    $faqId = (int)($feedback['faq_id'] ?? 0);
+    if ($faqId > 0) {
+        $faqRows = widget_safe_rows(supabase(
+            "GET",
+            "faq_questions?select=question&id=eq." . urlencode((string)$faqId) . "&customer_id=eq." . urlencode($customerId) . "&limit=1"
+        ));
+        $faqQuestion = (string)($faqRows[0]['question'] ?? '');
+    }
+
+    $actionLabel = '';
+    $actionId = (int)($feedback['action_id'] ?? 0);
+    if ($actionId > 0) {
+        $actionRows = widget_safe_rows(supabase(
+            "GET",
+            "faq_action_suggestions?select=label,action_type&id=eq." . urlencode((string)$actionId) . "&customer_id=eq." . urlencode($customerId) . "&limit=1"
+        ));
+        if (!empty($actionRows[0])) {
+            $actionLabel = trim((string)($actionRows[0]['label'] ?? ''));
+            if ($actionLabel === '') {
+                $actionLabel = trim((string)($actionRows[0]['action_type'] ?? ''));
+            }
+        }
+    }
+
+    $rows = [
+        'Feedback' => (string)($feedback['feedback_value'] ?? ''),
+        'FAQ' => $faqQuestion,
+        'Action' => $actionLabel ?: (string)($feedback['action_type'] ?? ''),
+        'Source page' => (string)($feedback['source_url'] ?? ''),
+        'Session' => (string)($feedback['session_id'] ?? ''),
+        'User ID' => (string)($feedback['user_id'] ?? ''),
+        'Received at' => gmdate('Y-m-d H:i:s') . ' UTC'
+    ];
+
+    $table = '';
+    foreach ($rows as $label => $value) {
+        if (trim($value) === '') {
+            continue;
+        }
+        $table .= '<tr><td style="padding:11px 0;color:#64748b;font-size:13px;font-weight:700;border-bottom:1px solid #e5e7eb;">' . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . '</td><td style="padding:11px 0;color:#0f172a;font-size:14px;font-weight:800;text-align:right;border-bottom:1px solid #e5e7eb;word-break:break-word;">' . htmlspecialchars($value, ENT_QUOTES, 'UTF-8') . '</td></tr>';
+    }
+
+    require_once __DIR__ . '/email.php';
+    $websiteName = trim((string)($signup['website_name'] ?? 'your chatbot'));
+    $subject = 'New chatbot feedback received';
+    $html = '<!doctype html><html><body style="margin:0;padding:0;background:#f6f8fc;font-family:Arial,sans-serif;color:#0f172a;">'
+        . '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f6f8fc;padding:24px 12px;"><tr><td align="center">'
+        . '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;background:#ffffff;border:1px solid #e5e7eb;border-radius:20px;overflow:hidden;box-shadow:0 20px 48px rgba(15,23,42,.08);">'
+        . '<tr><td style="padding:26px 28px;background:linear-gradient(135deg,#4f46e5,#0891b2);color:#ffffff;">'
+        . '<div style="font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;opacity:.86;">Vani AI Feedback</div>'
+        . '<h1 style="margin:10px 0 6px;font-size:26px;line-height:1.2;">New feedback from ' . htmlspecialchars($websiteName, ENT_QUOTES, 'UTF-8') . '</h1>'
+        . '<p style="margin:0;font-size:15px;line-height:1.6;opacity:.92;">A visitor responded after an FAQ action suggestion.</p>'
+        . '</td></tr><tr><td style="padding:26px 28px;">'
+        . '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;">' . $table . '</table>'
+        . '</td></tr><tr><td style="padding:18px 28px;background:#f8fafc;color:#64748b;font-size:12px;line-height:1.6;">This email was sent because Receive Feedback via email is enabled for this chatbot.</td></tr>'
+        . '</table></td></tr></table></body></html>';
+
+    return sendBrevoEmail($notificationEmail, $subject, $html);
+}
+
 function widget_msg91_verify_access_token(string $accessToken): array {
     global $MSG91_AUTH_KEY;
     if ($MSG91_AUTH_KEY === '') {
@@ -1608,6 +1680,10 @@ if ($action === "get_widget_config" || $action === "get_theme") {
     if (!in_array($faqFeedbackType, ['stars', 'emoji', 'labels', 'slider', 'comment'], true)) {
         $faqFeedbackType = 'labels';
     }
+    $canUseFaqFeedback = billing_feature_enabled($activePlan, 'faq_feedback');
+    if (!$canUseFaqFeedback) {
+        $faqFeedbackActionIds = [];
+    }
 
     widget_json_response([
         "success" => true,
@@ -1628,7 +1704,8 @@ if ($action === "get_widget_config" || $action === "get_theme") {
             "whatsapp_redirect" => billing_feature_enabled($activePlan, 'whatsapp_redirect'),
             "allowed_domains" => billing_feature_enabled($activePlan, 'allowed_domains'),
             "live_chat_actions" => billing_feature_enabled($activePlan, 'live_chat_actions'),
-            "faq_action_suggestions" => billing_feature_enabled($activePlan, 'faq_action_suggestions')
+            "faq_action_suggestions" => billing_feature_enabled($activePlan, 'faq_action_suggestions'),
+            "faq_feedback" => $canUseFaqFeedback
         ],
         "website_verification_enabled" => widget_bool($settings['website_verification_enabled'] ?? false),
         "allowed_domains_enabled" => widget_bool($settings['allowed_domains_enabled'] ?? false) && billing_feature_enabled($activePlan, 'allowed_domains'),
@@ -1636,9 +1713,10 @@ if ($action === "get_widget_config" || $action === "get_theme") {
         "live_chat_actions_enabled" => widget_bool($settings['live_chat_actions_enabled'] ?? false) && billing_feature_enabled($activePlan, 'live_chat_actions'),
         "faq_actions_enabled" => widget_bool($settings['faq_actions_enabled'] ?? false) && billing_feature_enabled($activePlan, 'faq_action_suggestions'),
         "faq_category_menu_enabled" => widget_bool($settings['faq_category_menu_enabled'] ?? false),
-        "faq_feedback_enabled" => widget_bool($settings['faq_feedback_enabled'] ?? false),
+        "faq_feedback_enabled" => $canUseFaqFeedback && widget_bool($settings['faq_feedback_enabled'] ?? false),
         "faq_feedback_type" => $faqFeedbackType,
         "faq_feedback_action_ids" => $faqFeedbackActionIds,
+        "faq_feedback_email_enabled" => $canUseFaqFeedback && widget_bool($settings['faq_feedback_email_enabled'] ?? false),
         "scheduled_faq_actions" => widget_scheduled_faq_actions($customerId, $settings, $activePlan),
         "verification_status" => $access['status'],
         "access_allowed" => $access['allowed'],
@@ -1988,6 +2066,11 @@ if ($action === "submit_faq_action_feedback") {
     if (!$customerId || $feedbackValue === '') {
         widget_json_response(["success" => false, "message" => "Missing feedback"], 400);
     }
+    $activePlan = widget_billing_plan_for_customer($customerId);
+    $settings = widget_get_settings($customerId);
+    if (!billing_feature_enabled($activePlan, 'faq_feedback') || !widget_bool($settings['faq_feedback_enabled'] ?? false)) {
+        widget_json_response(["success" => false, "requires_growth" => true, "message" => "FAQ feedback requires Growth or Business plan"], 403);
+    }
 
     $payload = [
         "customer_id" => $customerId,
@@ -2000,9 +2083,13 @@ if ($action === "submit_faq_action_feedback") {
         "source_url" => trim((string)($data['source_url'] ?? '')) ?: null
     ];
     $res = supabase("POST", "faq_action_feedback", [$payload]);
+    $ok = $res['status'] >= 200 && $res['status'] < 300;
+    $feedback = $res['data'][0] ?? $payload;
+    $emailSent = $ok ? widget_notify_feedback_by_email($customerId, $feedback, $settings) : false;
     widget_json_response([
-        "success" => $res['status'] >= 200 && $res['status'] < 300,
-        "feedback" => $res['data'][0] ?? null
+        "success" => $ok,
+        "feedback" => $res['data'][0] ?? null,
+        "email_sent" => $emailSent
     ]);
 }
 

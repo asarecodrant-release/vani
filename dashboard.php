@@ -456,6 +456,25 @@ function analytics_delta_html(float $current, float $previous, string $suffix = 
     return '<span class="metric-delta ' . h($class) . '">' . h($sign . $change . '%' . $suffix) . ' vs previous</span>';
 }
 
+function dashboard_feedback_is_positive(string $value): bool {
+    $normalized = strtolower(trim($value));
+    if ($normalized === '') {
+        return false;
+    }
+    if (preg_match('/([1-5])\s*stars?/', $normalized, $matches)) {
+        return (int)$matches[1] >= 4;
+    }
+    if (preg_match('/satisfaction\s+(\d+)/', $normalized, $matches)) {
+        return (int)$matches[1] >= 7;
+    }
+    return in_array($normalized, ['great', 'helpful', 'very happy', 'happy'], true);
+}
+
+function dashboard_feedback_display_value(string $value): string {
+    $value = trim($value);
+    return $value !== '' ? $value : 'No value';
+}
+
 function analytics_url(string $range, string $selectedBotId, string $from = '', string $to = ''): string {
     $params = ['analytics_range' => $range];
     if ($selectedBotId !== '') {
@@ -509,6 +528,21 @@ if ($billingToInput !== '') {
     $billingRangeParts[] = 'To ' . $billingToInput;
 }
 $billingRangeLabel = $billingFilterActive ? implode(' ', $billingRangeParts) : 'Showing latest wallet transactions';
+
+$feedbackFromInput = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['feedback_from'] ?? '') ? (string)$_GET['feedback_from'] : '';
+$feedbackToInput = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['feedback_to'] ?? '') ? (string)$_GET['feedback_to'] : '';
+if ($feedbackFromInput !== '' && $feedbackToInput !== '' && $feedbackFromInput > $feedbackToInput) {
+    [$feedbackFromInput, $feedbackToInput] = [$feedbackToInput, $feedbackFromInput];
+}
+$feedbackFilterActive = $feedbackFromInput !== '' || $feedbackToInput !== '';
+$feedbackRangeParts = [];
+if ($feedbackFromInput !== '') {
+    $feedbackRangeParts[] = 'From ' . $feedbackFromInput;
+}
+if ($feedbackToInput !== '') {
+    $feedbackRangeParts[] = 'To ' . $feedbackToInput;
+}
+$feedbackRangeLabel = $feedbackFilterActive ? implode(' ', $feedbackRangeParts) : 'Showing latest feedback';
 
 $bots = safe_data(supabase(
     "GET",
@@ -677,6 +711,25 @@ $faqActionRows = $selectedBotId
         "faq_action_suggestions?select=*&customer_id=eq." . urlencode($selectedBotId) . "&order=display_order.asc,created_at.desc"
     ))
     : [];
+$faqActionById = [];
+foreach ($faqActionRows as $actionRow) {
+    $faqActionById[(string)($actionRow['id'] ?? '')] = $actionRow;
+}
+
+$allFeedbackRows = $selectedBotId
+    ? safe_data(supabase(
+        "GET",
+        "faq_action_feedback?select=*&customer_id=eq." . urlencode($selectedBotId) . "&order=created_at.desc&limit=5000"
+    ))
+    : [];
+$feedbackDisplayRows = array_values(array_filter($allFeedbackRows, function ($row) use ($feedbackFromInput, $feedbackToInput) {
+    if ($feedbackFromInput === '' && $feedbackToInput === '') {
+        return true;
+    }
+    $from = $feedbackFromInput !== '' ? $feedbackFromInput : '0000-01-01';
+    $to = $feedbackToInput !== '' ? $feedbackToInput : '9999-12-31';
+    return date_in_range($row, 'created_at', $from, $to);
+}));
 
 $scheduledFaqActionRows = $selectedBotId
     ? safe_data(supabase(
@@ -706,6 +759,7 @@ $conversationRows = array_values(array_filter($conversationRows, fn($row) => dat
 $usageRows = array_values(array_filter($usageRows, fn($row) => date_in_range($row, 'created_at', $analyticsFrom, $analyticsTo)));
 $leadRows = array_values(array_filter($leadRows, fn($row) => date_in_range($row, 'created_at', $analyticsFrom, $analyticsTo)));
 $sessionRows = array_values(array_filter($sessionRows, fn($row) => date_in_range($row, 'created_at', $analyticsFrom, $analyticsTo)));
+$feedbackRows = array_values(array_filter($allFeedbackRows, fn($row) => date_in_range($row, 'created_at', $analyticsFrom, $analyticsTo)));
 
 $settings = $settingsRows[0] ?? [];
 $leadSettings = $leadSettingsRows[0] ?? [];
@@ -754,6 +808,7 @@ $canUseHumanHandoff = billing_feature_enabled($activePlanId, 'human_handoff');
 $canUseAllowedDomains = billing_feature_enabled($activePlanId, 'allowed_domains');
 $canUseLiveChatActions = billing_feature_enabled($activePlanId, 'live_chat_actions');
 $canUseFaqActionSuggestions = billing_feature_enabled($activePlanId, 'faq_action_suggestions');
+$canUseFaqFeedback = billing_feature_enabled($activePlanId, 'faq_feedback');
 $autoRechargeRule = billing_auto_recharge_rule($activePlanId);
 $autoRechargeThresholdPaise = (int)($billingAccount['auto_recharge_threshold_paise'] ?? 0) ?: (int)$autoRechargeRule['threshold_paise'];
 $autoRechargeAmountPaise = (int)($billingAccount['auto_recharge_amount_paise'] ?? 0) ?: (int)$autoRechargeRule['amount_paise'];
@@ -1190,6 +1245,46 @@ $uniqueLeadCount = count($uniqueLeadRows);
 $weakLeadCount = count(array_filter($uniqueLeadRows, fn($row) => ($row['lead_type'] ?? '') === 'Weak'));
 $realUniqueLeadCount = $uniqueLeadCount - $weakLeadCount;
 
+$feedbackCount = count($feedbackRows);
+$feedbackDisplayCount = count($feedbackDisplayRows);
+$feedbackPositiveCount = 0;
+$feedbackUniqueUsers = [];
+$feedbackValueCounts = [];
+$feedbackActionTypeCounts = [];
+$feedbackDailyCounts = [];
+$recentFeedbackRows = array_slice($feedbackRows, 0, 25);
+foreach ($feedbackRows as $feedbackRow) {
+    $feedbackValue = dashboard_feedback_display_value((string)($feedbackRow['feedback_value'] ?? ''));
+    $feedbackValueCounts[$feedbackValue] = ($feedbackValueCounts[$feedbackValue] ?? 0) + 1;
+    if (dashboard_feedback_is_positive($feedbackValue)) {
+        $feedbackPositiveCount++;
+    }
+    $feedbackUser = trim((string)($feedbackRow['user_id'] ?? $feedbackRow['session_id'] ?? ''));
+    if ($feedbackUser !== '') {
+        $feedbackUniqueUsers[$feedbackUser] = true;
+    }
+    $actionId = (string)($feedbackRow['action_id'] ?? '');
+    $actionLabel = '';
+    if ($actionId !== '' && isset($faqActionById[$actionId])) {
+        $actionLabel = trim((string)($faqActionById[$actionId]['label'] ?? ''));
+    }
+    if ($actionLabel === '') {
+        $actionLabel = trim((string)($feedbackRow['action_type'] ?? ''));
+    }
+    $actionLabel = $actionLabel !== '' ? $actionLabel : 'Unknown action';
+    $feedbackActionTypeCounts[$actionLabel] = ($feedbackActionTypeCounts[$actionLabel] ?? 0) + 1;
+    $created = (string)($feedbackRow['created_at'] ?? '');
+    if ($created !== '') {
+        $day = substr($created, 0, 10);
+        $feedbackDailyCounts[$day] = ($feedbackDailyCounts[$day] ?? 0) + 1;
+    }
+}
+arsort($feedbackValueCounts);
+arsort($feedbackActionTypeCounts);
+ksort($feedbackDailyCounts);
+$feedbackPositiveRate = $feedbackCount > 0 ? round(($feedbackPositiveCount / max(1, $feedbackCount)) * 100) : 0;
+$feedbackTopValue = !empty($feedbackValueCounts) ? array_key_first($feedbackValueCounts) : 'No feedback yet';
+
 $leadConversionRate = $conversationCount > 0 ? round(($leadCount / max(1, $conversationCount)) * 100) : 0;
 $otpVerifiedLeadPercent = $leadCount > 0 ? round(($verifiedLeadCount / max(1, $leadCount)) * 100) : 0;
 $avgResponseTimeMs = !empty($responseTimes) ? round(array_sum($responseTimes) / count($responseTimes)) : 0;
@@ -1255,10 +1350,20 @@ if (is_string($faqFeedbackActionIds)) {
     $faqFeedbackActionIds = is_array($decodedFeedbackActionIds) ? $decodedFeedbackActionIds : [];
 }
 $faqFeedbackActionIds = array_values(array_filter(array_map('strval', is_array($faqFeedbackActionIds) ? $faqFeedbackActionIds : []), fn($id) => preg_match('/^\d+$/', $id)));
+$faqFeedbackEmailEnabled = filter_var($settings['faq_feedback_email_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
+if (!$canUseFaqFeedback) {
+    $faqFeedbackEnabled = false;
+    $faqFeedbackEmailEnabled = false;
+    $faqFeedbackActionIds = [];
+}
 $verificationStatus = first_value($settings, ['verification_status'], 'Pending');
 $faqById = [];
 foreach ($faqs as $faq) {
     $faqById[(string)($faq['id'] ?? '')] = $faq;
+}
+$faqActionById = [];
+foreach ($faqActionRows as $actionRow) {
+    $faqActionById[(string)($actionRow['id'] ?? '')] = $actionRow;
 }
 $websiteName = first_value($selectedBot, ['website_name'], '');
 $leadEnabled = filter_var($leadSettings['is_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
@@ -2046,6 +2151,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
       <button class="tab-btn chatbot-nav-item" data-tab="setup">Chatbot Setup</button>
       <button class="tab-btn chatbot-nav-item" data-tab="faqs">FAQ Management</button>
       <button class="tab-btn chatbot-nav-item" data-tab="outside-faqs">Outside FAQs</button>
+      <button class="tab-btn chatbot-nav-item" data-tab="feedback-received" <?php echo $canUseFaqFeedback ? '' : 'data-premium-lock="This feature is only for Growth or Business users. Please recharge your wallet with appropriate plan."'; ?>>Feedback Received</button>
       <!-- Conversations tab hidden for now; keep this code for later.
       <button class="tab-btn" data-tab="logs">Conversations</button>
       -->
@@ -2343,7 +2449,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
             <button class="faq-subtab-btn" type="button" data-faq-subtab="faq-subpanel-default">Default FAQs</button>
             <button class="faq-subtab-btn" type="button" data-faq-subtab="faq-subpanel-qa">FAQ Q&amp;A</button>
             <button class="faq-subtab-btn" type="button" data-faq-subtab="faq-subpanel-scheduled">Scheduled Actions</button>
-            <button class="faq-subtab-btn" type="button" data-faq-subtab="faq-subpanel-feedback-type">Collect Feedback From Users</button>
+            <button class="faq-subtab-btn" type="button" data-faq-subtab="faq-subpanel-feedback-type" <?php echo $canUseFaqFeedback ? '' : 'data-premium-lock="This feature is only for Growth or Business users. Please recharge your wallet with appropriate plan."'; ?>>Collect Feedback From Users</button>
           </div>
           <div class="section-body faq-action-section faq-subpanel active" id="faq-subpanel-options" style="border-top:0;margin-top:0">
             <div class="inline-row" style="justify-content:space-between;gap:16px;margin-bottom:14px">
@@ -2559,6 +2665,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
               </div>
             </div>
           </div>
+          <?php if ($canUseFaqFeedback): ?>
           <div class="section-body faq-subpanel" id="faq-subpanel-feedback-type">
             <div class="faq-action-card">
               <div class="inline-row" style="justify-content:space-between;gap:16px">
@@ -2621,6 +2728,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
               </div>
             </div>
           </div>
+          <?php endif; ?>
           <div class="faq-subpanel" id="faq-subpanel-qa">
           <div class="section-body">
             <?php if ($faqFreezeActive): ?>
@@ -2791,6 +2899,90 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
         </div>
       </section>
 
+      <?php if ($canUseFaqFeedback): ?>
+      <section class="tab-panel" id="feedback-received">
+        <div class="panel section-body">
+          <div class="section-head" style="padding:0">
+            <div>
+              <span class="eyebrow">Feedback Received</span>
+              <h3 style="margin-top:8px">Collected User Feedback</h3>
+              <p class="muted">Feedback submitted after FAQ Action Suggestions appears here.</p>
+            </div>
+            <div class="inline-row" style="justify-content:flex-end;gap:12px">
+              <span class="tag"><?php echo h($feedbackDisplayCount); ?> shown</span>
+              <label class="switch" title="Receive feedback via email">
+                <input id="feedbackEmailToggle" type="checkbox" <?php echo $faqFeedbackEmailEnabled ? 'checked' : ''; ?> aria-label="Receive feedback via email">
+                <span class="switch-slider"></span>
+              </label>
+            </div>
+          </div>
+          <small class="input-help">Receive Feedback via email sends new feedback to the chatbot owner email.</small>
+
+          <form class="analytics-filter-form" method="get" action="dashboard.php#feedback-received" style="margin-top:18px">
+            <?php if ($selectedBotId): ?><input type="hidden" name="bot" value="<?php echo h($selectedBotId); ?>"><?php endif; ?>
+            <input type="hidden" name="analytics_range" value="<?php echo h($analyticsRange); ?>">
+            <input type="hidden" name="date_from" value="<?php echo h($analyticsFrom); ?>">
+            <input type="hidden" name="date_to" value="<?php echo h($analyticsTo); ?>">
+            <div class="field">
+              <label>From date</label>
+              <input type="date" name="feedback_from" value="<?php echo h($feedbackFromInput); ?>">
+            </div>
+            <div class="field">
+              <label>To date</label>
+              <input type="date" name="feedback_to" value="<?php echo h($feedbackToInput); ?>">
+            </div>
+            <div class="analytics-filter-actions">
+              <button class="pill-btn" type="submit">Apply</button>
+              <a class="ghost-btn" href="dashboard.php?<?php echo h(http_build_query(array_filter(['bot' => $selectedBotId], fn($value) => $value !== ''))); ?>#feedback-received">Clear</a>
+            </div>
+          </form>
+          <p class="muted" style="margin:10px 0 0"><?php echo h($feedbackRangeLabel); ?></p>
+        </div>
+
+        <div class="metrics">
+          <div class="panel metric"><span>Total Feedback</span><strong><?php echo h($feedbackDisplayCount); ?></strong><small>Responses matching this filter.</small></div>
+          <div class="panel metric"><span>All-Time Feedback</span><strong><?php echo h(count($allFeedbackRows)); ?></strong><small>Total collected for this chatbot.</small></div>
+          <div class="panel metric"><span>Email Alerts</span><strong><?php echo $faqFeedbackEmailEnabled ? 'ON' : 'OFF'; ?></strong><small>New feedback email notifications.</small></div>
+          <div class="panel metric"><span>Top Feedback</span><strong style="font-size:18px"><?php echo h($feedbackTopValue); ?></strong><small>Based on the analytics date range.</small></div>
+        </div>
+
+        <div class="panel section-body">
+          <div class="section-head" style="padding:0 0 14px">
+            <div>
+              <h3>Feedback List</h3>
+              <p class="muted">Use the date filter above to review a specific period.</p>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Date</th><th>Feedback</th><th>FAQ</th><th>Action</th><th>Type</th><th>User</th><th>Source Page</th></tr></thead>
+              <tbody>
+                <?php if (empty($feedbackDisplayRows)): ?><tr><td colspan="7" class="empty">No feedback received for this filter.</td></tr><?php endif; ?>
+                <?php foreach ($feedbackDisplayRows as $feedbackRow): ?>
+                  <?php
+                    $feedbackFaq = $faqById[(string)($feedbackRow['faq_id'] ?? '')] ?? [];
+                    $feedbackAction = $faqActionById[(string)($feedbackRow['action_id'] ?? '')] ?? [];
+                    $sourceUrl = trim((string)($feedbackRow['source_url'] ?? ''));
+                    $sourceLabel = $sourceUrl !== '' ? (parse_url($sourceUrl, PHP_URL_PATH) ?: $sourceUrl) : '-';
+                    $userLabel = trim((string)($feedbackRow['user_id'] ?? '')) ?: (trim((string)($feedbackRow['session_id'] ?? '')) ?: '-');
+                  ?>
+                  <tr>
+                    <td><?php echo h(substr((string)($feedbackRow['created_at'] ?? ''), 0, 16) ?: '-'); ?></td>
+                    <td><span class="tag <?php echo dashboard_feedback_is_positive((string)($feedbackRow['feedback_value'] ?? '')) ? 'good' : ''; ?>"><?php echo h(dashboard_feedback_display_value((string)($feedbackRow['feedback_value'] ?? ''))); ?></span></td>
+                    <td><?php echo h($feedbackFaq['question'] ?? 'Deleted FAQ'); ?></td>
+                    <td><?php echo h($feedbackAction['label'] ?? '-'); ?></td>
+                    <td><?php echo h($feedbackRow['action_type'] ?? ($feedbackAction['action_type'] ?? '-')); ?></td>
+                    <td><?php echo h($userLabel); ?></td>
+                    <td><?php echo h($sourceLabel); ?></td>
+                  </tr>
+                <?php endforeach; ?>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+      <?php endif; ?>
+
       <!-- Conversations tab content hidden for now; keep this code for later.
       <section class="tab-panel" id="logs">
         <div class="panel">
@@ -2865,6 +3057,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
             <button class="analytics-tab-btn active" type="button" data-analytics-tab="analytics-overview" <?php echo $canUsePartialAnalytics ? '' : 'data-premium-lock="Growth wallet plan required"'; ?>>Overview</button>
             <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-conversations" <?php echo $canUsePartialAnalytics ? '' : 'data-premium-lock="Growth wallet plan required"'; ?>>Conversations</button>
             <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-faq" <?php echo $canUsePartialAnalytics ? '' : 'data-premium-lock="Growth wallet plan required"'; ?>>FAQ Insights</button>
+            <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-feedback" <?php echo $canUsePartialAnalytics ? '' : 'data-premium-lock="Growth wallet plan required"'; ?>>Feedback</button>
             <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-leads" <?php echo $canUsePartialAnalytics ? '' : 'data-premium-lock="Growth wallet plan required"'; ?>>Leads</button>
             <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-pages" <?php echo $canUseAdvancedAnalytics ? '' : 'data-premium-lock="Business wallet plan required"'; ?>>Pages</button>
             <button class="analytics-tab-btn" type="button" data-analytics-tab="analytics-realtime" <?php echo $canUseAdvancedAnalytics ? '' : 'data-premium-lock="Business wallet plan required"'; ?>>Real-Time</button>
@@ -3054,6 +3247,57 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                       <td><?php echo h($item['source_page'] ?? 'Unknown page'); ?></td>
                       <td><?php echo h(substr((string)($item['created_at'] ?? ''), 0, 10)); ?></td>
                       <td><button class="ghost-btn" type="button" data-question="<?php echo h($item['question']); ?>" data-jump="faqs">Add to FAQ</button></td>
+                    </tr>
+                  <?php endforeach; ?>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        </div>
+
+        <div class="analytics-subpanel" id="analytics-feedback">
+        <div class="bi-kpi-grid">
+          <div class="bi-kpi"><span>Total Feedback</span><strong><?php echo h($feedbackCount); ?></strong><small>Collected in selected analytics range.</small></div>
+          <div class="bi-kpi"><span>Positive Feedback</span><strong><?php echo h($feedbackPositiveRate); ?>%</strong><small><?php echo h($feedbackPositiveCount); ?> positive responses.</small></div>
+          <div class="bi-kpi"><span>Unique Users</span><strong><?php echo h(count($feedbackUniqueUsers)); ?></strong><small>Based on user or session IDs.</small></div>
+          <div class="bi-kpi"><span>Top Feedback</span><strong><?php echo h($feedbackTopValue); ?></strong><small>Most selected feedback value.</small></div>
+        </div>
+
+        <div class="bi-dashboard-grid">
+          <div class="panel bi-panel">
+            <div class="bi-panel-head"><h3>Feedback Trend</h3><span class="tag"><?php echo h($analyticsRangeLabel); ?></span></div>
+            <div class="bi-chart" id="analyticsFeedbackTrendChart" data-chart-title="Feedback trend"></div>
+          </div>
+          <div class="panel bi-panel">
+            <div class="bi-panel-head"><h3>Feedback Values</h3><span class="tag"><?php echo h(count($feedbackValueCounts)); ?> values</span></div>
+            <div class="bi-chart" id="analyticsFeedbackValueChart" data-chart-title="Feedback values"></div>
+          </div>
+        </div>
+
+        <div class="analytics-grid two">
+          <div class="panel bi-panel">
+            <div class="bi-panel-head"><h3>Actions Getting Feedback</h3><span class="tag"><?php echo h(count($feedbackActionTypeCounts)); ?> actions</span></div>
+            <div class="bi-chart" id="analyticsFeedbackActionChart" data-chart-title="Feedback by action"></div>
+          </div>
+          <div class="panel section-body">
+            <h3>Recent Feedback</h3>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Date</th><th>Feedback</th><th>Action</th><th>Source</th></tr></thead>
+                <tbody>
+                  <?php if (empty($recentFeedbackRows)): ?><tr><td colspan="4" class="empty">No feedback in this analytics range.</td></tr><?php endif; ?>
+                  <?php foreach ($recentFeedbackRows as $feedbackRow): ?>
+                    <?php
+                      $feedbackAction = $faqActionById[(string)($feedbackRow['action_id'] ?? '')] ?? [];
+                      $sourceUrl = trim((string)($feedbackRow['source_url'] ?? ''));
+                      $sourceLabel = $sourceUrl !== '' ? (parse_url($sourceUrl, PHP_URL_PATH) ?: $sourceUrl) : '-';
+                    ?>
+                    <tr>
+                      <td><?php echo h(substr((string)($feedbackRow['created_at'] ?? ''), 0, 10) ?: '-'); ?></td>
+                      <td><?php echo h(dashboard_feedback_display_value((string)($feedbackRow['feedback_value'] ?? ''))); ?></td>
+                      <td><?php echo h($feedbackAction['label'] ?? ($feedbackRow['action_type'] ?? '-')); ?></td>
+                      <td><?php echo h($sourceLabel); ?></td>
                     </tr>
                   <?php endforeach; ?>
                 </tbody>
@@ -3911,7 +4155,8 @@ const businessFeatures = <?php echo js_json([
   "human_handoff" => $canUseHumanHandoff,
   "allowed_domains" => $canUseAllowedDomains,
   "live_chat_actions" => $canUseLiveChatActions,
-  "faq_action_suggestions" => $canUseFaqActionSuggestions
+  "faq_action_suggestions" => $canUseFaqActionSuggestions,
+  "faq_feedback" => $canUseFaqFeedback
 ]); ?>;
 const leadWalletCharges = <?php echo js_json([
   "fresh_email_lead" => billing_wallet_charge_paise($activePlanId, "fresh_email_lead"),
@@ -3947,6 +4192,9 @@ const analyticsReport = <?php echo js_json([
     "real_unique_leads" => $realUniqueLeadCount,
     "weak_unique_leads" => $weakLeadCount,
     "otp_verified_leads" => $verifiedLeadCount,
+    "feedback_received" => $feedbackCount,
+    "positive_feedback_percent" => $feedbackPositiveRate,
+    "unique_feedback_users" => count($feedbackUniqueUsers),
     "active_chatbots" => $activeChatbotCount,
     "most_active_page" => $mostActivePage,
     "returning_users_percent" => $returningUsersPercent,
@@ -3960,6 +4208,7 @@ const analyticsReport = <?php echo js_json([
   "daily_answered_counts" => $dailyAnsweredChartCounts,
   "daily_unanswered_counts" => $dailyUnansweredChartCounts,
   "daily_lead_counts" => $dailyLeadChartCounts,
+  "daily_feedback_counts" => $feedbackDailyCounts,
   "hour_counts" => $hourChartCounts,
   "devices" => $deviceCounts,
   "browsers" => $browserCounts,
@@ -3981,6 +4230,17 @@ const analyticsReport = <?php echo js_json([
     "mobile" => $phoneLeadCount
   ],
   "lead_periods" => $leadPeriodStats,
+  "feedback_values" => $feedbackValueCounts,
+  "feedback_actions" => $feedbackActionTypeCounts,
+  "recent_feedback" => array_values(array_map(function ($feedback) use ($faqActionById) {
+    $action = $faqActionById[(string)($feedback['action_id'] ?? '')] ?? [];
+    return [
+      "date" => substr((string)($feedback["created_at"] ?? ""), 0, 10),
+      "feedback" => dashboard_feedback_display_value((string)($feedback["feedback_value"] ?? "")),
+      "action" => (string)($action["label"] ?? ($feedback["action_type"] ?? "")),
+      "source_page" => (string)($feedback["source_url"] ?? "")
+    ];
+  }, array_slice($recentFeedbackRows, 0, 100))),
   "unique_leads" => array_values(array_map(fn($lead) => [
     "lead_type" => $lead["lead_type"] ?? "Weak",
     "email" => $lead["email"] ?? "",
@@ -4072,9 +4332,15 @@ function htmlEscape(value) {
 }
 
 function openTab(id, updateHash = true) {
+  const targetTab = document.querySelector(`.tab-btn[data-tab="${id}"]`);
+  if (targetTab?.dataset.premiumLock) {
+    alert(targetTab.dataset.premiumLock);
+    openTab("subscription", updateHash);
+    return;
+  }
   tabs.forEach(tab => tab.classList.toggle("active", tab.dataset.tab === id));
   panels.forEach(panel => panel.classList.toggle("active", panel.id === id));
-  document.querySelector(`.tab-btn[data-tab="${id}"]`)?.scrollIntoView({
+  targetTab?.scrollIntoView({
     block: "nearest",
     inline: "nearest",
     behavior: "smooth"
@@ -4282,6 +4548,12 @@ document.querySelectorAll(".analytics-tab-btn").forEach(tab => {
 });
 
 function openFaqSubtab(target) {
+  const targetButton = document.querySelector(`.faq-subtab-btn[data-faq-subtab="${target}"]`);
+  if (targetButton?.dataset.premiumLock) {
+    alert(targetButton.dataset.premiumLock);
+    openTab("subscription");
+    return;
+  }
   if (!document.getElementById(target)) return;
   document.querySelectorAll(".faq-subtab-btn").forEach(item => {
     item.classList.toggle("active", item.dataset.faqSubtab === target);
@@ -4577,7 +4849,8 @@ function analyticsDateSeries() {
     ...Object.keys(analyticsReport.daily_counts || {}),
     ...Object.keys(analyticsReport.daily_answered_counts || {}),
     ...Object.keys(analyticsReport.daily_unanswered_counts || {}),
-    ...Object.keys(analyticsReport.daily_lead_counts || {})
+    ...Object.keys(analyticsReport.daily_lead_counts || {}),
+    ...Object.keys(analyticsReport.daily_feedback_counts || {})
   ]);
   const dates = Array.from(dateSet).sort();
   return {
@@ -4585,7 +4858,8 @@ function analyticsDateSeries() {
     conversations: dates.map(date => Number(analyticsReport.daily_counts?.[date] || 0)),
     answered: dates.map(date => Number(analyticsReport.daily_answered_counts?.[date] || 0)),
     unanswered: dates.map(date => Number(analyticsReport.daily_unanswered_counts?.[date] || 0)),
-    leads: dates.map(date => Number(analyticsReport.daily_lead_counts?.[date] || 0))
+    leads: dates.map(date => Number(analyticsReport.daily_lead_counts?.[date] || 0)),
+    feedback: dates.map(date => Number(analyticsReport.daily_feedback_counts?.[date] || 0))
   };
 }
 
@@ -4722,6 +4996,27 @@ function renderAnalyticsBICharts() {
     yAxis: {type: "value", axisLabel: {color: colors.muted}, splitLine: {lineStyle: {color: colors.line}}},
     series: [{name: "Lead Quality", type: "bar", data: leadQualityRows.map(item => item.value), label: {show: true, position: "top"}}]
   }, !leadQualityRows.some(item => item.value > 0));
+
+  setAnalyticsChart("analyticsFeedbackTrendChart", {
+    xAxis: {type: "category", data: series.dates, axisLabel: {color: colors.muted}},
+    yAxis: {type: "value", axisLabel: {color: colors.muted}, splitLine: {lineStyle: {color: colors.line}}},
+    series: [{name: "Feedback", type: "line", smooth: true, areaStyle: {opacity: .16}, data: series.feedback}]
+  }, !series.feedback.some(value => value > 0));
+
+  const feedbackValues = analyticsEntries(analyticsReport.feedback_values, 10);
+  setAnalyticsChart("analyticsFeedbackValueChart", {
+    tooltip: {trigger: "item", formatter: "{b}: {c} ({d}%)", confine: true},
+    legend: {bottom: 0, type: "scroll", textStyle: {color: colors.muted}},
+    series: [{type: "pie", radius: ["42%", "70%"], center: ["50%", "46%"], label: {formatter: "{b}\n{c}"}, data: feedbackValues}]
+  }, !feedbackValues.length);
+
+  const feedbackActions = analyticsEntries(analyticsReport.feedback_actions, 10);
+  setAnalyticsChart("analyticsFeedbackActionChart", {
+    grid: {left: 116, right: 18, top: 28, bottom: 28},
+    xAxis: {type: "value", axisLabel: {color: colors.muted}, splitLine: {lineStyle: {color: colors.line}}},
+    yAxis: {type: "category", data: feedbackActions.map(item => item.name), axisLabel: {color: colors.muted, width: 104, overflow: "truncate"}},
+    series: [{name: "Feedback", type: "bar", data: feedbackActions.map(item => item.value), label: {show: true, position: "right"}}]
+  }, !feedbackActions.length);
 }
 
 function renderAnalyticsVisuals() {
@@ -4987,6 +5282,9 @@ function analyticsCsv() {
     ["Daily Counts", "Date", "Conversations"],
     ...Object.entries(analyticsReport.daily_counts || {}).map(([date, count]) => ["Daily Counts", date, count]),
     [],
+    ["Daily Feedback", "Date", "Feedback"],
+    ...Object.entries(analyticsReport.daily_feedback_counts || {}).map(([date, count]) => ["Daily Feedback", date, count]),
+    [],
     ["Hourly Counts", "Hour", "Queries"],
     ...Object.entries(analyticsReport.hour_counts || {}).map(([hour, count]) => ["Hourly Counts", `${hour}:00`, count]),
     [],
@@ -5013,6 +5311,15 @@ function analyticsCsv() {
     [],
     ["Lead Periods", "Period", "Days", "Unique Leads"],
     ...(analyticsReport.lead_periods || []).map(item => ["Lead Periods", item.label, item.days, item.count]),
+    [],
+    ["Feedback Values", "Feedback", "Count"],
+    ...Object.entries(analyticsReport.feedback_values || {}).map(([value, count]) => ["Feedback Values", value, count]),
+    [],
+    ["Feedback Actions", "Action", "Count"],
+    ...Object.entries(analyticsReport.feedback_actions || {}).map(([action, count]) => ["Feedback Actions", action, count]),
+    [],
+    ["Recent Feedback", "Date", "Feedback", "Action", "Source Page"],
+    ...(analyticsReport.recent_feedback || []).map(item => ["Recent Feedback", item.date, item.feedback, item.action, item.source_page]),
     [],
     ["Source Pages", "Page", "Conversations", "Leads", "Success Rate"],
     ...(analyticsReport.source_pages || []).map(item => ["Source Pages", item.page, item.conversations, item.leads, `${item.success_rate}%`])
@@ -5041,7 +5348,7 @@ function analyticsReportHtml(options = {}) {
     {name: "Email Contacts", value: Number(leadQuality.email) || 0},
     {name: "Mobile Contacts", value: Number(leadQuality.mobile) || 0}
   ];
-  const maxDaily = Math.max(1, ...daily.conversations, ...daily.answered, ...daily.unanswered, ...daily.leads);
+  const maxDaily = Math.max(1, ...daily.conversations, ...daily.answered, ...daily.unanswered, ...daily.leads, ...daily.feedback);
   const logo = vaniBrandLogo ? `<img src="${vaniBrandLogo}" alt="Vani AI">` : `<strong>Vani AI</strong>`;
   const card = (title, value, note = "") => `<div class="kpi"><span>${esc(title)}</span><strong>${esc(value)}</strong><small>${esc(note)}</small></div>`;
   const alertCard = (title, value, note, status = "") => `<div class="alert ${status}"><strong>${esc(title)}</strong><b>${esc(value)}</b><span>${esc(note)}</span></div>`;
@@ -5155,6 +5462,7 @@ ${table("Top Questions", ["Question", "Count", "Success Rate"], (analyticsReport
 ${table("Unanswered Questions", ["Question", "Source Page", "Date"], (analyticsReport.unanswered_questions || []).map(item => `<tr><td>${esc(item.question)}</td><td>${esc(item.source_page)}</td><td>${esc(item.date)}</td></tr>`))}
 ${table("City Location Clusters", ["Location", "Country", "Latitude", "Longitude", "Users"], (analyticsReport.city_clusters || []).map(item => `<tr><td>${esc(item.name)}</td><td>${esc(item.country || "-")}</td><td>${esc(item.lat)}</td><td>${esc(item.lon)}</td><td>${esc(item.count)}</td></tr>`))}
 ${table("Unique Leads", ["Type", "Email", "Mobile", "Email OTP", "Mobile OTP", "Captures", "WhatsApp", "Source Pages", "Location", "First Seen", "Last Seen"], (analyticsReport.unique_leads || []).map(item => `<tr><td>${esc(item.lead_type)}</td><td>${esc(item.email)}</td><td>${esc(item.phone_number)}</td><td>${esc(item.email_otp_count)}</td><td>${esc(item.mobile_otp_count)}</td><td>${esc(item.total_records)}</td><td>${esc(item.whatsapp_redirect_count)}</td><td>${esc(item.source_pages)}</td><td>${esc(item.location)}</td><td>${esc(item.first_seen)}</td><td>${esc(item.last_seen)}</td></tr>`))}
+${table("Recent Feedback", ["Date", "Feedback", "Action", "Source Page"], (analyticsReport.recent_feedback || []).map(item => `<tr><td>${esc(item.date)}</td><td>${esc(item.feedback)}</td><td>${esc(item.action)}</td><td>${esc(item.source_page)}</td></tr>`))}
 ${table("Source Pages", ["Page", "Conversations", "Leads", "Success Rate"], (analyticsReport.source_pages || []).map(item => `<tr><td>${esc(item.page)}</td><td>${esc(item.conversations)}</td><td>${esc(item.leads)}</td><td>${esc(item.success_rate)}%</td></tr>`))}
 <div class="footer"><span>Vani AI Analytics | Branded customer dashboard report</span><span>${esc(reportFileBase())}</span></div>
 </main>
@@ -5229,6 +5537,14 @@ async function captureAnalyticsChartImages() {
   renderAnalyticsBICharts();
   await waitForAnalyticsPaint(250);
   ["analyticsLeadTrendChart", "analyticsLeadQualityChart"].forEach(id => {
+    captureChart(id, analyticsCharts.get(id));
+  });
+
+  openAnalyticsTab("analytics-feedback", false);
+  await waitForAnalyticsPaint();
+  renderAnalyticsBICharts();
+  await waitForAnalyticsPaint(250);
+  ["analyticsFeedbackTrendChart", "analyticsFeedbackValueChart", "analyticsFeedbackActionChart"].forEach(id => {
     captureChart(id, analyticsCharts.get(id));
   });
 
@@ -6418,6 +6734,10 @@ document.getElementById("faqCategoryMenuToggle")?.addEventListener("change", asy
 });
 
 async function saveFaqFeedbackSettings({live = false} = {}) {
+  if (!businessFeatures.faq_feedback) {
+    showToast("FAQ feedback requires Growth or Business plan");
+    return;
+  }
   const enabled = !!document.getElementById("faqFeedbackToggle")?.checked;
   const feedbackType = document.querySelector(".faqFeedbackType:checked")?.value || "labels";
   const actionIds = Array.from(document.querySelectorAll(".faqFeedbackAction:checked")).map(input => input.value);
@@ -6445,6 +6765,19 @@ document.querySelectorAll(".faqFeedbackType").forEach(input => {
   input.addEventListener("change", () => {
     saveFaqFeedbackSettings({live: true});
   });
+});
+
+document.getElementById("feedbackEmailToggle")?.addEventListener("change", async event => {
+  if (!businessFeatures.faq_feedback) {
+    event.currentTarget.checked = false;
+    showToast("Feedback Received requires Growth or Business plan");
+    return;
+  }
+  const enabled = !!event.currentTarget.checked;
+  const saved = await saveDashboardSettings({faq_feedback_email_enabled: enabled});
+  if (saved) {
+    showToast(enabled ? "Feedback email alerts enabled" : "Feedback email alerts disabled");
+  }
 });
 
 const faqActionHelp = {

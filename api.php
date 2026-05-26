@@ -4673,6 +4673,13 @@ if ($action === "save_dashboard_settings") {
         }
         unset($data['faq_actions_enabled']);
     }
+    if (!billing_feature_enabled($activePlan, 'faq_feedback')) {
+        if (!empty($data['faq_feedback_enabled']) || !empty($data['faq_feedback_email_enabled'])) {
+            echo json_encode(["success" => false, "requires_growth" => true, "message" => "FAQ feedback requires Growth or Business plan"]);
+            exit;
+        }
+        unset($data['faq_feedback_enabled'], $data['faq_feedback_type'], $data['faq_feedback_action_ids'], $data['faq_feedback_email_enabled']);
+    }
     if (array_key_exists('default_faq_settings', $data)) {
         $allowedDefaultFaqKeys = ['fallback_contact', 'contact_support', 'business_hours', 'location_service_area', 'human_agent'];
         $incomingDefaultFaqs = is_array($data['default_faq_settings']) ? $data['default_faq_settings'] : [];
@@ -4730,6 +4737,7 @@ if ($action === "save_dashboard_settings") {
         "faq_feedback_enabled",
         "faq_feedback_type",
         "faq_feedback_action_ids",
+        "faq_feedback_email_enabled",
         "default_faq_settings",
         "verification_status"
     ];
