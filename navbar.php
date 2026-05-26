@@ -77,14 +77,20 @@ nav .container{
   flex-shrink:0;
   text-decoration:none;
   gap:10px;
+  min-width:0;
+  padding:7px 10px 9px 6px;
+  border-radius:16px;
+  border:1px solid rgba(56,189,248,.22);
+  background:linear-gradient(135deg,rgba(2,18,38,.8),rgba(2,44,58,.56));
+  color:#f8fafc;
 }
 
 .logo img{
-  height:52px;
-  width:52px;
+  height:58px;
+  width:58px;
   object-fit:contain;
   transition:0.3s ease;
-  filter:drop-shadow(0 0 16px rgba(99,102,241,.38));
+  filter:drop-shadow(0 0 18px rgba(56,189,248,.72)) drop-shadow(0 0 24px rgba(34,211,238,.24));
 }
 
 .logo img:hover{
@@ -92,13 +98,29 @@ nav .container{
 }
 
 .logo span{
-  color:#111827;
   font-size:21px;
   font-weight:800;
-  background:linear-gradient(90deg,#4f46e5,#ec4899);
+  background:linear-gradient(90deg,#ffffff,#93c5fd 52%,#67e8f9);
   -webkit-background-clip:text;
   -webkit-text-fill-color:transparent;
-  filter:drop-shadow(0 0 12px rgba(99,102,241,.18));
+  filter:drop-shadow(0 0 14px rgba(129,140,248,.28));
+  white-space:nowrap;
+}
+
+body.bright .logo,
+body.setup-theme-light .logo,
+body.vani-public-theme.bright .logo{
+  background:linear-gradient(135deg,rgba(245,158,11,.12),rgba(250,204,21,.1));
+  border-color:rgba(217,119,6,.18);
+  color:#111827;
+}
+
+body.bright .logo span,
+body.setup-theme-light .logo span,
+body.vani-public-theme.bright .logo span{
+  background:linear-gradient(90deg,#18181b,#b7791f 52%,#f59e0b);
+  -webkit-background-clip:text;
+  -webkit-text-fill-color:transparent;
 }
 
 /* =========================
@@ -293,9 +315,19 @@ body.vani-public-theme.bright .user-box span{
     height:64px;
   }
 
+  .logo{
+    padding:5px 8px 6px 5px;
+    border-radius:14px;
+    gap:8px;
+  }
+
   .logo img{
-    width:46px;
-    height:46px;
+    width:44px;
+    height:44px;
+  }
+
+  .logo span{
+    font-size:18px;
   }
 
   .nav-right{
@@ -307,6 +339,10 @@ body.vani-public-theme.bright .user-box span{
   .nav-actions{
     gap:6px;
   }
+
+  .logo span{
+    font-size:16px;
+  }
 }
 
 /* =========================
@@ -317,8 +353,8 @@ body.vani-public-theme.bright .user-box span{
 }
 
 .navbar-home .logo img{
-  width:54px;
-  height:54px;
+  width:58px;
+  height:58px;
 }
 
 .navbar-home .nav-right,
@@ -337,8 +373,8 @@ body.vani-public-theme.bright .user-box span{
 /* mobile fix for index */
 @media(max-width:768px){
   .navbar-home .logo img{
-    width:46px;
-    height:46px;
+    width:44px;
+    height:44px;
   }
 
   .navbar-home .nav-link,
