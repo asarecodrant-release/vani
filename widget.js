@@ -461,6 +461,10 @@
     messages.scrollTop = messages.scrollHeight;
   }
 
+  function chatMessagesContainer() {
+    return document.querySelector("[data-vani-messages]");
+  }
+
   function addThinkingMessage(messages) {
     const botName = (config.bot_name || "Chatbot").trim() || "Chatbot";
     const row = document.createElement("div");
@@ -1344,7 +1348,8 @@
     };
     const finishSuccessfulPayment = message => {
       setStatus(message, true);
-      addMessage(messages, message, "bot");
+      const messageBox = chatMessagesContainer();
+      if (messageBox) addMessage(messageBox, message, "bot");
       if (faqFeedbackEnabledFor(action)) {
         suggestionsBox.innerHTML = "";
         suggestionsBox.style.display = "grid";
@@ -1365,7 +1370,8 @@
         if (!suggestionsBox.children.length) {
           suggestionsBox.style.display = "none";
         }
-        addMessage(messages, "How Can I help you further?", "bot");
+        const messageBox = chatMessagesContainer();
+        if (messageBox) addMessage(messageBox, "How Can I help you further?", "bot");
       }, 1000);
     };
     panel.onsubmit = async event => {
@@ -1569,7 +1575,7 @@
           }
           submit.disabled = false;
           submit.textContent = "Continue to payment";
-          if (!parentResult?.dismissed) setStatus(parentResult?.message || "Payment checkout could not be opened.");
+          setStatus(parentResult?.message || (parentResult?.dismissed ? "Payment window closed before completion." : "Payment checkout could not be opened."));
         }
         return;
       }
@@ -1581,27 +1587,49 @@
         return;
       }
       try {
-        const checkout = new Razorpay({
+        let checkoutSettled = false;
+        let checkout = null;
+        const closeCheckout = () => {
+          try {
+            if (checkout && typeof checkout.close === "function") checkout.close();
+          } catch (error) {}
+        };
+        checkout = new Razorpay({
           ...checkoutOptions,
-          handler: verifyRazorpayPayment,
-          modal: {ondismiss: () => { submit.disabled = false; submit.textContent = "Continue to payment"; }}
+          handler: response => {
+            checkoutSettled = true;
+            closeCheckout();
+            window.setTimeout(() => verifyRazorpayPayment(response), 300);
+          },
+          modal: {ondismiss: () => {
+            if (checkoutSettled) return;
+            submit.disabled = false;
+            submit.textContent = "Continue to payment";
+            setStatus("Payment window closed before completion.");
+          }}
         });
         if (typeof checkout.on === "function") {
           checkout.on("payment.failed", async response => {
+            checkoutSettled = true;
             const message = response?.error?.description || "Payment failed or was cancelled.";
-            await api("record_customer_payment_failure", "POST", {
-              customer_id: customerId,
-              razorpay_order_id: orderResponse.order?.id || "",
-              razorpay_payment_id: response?.error?.metadata?.payment_id || "",
-              message,
-              error: response?.error || null,
-              payer_name: nameInput.value.trim(),
-              payer_email: collectPayerEmail ? emailInput.value.trim() : "",
-              payer_phone: collectPayerPhone ? phoneInput.value.trim() : ""
-            });
-            submit.disabled = false;
-            submit.textContent = "Try payment again";
-            setStatus(message);
+            closeCheckout();
+            window.setTimeout(async () => {
+              await api("record_customer_payment_failure", "POST", {
+                customer_id: customerId,
+                razorpay_order_id: orderResponse.order?.id || "",
+                razorpay_payment_id: response?.error?.metadata?.payment_id || "",
+                message,
+                error: response?.error || null,
+                payer_name: nameInput.value.trim(),
+                payer_email: collectPayerEmail ? emailInput.value.trim() : "",
+                payer_phone: collectPayerPhone ? phoneInput.value.trim() : ""
+              });
+              submit.disabled = false;
+              submit.textContent = "Try payment again";
+              setStatus(message);
+              const messageBox = chatMessagesContainer();
+              if (messageBox) addMessage(messageBox, message, "bot");
+            }, 300);
           });
         }
         checkout.open();

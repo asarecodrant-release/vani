@@ -110,18 +110,37 @@
           return;
         }
         try {
-          const checkout = new Razorpay({
+          let settled = false;
+          let checkout = null;
+          const closeCheckout = () => {
+            try {
+              if (checkout && typeof checkout.close === "function") checkout.close();
+            } catch (error) {}
+          };
+          checkout = new Razorpay({
             ...(data.options || {}),
-            handler: response => sendRazorpayResult(requestId, {success: true, response}),
-            modal: {ondismiss: () => sendRazorpayResult(requestId, {success: false, dismissed: true})}
+            handler: response => {
+              settled = true;
+              closeCheckout();
+              window.setTimeout(() => sendRazorpayResult(requestId, {success: true, response}), 300);
+            },
+            modal: {ondismiss: () => {
+              if (settled) return;
+              settled = true;
+              sendRazorpayResult(requestId, {success: false, dismissed: true, message: "Payment window closed before completion."});
+            }}
           });
           if (typeof checkout.on === "function") {
             checkout.on("payment.failed", response => {
-              sendRazorpayResult(requestId, {
-                success: false,
-                message: response?.error?.description || "Payment failed in Razorpay checkout.",
-                error: response?.error || null
-              });
+              settled = true;
+              closeCheckout();
+              window.setTimeout(() => {
+                sendRazorpayResult(requestId, {
+                  success: false,
+                  message: response?.error?.description || "Payment failed in Razorpay checkout.",
+                  error: response?.error || null
+                });
+              }, 300);
             });
           }
           checkout.open();
