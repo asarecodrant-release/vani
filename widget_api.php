@@ -1604,6 +1604,10 @@ if ($action === "get_widget_config" || $action === "get_theme") {
         $faqFeedbackActionIds = is_array($decodedFeedbackActionIds) ? $decodedFeedbackActionIds : [];
     }
     $faqFeedbackActionIds = array_values(array_filter(array_map('strval', is_array($faqFeedbackActionIds) ? $faqFeedbackActionIds : []), fn($id) => preg_match('/^\d+$/', $id)));
+    $faqFeedbackType = (string)($settings['faq_feedback_type'] ?? 'labels');
+    if (!in_array($faqFeedbackType, ['stars', 'emoji', 'labels', 'slider', 'comment'], true)) {
+        $faqFeedbackType = 'labels';
+    }
 
     widget_json_response([
         "success" => true,
@@ -1633,6 +1637,7 @@ if ($action === "get_widget_config" || $action === "get_theme") {
         "faq_actions_enabled" => widget_bool($settings['faq_actions_enabled'] ?? false) && billing_feature_enabled($activePlan, 'faq_action_suggestions'),
         "faq_category_menu_enabled" => widget_bool($settings['faq_category_menu_enabled'] ?? false),
         "faq_feedback_enabled" => widget_bool($settings['faq_feedback_enabled'] ?? false),
+        "faq_feedback_type" => $faqFeedbackType,
         "faq_feedback_action_ids" => $faqFeedbackActionIds,
         "scheduled_faq_actions" => widget_scheduled_faq_actions($customerId, $settings, $activePlan),
         "verification_status" => $access['status'],

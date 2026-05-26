@@ -4696,6 +4696,12 @@ if ($action === "save_dashboard_settings") {
         $incomingFeedbackActionIds = is_array($data['faq_feedback_action_ids']) ? $data['faq_feedback_action_ids'] : [];
         $data['faq_feedback_action_ids'] = array_values(array_filter(array_map('strval', $incomingFeedbackActionIds), fn($id) => preg_match('/^\d+$/', $id)));
     }
+    if (array_key_exists('faq_feedback_type', $data)) {
+        $allowedFeedbackTypes = ['stars', 'emoji', 'labels', 'slider', 'comment'];
+        $data['faq_feedback_type'] = in_array((string)$data['faq_feedback_type'], $allowedFeedbackTypes, true)
+            ? (string)$data['faq_feedback_type']
+            : 'labels';
+    }
 
     $allowed = [
         "bot_name",
@@ -4722,6 +4728,7 @@ if ($action === "save_dashboard_settings") {
         "faq_actions_enabled",
         "faq_category_menu_enabled",
         "faq_feedback_enabled",
+        "faq_feedback_type",
         "faq_feedback_action_ids",
         "default_faq_settings",
         "verification_status"

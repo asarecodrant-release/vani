@@ -895,12 +895,29 @@
     const title = document.createElement("strong");
     title.textContent = "Was this action helpful?";
     css(title, {color: "#0f172a", fontSize: "13px"});
+    const submitFeedback = async (value, container) => {
+      if (container) {
+        container.querySelectorAll("button,input,textarea").forEach(item => item.disabled = true);
+      }
+      await api("submit_faq_action_feedback", "POST", {
+        customer_id: customerId,
+        user_id: userId,
+        session_id: sessionId,
+        source_url: sourceUrl,
+        faq_id: action.faq_id || context.matched_faq_id || null,
+        action_id: action.id || null,
+        action_type: normalizedFeedbackActionType(action.action_type || "link"),
+        feedback_value: value
+      });
+      title.textContent = "Thanks for the feedback.";
+      if (container) container.remove();
+    };
+    const feedbackType = config.faq_feedback_type || "labels";
     const grid = document.createElement("div");
-    css(grid, {display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: "6px"});
-    ["Great", "Helpful", "Okay", "Poor", "Need help"].forEach(value => {
+    const addChoiceButton = (value, label = value) => {
       const button = document.createElement("button");
       button.type = "button";
-      button.textContent = value;
+      button.textContent = label;
       css(button, {
         border: "1px solid #e2e8f0",
         borderRadius: "10px",
@@ -911,23 +928,54 @@
         fontWeight: "800",
         padding: "8px 6px"
       });
-      button.onclick = async () => {
-        grid.querySelectorAll("button").forEach(item => item.disabled = true);
-        await api("submit_faq_action_feedback", "POST", {
-          customer_id: customerId,
-          user_id: userId,
-          session_id: sessionId,
-          source_url: sourceUrl,
-          faq_id: action.faq_id || context.matched_faq_id || null,
-          action_id: action.id || null,
-          action_type: normalizedFeedbackActionType(action.action_type || "link"),
-          feedback_value: value
-        });
-        title.textContent = "Thanks for the feedback.";
-        grid.remove();
-      };
+      button.onclick = () => submitFeedback(value, grid);
       grid.appendChild(button);
-    });
+    };
+    if (feedbackType === "stars") {
+      css(grid, {display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: "6px"});
+      ["1 star", "2 stars", "3 stars", "4 stars", "5 stars"].forEach((value, index) => addChoiceButton(value, "★".repeat(index + 1)));
+    } else if (feedbackType === "emoji") {
+      css(grid, {display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: "6px"});
+      [["Very happy", "😄"], ["Happy", "🙂"], ["Neutral", "😐"], ["Unhappy", "🙁"], ["Need help", "🙏"]].forEach(([value, label]) => addChoiceButton(value, label));
+    } else if (feedbackType === "slider") {
+      css(grid, {display: "grid", gap: "8px"});
+      const slider = document.createElement("input");
+      slider.type = "range";
+      slider.min = "1";
+      slider.max = "10";
+      slider.value = "8";
+      const valueLabel = document.createElement("div");
+      valueLabel.textContent = `Satisfaction: ${slider.value}/10`;
+      css(valueLabel, {fontSize: "12px", color: "#475569", fontWeight: "800"});
+      slider.oninput = () => valueLabel.textContent = `Satisfaction: ${slider.value}/10`;
+      const submit = document.createElement("button");
+      submit.type = "button";
+      submit.textContent = "Send feedback";
+      css(submit, {border: "0", borderRadius: "10px", background: themeBackground(), color: "#fff", cursor: "pointer", fontWeight: "800", padding: "9px 10px"});
+      submit.onclick = () => submitFeedback(`Satisfaction ${slider.value}/10`, grid);
+      grid.appendChild(slider);
+      grid.appendChild(valueLabel);
+      grid.appendChild(submit);
+    } else if (feedbackType === "comment") {
+      css(grid, {display: "grid", gap: "8px"});
+      const textarea = document.createElement("textarea");
+      textarea.placeholder = "Write your feedback...";
+      textarea.rows = 3;
+      css(textarea, {width: "100%", boxSizing: "border-box", border: "1px solid #e2e8f0", borderRadius: "10px", padding: "9px 10px", font: "inherit", fontSize: "12px", resize: "vertical"});
+      const submit = document.createElement("button");
+      submit.type = "button";
+      submit.textContent = "Send feedback";
+      css(submit, {border: "0", borderRadius: "10px", background: themeBackground(), color: "#fff", cursor: "pointer", fontWeight: "800", padding: "9px 10px"});
+      submit.onclick = () => {
+        const value = textarea.value.trim();
+        if (value) submitFeedback(value, grid);
+      };
+      grid.appendChild(textarea);
+      grid.appendChild(submit);
+    } else {
+      css(grid, {display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: "6px"});
+      ["Great", "Helpful", "Okay", "Poor", "Need help"].forEach(value => addChoiceButton(value));
+    }
     panel.appendChild(title);
     panel.appendChild(grid);
     suggestionsBox.appendChild(panel);

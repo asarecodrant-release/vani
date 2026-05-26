@@ -1245,6 +1245,10 @@ $liveChatActionsEnabled = filter_var($settings['live_chat_actions_enabled'] ?? f
 $faqActionsEnabled = filter_var($settings['faq_actions_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
 $faqCategoryMenuEnabled = filter_var($settings['faq_category_menu_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
 $faqFeedbackEnabled = filter_var($settings['faq_feedback_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
+$faqFeedbackType = (string)($settings['faq_feedback_type'] ?? 'labels');
+if (!in_array($faqFeedbackType, ['stars', 'emoji', 'labels', 'slider', 'comment'], true)) {
+    $faqFeedbackType = 'labels';
+}
 $faqFeedbackActionIds = $settings['faq_feedback_action_ids'] ?? [];
 if (is_string($faqFeedbackActionIds)) {
     $decodedFeedbackActionIds = json_decode($faqFeedbackActionIds, true);
@@ -2339,6 +2343,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
             <button class="faq-subtab-btn" type="button" data-faq-subtab="faq-subpanel-default">Default FAQs</button>
             <button class="faq-subtab-btn" type="button" data-faq-subtab="faq-subpanel-qa">FAQ Q&amp;A</button>
             <button class="faq-subtab-btn" type="button" data-faq-subtab="faq-subpanel-scheduled">Scheduled Actions</button>
+            <button class="faq-subtab-btn" type="button" data-faq-subtab="faq-subpanel-feedback-type">Feedback type</button>
           </div>
           <div class="section-body faq-action-section faq-subpanel active" id="faq-subpanel-options" style="border-top:0;margin-top:0">
             <div class="inline-row" style="justify-content:space-between;gap:16px;margin-bottom:14px">
@@ -2427,14 +2432,14 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
               <?php endforeach; ?>
             </div>
 
-            <div class="faq-action-card">
+            <div class="faq-action-card" style="display:none">
               <div class="inline-row" style="justify-content:space-between;gap:16px">
                 <div>
                   <h3>FAQ Action Feedback</h3>
                   <small class="input-help">Ask visitors for quick feedback after they use selected FAQ action suggestions.</small>
                 </div>
                 <label class="switch" title="Enable FAQ action feedback">
-                  <input id="faqFeedbackToggle" type="checkbox" <?php echo $faqFeedbackEnabled ? 'checked' : ''; ?> aria-label="Enable FAQ action feedback">
+                  <input id="faqFeedbackToggleLegacy" type="checkbox" <?php echo $faqFeedbackEnabled ? 'checked' : ''; ?> aria-label="Enable FAQ action feedback">
                   <span class="switch-slider"></span>
                 </label>
               </div>
@@ -2452,7 +2457,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                         <small class="input-help"><?php echo h($linkedFaq['question'] ?? 'Deleted FAQ'); ?> · <?php echo h($actionRow['action_type'] ?? 'link'); ?></small>
                       </div>
                       <label class="switch" title="Collect feedback after this action">
-                        <input class="faqFeedbackAction" type="checkbox" value="<?php echo h($actionId); ?>" <?php echo in_array($actionId, $faqFeedbackActionIds, true) ? 'checked' : ''; ?> aria-label="Collect feedback after <?php echo h($actionRow['label'] ?? 'FAQ action'); ?>">
+                        <input class="faqFeedbackActionLegacy" type="checkbox" value="<?php echo h($actionId); ?>" <?php echo in_array($actionId, $faqFeedbackActionIds, true) ? 'checked' : ''; ?> aria-label="Collect feedback after <?php echo h($actionRow['label'] ?? 'FAQ action'); ?>">
                         <span class="switch-slider"></span>
                       </label>
                     </div>
@@ -2551,6 +2556,68 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                     </div>
                   </div>
                 <?php endfor; ?>
+              </div>
+            </div>
+          </div>
+          <div class="section-body faq-subpanel" id="faq-subpanel-feedback-type">
+            <div class="faq-action-card">
+              <div class="inline-row" style="justify-content:space-between;gap:16px">
+                <div>
+                  <h3>FAQ Action Feedback</h3>
+                  <small class="input-help">Ask visitors for quick feedback after they use selected FAQ action suggestions.</small>
+                </div>
+                <label class="switch" title="Enable FAQ action feedback">
+                  <input id="faqFeedbackToggle" type="checkbox" <?php echo $faqFeedbackEnabled ? 'checked' : ''; ?> aria-label="Enable FAQ action feedback">
+                  <span class="switch-slider"></span>
+                </label>
+              </div>
+              <div class="faq-action-grid" style="margin-top:14px">
+                <?php
+                  $feedbackTypes = [
+                      'stars' => ['Star rating', 'Visitors choose 1 to 5 stars.'],
+                      'emoji' => ['Smiles / emojis', 'Visitors choose a quick mood reaction.'],
+                      'labels' => ['Great / Helpful / Okay', 'Visitors choose from five clear text options.'],
+                      'slider' => ['Satisfaction slider', 'Visitors drag a 1 to 10 satisfaction bar.'],
+                      'comment' => ['Comment feedback', 'Visitors type a short written comment.']
+                  ];
+                ?>
+                <?php foreach ($feedbackTypes as $typeKey => [$typeLabel, $typeHelp]): ?>
+                  <label class="lead-option" style="cursor:pointer">
+                    <div class="inline-row" style="justify-content:space-between;gap:12px">
+                      <div>
+                        <strong><?php echo h($typeLabel); ?></strong>
+                        <small class="input-help"><?php echo h($typeHelp); ?></small>
+                      </div>
+                      <input class="faqFeedbackType" type="radio" name="faqFeedbackType" value="<?php echo h($typeKey); ?>" <?php echo $faqFeedbackType === $typeKey ? 'checked' : ''; ?> aria-label="<?php echo h($typeLabel); ?>">
+                    </div>
+                  </label>
+                <?php endforeach; ?>
+              </div>
+            </div>
+
+            <div class="faq-action-card">
+              <h3>Select FAQ actions for feedback</h3>
+              <small class="input-help">Feedback appears only after the selected FAQ Action Suggestions are clicked or submitted.</small>
+              <div class="faq-action-list" style="margin-top:14px">
+                <?php if (empty($faqActionRows)): ?>
+                  <p class="empty">Add FAQ Action Suggestions in Options, then select which actions should collect feedback.</p>
+                <?php endif; ?>
+                <?php foreach ($faqActionRows as $actionRow): ?>
+                  <?php $linkedFaq = $faqById[(string)($actionRow['faq_id'] ?? '')] ?? []; ?>
+                  <?php $actionId = (string)($actionRow['id'] ?? ''); ?>
+                  <div class="lead-option">
+                    <div class="inline-row" style="justify-content:space-between;gap:12px">
+                      <div>
+                        <strong><?php echo h($actionRow['label'] ?? 'FAQ action'); ?></strong>
+                        <small class="input-help"><?php echo h($linkedFaq['question'] ?? 'Deleted FAQ'); ?> | <?php echo h($actionRow['action_type'] ?? 'link'); ?></small>
+                      </div>
+                      <label class="switch" title="Collect feedback after this action">
+                        <input class="faqFeedbackAction" type="checkbox" value="<?php echo h($actionId); ?>" <?php echo in_array($actionId, $faqFeedbackActionIds, true) ? 'checked' : ''; ?> aria-label="Collect feedback after <?php echo h($actionRow['label'] ?? 'FAQ action'); ?>">
+                        <span class="switch-slider"></span>
+                      </label>
+                    </div>
+                  </div>
+                <?php endforeach; ?>
               </div>
             </div>
           </div>
@@ -6352,9 +6419,11 @@ document.getElementById("faqCategoryMenuToggle")?.addEventListener("change", asy
 
 async function saveFaqFeedbackSettings({live = false} = {}) {
   const enabled = !!document.getElementById("faqFeedbackToggle")?.checked;
+  const feedbackType = document.querySelector(".faqFeedbackType:checked")?.value || "labels";
   const actionIds = Array.from(document.querySelectorAll(".faqFeedbackAction:checked")).map(input => input.value);
   const saved = await saveDashboardSettings({
     faq_feedback_enabled: enabled,
+    faq_feedback_type: feedbackType,
     faq_feedback_action_ids: actionIds
   });
   if (saved && live) {
@@ -6367,6 +6436,12 @@ document.getElementById("faqFeedbackToggle")?.addEventListener("change", () => {
 });
 
 document.querySelectorAll(".faqFeedbackAction").forEach(input => {
+  input.addEventListener("change", () => {
+    saveFaqFeedbackSettings({live: true});
+  });
+});
+
+document.querySelectorAll(".faqFeedbackType").forEach(input => {
   input.addEventListener("change", () => {
     saveFaqFeedbackSettings({live: true});
   });
