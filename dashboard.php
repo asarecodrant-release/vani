@@ -1648,11 +1648,12 @@ body.dark .topbar{background:rgba(15,23,42,.66)}
 .page-title h1{font-size:24px;letter-spacing:0}
 .page-title p{color:var(--muted);font-size:13px;margin-top:4px}
 .top-actions{display:flex;align-items:center;gap:10px;flex-wrap:nowrap;justify-content:flex-end;min-width:0}
-.user-menu{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:7px 10px}
-.avatar{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;color:#fff;font-weight:700;background:linear-gradient(135deg,var(--brand),var(--brand-2))}
-.user-text{max-width:180px;min-width:0}
+.user-menu{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:7px 10px;min-width:0}
+.avatar{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;color:#fff;font-weight:700;background:linear-gradient(135deg,var(--brand),var(--brand-2));flex:0 0 36px}
+.user-text{max-width:180px;min-width:0;flex:1 1 auto}
 .user-text strong,.user-text span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .user-text strong{font-size:13px}.user-text span{font-size:12px;color:var(--muted)}
+.user-menu .ghost-btn{flex:0 0 auto;white-space:nowrap}
 .pill-btn,.ghost-btn,.danger-btn{
   min-height:40px;border:0;border-radius:12px;padding:0 14px;font-weight:700;cursor:pointer;
   display:inline-flex;align-items:center;justify-content:center;gap:8px;
@@ -2145,9 +2146,11 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
   .top-actions .pill-btn,.top-actions .ghost-btn{width:100%;justify-content:center}
   .desktop-ai-upgrade{display:none}
   .mobile-ai-upgrade{display:inline-flex;width:100%;min-height:48px}
-  .top-actions > .user-menu{display:grid;justify-items:center;text-align:center;padding:16px}
+  .top-actions > .user-menu{display:grid;grid-template-columns:auto minmax(0,1fr);justify-items:stretch;text-align:left;padding:16px;gap:12px;width:100%}
+  .top-actions > .user-menu .avatar{align-self:center}
   .top-actions .user-text{display:block;max-width:100%}
   .top-actions .user-text strong,.top-actions .user-text span{white-space:normal;word-break:break-word}
+  .top-actions > .user-menu .ghost-btn{grid-column:1 / -1;width:100%;justify-content:center}
   .topbar-left{flex:1}
   .page-title{min-width:0}
   .page-title p{display:none}
@@ -2278,6 +2281,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
         <a class="ai-upgrade-btn mobile-ai-upgrade" href="AI_Dashboard_Onboarding.php?bot=<?php echo h(urlencode($selectedBotId)); ?>">Upgrade your Chatbot to AI</a>
         <button class="ghost-btn" id="themeToggle" type="button">Dark</button>
         <a class="ghost-btn" href="index.php">Home</a>
+        <a class="ghost-btn" href="Customer_Manual.php">Customer Manual</a>
         <a class="ghost-btn" href="#profile" data-jump="profile">Profile</a>
         <a class="pill-btn" href="index.php">Create New bot</a>
         <div class="user-menu">

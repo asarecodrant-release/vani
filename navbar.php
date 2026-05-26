@@ -172,6 +172,7 @@ nav .site-menu-trigger{
   background:#f1f5f9;
   padding:6px 10px;
   border-radius:14px;
+  min-width:0;
 }
 
 .user-avatar{
@@ -184,15 +185,22 @@ nav .site-menu-trigger{
   align-items:center;
   justify-content:center;
   font-weight:600;
+  flex:0 0 36px;
 }
 
 .user-box span{
   font-size:14px;
   color:#334155;
   max-width:160px;
+  min-width:0;
+  flex:1 1 auto;
   overflow:hidden;
   text-overflow:ellipsis;
   white-space:nowrap;
+}
+
+.user-box .nav-btn{
+  flex:0 0 auto;
 }
 
 /* =========================

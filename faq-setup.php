@@ -33,6 +33,8 @@ body{min-height:100vh;background:linear-gradient(135deg,#667eea,#764ba2);display
 @keyframes spin{0%{transform:rotate(0deg);}100%{transform:rotate(360deg);}}
 </style>
 <link rel="stylesheet" href="css/setup-theme.css">
+<link rel="stylesheet" href="css/public-theme.css">
+<script defer src="js/public-theme.js"></script>
 </head>
 
 <body>

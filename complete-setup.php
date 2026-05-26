@@ -83,6 +83,8 @@ code{
 }
 </style>
 <link rel="stylesheet" href="css/setup-theme.css">
+<link rel="stylesheet" href="css/public-theme.css">
+<script defer src="js/public-theme.js"></script>
 </head>
 
 <body>
@@ -113,6 +115,7 @@ code{
 
     <button class="button" onclick="copyCode()">📋 Copy Code</button>
     <a class="button" href="<?php echo htmlspecialchars($dashboardUrl, ENT_QUOTES, 'UTF-8'); ?>">Go to Dashboard</a>
+    <a class="button" style="background:rgba(255,255,255,0.16);border:1px solid rgba(255,255,255,0.18)" href="Customer_Manual.php">Open Customer Manual</a>
 
   </div>
 
