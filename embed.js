@@ -3,6 +3,8 @@
   const customerId = script?.getAttribute("data-id") ||
     script?.getAttribute("data-key") ||
     script?.getAttribute("data-customer-id");
+  const openByDefaultHint = script?.getAttribute("data-open-default") === "1" ||
+    script?.getAttribute("data-open") === "1";
 
   if (!customerId) {
     console.error("Vani embed: missing data-id");
@@ -13,6 +15,9 @@
   const frameUrl = new URL("widget-frame.php", scriptUrl);
   frameUrl.searchParams.set("id", customerId);
   frameUrl.searchParams.set("source_url", window.location.href);
+  if (openByDefaultHint) {
+    frameUrl.searchParams.set("open_hint", "1");
+  }
 
   const iframe = document.createElement("iframe");
   iframe.title = "Vani AI chatbot";
@@ -32,8 +37,8 @@
     position: "fixed",
     right: "0",
     bottom: "0",
-    width: "340px",
-    height: "106px",
+    width: openByDefaultHint ? "min(400px, 100vw)" : "340px",
+    height: openByDefaultHint ? "min(610px, 100dvh)" : "106px",
     maxWidth: "100vw",
     maxHeight: "100dvh",
     border: "0",
@@ -43,8 +48,9 @@
     transition: "width .28s cubic-bezier(.2,.8,.2,1), height .28s cubic-bezier(.2,.8,.2,1)"
   });
 
-  let frameState = {open: false, default_open: false, position: "right"};
+  let frameState = {open: openByDefaultHint, default_open: openByDefaultHint, position: "right"};
   let razorpayLoadPromise = null;
+  let openHintLoaded = openByDefaultHint;
 
   function loadRazorpayCheckout() {
     if (window.Razorpay) return Promise.resolve(true);
@@ -85,6 +91,28 @@
       iframe.style.height = "106px";
     }
   }
+
+  function requestOpenHint() {
+    if (openHintLoaded) return;
+    openHintLoaded = true;
+    const hintUrl = new URL("widget_api.php", scriptUrl);
+    hintUrl.searchParams.set("action", "get_open_hint");
+    hintUrl.searchParams.set("customer_id", customerId);
+    hintUrl.searchParams.set("current_url", window.location.href);
+    fetch(hintUrl.toString(), {headers: {"Accept": "application/json"}})
+      .then(response => response.ok ? response.json() : null)
+      .then(data => {
+        if (!data?.success || !data.open) return;
+        applyFrameState({
+          open: true,
+          default_open: true,
+          position: data.position === "left" ? "left" : "right"
+        });
+      })
+      .catch(() => {});
+  }
+
+  requestOpenHint();
 
   function requestChatClose() {
     iframe.contentWindow?.postMessage({

@@ -1834,6 +1834,27 @@ if ($action === "get_widget_config" || $action === "get_theme") {
     ]);
 }
 
+if ($action === "get_open_hint") {
+    $customerId = widget_customer_id();
+    if (!$customerId) {
+        widget_json_response(["success" => false, "message" => "Missing customer_id"], 400);
+    }
+
+    $rows = widget_safe_rows(supabase(
+        "GET",
+        "chatbot_settings?select=chat_open_by_default,position,is_active&customer_id=eq." . urlencode($customerId) . "&limit=1"
+    ));
+    $settings = $rows[0] ?? [];
+    $isActive = widget_bool($settings['is_active'] ?? true, true);
+    $open = $isActive && widget_bool($settings['chat_open_by_default'] ?? false);
+
+    widget_json_response([
+        "success" => true,
+        "open" => $open,
+        "position" => ($settings['position'] ?? 'right') === 'left' ? 'left' : 'right'
+    ]);
+}
+
 if ($action === "chat") {
     $data = widget_get_json();
     $requestStartedAt = microtime(true);

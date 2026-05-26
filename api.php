@@ -2255,6 +2255,11 @@ if ($action === "download_wordpress_plugin") {
     }
     $baseUrl = app_public_base_url();
     $scriptUrl = $baseUrl . "/embed.js";
+    $settingsRows = safe_rows(supabase(
+        "GET",
+        "chatbot_settings?select=chat_open_by_default&customer_id=eq." . urlencode($customerId) . "&limit=1"
+    ));
+    $openByDefault = filter_var($settingsRows[0]['chat_open_by_default'] ?? false, FILTER_VALIDATE_BOOLEAN) ? '1' : '0';
     $pluginSlug = "vani-ai-chatbot";
     $pluginName = "vani-ai-chatbot-" . substr(preg_replace('/[^a-zA-Z0-9-]/', '', $customerId), 0, 12) . ".zip";
     $mainPhp = <<<'PHP'
@@ -2277,6 +2282,7 @@ function vani_ai_default_settings() {
         'bot_id' => '__BOT_ID__',
         'script_url' => '__SCRIPT_URL__',
         'enabled' => '1',
+        'open_default' => '__OPEN_DEFAULT__',
     ];
 }
 
@@ -2301,6 +2307,7 @@ add_action('admin_init', function () {
             'bot_id' => sanitize_text_field($input['bot_id'] ?? ''),
             'script_url' => esc_url_raw($input['script_url'] ?? ''),
             'enabled' => !empty($input['enabled']) ? '1' : '0',
+            'open_default' => !empty($input['open_default']) ? '1' : '0',
         ];
     });
 });
@@ -2329,6 +2336,10 @@ function vani_ai_settings_page() {
                     <th scope="row">Enabled</th>
                     <td><label><input type="checkbox" name="<?php echo esc_attr(VANI_AI_OPTION_KEY); ?>[enabled]" value="1" <?php checked($settings['enabled'], '1'); ?>> Show chatbot on this website</label></td>
                 </tr>
+                <tr>
+                    <th scope="row">Open automatically</th>
+                    <td><label><input type="checkbox" name="<?php echo esc_attr(VANI_AI_OPTION_KEY); ?>[open_default]" value="1" <?php checked($settings['open_default'], '1'); ?>> Open chatbot when visitors arrive</label></td>
+                </tr>
             </table>
             <?php submit_button('Save Vani AI Settings'); ?>
         </form>
@@ -2345,13 +2356,14 @@ add_action('wp_footer', function () {
         return;
     }
     printf(
-        '<script src="%s" data-id="%s" defer></script>' . "\n",
+        '<script src="%s" data-id="%s" data-open-default="%s" defer></script>' . "\n",
         esc_url($settings['script_url']),
-        esc_attr($settings['bot_id'])
+        esc_attr($settings['bot_id']),
+        esc_attr($settings['open_default'] ?? '0')
     );
 }, 99);
 PHP;
-    $mainPhp = str_replace(['__BOT_ID__', '__SCRIPT_URL__'], [$customerId, $scriptUrl], $mainPhp);
+    $mainPhp = str_replace(['__BOT_ID__', '__SCRIPT_URL__', '__OPEN_DEFAULT__'], [$customerId, $scriptUrl, $openByDefault], $mainPhp);
     $readme = "Vani AI Chatbot\n\n"
         . "Installation:\n"
         . "1. In WordPress, open Plugins > Add New > Upload Plugin.\n"

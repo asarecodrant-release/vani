@@ -1487,7 +1487,8 @@ $whatsappChargePaise = billing_wallet_charge_paise($activePlanId, 'whatsapp_redi
 $whatsappWalletCanEnable = $billingWalletPaise >= $whatsappChargePaise;
 $whatsappStoppedReason = (string)($leadSettings['whatsapp_redirect_stopped_reason'] ?? '');
 $whatsappFailedChargePaise = (int)($leadSettings['whatsapp_redirect_failed_charge_amount_paise'] ?? 0);
-$embedCode = $selectedBotId ? '<script src="' . $widgetUrl . '" data-id="' . $selectedBotId . '"></script>' : '';
+$openDefaultEmbedAttr = $chatOpenByDefault ? ' data-open-default="1"' : '';
+$embedCode = $selectedBotId ? '<script src="' . $widgetUrl . '" data-id="' . $selectedBotId . '"' . $openDefaultEmbedAttr . '></script>' : '';
 $profileFirstName = first_value($profile, ['first_name'], '');
 $profileLastName = first_value($profile, ['last_name'], '');
 $displayName = trim($profileFirstName . ' ' . $profileLastName);

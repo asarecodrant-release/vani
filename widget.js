@@ -4,8 +4,12 @@
     script?.getAttribute("data-key") ||
     script?.getAttribute("data-customer-id");
   const sourceUrl = script?.getAttribute("data-source-url") || window.location.href;
+  const queryParams = new URLSearchParams(window.location.search || "");
+  const forceOpenHint = script?.getAttribute("data-force-open") === "1" ||
+    queryParams.get("open") === "1";
   const openByDefaultHint = script?.getAttribute("data-open-default") === "1" ||
-    new URLSearchParams(window.location.search || "").get("open") === "1";
+    queryParams.get("open_hint") === "1" ||
+    forceOpenHint;
   let sourcePath = window.location.pathname || window.location.href;
   try {
     sourcePath = new URL(sourceUrl).pathname || sourceUrl;
@@ -62,6 +66,10 @@
       default_open: forceClosed ? false : isEnabled(config.chat_open_by_default),
       position: config.position === "left" ? "left" : "right"
     }, "*");
+  }
+
+  if (openByDefaultHint) {
+    notifyFrameState(true);
   }
 
   let userId = localStorage.getItem("vani_widget_user_id");
@@ -1775,6 +1783,7 @@
     selectedFaqCategory = loadSelectedFaqCategory();
 
     if (config.is_active === false || config.access_allowed === false) {
+      notifyFrameState(false, true);
       return;
     }
 
@@ -1784,7 +1793,7 @@
     const greetingSideStyles = position === "left" ? {left: "90px"} : {right: "90px"};
     const avatarUrl = resolveAssetUrl(config.avatar_url);
     const greetingText = (config.welcome_message || defaultGreeting).trim() || defaultGreeting;
-    notifyFrameState(false);
+    notifyFrameState(isEnabled(config.chat_open_by_default) || forceOpenHint);
     trackWidgetSessionSoon();
 
     // Add breathing animation
@@ -3337,7 +3346,7 @@
       notifyFrameState(box.style.display === "flex" || isEnabled(config.chat_open_by_default));
     });
 
-    if (isEnabled(config.chat_open_by_default) || openByDefaultHint) {
+    if (isEnabled(config.chat_open_by_default) || forceOpenHint) {
       openChat();
       window.setTimeout(() => {
         openChat();
