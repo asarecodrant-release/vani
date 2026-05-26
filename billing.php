@@ -13,6 +13,7 @@ function billing_plans(): array {
                 'human_handoff' => false,
                 'faq_action_suggestions' => false,
                 'faq_feedback' => false,
+                'payment_collection' => false,
                 'export_reports' => false,
                 'partial_analytics' => false,
                 'advanced_analytics' => false
@@ -30,6 +31,7 @@ function billing_plans(): array {
                 'human_handoff' => false,
                 'faq_action_suggestions' => true,
                 'faq_feedback' => false,
+                'payment_collection' => false,
                 'export_reports' => false,
                 'partial_analytics' => false,
                 'advanced_analytics' => false
@@ -47,6 +49,7 @@ function billing_plans(): array {
                 'human_handoff' => true,
                 'faq_action_suggestions' => true,
                 'faq_feedback' => true,
+                'payment_collection' => true,
                 'export_reports' => false,
                 'partial_analytics' => true,
                 'advanced_analytics' => false
@@ -68,6 +71,7 @@ function billing_plans(): array {
                 'human_handoff' => true,
                 'faq_action_suggestions' => true,
                 'faq_feedback' => true,
+                'payment_collection' => true,
                 'combined_widget' => true,
                 'allowed_domains' => true,
                 'live_chat_actions' => true

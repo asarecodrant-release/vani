@@ -824,6 +824,7 @@ $canUseAllowedDomains = billing_feature_enabled($activePlanId, 'allowed_domains'
 $canUseLiveChatActions = billing_feature_enabled($activePlanId, 'live_chat_actions');
 $canUseFaqActionSuggestions = billing_feature_enabled($activePlanId, 'faq_action_suggestions');
 $canUseFaqFeedback = billing_feature_enabled($activePlanId, 'faq_feedback');
+$canUsePaymentCollection = billing_feature_enabled($activePlanId, 'payment_collection');
 $autoRechargeRule = billing_auto_recharge_rule($activePlanId);
 $autoRechargeThresholdPaise = (int)($billingAccount['auto_recharge_threshold_paise'] ?? 0) ?: (int)$autoRechargeRule['threshold_paise'];
 $autoRechargeAmountPaise = (int)($billingAccount['auto_recharge_amount_paise'] ?? 0) ?: (int)$autoRechargeRule['amount_paise'];
@@ -1396,6 +1397,9 @@ $paymentBusinessName = first_value($paymentSettings, ['business_name'], $website
 $paymentRazorpayKeyId = first_value($paymentSettings, ['razorpay_key_id'], '');
 $paymentRazorpaySecretSaved = trim((string)($paymentSettings['razorpay_key_secret'] ?? '')) !== '';
 $paymentSuccessMessage = first_value($paymentSettings, ['success_message'], 'Payment received. Thank you.');
+if (!$canUsePaymentCollection) {
+    $paymentsEnabled = false;
+}
 $paymentPaidTotalPaise = array_sum(array_map(fn($row) => ($row['status'] ?? '') === 'paid' ? (int)($row['amount_paise'] ?? 0) : 0, $paymentTransactionRows));
 $paymentPaidCount = count(array_filter($paymentTransactionRows, fn($row) => ($row['status'] ?? '') === 'paid'));
 $paymentCreatedCount = count(array_filter($paymentTransactionRows, fn($row) => ($row['status'] ?? '') === 'created'));
@@ -3047,9 +3051,10 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
             <div class="field">
               <label>Enable payment collection</label>
               <label class="switch" title="Enable payment collection">
-                <input id="paymentEnabledToggle" type="checkbox" <?php echo $paymentsEnabled ? 'checked' : ''; ?> aria-label="Enable payment collection">
+                <input id="paymentEnabledToggle" type="checkbox" <?php echo $paymentsEnabled && $canUsePaymentCollection ? 'checked' : ''; ?> <?php echo $canUsePaymentCollection ? '' : 'data-premium-lock="This feature is only for Growth or Business users. Please recharge your wallet with appropriate plan."'; ?> aria-label="Enable payment collection">
                 <span class="switch-slider"></span>
               </label>
+              <?php if (!$canUsePaymentCollection): ?><small class="input-help error">Growth or Business plan required to switch ON payment collection.</small><?php endif; ?>
             </div>
             <div class="field"><label>Business name on checkout</label><input id="paymentBusinessNameInput" value="<?php echo h($paymentBusinessName); ?>" placeholder="<?php echo h($botName); ?>"></div>
             <div class="field"><label>Razorpay Key ID</label><input id="paymentKeyIdInput" value="<?php echo h($paymentRazorpayKeyId); ?>" placeholder="rzp_live_xxxxx"></div>
@@ -4287,7 +4292,8 @@ const businessFeatures = <?php echo js_json([
   "allowed_domains" => $canUseAllowedDomains,
   "live_chat_actions" => $canUseLiveChatActions,
   "faq_action_suggestions" => $canUseFaqActionSuggestions,
-  "faq_feedback" => $canUseFaqFeedback
+  "faq_feedback" => $canUseFaqFeedback,
+  "payment_collection" => $canUsePaymentCollection
 ]); ?>;
 const paymentActions = <?php echo js_json(array_values(array_map(fn($row) => [
   "id" => (string)($row["id"] ?? ""),
@@ -6919,6 +6925,13 @@ document.getElementById("feedbackEmailToggle")?.addEventListener("change", async
 
 document.getElementById("paymentSettingsForm")?.addEventListener("submit", async event => {
   event.preventDefault();
+  const paymentToggle = document.getElementById("paymentEnabledToggle");
+  if (paymentToggle?.checked && !businessFeatures.payment_collection) {
+    paymentToggle.checked = false;
+    alert("This feature is only for Growth or Business users. Please recharge your wallet with appropriate plan.");
+    openTab("subscription");
+    return;
+  }
   const button = event.currentTarget.querySelector("button[type='submit']");
   const customerId = document.getElementById("paymentCustomerId")?.value || "";
   if (!customerId) return showToast("Select a bot first");
@@ -6942,6 +6955,14 @@ document.getElementById("paymentSettingsForm")?.addEventListener("submit", async
   if (!data.success) return showToast(data.message || "Payment setup could not be saved");
   showToast("Payment setup saved");
   setTimeout(() => location.reload(), 700);
+});
+
+document.getElementById("paymentEnabledToggle")?.addEventListener("change", event => {
+  if (event.currentTarget.checked && !businessFeatures.payment_collection) {
+    event.currentTarget.checked = false;
+    alert("This feature is only for Growth or Business users. Please recharge your wallet with appropriate plan.");
+    openTab("subscription");
+  }
 });
 
 document.getElementById("paymentActionForm")?.addEventListener("submit", async event => {

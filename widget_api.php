@@ -51,7 +51,7 @@ function widget_customer_payment_settings(string $customerId): array {
 
 function widget_customer_razorpay_request(array $paymentSettings, string $method, string $endpoint, array $payload = []): array {
     $keyId = trim((string)($paymentSettings['razorpay_key_id'] ?? ''));
-    $secret = trim((string)($paymentSettings['razorpay_key_secret'] ?? ''));
+    $secret = app_decrypt_secret((string)($paymentSettings['razorpay_key_secret'] ?? ''));
     if ($keyId === '' || $secret === '') {
         return ["status" => 500, "data" => [], "raw" => "Customer Razorpay credentials missing"];
     }

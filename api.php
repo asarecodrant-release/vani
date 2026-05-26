@@ -4414,12 +4414,30 @@ if ($action === "save_payment_settings") {
         exit;
     }
     require_customer_mutation_access($customerId);
+    $activePlan = billing_active_plan_from_account(billing_account_for_customer($customerId));
+    if (!billing_feature_enabled($activePlan, 'payment_collection') && filter_var($data['is_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+        echo json_encode(["success" => false, "requires_growth" => true, "message" => "Payment collection requires Growth or Business plan"]);
+        exit;
+    }
 
     $keyId = trim((string)($data['razorpay_key_id'] ?? ''));
     $keySecret = trim((string)($data['razorpay_key_secret'] ?? ''));
+    $existingSettings = safe_rows(supabase("GET", "customer_payment_settings?select=id,razorpay_key_id,razorpay_key_secret&customer_id=eq." . urlencode($customerId) . "&limit=1"));
+    $existingPaymentSettings = $existingSettings[0] ?? [];
+    $enablePayments = filter_var($data['is_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
+    $effectiveKeyId = $keyId !== '' ? $keyId : trim((string)($existingPaymentSettings['razorpay_key_id'] ?? ''));
+    $effectiveSecret = $keySecret !== '' ? $keySecret : app_decrypt_secret((string)($existingPaymentSettings['razorpay_key_secret'] ?? ''));
+    if ($enablePayments && app_secret_encryption_key() === '') {
+        echo json_encode(["success" => false, "message" => "Payment secret encryption key is missing. Set APP_ENCRYPTION_KEY before switching ON payment collection."]);
+        exit;
+    }
+    if ($enablePayments && billing_feature_enabled($activePlan, 'payment_collection') && ($effectiveKeyId === '' || $effectiveSecret === '')) {
+        echo json_encode(["success" => false, "message" => "Razorpay Key ID and Key Secret are required before switching ON payment collection"]);
+        exit;
+    }
     $payload = [
         "customer_id" => $customerId,
-        "is_enabled" => filter_var($data['is_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN),
+        "is_enabled" => billing_feature_enabled($activePlan, 'payment_collection') && filter_var($data['is_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN),
         "provider" => "razorpay",
         "business_name" => trim(substr((string)($data['business_name'] ?? ''), 0, 120)),
         "success_message" => trim(substr((string)($data['success_message'] ?? 'Payment received. Thank you.'), 0, 240))
@@ -4432,11 +4450,24 @@ if ($action === "save_payment_settings") {
         $payload['razorpay_key_id'] = $keyId;
     }
     if ($keySecret !== '') {
-        $payload['razorpay_key_secret'] = $keySecret;
+        $encryptedSecret = app_encrypt_secret($keySecret);
+        if ($encryptedSecret === '') {
+            echo json_encode(["success" => false, "message" => "Payment secret encryption key is missing. Set APP_ENCRYPTION_KEY before saving Razorpay secrets."]);
+            exit;
+        }
+        $payload['razorpay_key_secret'] = $encryptedSecret;
+    } elseif (
+        !empty($existingPaymentSettings['razorpay_key_secret']) &&
+        strpos((string)$existingPaymentSettings['razorpay_key_secret'], 'enc:v1:') !== 0 &&
+        app_secret_encryption_key() !== ''
+    ) {
+        $encryptedSecret = app_encrypt_secret((string)$existingPaymentSettings['razorpay_key_secret']);
+        if ($encryptedSecret !== '') {
+            $payload['razorpay_key_secret'] = $encryptedSecret;
+        }
     }
 
-    $existing = safe_rows(supabase("GET", "customer_payment_settings?select=id&customer_id=eq." . urlencode($customerId) . "&limit=1"));
-    $res = !empty($existing)
+    $res = !empty($existingSettings)
         ? supabase("PATCH", "customer_payment_settings?customer_id=eq." . urlencode($customerId), $payload)
         : supabase("POST", "customer_payment_settings", [$payload]);
     echo json_encode(["success" => $res['status'] >= 200 && $res['status'] < 300, "settings" => $res['data'][0] ?? null, "debug" => $res]);
