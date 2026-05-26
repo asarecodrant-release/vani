@@ -1,5 +1,5 @@
 <?php
-$updatedAt = 'May 22, 2026';
+$updatedAt = 'May 26, 2026';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -84,6 +84,7 @@ footer{padding:24px 0 40px;color:#94a3b8;text-align:center;font-size:14px}
       <a href="#services">Services</a>
       <a href="#accounts">Accounts</a>
       <a href="#customer-data">Customer Data</a>
+      <a href="#feedback-payments">Feedback & Payments</a>
       <a href="#acceptable-use">Acceptable Use</a>
       <a href="#fees">Fees</a>
       <a href="#ip">Intellectual Property</a>
@@ -119,54 +120,63 @@ footer{padding:24px 0 40px;color:#94a3b8;text-align:center;font-size:14px}
         <p>You are responsible for ensuring that your customer data, FAQs, and chatbot usage comply with applicable privacy, consumer protection, intellectual property, and sector-specific laws.</p>
       </section>
 
+      <section id="feedback-payments">
+        <h2>5. Feedback and Customer Payment Collection</h2>
+        <p>If you enable chatbot feedback collection, you are responsible for deciding which feedback types to collect, when to ask visitors for feedback, and whether your own website privacy notice or consent flow must be updated. You must not use feedback tools to collect sensitive personal data unless you have a lawful basis and appropriate visitor notice.</p>
+        <p>If you enable payment collection, visitor payments are intended to go directly to your own Razorpay account, UPI ID, or other enabled payment provider. You are responsible for your payment button labels, prices, descriptions, taxes, invoices to your buyers, refunds, chargebacks, customer support, delivery of goods or services, and compliance with payment provider rules and applicable law.</p>
+        <p>Codrant provides the chatbot payment workflow, dashboard records, and analytics tools. Codrant is not the merchant of record for payments collected by you from your website visitors unless a separate written agreement says otherwise. You must keep your payment credentials accurate and secure, and you must not use payment collection for unlawful, misleading, prohibited, or high-risk transactions.</p>
+      </section>
+
       <section id="acceptable-use">
-        <h2>5. Acceptable Use</h2>
+        <h2>6. Acceptable Use</h2>
         <ul>
           <li>Do not use the service for unlawful, misleading, abusive, harmful, or discriminatory content.</li>
           <li>Do not attempt to reverse engineer, overload, scan, disrupt, or bypass security controls.</li>
           <li>Do not upload malware, secrets, payment card data, government IDs, or sensitive personal data unless we have expressly agreed in writing.</li>
+          <li>Do not use chatbot payment buttons to sell restricted products or services, misrepresent prices, collect payments without authority, or bypass payment gateway or UPI rules.</li>
           <li>Do not represent chatbot outputs as professional legal, medical, financial, or emergency advice.</li>
         </ul>
       </section>
 
       <section id="fees">
-        <h2>6. Fees, Plans, and Cancellation</h2>
+        <h2>7. Fees, Plans, and Cancellation</h2>
         <p>Paid plans, if purchased, are billed according to the selected subscription or written order. Taxes, gateway charges, and third-party service charges may apply. Unless a written plan states otherwise, fees already paid are non-refundable except where required by applicable law or where Codrant approves a refund at its discretion.</p>
+        <p>Fees paid by you to Codrant for Vani AI plans, wallet balance, or platform usage are separate from payments your own website visitors make to you through customer payment collection features. Visitor payment disputes, refunds, product delivery, and buyer support are your responsibility.</p>
       </section>
 
       <section id="ip">
-        <h2>7. Intellectual Property</h2>
+        <h2>8. Intellectual Property</h2>
         <p>Vani AI software, code, workflows, visual designs, platform content, documentation, and trademarks are owned by Codrant or its licensors. You may use the service only for your internal business website support needs and may not copy, resell, sublicense, or create a competing service from it.</p>
       </section>
 
       <section id="ai">
-        <h2>8. AI Responses and Accuracy</h2>
+        <h2>9. AI Responses and Accuracy</h2>
         <p>AI-generated responses may be incomplete, inaccurate, or unsuitable for a specific situation. You are responsible for configuring FAQs, reviewing chatbot behaviour, and deciding whether a response should be used. Vani AI is a support automation tool and does not replace human review for critical business decisions.</p>
       </section>
 
       <section id="availability">
-        <h2>9. Availability and Third-Party Services</h2>
+        <h2>10. Availability and Third-Party Services</h2>
         <p>We work to keep the service reliable, but availability may be affected by maintenance, hosting providers, AI providers, email providers, payment systems, internet outages, or events outside our control. We are not responsible for failures caused by third-party platforms or customer-side website changes.</p>
       </section>
 
       <section id="termination">
-        <h2>10. Suspension and Termination</h2>
+        <h2>11. Suspension and Termination</h2>
         <p>We may suspend or terminate access if you breach these terms, fail to pay applicable fees, create security risk, misuse the service, or use the service in a way that may harm Codrant, customers, users, or third parties. You may stop using the service at any time.</p>
       </section>
 
       <section id="liability">
-        <h2>11. Disclaimers and Limitation of Liability</h2>
+        <h2>12. Disclaimers and Limitation of Liability</h2>
         <p>The service is provided on an "as is" and "as available" basis to the maximum extent permitted by law. Codrant does not guarantee uninterrupted service, error-free outputs, increased sales, or a specific business outcome.</p>
         <p>To the maximum extent permitted by applicable law, Codrant will not be liable for indirect, incidental, special, consequential, punitive, or loss-of-profit damages. Our aggregate liability for claims relating to the service will not exceed the amount paid by you for the service during the three months before the claim arose, except where liability cannot legally be limited.</p>
       </section>
 
       <section id="law">
-        <h2>12. Governing Law and Jurisdiction</h2>
+        <h2>13. Governing Law and Jurisdiction</h2>
         <p>These terms are governed by the laws of India. Subject to applicable law, courts located in Pune, Maharashtra will have jurisdiction over disputes relating to these terms or the Vani AI services.</p>
       </section>
 
       <section id="contact">
-        <h2>13. Contact</h2>
+        <h2>14. Contact</h2>
         <p>For questions about these terms, contact Codrant at info@codrant.com or visit our contact page.</p>
         <p class="note">Last updated: <?php echo htmlspecialchars($updatedAt); ?>. This page is a practical business terms template and should be reviewed by qualified legal counsel before production launch.</p>
       </section>

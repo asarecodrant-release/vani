@@ -953,6 +953,10 @@ function count_rows(array $rows, callable $callback): int {
     return count(array_filter($rows, $callback));
 }
 
+function customer_api_rupees(int $paise): float {
+    return round($paise / 100, 2);
+}
+
 function customer_api_analytics_payload(string $customerId): array {
     $dateFilters = customer_api_date_filters('created_at');
     $conversations = safe_rows(supabase(
@@ -967,8 +971,19 @@ function customer_api_analytics_payload(string $customerId): array {
         "GET",
         "chatbot_sessions?select=id,user_id,session_id,current_page,source_url,device_type,browser_name,country_name,city,duration_seconds,message_count,last_seen_at,ended_at,created_at&customer_id=eq." . urlencode($customerId) . $dateFilters . "&order=created_at.desc&limit=1000"
     ));
+    $feedbackRows = safe_rows(supabase(
+        "GET",
+        "faq_action_feedback?select=id,faq_id,action_id,action_type,feedback_value,user_id,session_id,source_url,created_at&customer_id=eq." . urlencode($customerId) . $dateFilters . "&order=created_at.desc&limit=1000"
+    ));
+    $paymentRows = safe_rows(supabase(
+        "GET",
+        "customer_payment_transactions?select=id,payment_action_id,faq_action_id,faq_id,user_id,session_id,source_url,payer_name,payer_email,payer_phone,amount_paise,currency,status,payment_method,razorpay_order_id,razorpay_payment_id,metadata,paid_at,created_at&customer_id=eq." . urlencode($customerId) . $dateFilters . "&order=created_at.desc&limit=1000"
+    ));
 
     $dailyCounts = [];
+    $dailyFeedbackCounts = [];
+    $dailyPaymentCounts = [];
+    $dailyPaymentRevenuePaise = [];
     $sourcePages = [];
     $devices = [];
     $browsers = [];
@@ -976,8 +991,18 @@ function customer_api_analytics_payload(string $customerId): array {
     $uniqueUsers = [];
     $responseTimes = [];
     $topQuestions = [];
+    $feedbackValues = [];
+    $feedbackActions = [];
+    $paymentStatuses = [];
+    $paymentMethods = [];
+    $paymentActionCounts = [];
     $answeredCount = 0;
     $unansweredCount = 0;
+    $paymentPaidCount = 0;
+    $paymentPendingCount = 0;
+    $paymentFailedCount = 0;
+    $paymentRevenuePaise = 0;
+    $uniquePayers = [];
 
     foreach ($conversations as $row) {
         $created = (string)($row['created_at'] ?? '');
@@ -1043,15 +1068,76 @@ function customer_api_analytics_payload(string $customerId): array {
         }
     }
 
+    foreach ($feedbackRows as $feedback) {
+        $created = (string)($feedback['created_at'] ?? '');
+        if ($created !== '') {
+            $day = substr($created, 0, 10);
+            $dailyFeedbackCounts[$day] = ($dailyFeedbackCounts[$day] ?? 0) + 1;
+        }
+        $value = trim((string)($feedback['feedback_value'] ?? ''));
+        if ($value !== '') {
+            $feedbackValues[$value] = ($feedbackValues[$value] ?? 0) + 1;
+        }
+        $actionType = trim((string)($feedback['action_type'] ?? ''));
+        if ($actionType !== '') {
+            $feedbackActions[$actionType] = ($feedbackActions[$actionType] ?? 0) + 1;
+        }
+    }
+
+    foreach ($paymentRows as $payment) {
+        $created = (string)($payment['created_at'] ?? '');
+        $status = strtolower((string)($payment['status'] ?? 'created'));
+        $method = strtoupper((string)($payment['payment_method'] ?? 'razorpay'));
+        $amountPaise = (int)($payment['amount_paise'] ?? 0);
+        if ($created !== '') {
+            $day = substr($created, 0, 10);
+            $dailyPaymentCounts[$day] = ($dailyPaymentCounts[$day] ?? 0) + 1;
+            if ($status === 'paid') {
+                $dailyPaymentRevenuePaise[$day] = ($dailyPaymentRevenuePaise[$day] ?? 0) + $amountPaise;
+            }
+        }
+        $paymentStatuses[$status] = ($paymentStatuses[$status] ?? 0) + 1;
+        $paymentMethods[$method] = ($paymentMethods[$method] ?? 0) + 1;
+        $actionKey = trim((string)($payment['payment_action_id'] ?? ''));
+        if ($actionKey !== '') {
+            $paymentActionCounts[$actionKey] = ($paymentActionCounts[$actionKey] ?? 0) + 1;
+        }
+        if ($status === 'paid') {
+            $paymentPaidCount++;
+            $paymentRevenuePaise += $amountPaise;
+        } elseif ($status === 'failed') {
+            $paymentFailedCount++;
+        } else {
+            $paymentPendingCount++;
+        }
+        $payerKey = strtolower(trim((string)($payment['payer_email'] ?? '')));
+        if ($payerKey === '') {
+            $payerKey = trim((string)($payment['payer_phone'] ?? $payment['user_id'] ?? $payment['session_id'] ?? ''));
+        }
+        if ($payerKey !== '') {
+            $uniquePayers[$payerKey] = true;
+        }
+    }
+
     uasort($topQuestions, fn($a, $b) => $b['count'] <=> $a['count']);
     uasort($sourcePages, fn($a, $b) => $b['conversations'] <=> $a['conversations']);
     ksort($dailyCounts);
+    ksort($dailyFeedbackCounts);
+    ksort($dailyPaymentCounts);
+    ksort($dailyPaymentRevenuePaise);
     arsort($devices);
     arsort($browsers);
     arsort($countries);
+    arsort($feedbackValues);
+    arsort($feedbackActions);
+    arsort($paymentStatuses);
+    arsort($paymentMethods);
+    arsort($paymentActionCounts);
 
     $conversationCount = count($conversations);
     $leadCount = count($leads);
+    $feedbackCount = count($feedbackRows);
+    $paymentCount = count($paymentRows);
     $verifiedLeadCount = count_rows($leads, fn($lead) => !empty($lead['email_otp_verified']) || !empty($lead['mobile_otp_verified']) || (string)($lead['verification_quality'] ?? '') === 'real');
 
     return [
@@ -1064,12 +1150,29 @@ function customer_api_analytics_payload(string $customerId): array {
             "verified_leads" => $verifiedLeadCount,
             "lead_conversion_percent" => $conversationCount ? round(($leadCount / max(1, $conversationCount)) * 100) : 0,
             "unique_users" => count($uniqueUsers),
-            "avg_response_time_ms" => !empty($responseTimes) ? round(array_sum($responseTimes) / count($responseTimes)) : 0
+            "avg_response_time_ms" => !empty($responseTimes) ? round(array_sum($responseTimes) / count($responseTimes)) : 0,
+            "feedback_received" => $feedbackCount,
+            "payment_attempts" => $paymentCount,
+            "paid_payments" => $paymentPaidCount,
+            "pending_payments" => $paymentPendingCount,
+            "failed_payments" => $paymentFailedCount,
+            "payment_revenue_paise" => $paymentRevenuePaise,
+            "payment_revenue_rupees" => customer_api_rupees($paymentRevenuePaise),
+            "payment_conversion_percent" => $paymentCount ? round(($paymentPaidCount / max(1, $paymentCount)) * 100) : 0,
+            "unique_payers" => count($uniquePayers)
         ],
         "daily_counts" => $dailyCounts,
+        "daily_feedback_counts" => $dailyFeedbackCounts,
+        "daily_payment_counts" => $dailyPaymentCounts,
+        "daily_payment_revenue_paise" => $dailyPaymentRevenuePaise,
         "devices" => $devices,
         "browsers" => $browsers,
         "countries" => $countries,
+        "feedback_values" => $feedbackValues,
+        "feedback_actions" => $feedbackActions,
+        "payment_statuses" => $paymentStatuses,
+        "payment_methods" => $paymentMethods,
+        "payment_actions" => $paymentActionCounts,
         "top_questions" => array_values(array_slice(array_map(fn($item) => [
             "question" => $item['question'],
             "count" => $item['count'],
@@ -2023,6 +2126,69 @@ if ($action === "customer_api_profile") {
         "bot" => $signup[0] ?? null,
         "settings" => $settings[0] ?? null
     ]);
+}
+
+if ($action === "customer_api_feedback") {
+    $validation = validate_customer_api_request("customer_api_feedback");
+    if (empty($validation['success'])) {
+        customer_api_json($validation, "feedback");
+    }
+    $customerId = (string)$validation['customer_id'];
+    $rows = customer_api_rows(
+        "faq_action_feedback?select=id,faq_id,action_id,action_type,feedback_value,user_id,session_id,source_url,created_at&customer_id=eq." . urlencode($customerId) . customer_api_date_filters('created_at') . "&order=created_at.desc"
+    );
+    customer_api_json($validation, "feedback", ["count" => count($rows), "data" => $rows]);
+}
+
+if ($action === "customer_api_payment_settings") {
+    $validation = validate_customer_api_request("customer_api_payment_settings");
+    if (empty($validation['success'])) {
+        customer_api_json($validation, "payment_settings");
+    }
+    $customerId = (string)$validation['customer_id'];
+    $settingsRows = safe_rows(supabase(
+        "GET",
+        "customer_payment_settings?select=id,customer_id,is_enabled,provider,business_name,razorpay_key_id,success_message,created_at,updated_at&customer_id=eq." . urlencode($customerId) . "&limit=1"
+    ));
+    $settings = $settingsRows[0] ?? null;
+    if (is_array($settings)) {
+        $settings['razorpay_key_secret_configured'] = trim((string)($settings['razorpay_key_id'] ?? '')) !== '';
+    }
+    customer_api_json($validation, "payment_settings", ["settings" => $settings]);
+}
+
+if ($action === "customer_api_payment_actions") {
+    $validation = validate_customer_api_request("customer_api_payment_actions");
+    if (empty($validation['success'])) {
+        customer_api_json($validation, "payment_actions");
+    }
+    $customerId = (string)$validation['customer_id'];
+    $rows = customer_api_rows(
+        "customer_payment_actions?select=id,payment_method,label,description,amount_paise,currency,upi_id,upi_payee_name,upi_note,is_active,created_at,updated_at&customer_id=eq." . urlencode($customerId) . "&order=created_at.desc",
+        100,
+        1000
+    );
+    foreach ($rows as &$row) {
+        $row['amount_rupees'] = customer_api_rupees((int)($row['amount_paise'] ?? 0));
+    }
+    unset($row);
+    customer_api_json($validation, "payment_actions", ["count" => count($rows), "data" => $rows]);
+}
+
+if ($action === "customer_api_payment_transactions") {
+    $validation = validate_customer_api_request("customer_api_payment_transactions");
+    if (empty($validation['success'])) {
+        customer_api_json($validation, "payment_transactions");
+    }
+    $customerId = (string)$validation['customer_id'];
+    $rows = customer_api_rows(
+        "customer_payment_transactions?select=id,payment_action_id,faq_action_id,faq_id,user_id,session_id,source_url,payer_name,payer_email,payer_phone,amount_paise,currency,status,payment_method,razorpay_order_id,razorpay_payment_id,metadata,paid_at,created_at&customer_id=eq." . urlencode($customerId) . customer_api_date_filters('created_at') . "&order=created_at.desc"
+    );
+    foreach ($rows as &$row) {
+        $row['amount_rupees'] = customer_api_rupees((int)($row['amount_paise'] ?? 0));
+    }
+    unset($row);
+    customer_api_json($validation, "payment_transactions", ["count" => count($rows), "data" => $rows]);
 }
 
 if ($action === "customer_api_analytics") {

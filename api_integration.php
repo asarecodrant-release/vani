@@ -64,9 +64,13 @@ $endpoints = [
     ['action' => 'customer_api_leads', 'name' => 'Leads', 'method' => 'GET', 'filters' => 'limit, offset, date_from, date_to', 'access' => 'Names, email, mobile, location, source URL, OTP verification status, WhatsApp redirect status, metadata, created date'],
     ['action' => 'customer_api_conversations', 'name' => 'Conversations', 'method' => 'GET', 'filters' => 'limit, offset, date_from, date_to', 'access' => 'Questions, bot replies, matched FAQ ID, status, session/user IDs, source/referrer URLs, browser/device/location analytics, response time, created date'],
     ['action' => 'customer_api_faqs', 'name' => 'FAQs', 'method' => 'GET', 'filters' => 'limit, offset', 'access' => 'FAQ ID, question, answer, category, created date'],
+    ['action' => 'customer_api_feedback', 'name' => 'Feedback received', 'method' => 'GET', 'filters' => 'limit, offset, date_from, date_to', 'access' => 'Collected FAQ action feedback, feedback type/value, FAQ/action IDs, visitor/session IDs, source URL, created date'],
+    ['action' => 'customer_api_payment_settings', 'name' => 'Payment settings', 'method' => 'GET', 'filters' => 'None', 'access' => 'Payment collection status, provider, public Razorpay key ID, business name, success message. Razorpay secret is never returned'],
+    ['action' => 'customer_api_payment_actions', 'name' => 'Payment buttons', 'method' => 'GET', 'filters' => 'limit, offset', 'access' => 'Payment Button ID, label, description, method, amount, currency, UPI display fields, active status, created/updated date'],
+    ['action' => 'customer_api_payment_transactions', 'name' => 'Payment transactions', 'method' => 'GET', 'filters' => 'limit, offset, date_from, date_to', 'access' => 'Payment attempts, status, method, amount, payer details, source URL, Razorpay order/payment IDs, paid date, created date'],
     ['action' => 'customer_api_wallet', 'name' => 'Wallet data', 'method' => 'GET', 'filters' => 'limit, offset, date_from, date_to', 'access' => 'Wallet balance, current plan, subscription status, billing period, wallet transaction history'],
     ['action' => 'customer_api_profile', 'name' => 'Profile data', 'method' => 'GET', 'filters' => 'None', 'access' => 'Customer profile, bot signup details, public bot settings, integration settings'],
-    ['action' => 'customer_api_analytics', 'name' => 'Analytics', 'method' => 'GET', 'filters' => 'date_from, date_to', 'access' => 'Summary metrics, daily counts, devices, browsers, countries, top questions, source page performance']
+    ['action' => 'customer_api_analytics', 'name' => 'Analytics', 'method' => 'GET', 'filters' => 'date_from, date_to', 'access' => 'Summary metrics, daily counts, feedback analysis, payment analysis, devices, browsers, countries, top questions, source page performance']
 ];
 
 $apiKeyRows = api_doc_rows(supabase(
@@ -143,6 +147,7 @@ td{font-size:14px;color:var(--ink);line-height:1.55}
       <a href="#endpoints">Endpoints</a>
       <a href="#filters">Filters</a>
       <a href="#examples">Examples</a>
+      <a href="#feedback-payments">Feedback & Payments</a>
       <a href="#webhooks">Webhooks</a>
       <a href="#live-actions">Live Chat Actions</a>
       <a href="#errors">Errors</a>
@@ -244,7 +249,7 @@ td{font-size:14px;color:var(--ink);line-height:1.55}
 
       <section class="panel" id="filters">
         <h2>5. Pagination And Date Filters</h2>
-        <p>Use pagination for all list endpoints. Date filters are supported for leads, conversations, wallet transactions, and analytics.</p>
+        <p>Use pagination for all list endpoints. Date filters are supported for leads, conversations, feedback, payment transactions, wallet transactions, and analytics.</p>
         <div class="two">
           <div>
             <h3>Query parameters</h3>
@@ -270,6 +275,10 @@ td{font-size:14px;color:var(--ink);line-height:1.55}
         <code>curl -H "Authorization: Bearer CUSTOMER_API_KEY" "<?php echo h($apiBase); ?>customer_api_leads&limit=100"</code>
         <h3>Fetch analytics</h3>
         <code>curl -H "Authorization: Bearer CUSTOMER_API_KEY" "<?php echo h($apiBase); ?>customer_api_analytics&date_from=2026-05-01&date_to=2026-05-31"</code>
+        <h3>Fetch feedback received</h3>
+        <code>curl -H "Authorization: Bearer CUSTOMER_API_KEY" "<?php echo h($apiBase); ?>customer_api_feedback&limit=100&date_from=2026-05-01&date_to=2026-05-31"</code>
+        <h3>Fetch payment transactions</h3>
+        <code>curl -H "Authorization: Bearer CUSTOMER_API_KEY" "<?php echo h($apiBase); ?>customer_api_payment_transactions&limit=100&date_from=2026-05-01&date_to=2026-05-31"</code>
         <h3>JavaScript server example</h3>
         <code>const res = await fetch("<?php echo h($apiBase); ?>customer_api_conversations&limit=50", {
   headers: { Authorization: `Bearer ${process.env.VANI_API_KEY}` }
@@ -286,8 +295,57 @@ const data = await res.json();</code>
 }</code>
       </section>
 
+      <section class="panel" id="feedback-payments">
+        <h2>7. Feedback And Payment Collection API</h2>
+        <p>The Feedback Received tab and Payments Collection tab can be connected to the customer API. These endpoints are useful when customers want their own CRM, BI dashboard, finance tool, or support system to pull the same data shown in Vani.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Dashboard area</th><th>Endpoint</th><th>Use it for</th><th>Important security note</th></tr></thead>
+            <tbody>
+              <tr><td>Feedback Received</td><td><span class="inline-code">customer_api_feedback</span></td><td>Export visitor feedback, FAQ/action IDs, source URL, session/user IDs, and dates.</td><td>Read-only. Requires Business API key.</td></tr>
+              <tr><td>Payments Collection setup</td><td><span class="inline-code">customer_api_payment_settings</span></td><td>Check whether payment collection is enabled and read public payment configuration.</td><td>Razorpay key secret is never returned.</td></tr>
+              <tr><td>Payment Buttons</td><td><span class="inline-code">customer_api_payment_actions</span></td><td>Sync Payment Button IDs, labels, methods, amount, currency, UPI display fields, and active status.</td><td>Use Payment Button ID when mapping payments to external systems.</td></tr>
+              <tr><td>Payment Transactions</td><td><span class="inline-code">customer_api_payment_transactions</span></td><td>Pull payment attempts, paid/pending/failed status, payer details, source page, and gateway references.</td><td>Payments go directly to the customer gateway/UPI account; Vani does not expose gateway secret keys.</td></tr>
+              <tr><td>Analytics</td><td><span class="inline-code">customer_api_analytics</span></td><td>Pull BI-ready feedback and payment summaries with daily counts, revenue, statuses, methods, and conversion.</td><td>Analytics respects the API key scope and date filters.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Payment settings response example</h3>
+        <code>{
+  "success": true,
+  "resource": "payment_settings",
+  "settings": {
+    "is_enabled": true,
+    "provider": "razorpay",
+    "business_name": "Customer Business",
+    "razorpay_key_id": "rzp_live_xxxxx",
+    "razorpay_key_secret_configured": true,
+    "success_message": "Payment received. Thank you."
+  }
+}</code>
+        <h3>Payment transaction response example</h3>
+        <code>{
+  "success": true,
+  "resource": "payment_transactions",
+  "count": 1,
+  "data": [{
+    "payment_action_id": 42,
+    "status": "paid",
+    "payment_method": "razorpay",
+    "amount_paise": 49900,
+    "amount_rupees": 499,
+    "currency": "INR",
+    "payer_email": "buyer@example.com",
+    "source_url": "https://customer-site.com/pricing",
+    "razorpay_payment_id": "pay_xxxxx",
+    "paid_at": "2026-05-23T10:30:00Z"
+  }]
+}</code>
+        <div class="callout">For security, the customer API is designed for reading/syncing data. Creating payment buttons, changing payment settings, and gateway verification remain dashboard/widget controlled flows.</div>
+      </section>
+
       <section class="panel" id="webhooks">
-        <h2>7. Webhooks</h2>
+        <h2>8. Webhooks</h2>
         <p>Use webhooks when the customer wants Vani to push events to their system instead of polling the API repeatedly.</p>
         <ol>
           <li>Open <strong>Dashboard → Integration</strong>.</li>
@@ -352,7 +410,7 @@ if (expected !== req.headers["x-vani-signature"]) {
       </section>
 
       <section class="panel" id="live-actions">
-        <h2>8. Live Chat Actions</h2>
+        <h2>9. Live Chat Actions</h2>
         <p>Use Live Chat Actions when the customer's website should react immediately while a visitor is chatting. This is a Business Plan feature and works only when the switch is ON in <strong>Dashboard → Integration</strong>.</p>
         <ol>
           <li>Open <strong>Dashboard → Integration</strong>.</li>
@@ -398,7 +456,7 @@ window.addEventListener("vani:liveAction", function(event) {
       </section>
 
       <section class="panel" id="errors">
-        <h2>9. Error Codes</h2>
+        <h2>10. Error Codes</h2>
         <div class="table-wrap">
           <table>
             <thead><tr><th>Status</th><th>Meaning</th><th>Fix</th></tr></thead>
@@ -413,7 +471,7 @@ window.addEventListener("vani:liveAction", function(event) {
       </section>
 
       <section class="panel" id="security">
-        <h2>10. Security Checklist</h2>
+        <h2>11. Security Checklist</h2>
         <ul>
           <li>Keep API keys on the customer’s backend, not in public frontend code.</li>
           <li>Use HTTPS only.</li>

@@ -3815,7 +3815,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
               <div class="security-grid">
                 <div class="security-card">
                   <h4>API integration guide</h4>
-                  <p class="muted">Step-by-step reference for API keys, endpoints, filters, sample requests, webhooks, errors, and security.</p>
+                  <p class="muted">Step-by-step reference for API keys, feedback, payment collection, analytics, filters, sample requests, webhooks, errors, and security.</p>
                   <?php if ($canUseBusinessApi): ?>
                     <a class="pill-btn" href="api_integration.php?bot=<?php echo h(urlencode($selectedBotId)); ?>">Open API guide</a>
                   <?php else: ?>

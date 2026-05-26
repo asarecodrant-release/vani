@@ -1,5 +1,5 @@
 <?php
-$updatedAt = 'May 25, 2026';
+$updatedAt = 'May 26, 2026';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -111,6 +111,7 @@ footer{padding:24px 0 40px;color:#94a3b8;text-align:center;font-size:14px}
       <a href="#data">Information We Collect</a>
       <a href="#use">How We Use Data</a>
       <a href="#leads">Leads & Conversations</a>
+      <a href="#feedback-payments">Feedback & Payments</a>
       <a href="#sharing">Sharing</a>
       <a href="#security">Security</a>
       <a href="#secure-embed">Secure Chatbot Embed</a>
@@ -132,6 +133,8 @@ footer{padding:24px 0 40px;color:#94a3b8;text-align:center;font-size:14px}
           <li>Account details such as name, email address, phone number, business type, website domain, and login details.</li>
           <li>Chatbot configuration such as FAQs, answers, bot name, theme color, avatar, website settings, allowed domains, webhook URLs, and notification preferences.</li>
           <li>Lead details captured through chatbot forms, including name, email, mobile number, OTP verification status, WhatsApp redirect status, source page, and related metadata.</li>
+          <li>Feedback submitted through FAQ action feedback features, including selected rating, emoji/smile, label, slider value, written comment where enabled, FAQ/action reference, source page, session/user ID, and timestamp.</li>
+          <li>Customer payment collection data for visitor payments initiated from the chatbot, including payment button ID, selected payment method, amount, currency, payer name/email/phone where provided, source page, payment status, gateway order/payment references, UPI display details, and timestamps.</li>
           <li>Conversation and analytics data such as user questions, bot replies, matched FAQ ID, page URL, device/browser data, session details, country/city where available, and timestamps.</li>
           <li>Billing information such as selected plan, wallet balance, wallet transactions, Razorpay customer reference, recurring mandate/token reference, payment status, and invoice/payment metadata.</li>
           <li>Support details that you send through contact forms, email, tickets, human handoff, or other support channels.</li>
@@ -142,7 +145,8 @@ footer{padding:24px 0 40px;color:#94a3b8;text-align:center;font-size:14px}
         <h2>3. How We Use Information</h2>
         <ul>
           <li>To create accounts, configure chatbots, provide the dashboard, and operate chatbot widgets on customer websites.</li>
-          <li>To answer FAQs, capture leads, verify OTP leads, redirect to WhatsApp when enabled, and create support tickets when human handoff is enabled.</li>
+          <li>To answer FAQs, capture leads, collect chatbot feedback when enabled, verify OTP leads, redirect to WhatsApp when enabled, and create support tickets when human handoff is enabled.</li>
+          <li>To show payment buttons, create payment orders or UPI payment links, record payment status, display payment analytics, and help customers reconcile payments collected from their own website users.</li>
           <li>To process subscription plans, wallet deductions, refunds where applicable, recurring mandates, invoices, and payment-related support.</li>
           <li>To provide analytics, reports, API access, webhook delivery, troubleshooting, fraud prevention, security monitoring, and service improvement.</li>
           <li>To send important service notices, setup emails, billing alerts, support replies, and policy updates.</li>
@@ -155,23 +159,31 @@ footer{padding:24px 0 40px;color:#94a3b8;text-align:center;font-size:14px}
         <p>Vani AI acts as a service provider for customer chatbot data. Customers should not collect sensitive personal data, payment card numbers, government IDs, medical data, or confidential information unless they have a lawful basis and written approval from Codrant.</p>
       </section>
 
+      <section id="feedback-payments">
+        <h2>5. Feedback and Customer Payment Collection</h2>
+        <p>Customers may enable chatbot feedback collection so visitors can rate an FAQ action, choose an emoji/smile, select a label such as helpful or poor, use a satisfaction slider, or submit a written comment. Vani AI stores this feedback with related FAQ/action, session, source page, and timestamp details so customers can review and analyse service quality.</p>
+        <p>Customers may also enable payment collection features that let visitors start payments from chatbot action buttons. Payments are intended to be collected directly by the customer through their own Razorpay account, UPI ID, or another enabled payment provider. Vani AI stores only the operational records needed to display payment status, analytics, and reconciliation information.</p>
+        <p>Customers are responsible for explaining on their own website when chatbot feedback or payment collection is enabled, what data is collected, why it is collected, and how visitors can contact the customer about payments, refunds, or feedback-related requests.</p>
+      </section>
+
       <section id="sharing">
-        <h2>5. When We Share Information</h2>
+        <h2>6. When We Share Information</h2>
         <p>We do not sell personal data. We may share information with service providers only as needed to run Vani AI, such as hosting, database, email delivery, OTP providers, payment gateway providers, analytics/security tools, and support systems. We may also disclose information if required by law, to enforce our terms, or to protect users, customers, Codrant, or the public.</p>
       </section>
 
       <section id="payments">
-        <h2>6. Payments and Razorpay</h2>
-        <p>Payments and recurring mandate authorisation are handled through Razorpay or another payment provider we enable. Vani AI stores payment references, statuses, customer IDs, and mandate/token references needed to manage billing. We do not store full card numbers, CVV, or complete bank card credentials on our servers.</p>
+        <h2>7. Payments, Razorpay, and UPI</h2>
+        <p>Codrant subscription payments and recurring mandate authorisation are handled through Razorpay or another payment provider we enable. Vani AI stores payment references, statuses, customer IDs, and mandate/token references needed to manage billing. We do not store full card numbers, CVV, or complete bank card credentials on our servers.</p>
+        <p>For customer payment collection from website visitors, Vani AI may store the customer's public payment configuration and encrypted gateway secret where needed to create payment orders. UPI payment buttons may redirect visitors to an installed UPI app using the customer's UPI ID and payee details. The visitor payment is between the visitor and the customer; Codrant is not the merchant of record for those customer-collected payments.</p>
       </section>
 
       <section id="security">
-        <h2>7. Security</h2>
+        <h2>8. Security</h2>
         <p>We use reasonable technical and organisational safeguards to protect data, including access controls, API key hashing, session controls, database permissions, and service monitoring. No internet service can be guaranteed completely secure, so customers should protect their credentials, API keys, webhook secrets, and website integrations.</p>
       </section>
 
       <section id="secure-embed">
-        <h2>8. Secure Chatbot Embed</h2>
+        <h2>9. Secure Chatbot Embed</h2>
         <p>Vani AI is designed to be installed as a secure iframe-based chatbot embed. The customer website loads a small Vani AI script that creates and resizes an isolated iframe. The chatbot experience, conversations, lead forms, OTP flows, and widget UI run inside Vani AI's iframe instead of directly inside the customer's website page.</p>
         <p>An iframe is secure because it creates a separate browser document for the chatbot. This separation is called browser isolation. The chatbot frontend code may still be visible in browser developer tools, because all browser-side code can be inspected, but visibility of frontend code is not the security boundary. The security benefit is that the chatbot runs separately from the customer's website document and cannot directly inspect or control the customer's page content.</p>
         <div class="assurance">
@@ -210,38 +222,38 @@ connect-src https://vani.codrant.com;</div>
       </section>
 
       <section id="customer-controls">
-        <h2>9. Customer Controls and Integration Safety</h2>
+        <h2>10. Customer Controls and Integration Safety</h2>
         <ul>
           <li><strong>Domain controls:</strong> customers can enable allowed domains so a chatbot runs only on approved websites.</li>
-          <li><strong>Feature controls:</strong> lead capture, WhatsApp redirect, FAQ actions, live actions, webhook delivery, API integrations, and analytics features are controlled from the customer dashboard.</li>
+          <li><strong>Feature controls:</strong> lead capture, feedback collection, payment collection, WhatsApp redirect, FAQ actions, live actions, webhook delivery, API integrations, and analytics features are controlled from the customer dashboard.</li>
           <li><strong>API and webhook responsibility:</strong> customers should use secure endpoints, keep API keys and webhook URLs private, rotate credentials when needed, and avoid sending unnecessary sensitive data.</li>
-          <li><strong>Website notices:</strong> customers should update their own website privacy notices to explain chatbot use, lead capture, OTP verification, analytics, and any integrations they enable.</li>
+          <li><strong>Website notices:</strong> customers should update their own website privacy notices to explain chatbot use, lead capture, OTP verification, feedback collection, payment collection, analytics, and any integrations they enable.</li>
           <li><strong>Old snippets:</strong> customers should use the latest Vani AI secure iframe embed snippet from the Integration tab and replace older direct widget snippets where applicable.</li>
         </ul>
       </section>
 
       <section id="retention">
-        <h2>10. Data Retention</h2>
+        <h2>11. Data Retention</h2>
         <p>We keep data for as long as needed to provide the service, comply with legal and tax requirements, resolve disputes, prevent abuse, and maintain records. Customers may request deletion or export of applicable chatbot data, subject to legal, billing, security, and backup retention requirements.</p>
       </section>
 
       <section id="rights">
-        <h2>11. Your Choices and Rights</h2>
+        <h2>12. Your Choices and Rights</h2>
         <p>Depending on applicable law, you may request access, correction, deletion, export, restriction, or withdrawal of consent for personal data. We may need to verify your identity and account ownership before acting on a request.</p>
       </section>
 
       <section id="children">
-        <h2>12. Children</h2>
+        <h2>13. Children</h2>
         <p>Vani AI is intended for business use and is not directed to children. Customers should not knowingly use the chatbot to collect personal information from children without proper legal authority and consent.</p>
       </section>
 
       <section id="changes">
-        <h2>13. Changes to This Policy</h2>
+        <h2>14. Changes to This Policy</h2>
         <p>We may update this Privacy Policy when our services, legal requirements, or business practices change. The updated date at the top of this page will reflect the latest version.</p>
       </section>
 
       <section id="contact">
-        <h2>14. Contact</h2>
+        <h2>15. Contact</h2>
         <p>For privacy questions or requests, contact Codrant at <a href="mailto:info@codrant.com">info@codrant.com</a>.</p>
         <p class="note">Last updated: <?php echo htmlspecialchars($updatedAt); ?>. Please have qualified legal counsel review this policy before public launch.</p>
       </section>
