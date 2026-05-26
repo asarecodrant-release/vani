@@ -946,6 +946,11 @@
     return actionIds.includes(String(action?.id || ""));
   }
 
+  function clearActiveFaqActionState() {
+    activeFaqActions = [];
+    activeFaqActionContext = {};
+  }
+
   function renderFaqActionFeedback(action, context = {}, suggestionsBox = null) {
     if (!suggestionsBox || !faqFeedbackEnabledFor(action)) return;
     suggestionsBox.style.display = "grid";
@@ -979,6 +984,7 @@
         feedback_value: value
       });
       if ((action.action_type || "") === "payment") {
+        clearActiveFaqActionState();
         if (suggestionsBox) {
           suggestionsBox.innerHTML = "";
           suggestionsBox.style.display = "none";
@@ -1219,6 +1225,7 @@
 
   function renderPaymentForm(action, context, suggestionsBox) {
     if (!suggestionsBox) return;
+    clearActiveFaqActionState();
     const paymentAction = Array.isArray(config.payment_actions)
       ? config.payment_actions.find(item => String(item.id || "") === String(action.action_value || ""))
       : null;
@@ -1360,11 +1367,13 @@
       const messageBox = chatMessagesContainer();
       if (messageBox) addMessage(messageBox, message, "bot");
       if (faqFeedbackEnabledFor(action)) {
+        clearActiveFaqActionState();
         suggestionsBox.innerHTML = "";
         suggestionsBox.style.display = "grid";
         window.setTimeout(() => renderFaqActionFeedback(action, context, suggestionsBox), 250);
         return;
       }
+      clearActiveFaqActionState();
       let remaining = 5;
       submit.disabled = true;
       submit.textContent = `Closing in ${remaining}s`;
@@ -2050,6 +2059,7 @@
       messages.style.backgroundSize = "18px 18px, cover";
     }
     let debounce;
+    let clearActiveActionTypingTimer;
 
     addMessage(messages, greetingText, "bot");
 
@@ -3146,6 +3156,7 @@
       });
       activeFaqActions = [];
       activeFaqActionContext = {};
+      window.clearTimeout(clearActiveActionTypingTimer);
       input.value = "";
       delete input.dataset.selectedFaqId;
       delete input.dataset.selectedDefaultFaqKey;
@@ -3269,6 +3280,37 @@
       if (!userInputEnabled()) return;
       scrollLatestWhileTyping();
       delete input.dataset.selectedFaqId;
+      if (input.value.trim()) {
+        window.clearTimeout(clearActiveActionTypingTimer);
+        clearActiveActionTypingTimer = window.setTimeout(() => {
+          const query = input.value.trim();
+          const actionPanel = suggestionsBox.querySelector(".vani-action-panel");
+          if (actionPanel) {
+            actionPanel.style.transition = "opacity .28s ease, transform .28s ease, max-height .28s ease, margin .28s ease, padding .28s ease";
+            actionPanel.style.opacity = "0";
+            actionPanel.style.transform = "translateY(-6px)";
+            actionPanel.style.maxHeight = `${actionPanel.scrollHeight}px`;
+            window.requestAnimationFrame(() => {
+              actionPanel.style.maxHeight = "0";
+              actionPanel.style.marginTop = "0";
+              actionPanel.style.marginBottom = "0";
+              actionPanel.style.paddingTop = "0";
+              actionPanel.style.paddingBottom = "0";
+              actionPanel.style.overflow = "hidden";
+            });
+          }
+          clearActiveFaqActionState();
+          window.setTimeout(() => {
+            if (query) {
+              searchFaqs(query);
+            } else {
+              renderSuggestions(suggestionsBox, input, [], {includeFaqs: false});
+            }
+          }, actionPanel ? 300 : 0);
+        }, 3000);
+      } else {
+        window.clearTimeout(clearActiveActionTypingTimer);
+      }
       clearTimeout(debounce);
       debounce = setTimeout(() => searchFaqs(input.value.trim()), 180);
     });
