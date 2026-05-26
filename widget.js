@@ -1205,16 +1205,21 @@
         payer_email: emailInput.value.trim(),
         payer_phone: phoneInput.value.trim()
       };
-      const selectedPaymentAction = (config.payment_actions || []).find(item => String(item.id) === String(action.action_value));
-      if (selectedPaymentAction?.payment_method === "upi") {
-        const upiResponse = await api("create_customer_payment_order", "POST", createPayload);
-        if (!upiResponse.success || !upiResponse.upi_link) {
+      const orderResponse = await api("create_customer_payment_order", "POST", createPayload);
+      if (!orderResponse.success) {
+        submit.disabled = false;
+        submit.textContent = "Continue to payment";
+        setStatus(orderResponse.message || "Payment order could not be created.");
+        return;
+      }
+      if (orderResponse.payment_method === "upi" || orderResponse.upi_link) {
+        if (!orderResponse.upi_link) {
           submit.disabled = false;
           submit.textContent = "Open UPI app";
-          setStatus(upiResponse.message || "UPI payment could not be started.");
+          setStatus(orderResponse.message || "UPI payment could not be started.");
           return;
         }
-        window.location.href = upiResponse.upi_link;
+        window.location.href = orderResponse.upi_link;
         setStatus("UPI app opened. Payment will remain pending until the business verifies it.", true);
         submit.disabled = false;
         submit.textContent = "Open UPI app again";
@@ -1228,8 +1233,7 @@
         setStatus("Payment checkout could not be loaded.");
         return;
       }
-      const orderResponse = await api("create_customer_payment_order", "POST", createPayload);
-      if (!orderResponse.success) {
+      if (!orderResponse.order?.id) {
         submit.disabled = false;
         submit.textContent = "Continue to payment";
         setStatus(orderResponse.message || "Payment order could not be created.");
