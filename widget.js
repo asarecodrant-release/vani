@@ -595,7 +595,7 @@
     const hasActions = activeFaqActions.length > 0;
     const compactView = compactSuggestionView();
     const visibleItems = includeFaqs
-      ? (compactView ? items.slice(0, 3) : items)
+      ? (compactView && userInputEnabled() ? items.slice(0, 3) : items)
       : [];
     const showCategorySwitcher = !!(options.showCategorySwitcher && options.currentCategory && options.onChangeCategory);
     suggestionsBox.style.display = hasActions || visibleItems.length || showCategorySwitcher ? "grid" : "none";
