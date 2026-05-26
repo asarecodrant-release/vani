@@ -1418,7 +1418,7 @@
       return true;
     }
 
-    async function loadTop() {
+    async function loadTop(options = {}) {
       if (activeFaqActions.length && userInputEnabled()) {
         renderSuggestions(suggestionsBox, input, [], {
           includeFaqs: false,
@@ -1429,7 +1429,7 @@
         return;
       }
       if (isEnabled(config.faq_category_menu_enabled)) {
-        if (await loadSelectedCategoryFaqs()) return;
+        if (await loadSelectedCategoryFaqs({preserveActions: !!options.preserveActions})) return;
         await loadCategoryMenu();
         return;
       }
@@ -2535,7 +2535,7 @@
         matched_faq_id: response.matched_faq_id || null
       };
       if (!userInputEnabled()) {
-        await loadTop();
+        await loadTop({preserveActions: true});
       } else if (isEnabled(config.faq_category_menu_enabled) && selectedFaqCategory) {
         await loadSelectedCategoryFaqs({preserveActions: true});
       } else {
