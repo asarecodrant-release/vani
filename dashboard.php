@@ -3761,6 +3761,9 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
                 <button class="pill-btn copy-btn" type="button" data-copy="<?php echo h($embedCode); ?>">Copy secure snippet</button>
               </div>
               <small class="input-help">This loader creates a sandboxed iframe. The chatbot runs inside Vani AI's isolated frame and the page snippet only mounts and resizes that frame.</small>
+              <div class="notice" style="margin-top:12px">
+                <strong>Security policy note:</strong> If the customer's website uses a strict Content Security Policy, allow Vani AI in <code>script-src</code>, <code>frame-src</code>, and <code>connect-src</code> for <code>https://vani.codrant.com</code>. Some website builders or checkout pages may restrict custom scripts or iframes.
+              </div>
             </div>
 
             <div class="field full">

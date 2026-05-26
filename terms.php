@@ -105,6 +105,7 @@ footer{padding:24px 0 40px;color:#94a3b8;text-align:center;font-size:14px}
         <ul>
           <li>The free FAQ chatbot is provided as a lightweight website support tool.</li>
           <li>AI-powered features may generate probabilistic responses and should be reviewed for business-critical use.</li>
+          <li>The website integration is provided through a small Vani AI loader snippet that creates an iframe-based chatbot from Codrant's hosted systems. You are responsible for adding the snippet only on websites where you have authority and for configuring any required Content Security Policy, website-builder, tag-manager, or platform permissions needed to allow the script and iframe to load.</li>
           <li>We may improve, update, suspend, or discontinue features when required for security, performance, or business reasons.</li>
         </ul>
       </section>

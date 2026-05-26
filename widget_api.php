@@ -1718,10 +1718,13 @@ if ($action === "get_widget_config" || $action === "get_theme") {
     if (!$canUseFaqFeedback) {
         $faqFeedbackActionIds = [];
     }
-    $paymentActions = widget_safe_rows(supabase(
+    $paymentSettings = widget_customer_payment_settings($customerId);
+    $canUsePaymentCollection = billing_feature_enabled($activePlan, 'payment_collection');
+    $paymentCollectionEnabled = $canUsePaymentCollection && widget_bool($paymentSettings['is_enabled'] ?? false);
+    $paymentActions = $paymentCollectionEnabled ? widget_safe_rows(supabase(
         "GET",
         "customer_payment_actions?select=id,label,amount_paise,currency,payment_method,is_active&customer_id=eq." . urlencode($customerId) . "&is_active=eq.true&order=created_at.desc&limit=100"
-    ));
+    )) : [];
 
     widget_json_response([
         "success" => true,
@@ -1743,7 +1746,8 @@ if ($action === "get_widget_config" || $action === "get_theme") {
             "allowed_domains" => billing_feature_enabled($activePlan, 'allowed_domains'),
             "live_chat_actions" => billing_feature_enabled($activePlan, 'live_chat_actions'),
             "faq_action_suggestions" => billing_feature_enabled($activePlan, 'faq_action_suggestions'),
-            "faq_feedback" => $canUseFaqFeedback
+            "faq_feedback" => $canUseFaqFeedback,
+            "payment_collection" => $canUsePaymentCollection
         ],
         "website_verification_enabled" => widget_bool($settings['website_verification_enabled'] ?? false),
         "allowed_domains_enabled" => widget_bool($settings['allowed_domains_enabled'] ?? false) && billing_feature_enabled($activePlan, 'allowed_domains'),
@@ -1755,6 +1759,7 @@ if ($action === "get_widget_config" || $action === "get_theme") {
         "faq_feedback_type" => $faqFeedbackType,
         "faq_feedback_action_ids" => $faqFeedbackActionIds,
         "faq_feedback_email_enabled" => $canUseFaqFeedback && widget_bool($settings['faq_feedback_email_enabled'] ?? false),
+        "payment_collection_enabled" => $paymentCollectionEnabled,
         "payment_actions" => array_values(array_map(fn($row) => [
             "id" => (string)($row['id'] ?? ''),
             "label" => (string)($row['label'] ?? 'Payment'),
@@ -2146,6 +2151,10 @@ if ($action === "create_customer_payment_order") {
         widget_json_response(["success" => false, "message" => "Missing payment action"], 400);
     }
     $settings = widget_customer_payment_settings($customerId);
+    $activePlan = billing_active_plan_from_account(billing_account_for_customer($customerId));
+    if (!billing_feature_enabled($activePlan, 'payment_collection')) {
+        widget_json_response(["success" => false, "requires_growth" => true, "message" => "Payment collection requires Growth or Business plan"], 403);
+    }
     if (!widget_bool($settings['is_enabled'] ?? false)) {
         widget_json_response(["success" => false, "message" => "Payment collection is not enabled"], 403);
     }
@@ -2204,6 +2213,9 @@ if ($action === "create_customer_payment_order") {
         ]);
     }
     $amountPaise = (int)($paymentAction['amount_paise'] ?? 0);
+    if (trim((string)($settings['razorpay_key_id'] ?? '')) === '' || app_decrypt_secret((string)($settings['razorpay_key_secret'] ?? '')) === '') {
+        widget_json_response(["success" => false, "message" => "Razorpay payment setup is incomplete"], 400);
+    }
     $receipt = substr("pay_" . $customerId . "_" . time() . "_" . bin2hex(random_bytes(3)), 0, 40);
     $order = widget_customer_razorpay_request($settings, "POST", "orders", [
         "amount" => $amountPaise,
@@ -2257,7 +2269,7 @@ if ($action === "verify_customer_payment") {
     $paymentId = trim((string)($data['razorpay_payment_id'] ?? ''));
     $signature = trim((string)($data['razorpay_signature'] ?? ''));
     $settings = widget_customer_payment_settings($customerId);
-    $secret = trim((string)($settings['razorpay_key_secret'] ?? ''));
+    $secret = app_decrypt_secret((string)($settings['razorpay_key_secret'] ?? ''));
     if (!$customerId || !$orderId || !$paymentId || !$signature || $secret === '') {
         widget_json_response(["success" => false, "message" => "Missing payment verification data"], 400);
     }

@@ -4593,12 +4593,9 @@ if ($action === "save_payment_settings") {
     $enablePayments = filter_var($data['is_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
     $effectiveKeyId = $keyId !== '' ? $keyId : trim((string)($existingPaymentSettings['razorpay_key_id'] ?? ''));
     $effectiveSecret = $keySecret !== '' ? $keySecret : app_decrypt_secret((string)($existingPaymentSettings['razorpay_key_secret'] ?? ''));
-    if ($enablePayments && app_secret_encryption_key() === '') {
+    $hasAnyRazorpaySecret = $keySecret !== '' || trim((string)($existingPaymentSettings['razorpay_key_secret'] ?? '')) !== '';
+    if ($enablePayments && $hasAnyRazorpaySecret && app_secret_encryption_key() === '') {
         echo json_encode(["success" => false, "message" => "Payment secret encryption key is missing. Set APP_ENCRYPTION_KEY before switching ON payment collection."]);
-        exit;
-    }
-    if ($enablePayments && billing_feature_enabled($activePlan, 'payment_collection') && ($effectiveKeyId === '' || $effectiveSecret === '')) {
-        echo json_encode(["success" => false, "message" => "Razorpay Key ID and Key Secret are required before switching ON payment collection"]);
         exit;
     }
     $payload = [
@@ -4660,6 +4657,21 @@ if ($action === "save_payment_action") {
         exit;
     }
     require_customer_mutation_access($customerId);
+    $activePlan = billing_active_plan_from_account(billing_account_for_customer($customerId));
+    if (!billing_feature_enabled($activePlan, 'payment_collection')) {
+        echo json_encode(["success" => false, "requires_growth" => true, "message" => "Payment collection requires Growth or Business plan"]);
+        exit;
+    }
+    if ($paymentMethod === 'razorpay') {
+        $paymentSettingsRows = safe_rows(supabase("GET", "customer_payment_settings?select=razorpay_key_id,razorpay_key_secret&customer_id=eq." . urlencode($customerId) . "&limit=1"));
+        $paymentSettings = $paymentSettingsRows[0] ?? [];
+        $hasRazorpayKeyId = trim((string)($paymentSettings['razorpay_key_id'] ?? '')) !== '';
+        $hasRazorpaySecret = app_decrypt_secret((string)($paymentSettings['razorpay_key_secret'] ?? '')) !== '';
+        if (!$hasRazorpayKeyId || !$hasRazorpaySecret) {
+            echo json_encode(["success" => false, "message" => "Save Razorpay Key ID and Key Secret before creating a Razorpay Checkout payment button"]);
+            exit;
+        }
+    }
     $payload = [
         "customer_id" => $customerId,
         "payment_method" => $paymentMethod,
