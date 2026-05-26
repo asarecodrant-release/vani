@@ -2,6 +2,15 @@
 require_once __DIR__ . '/session-auth.php';
 $updatedAt = 'May 26, 2026';
 $manualDashboardUrl = is_authenticated_user() ? 'dashboard.php' : 'login.php';
+$siteMenuExtraLinks = [
+  ['href' => $manualDashboardUrl, 'label' => is_authenticated_user() ? 'Dashboard' : 'Login for Dashboard'],
+  ['href' => 'Customer_Manual.php', 'label' => 'Customer Manual'],
+  ['href' => 'freebot.php', 'label' => 'Create Chatbot'],
+  ['href' => 'theme-selection.php', 'label' => 'Theme Selection'],
+  ['href' => 'faq-setup.php', 'label' => 'FAQ Setup'],
+  ['href' => 'complete-setup.php', 'label' => 'Complete Setup'],
+  ['href' => 'test-chatbot.php', 'label' => 'Test Chatbot']
+];
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -25,7 +34,6 @@ body{background:linear-gradient(180deg,#eef2ff 0,#f8fafc 320px);color:var(--ink)
 .btn,.ghost{display:inline-flex;align-items:center;justify-content:center;min-height:42px;border-radius:12px;padding:0 15px;text-decoration:none;font-weight:850;border:1px solid transparent;cursor:pointer}
 .btn{background:linear-gradient(135deg,var(--brand),var(--brand2));color:#fff}
 .ghost{background:rgba(255,255,255,.76);border-color:var(--line);color:var(--ink)}
-.manual-link-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:14px 0 24px}.manual-link-grid a{min-height:44px;border:1px solid var(--line);border-radius:13px;background:rgba(255,255,255,.78);display:inline-flex;align-items:center;justify-content:center;text-align:center;padding:8px 10px;color:var(--ink);text-decoration:none;font-size:13px;font-weight:850}
 .hero{display:grid;gap:12px;margin:18px 0 24px}.eyebrow{text-transform:uppercase;letter-spacing:.08em;color:var(--brand);font-weight:900;font-size:12px}.hero h1{font-size:42px;line-height:1.08;max-width:920px}.hero p{max-width:900px;color:var(--muted);font-size:17px}
 .layout{display:grid;grid-template-columns:282px minmax(0,1fr);gap:18px;align-items:start}.toc{position:sticky;top:16px;display:grid;gap:8px}.toc a{padding:10px 12px;border:1px solid var(--line);background:rgba(255,255,255,.78);border-radius:12px;color:var(--ink);text-decoration:none;font-weight:750;font-size:14px}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:22px;margin-bottom:16px;box-shadow:var(--shadow)}.panel h2{font-size:24px;margin-bottom:10px}.panel h3{font-size:17px;margin:18px 0 8px}.panel p,.panel li{color:var(--muted);font-size:15px}.panel ul,.panel ol{display:grid;gap:8px;padding-left:21px}.tag{display:inline-flex;align-items:center;border-radius:999px;background:rgba(79,70,229,.1);color:var(--brand);padding:5px 10px;font-size:12px;font-weight:900}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.three{grid-template-columns:repeat(3,minmax(0,1fr))}.card{border:1px solid var(--line);border-radius:14px;padding:15px;background:#fff}.card strong{display:block;margin-bottom:5px}.note{padding:14px 16px;border-radius:14px;background:#ecfeff;border:1px solid #a5f3fc;color:#155e75;font-weight:700}.warn{background:#fffbeb;border-color:#fde68a;color:#92400e}
@@ -33,7 +41,7 @@ table{width:100%;border-collapse:collapse;min-width:720px}.table-wrap{overflow:a
 .mock{border:1px solid #c7d2fe;border-radius:18px;overflow:hidden;background:#fff;margin:14px 0}.mock-head{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:12px 14px;background:#f8fafc;border-bottom:1px solid var(--line)}.mock-tabs{display:flex;gap:7px;flex-wrap:wrap}.mock-tab{height:26px;border-radius:999px;background:#e0e7ff;color:#3730a3;padding:4px 10px;font-size:12px;font-weight:850}.mock-body{padding:15px;display:grid;gap:12px}.mock-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.mock-kpi{border:1px solid var(--line);border-radius:12px;padding:10px;background:#fff}.mock-kpi span{display:block;color:var(--muted);font-size:11px;text-transform:uppercase;font-weight:850}.mock-kpi b{font-size:20px}.mock-chart{height:120px;border-radius:12px;background:linear-gradient(135deg,#eef2ff,#ecfeff);border:1px solid #dbeafe;display:flex;align-items:end;gap:8px;padding:12px}.bar{width:18px;border-radius:8px 8px 0 0;background:linear-gradient(180deg,var(--brand),var(--brand2))}.mock-list{display:grid;gap:8px}.mock-row{display:grid;grid-template-columns:120px 1fr 60px;gap:10px;align-items:center;font-size:12px;color:#475569}.track{height:9px;background:#e2e8f0;border-radius:999px;overflow:hidden}.fill{height:100%;background:linear-gradient(90deg,var(--brand),var(--brand2));border-radius:999px}
 .steps{counter-reset:step;display:grid;gap:10px}.step{position:relative;padding:13px 14px 13px 48px;border:1px solid var(--line);border-radius:14px;background:#fff}.step:before{counter-increment:step;content:counter(step);position:absolute;left:14px;top:14px;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;background:var(--brand);color:#fff;font-size:12px;font-weight:900}.step strong{display:block}
 code{display:block;background:#111827;color:#e5e7eb;border-radius:14px;padding:13px;white-space:pre-wrap;word-break:break-word;font-size:13px;line-height:1.55}.inline{display:inline;background:#eef2ff;color:#3730a3;border-radius:7px;padding:2px 6px;font-weight:750}
-@media(max-width:900px){.layout,.grid,.three,.manual-link-grid{grid-template-columns:1fr}.toc{position:static}.hero h1{font-size:32px}.topbar{align-items:flex-start;flex-direction:column}.mock-kpis{grid-template-columns:repeat(2,1fr)}table{min-width:640px}}
+@media(max-width:900px){.layout,.grid,.three{grid-template-columns:1fr}.toc{position:static}.hero h1{font-size:32px}.topbar{align-items:flex-start;flex-direction:column}.mock-kpis{grid-template-columns:repeat(2,1fr)}table{min-width:640px}}
 @media print{body{background:#fff}.topbar,.toc,.no-print{display:none!important}.container{max-width:none;padding:0}.layout{display:block}.panel,.card,.mock{box-shadow:none;break-inside:avoid}.panel{border-color:#d1d5db}.hero{margin-top:0}.hero h1{font-size:30px}}
 </style>
 </head>
@@ -44,7 +52,6 @@ code{display:block;background:#111827;color:#e5e7eb;border-radius:14px;padding:1
     <a class="brand" href="index.php"><img src="images/logo_img.png" alt="Vani AI"><span>Vani AI Manual</span></a>
     <div class="actions no-print">
       <button class="btn" type="button" onclick="window.print()">Download PDF</button>
-      <a class="ghost" href="<?php echo htmlspecialchars($manualDashboardUrl, ENT_QUOTES, 'UTF-8'); ?>"><?php echo is_authenticated_user() ? 'Open Dashboard' : 'Login for Dashboard'; ?></a>
     </div>
   </div>
 
@@ -54,21 +61,6 @@ code{display:block;background:#111827;color:#e5e7eb;border-radius:14px;padding:1
     <p>This manual explains every major Vani AI dashboard tab, sub-tab, setting, metric, and recommended workflow so a customer can create a high-performing FAQ chatbot for their website.</p>
     <p><span class="tag">Last updated <?php echo htmlspecialchars($updatedAt, ENT_QUOTES, 'UTF-8'); ?></span></p>
   </section>
-
-  <nav class="manual-link-grid no-print" aria-label="Manual page shortcuts">
-    <a href="index.php">Home</a>
-    <a href="<?php echo htmlspecialchars($manualDashboardUrl, ENT_QUOTES, 'UTF-8'); ?>"><?php echo is_authenticated_user() ? 'Dashboard' : 'Login' ?></a>
-    <a href="freebot.php">Create Chatbot</a>
-    <a href="theme-selection.php">Theme Selection</a>
-    <a href="faq-setup.php">FAQ Setup</a>
-    <a href="complete-setup.php">Complete Setup</a>
-    <a href="test-chatbot.php">Test Chatbot</a>
-    <a href="subscription.php">Subscription Plans</a>
-    <a href="terms.php">Terms</a>
-    <a href="privacy-policy.php">Privacy</a>
-    <a href="cancellation-refund-policy.php">Cancellation & Refund</a>
-    <a href="contact.php">Contact</a>
-  </nav>
 
   <div class="layout">
     <nav class="toc" aria-label="Manual sections">

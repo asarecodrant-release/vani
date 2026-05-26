@@ -1903,6 +1903,11 @@ body.dark .analytics-period-card{background:rgba(15,23,42,.38)}
 .analytics-tabs{display:flex;gap:8px;flex-wrap:wrap}
 .analytics-tab-btn{border:1px solid var(--line);background:var(--panel-strong);color:var(--ink);border-radius:999px;padding:9px 13px;font-size:13px;font-weight:800;cursor:pointer}
 .analytics-tab-btn.active{background:linear-gradient(135deg,var(--brand),var(--brand-2));border-color:transparent;color:#fff}
+.payment-subtabs{display:flex;gap:8px;flex-wrap:wrap}
+.payment-subtab-btn{border:1px solid var(--line);background:var(--panel-strong);color:var(--muted);border-radius:12px;min-height:38px;padding:0 13px;font-weight:800;cursor:pointer}
+.payment-subtab-btn:hover,.payment-subtab-btn.active{background:rgba(99,102,241,.12);color:var(--brand);border-color:rgba(99,102,241,.34)}
+.payment-subpanel{display:none}
+.payment-subpanel.active{display:block}
 .analytics-subpanel{display:none;gap:18px}
 .analytics-subpanel.active{display:grid}
 .bi-kpi-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
@@ -2169,8 +2174,8 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
   .panel{border-radius:18px}
   .section-head{align-items:flex-start;flex-direction:column;padding:16px 16px 0}
   .section-body{padding:16px}
-  .faq-subtabs,.integration-subtabs{display:grid;grid-template-columns:1fr;padding:0 16px 16px}
-  .faq-subtab-btn,.integration-subtab-btn{width:100%}
+  .faq-subtabs,.integration-subtabs,.payment-subtabs{display:grid;grid-template-columns:1fr;padding:0 16px 16px}
+  .faq-subtab-btn,.integration-subtab-btn,.payment-subtab-btn{width:100%}
   .overview-hero h2{font-size:28px}
   .metrics,.form-grid,.theme-controls,.outside-faq-grid,.faq-action-grid,.lead-grid,.analytics-grid,.analytics-grid.two,.bi-kpi-grid,.bi-dashboard-grid,.bi-dashboard-grid.three,.bi-alert-grid,.funnel,.pricing-grid,.security-grid,.bulk-report-summary,.payment-choice-grid,.billing-filter{grid-template-columns:1fr}
   .panel-actions{justify-content:stretch}
@@ -3101,10 +3106,21 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
         </div>
 
         <div class="panel section-body">
+          <div class="payment-subtabs" role="tablist" aria-label="Payment collection sections">
+            <button class="payment-subtab-btn active" type="button" data-payment-subtab="payment-subpanel-setup">Payment Setup</button>
+            <button class="payment-subtab-btn" type="button" data-payment-subtab="payment-subpanel-razorpay">Razorpay Checkout</button>
+            <button class="payment-subtab-btn" type="button" data-payment-subtab="payment-subpanel-upi">UPI Redirect</button>
+            <button class="payment-subtab-btn" type="button" data-payment-subtab="payment-subpanel-buttons">Payment Buttons</button>
+            <button class="payment-subtab-btn" type="button" data-payment-subtab="payment-subpanel-transactions">Transactions</button>
+          </div>
+        </div>
+
+        <div class="payment-subpanel active" id="payment-subpanel-setup">
+        <div class="panel section-body">
           <div class="section-head" style="padding:0 0 14px">
             <div>
-              <h3>Razorpay Account</h3>
-              <p class="muted">Use the customer's Razorpay Key ID and Key Secret. Secret is used only on the server to create and verify orders.</p>
+              <h3>Payment Setup</h3>
+              <p class="muted">Switch ON payment collection globally. Razorpay credentials are needed only for Razorpay Checkout buttons. UPI buttons need only a valid UPI ID.</p>
             </div>
           </div>
           <form id="paymentSettingsForm" class="form-grid">
@@ -3124,28 +3140,40 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
             <div class="field full"><button class="pill-btn" type="submit">Save payment setup</button></div>
           </form>
         </div>
+        </div>
 
-        <div class="analytics-grid two">
+        <div class="payment-subpanel" id="payment-subpanel-razorpay">
           <div class="panel section-body">
-            <h3>Create Payment Button</h3>
-            <form id="paymentActionForm" class="form-grid" style="margin-top:12px">
-              <div class="field">
-                <label>Payment method</label>
-                <select id="paymentActionMethod">
-                  <option value="razorpay">Razorpay Checkout</option>
-                  <option value="upi">UPI Redirect</option>
-                </select>
-              </div>
-              <div class="field"><label>Label</label><input id="paymentActionLabel" placeholder="Pay booking amount"></div>
-              <div class="field"><label>Amount (INR)</label><input id="paymentActionAmount" type="number" min="1" step="1" placeholder="999"></div>
-              <div class="field payment-upi-field"><label>UPI ID</label><input id="paymentActionUpiId" placeholder="business@upi"></div>
-              <div class="field payment-upi-field"><label>UPI payee name</label><input id="paymentActionUpiName" placeholder="<?php echo h($paymentBusinessName); ?>"></div>
-              <div class="field full payment-upi-field"><label>UPI note</label><input id="paymentActionUpiNote" placeholder="Booking advance"></div>
-              <div class="field full"><label>Description</label><textarea id="paymentActionDescription" placeholder="Advance payment for appointment or order"></textarea></div>
-              <div class="field"><label>Status</label><label class="switch"><input id="paymentActionActive" type="checkbox" checked><span class="switch-slider"></span></label></div>
-              <div class="field"><label>&nbsp;</label><button class="pill-btn" type="submit">Add payment button</button></div>
+            <h3>Create Razorpay Checkout Button</h3>
+            <p class="muted" style="margin:8px 0 14px">Use this for card, netbanking, UPI through Razorpay, and wallet checkout. Razorpay Key ID and Key Secret must be saved in Payment Setup first.</p>
+            <form class="form-grid payment-action-form" data-payment-method="razorpay">
+              <div class="field"><label>Label</label><input data-payment-field="label" placeholder="Pay booking amount"></div>
+              <div class="field"><label>Amount (INR)</label><input data-payment-field="amount" type="number" min="1" step="1" placeholder="999"></div>
+              <div class="field full"><label>Description</label><textarea data-payment-field="description" placeholder="Advance payment for appointment or order"></textarea></div>
+              <div class="field"><label>Status</label><label class="switch"><input data-payment-field="active" type="checkbox" checked><span class="switch-slider"></span></label></div>
+              <div class="field"><label>&nbsp;</label><button class="pill-btn" type="submit">Add Razorpay button</button></div>
             </form>
           </div>
+        </div>
+
+        <div class="payment-subpanel" id="payment-subpanel-upi">
+          <div class="panel section-body">
+            <h3>Create UPI Redirect Button</h3>
+            <p class="muted" style="margin:8px 0 14px">Use this for the simplest UPI app redirect. Payments are created as pending and should be manually verified by the business.</p>
+            <form class="form-grid payment-action-form" data-payment-method="upi">
+              <div class="field"><label>Label</label><input data-payment-field="label" placeholder="Pay via UPI"></div>
+              <div class="field"><label>Amount (INR)</label><input data-payment-field="amount" type="number" min="1" step="1" placeholder="999"></div>
+              <div class="field"><label>UPI ID</label><input data-payment-field="upi_id" placeholder="business@upi"></div>
+              <div class="field"><label>UPI payee name</label><input data-payment-field="upi_payee_name" placeholder="<?php echo h($paymentBusinessName); ?>"></div>
+              <div class="field full"><label>UPI note</label><input data-payment-field="upi_note" placeholder="Booking advance"></div>
+              <div class="field full"><label>Description</label><textarea data-payment-field="description" placeholder="Advance payment for appointment or order"></textarea></div>
+              <div class="field"><label>Status</label><label class="switch"><input data-payment-field="active" type="checkbox" checked><span class="switch-slider"></span></label></div>
+              <div class="field"><label>&nbsp;</label><button class="pill-btn" type="submit">Add UPI button</button></div>
+            </form>
+          </div>
+        </div>
+
+        <div class="payment-subpanel" id="payment-subpanel-buttons">
           <div class="panel section-body">
             <h3>Payment Buttons</h3>
             <div class="field" style="margin:12px 0">
@@ -3179,6 +3207,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
           </div>
         </div>
 
+        <div class="payment-subpanel" id="payment-subpanel-transactions">
         <div class="panel section-body">
           <h3>Payment Transactions</h3>
           <div class="table-wrap" style="margin-top:14px">
@@ -3202,6 +3231,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
               </tbody>
             </table>
           </div>
+        </div>
         </div>
       </section>
 
@@ -7217,26 +7247,33 @@ document.getElementById("paymentEnabledToggle")?.addEventListener("change", even
   }
 });
 
-function updatePaymentActionMethodFields() {
-  const method = document.getElementById("paymentActionMethod")?.value || "razorpay";
-  document.querySelectorAll(".payment-upi-field").forEach(field => {
-    field.style.display = method === "upi" ? "" : "none";
+function openPaymentSubtab(target) {
+  const id = document.getElementById(target) ? target : "payment-subpanel-setup";
+  document.querySelectorAll(".payment-subtab-btn").forEach(button => {
+    button.classList.toggle("active", button.dataset.paymentSubtab === id);
+  });
+  document.querySelectorAll(".payment-subpanel").forEach(panel => {
+    panel.classList.toggle("active", panel.id === id);
   });
 }
-document.getElementById("paymentActionMethod")?.addEventListener("change", updatePaymentActionMethodFields);
-updatePaymentActionMethodFields();
 
-document.getElementById("paymentActionForm")?.addEventListener("submit", async event => {
+document.querySelectorAll(".payment-subtab-btn").forEach(button => {
+  button.addEventListener("click", () => openPaymentSubtab(button.dataset.paymentSubtab || "payment-subpanel-setup"));
+});
+
+async function submitPaymentActionForm(event) {
   event.preventDefault();
   const customerId = document.getElementById("paymentCustomerId")?.value || "";
-  const method = document.getElementById("paymentActionMethod")?.value || "razorpay";
-  const label = document.getElementById("paymentActionLabel")?.value.trim() || "";
-  const amount = document.getElementById("paymentActionAmount")?.value || "";
-  const upiId = document.getElementById("paymentActionUpiId")?.value.trim() || "";
+  const form = event.currentTarget;
+  const method = form.dataset.paymentMethod || "razorpay";
+  const label = form.querySelector('[data-payment-field="label"]')?.value.trim() || "";
+  const amount = form.querySelector('[data-payment-field="amount"]')?.value || "";
+  const upiId = form.querySelector('[data-payment-field="upi_id"]')?.value.trim() || "";
   if (!customerId) return showToast("Select a bot first");
   if (!label || !amount) return showToast("Payment label and amount are required");
   if (method === "upi" && !upiId) return showToast("UPI ID is required");
-  const button = event.currentTarget.querySelector("button[type='submit']");
+  const button = form.querySelector("button[type='submit']");
+  const originalText = button?.textContent || "Add payment button";
   button.disabled = true;
   button.textContent = "Saving...";
   const response = await fetch("/api.php?action=save_payment_action", {
@@ -7247,19 +7284,23 @@ document.getElementById("paymentActionForm")?.addEventListener("submit", async e
       payment_method: method,
       label,
       amount_rupees: amount,
-      description: document.getElementById("paymentActionDescription")?.value.trim() || "",
+      description: form.querySelector('[data-payment-field="description"]')?.value.trim() || "",
       upi_id: upiId,
-      upi_payee_name: document.getElementById("paymentActionUpiName")?.value.trim() || "",
-      upi_note: document.getElementById("paymentActionUpiNote")?.value.trim() || "",
-      is_active: !!document.getElementById("paymentActionActive")?.checked
+      upi_payee_name: form.querySelector('[data-payment-field="upi_payee_name"]')?.value.trim() || "",
+      upi_note: form.querySelector('[data-payment-field="upi_note"]')?.value.trim() || "",
+      is_active: !!form.querySelector('[data-payment-field="active"]')?.checked
     })
   });
   const data = await response.json().catch(() => ({}));
   button.disabled = false;
-  button.textContent = "Add payment button";
+  button.textContent = originalText;
   if (!data.success) return showToast(data.message || "Payment button could not be saved");
   showToast("Payment button saved");
   setTimeout(() => location.reload(), 700);
+}
+
+document.querySelectorAll(".payment-action-form").forEach(form => {
+  form.addEventListener("submit", submitPaymentActionForm);
 });
 
 document.getElementById("paymentActionList")?.addEventListener("click", async event => {

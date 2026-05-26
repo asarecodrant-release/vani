@@ -26,6 +26,22 @@ nav{
   box-shadow: 0 6px 20px rgba(0,0,0,0.05);
 }
 
+body.dark nav,
+body.setup-theme-dark nav,
+body.vani-public-theme.dark nav{
+  background:rgba(2,12,28,.86);
+  border-bottom-color:rgba(56,189,248,.2);
+  box-shadow:0 14px 38px rgba(0,0,0,.26);
+}
+
+body.bright nav,
+body.setup-theme-light nav,
+body.vani-public-theme.bright nav{
+  background:rgba(255,255,255,.86);
+  border-bottom-color:rgba(217,119,6,.18);
+  box-shadow:0 14px 38px rgba(180,83,9,.12);
+}
+
 /* page spacing */
 body{
   padding-top: 80px;
@@ -127,6 +143,32 @@ nav .container{
   background:#f1f5f9;
 }
 
+body.dark .nav-link,
+body.setup-theme-dark .nav-link,
+body.vani-public-theme.dark .nav-link{
+  color:#e5e7eb;
+}
+
+body.dark .nav-link:hover,
+body.setup-theme-dark .nav-link:hover,
+body.vani-public-theme.dark .nav-link:hover{
+  color:#7dd3fc;
+  background:rgba(56,189,248,.12);
+}
+
+body.bright .nav-link,
+body.setup-theme-light .nav-link,
+body.vani-public-theme.bright .nav-link{
+  color:#3f2f15;
+}
+
+body.bright .nav-link:hover,
+body.setup-theme-light .nav-link:hover,
+body.vani-public-theme.bright .nav-link:hover{
+  color:#92400e;
+  background:rgba(245,158,11,.12);
+}
+
 nav .site-menu-trigger{
   background:#fff;
   color:#334155;
@@ -175,6 +217,20 @@ nav .site-menu-trigger{
   min-width:0;
 }
 
+body.dark .user-box,
+body.setup-theme-dark .user-box,
+body.vani-public-theme.dark .user-box{
+  background:rgba(15,23,42,.78);
+  border:1px solid rgba(56,189,248,.18);
+}
+
+body.bright .user-box,
+body.setup-theme-light .user-box,
+body.vani-public-theme.bright .user-box{
+  background:rgba(255,255,255,.78);
+  border:1px solid rgba(217,119,6,.18);
+}
+
 .user-avatar{
   width:36px;
   height:36px;
@@ -197,6 +253,18 @@ nav .site-menu-trigger{
   overflow:hidden;
   text-overflow:ellipsis;
   white-space:nowrap;
+}
+
+body.dark .user-box span,
+body.setup-theme-dark .user-box span,
+body.vani-public-theme.dark .user-box span{
+  color:#e5e7eb;
+}
+
+body.bright .user-box span,
+body.setup-theme-light .user-box span,
+body.vani-public-theme.bright .user-box span{
+  color:#3f2f15;
 }
 
 .user-box .nav-btn{

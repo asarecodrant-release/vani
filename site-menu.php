@@ -157,6 +157,17 @@ body.dark .site-side-menu-link.primary{
       <a class="site-side-menu-link primary" href="dashboard.php">Dashboard <span>→</span></a>
     <?php endif; ?>
     <a class="site-side-menu-link primary" href="index.php">Home <span>→</span></a>
+    <?php if (!empty($siteMenuExtraLinks) && is_array($siteMenuExtraLinks)): ?>
+      <?php foreach ($siteMenuExtraLinks as $extraLink): ?>
+        <?php
+          $extraHref = (string)($extraLink['href'] ?? '');
+          $extraLabel = (string)($extraLink['label'] ?? '');
+        ?>
+        <?php if ($extraHref !== '' && $extraLabel !== ''): ?>
+          <a class="site-side-menu-link" href="<?php echo htmlspecialchars($extraHref, ENT_QUOTES, 'UTF-8'); ?>"><?php echo htmlspecialchars($extraLabel, ENT_QUOTES, 'UTF-8'); ?> <span>→</span></a>
+        <?php endif; ?>
+      <?php endforeach; ?>
+    <?php endif; ?>
     <a class="site-side-menu-link" href="subscription.php">Subscription Plans <span>→</span></a>
     <a class="site-side-menu-link" href="terms.php">Terms & Conditions <span>→</span></a>
     <a class="site-side-menu-link" href="privacy-policy.php">Privacy Policy <span>→</span></a>
