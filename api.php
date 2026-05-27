@@ -4639,6 +4639,69 @@ if ($action === "chat") {
 // ==========================
 // CUSTOMER PAYMENT COLLECTION
 // ==========================
+function payment_settings_missing_schema_columns(array $response): array {
+    $raw = (string)($response['raw'] ?? '');
+    if ($raw === '') {
+        return [];
+    }
+    $columns = [];
+    if (preg_match_all("/'([^']+)' column of 'customer_payment_settings'/i", $raw, $matches)) {
+        $columns = array_merge($columns, $matches[1]);
+    }
+    if (preg_match_all('/column customer_payment_settings\.([a-zA-Z0-9_]+)/i', $raw, $matches)) {
+        $columns = array_merge($columns, $matches[1]);
+    }
+    if (preg_match_all('/column "([a-zA-Z0-9_]+)" of relation "customer_payment_settings"/i', $raw, $matches)) {
+        $columns = array_merge($columns, $matches[1]);
+    }
+    return array_values(array_unique(array_filter($columns)));
+}
+
+function payment_settings_select_existing(string $customerId): array {
+    $extended = supabase(
+        "GET",
+        "customer_payment_settings?select=id,razorpay_key_id,razorpay_key_secret,razorpay_terms_accepted,upi_terms_accepted&customer_id=eq." . urlencode($customerId) . "&limit=1"
+    );
+    if ($extended['status'] >= 200 && $extended['status'] < 300) {
+        return safe_rows($extended);
+    }
+    $fallback = supabase(
+        "GET",
+        "customer_payment_settings?select=id,razorpay_key_id,razorpay_key_secret&customer_id=eq." . urlencode($customerId) . "&limit=1"
+    );
+    if ($fallback['status'] >= 200 && $fallback['status'] < 300) {
+        return safe_rows($fallback);
+    }
+    return safe_rows(supabase(
+        "GET",
+        "customer_payment_settings?select=id&customer_id=eq." . urlencode($customerId) . "&limit=1"
+    ));
+}
+
+function payment_settings_write_with_schema_fallback(string $method, string $endpoint, array $payload): array {
+    $attemptPayload = $payload;
+    $lastResponse = ["status" => 0, "data" => null, "raw" => ""];
+    for ($attempt = 0; $attempt < 20; $attempt++) {
+        $writePayload = $method === "POST" ? [$attemptPayload] : $attemptPayload;
+        $lastResponse = supabase($method, $endpoint, $writePayload);
+        if ($lastResponse['status'] >= 200 && $lastResponse['status'] < 300) {
+            return $lastResponse;
+        }
+        $missingColumns = payment_settings_missing_schema_columns($lastResponse);
+        $removed = false;
+        foreach ($missingColumns as $column) {
+            if (array_key_exists($column, $attemptPayload) && !in_array($column, ['customer_id', 'is_enabled'], true)) {
+                unset($attemptPayload[$column]);
+                $removed = true;
+            }
+        }
+        if (!$removed) {
+            break;
+        }
+    }
+    return $lastResponse;
+}
+
 if ($action === "save_payment_settings") {
     $data = getJSON();
     $customerId = trim((string)($data['customer_id'] ?? ''));
@@ -4655,7 +4718,7 @@ if ($action === "save_payment_settings") {
 
     $keyId = trim((string)($data['razorpay_key_id'] ?? ''));
     $keySecret = trim((string)($data['razorpay_key_secret'] ?? ''));
-    $existingSettings = safe_rows(supabase("GET", "customer_payment_settings?select=id,razorpay_key_id,razorpay_key_secret,razorpay_terms_accepted,upi_terms_accepted&customer_id=eq." . urlencode($customerId) . "&limit=1"));
+    $existingSettings = payment_settings_select_existing($customerId);
     $existingPaymentSettings = $existingSettings[0] ?? [];
     $enablePayments = filter_var($data['is_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
     $enableRazorpay = filter_var($data['razorpay_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
@@ -4777,9 +4840,15 @@ if ($action === "save_payment_settings") {
     }
 
     $res = !empty($existingSettings)
-        ? supabase("PATCH", "customer_payment_settings?customer_id=eq." . urlencode($customerId), $payload)
-        : supabase("POST", "customer_payment_settings", [$payload]);
-    echo json_encode(["success" => $res['status'] >= 200 && $res['status'] < 300, "settings" => $res['data'][0] ?? null, "debug" => $res]);
+        ? payment_settings_write_with_schema_fallback("PATCH", "customer_payment_settings?customer_id=eq." . urlencode($customerId), $payload)
+        : payment_settings_write_with_schema_fallback("POST", "customer_payment_settings", $payload);
+    $success = $res['status'] >= 200 && $res['status'] < 300;
+    echo json_encode([
+        "success" => $success,
+        "message" => $success ? "Payment setup saved" : "Payment setup could not be saved. Please run the latest Supabase schema migration if this continues.",
+        "settings" => $res['data'][0] ?? null,
+        "debug" => $res
+    ]);
     exit;
 }
 
