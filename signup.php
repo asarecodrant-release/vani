@@ -2,6 +2,11 @@
 include 'config.php';
 require_once __DIR__ . '/session-auth.php';
 
+$safeReturnTo = trim((string)($_GET['return_to'] ?? ''));
+if ($safeReturnTo !== '' && preg_match('/^[A-Za-z0-9_\-]+\.php(?:\?[A-Za-z0-9_\-&=%.]+)?$/', $safeReturnTo)) {
+    $_SESSION['auth_return_to'] = $safeReturnTo;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $email = $_POST['email'];
@@ -23,7 +28,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $res[0],
             "password"
         );
+        $returnTo = (string)($_SESSION['auth_return_to'] ?? '');
+        unset($_SESSION['auth_return_to']);
+        if ($returnTo !== '' && preg_match('/^[A-Za-z0-9_\-]+\.php(?:\?[A-Za-z0-9_\-&=%.]+)?$/', $returnTo)) {
+            header("Location: " . $returnTo);
+            exit;
+        }
         header("Location: dashboard.php");
+        exit;
     } else {
         echo "Signup failed";
     }

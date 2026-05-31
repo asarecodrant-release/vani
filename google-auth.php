@@ -127,7 +127,11 @@ if (!empty($check['data'])) {
     ]);
 }
 
+$redirectUrl = (string)($_SESSION['auth_return_to'] ?? '');
+unset($_SESSION['auth_return_to']);
+
 echo json_encode([
     "success" => true,
-    "first_login" => $firstLogin
+    "first_login" => $firstLogin,
+    "redirect_url" => $redirectUrl
 ]);

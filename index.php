@@ -1335,8 +1335,8 @@ body.dark .cta button{
         <li>Smart learning system</li>
       </ul>
 
-      <a class="download-button" href="#" style="opacity:.65;pointer-events:none;">
-        Coming Soon
+      <a class="download-button" href="AI_Chatbot_Setup.php">
+        Get AI Chatbot
       </a>
 
     </div>

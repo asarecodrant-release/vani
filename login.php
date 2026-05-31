@@ -15,6 +15,14 @@ require_once __DIR__ . "/core.php";
 
 $error = "";
 $resetMessage = "";
+$safeReturnTo = trim((string)($_GET['return_to'] ?? ''));
+if ($safeReturnTo !== '' && preg_match('/^[A-Za-z0-9_\-]+\.php(?:\?[A-Za-z0-9_\-&=%.]+)?$/', $safeReturnTo)) {
+    $_SESSION['auth_return_to'] = $safeReturnTo;
+}
+$signupUrl = 'signup.php';
+if (!empty($_SESSION['auth_return_to'])) {
+    $signupUrl .= '?return_to=' . urlencode((string)$_SESSION['auth_return_to']);
+}
 $googleClientId =
     $_ENV['GOOGLE_CLIENT_ID']
     ?? getenv('GOOGLE_CLIENT_ID')
@@ -65,6 +73,12 @@ function login_redirect_after_success(string $email): void {
         header("Location: forgot-password.php?forced=1");
         exit;
     }
+    $returnTo = (string)($_SESSION['auth_return_to'] ?? '');
+    if ($returnTo !== '' && preg_match('/^[A-Za-z0-9_\-]+\.php(?:\?[A-Za-z0-9_\-&=%.]+)?$/', $returnTo)) {
+        unset($_SESSION['auth_return_to']);
+        header("Location: " . $returnTo);
+        exit;
+    }
     if (!login_user_has_chatbot($email)) {
         $params = ["notice" => "select_product"];
         if (login_user_has_pending_subscription($email)) {
@@ -92,6 +106,10 @@ if ($_SERVER["REQUEST_METHOD"] !== "POST" && (string)($_GET['reset'] ?? '') === 
 
 if ($_SERVER["REQUEST_METHOD"] !== "POST" && (string)($_GET['setup'] ?? '') === 'incomplete') {
     $resetMessage = "Please login to continue your unfinished chatbot setup.";
+}
+
+if ($_SERVER["REQUEST_METHOD"] !== "POST" && (string)($_GET['setup'] ?? '') === 'ai_chatbot') {
+    $resetMessage = "Please sign up or login before proceeding with AI chatbot setup.";
 }
 
 if ($_SERVER["REQUEST_METHOD"] !== "POST" && (string)($_GET['upgrade'] ?? '') === '1') {
@@ -961,8 +979,8 @@ Login →
 
 Don't have an account?
 
-<a href="index.php">
-Get Started
+<a href="<?php echo htmlspecialchars($signupUrl, ENT_QUOTES, 'UTF-8'); ?>">
+Sign up
 </a>
 
 </div>
@@ -1187,16 +1205,8 @@ function handleCredentialResponse(
         if (data.success) {
             setLoginAuthLoading(true, "Authentication completed. Redirecting...");
 
-            if (data.first_login) {
-
-                window.location.href =
-                    "index.php";
-
-            } else {
-
-                window.location.href =
-                    "dashboard.php";
-            }
+            window.location.href =
+                data.redirect_url || (data.first_login ? "index.php" : "dashboard.php");
 
         } else {
             setLoginAuthLoading(false);
