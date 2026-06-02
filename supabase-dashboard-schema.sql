@@ -1292,12 +1292,36 @@ create table if not exists public.ai_website_pages (
   summary_json jsonb,
   embedding jsonb,
   ai_error text,
+  content_type text,
+  content_length integer not null default 0,
+  discovered_links_count integer not null default 0,
+  html_preview text,
+  context_edited boolean not null default false,
+  summary_edited boolean not null default false,
   fetched_at timestamptz,
   summarized_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (customer_id, normalized_url)
 );
+
+alter table public.ai_website_pages
+  add column if not exists content_type text;
+
+alter table public.ai_website_pages
+  add column if not exists content_length integer not null default 0;
+
+alter table public.ai_website_pages
+  add column if not exists discovered_links_count integer not null default 0;
+
+alter table public.ai_website_pages
+  add column if not exists html_preview text;
+
+alter table public.ai_website_pages
+  add column if not exists context_edited boolean not null default false;
+
+alter table public.ai_website_pages
+  add column if not exists summary_edited boolean not null default false;
 
 create index if not exists ai_website_pages_scan_job_id_idx
 on public.ai_website_pages(scan_job_id);

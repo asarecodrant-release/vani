@@ -48,25 +48,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $error = (string)$scanJob['error'];
             } else {
                 $scanJobId = (string)$scanJob['job_id'];
-                if (!ai_is_configured()) {
-                    $scanResult = [
-                        'success' => true,
-                        'status' => 'pending',
-                        'pages_scanned' => 0,
-                        'pages_failed' => 0
-                    ];
-                    $success = 'Website saved and AI scan job created. Add AI_API_KEY to run the scan.';
+                $scanResult = ai_process_scan_job($scanJobId, $savedCustomerId, $websiteUrl, $websiteDomain, 30);
+                if (!empty($scanResult['success'])) {
+                    $_SESSION['ai_scan_job_id'] = $scanJobId;
+                    header('Location: AI_Summarize.php?scan=' . urlencode($scanJobId));
+                    exit;
                 } else {
-                    $scanResult = ai_process_scan_job($scanJobId, $savedCustomerId, $websiteUrl, $websiteDomain, 30);
-                    if (!empty($scanResult['success'])) {
-                        if (!empty($scanResult['ai_error'])) {
-                            $success = 'Website pages were saved, but AI summaries were skipped because the provider denied access. Scan job: ' . $scanJobId;
-                        } else {
-                            $success = 'Website saved and initial AI scan completed for ' . (int)$scanResult['pages_scanned'] . ' page(s).';
-                        }
-                    } else {
-                        $error = 'Website was saved, but the initial scan could not complete. Scan job: ' . $scanJobId;
-                    }
+                    $error = 'Website was saved, but pages could not be captured. Scan job: ' . $scanJobId;
                 }
             }
         }
