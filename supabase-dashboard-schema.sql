@@ -1324,6 +1324,9 @@ on public.ai_website_faqs(scan_job_id);
 create index if not exists ai_website_faqs_customer_id_idx
 on public.ai_website_faqs(customer_id);
 
+create index if not exists ai_website_faqs_customer_question_idx
+on public.ai_website_faqs(customer_id, lower(question));
+
 alter table public.ai_scan_jobs enable row level security;
 alter table public.ai_website_pages enable row level security;
 alter table public.ai_website_faqs enable row level security;
