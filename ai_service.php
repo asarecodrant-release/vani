@@ -622,11 +622,48 @@ function ai_decode_json_result(array $result): array {
         }
     }
 
+    $jsonError = json_last_error_msg();
+
     return [
         'success' => is_array($decoded),
         'data' => is_array($decoded) ? $decoded : null,
-        'error' => is_array($decoded) ? '' : 'AI response was not valid JSON: ' . substr($text, 0, 240),
+        'error' => is_array($decoded) ? '' : 'AI response was not valid JSON (' . $jsonError . '): ' . substr($text, 0, 240),
         'raw_text' => $text,
+    ];
+}
+
+function ai_fallback_page_summary(string $url, string $title, string $cleanText, string $error = ''): array {
+    $cleanText = preg_replace('/\s+/', ' ', trim($cleanText)) ?: '';
+    $sentences = preg_split('/(?<=[.!?])\s+/', $cleanText) ?: [];
+    $summary = trim(implode(' ', array_slice(array_filter($sentences), 0, 3)));
+    if ($summary === '') {
+        $summary = substr($cleanText, 0, 700);
+    }
+
+    return [
+        'success' => true,
+        'data' => [
+            'url' => $url,
+            'page_title' => $title,
+            'page_type' => 'other',
+            'summary' => substr($summary, 0, 900),
+            'key_facts' => array_slice(array_values(array_filter($sentences)), 0, 5),
+            'services' => [],
+            'pricing_info' => [],
+            'locations' => [],
+            'contact_info' => [
+                'emails' => [],
+                'phones' => [],
+                'addresses' => []
+            ],
+            'faq_candidates' => [],
+            'target_audience' => [],
+            'entities' => [],
+            'fallback_used' => true,
+            'fallback_reason' => $error
+        ],
+        'error' => '',
+        'raw_text' => ''
     ];
 }
 
@@ -642,7 +679,7 @@ function ai_summarize_page(string $url, string $title, string $cleanText): array
     }
 
     $systemPrompt = 'You extract structured business knowledge from website pages. Return exactly one valid JSON object. Do not use markdown fences, comments, prose, or trailing commas.';
-    $userPrompt = "Analyze this website page and return exactly this JSON object shape:\n"
+    $userPrompt = "Analyze this website page and return exactly this JSON object shape. Keep arrays short: maximum 5 items each, maximum 2 FAQ candidates, and no value longer than 500 characters.\n"
         . "{\n"
         . "  \"url\": \"string\",\n"
         . "  \"page_title\": \"string\",\n"
@@ -661,11 +698,17 @@ function ai_summarize_page(string $url, string $title, string $cleanText): array
         . "Title: {$title}\n\n"
         . "Page text:\n" . substr($cleanText, 0, 30000);
 
-    return ai_decode_json_result(ai_generate_text($systemPrompt, $userPrompt, [
+    $decoded = ai_decode_json_result(ai_generate_text($systemPrompt, $userPrompt, [
         'json' => true,
         'temperature' => 0.1,
-        'max_output_tokens' => 2500,
+        'max_output_tokens' => 4096,
     ]));
+
+    if (empty($decoded['success'])) {
+        return ai_fallback_page_summary($url, $title, $cleanText, (string)$decoded['error']);
+    }
+
+    return $decoded;
 }
 
 function ai_answer_with_context(string $question, string $context): array {
