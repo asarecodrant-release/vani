@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/session-auth.php';
+require_once __DIR__ . '/ai_service.php';
 
 if (!is_authenticated_user()) {
     $_SESSION['auth_return_to'] = 'AI_Chatbot_Setup.php';
@@ -15,29 +16,56 @@ if (!empty($_SESSION['must_reset_password'])) {
 $websiteUrl = '';
 $error = '';
 $success = '';
-
-function ai_setup_valid_url(string $url): bool {
-    if (!filter_var($url, FILTER_VALIDATE_URL)) {
-        return false;
-    }
-
-    $parts = parse_url($url);
-    $scheme = strtolower((string)($parts['scheme'] ?? ''));
-    $host = (string)($parts['host'] ?? '');
-
-    return in_array($scheme, ['http', 'https'], true) && $host !== '';
-}
+$scanResult = null;
+$savedCustomerId = '';
+$scanJobId = '';
+$aiConfig = ai_config();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $websiteUrl = trim((string)($_POST['website_url'] ?? ''));
+    $normalizedWebsite = ai_normalize_website_input($websiteUrl);
 
-    if ($websiteUrl === '') {
-        $error = 'Please enter your website URL.';
-    } elseif (!ai_setup_valid_url($websiteUrl)) {
-        $error = 'Please enter a valid website URL, for example https://example.com.';
+    if (empty($normalizedWebsite['success'])) {
+        $error = (string)$normalizedWebsite['error'];
     } else {
-        $_SESSION['ai_chatbot_website_url'] = $websiteUrl;
-        $success = 'Website submitted successfully. The AI scanning step will come next.';
+        $websiteUrl = (string)$normalizedWebsite['url'];
+        $websiteDomain = (string)$normalizedWebsite['domain'];
+        $email = authenticated_email();
+        $signup = ai_get_or_create_chatbot_signup($email, $websiteDomain);
+
+        if (empty($signup['success'])) {
+            $error = (string)$signup['error'];
+        } else {
+            $savedCustomerId = (string)$signup['customer_id'];
+            $_SESSION['setup_email'] = $email;
+            $_SESSION['setup_customer_id'] = $savedCustomerId;
+            $_SESSION['setup_website_name'] = $websiteDomain;
+            $_SESSION['setup_business_type'] = 'AI Website';
+            $_SESSION['ai_chatbot_website_url'] = $websiteUrl;
+
+            $scanJob = ai_create_scan_job($savedCustomerId, $email, $websiteUrl, $websiteDomain, 5);
+            if (empty($scanJob['success'])) {
+                $error = (string)$scanJob['error'];
+            } else {
+                $scanJobId = (string)$scanJob['job_id'];
+                if (!ai_is_configured()) {
+                    $scanResult = [
+                        'success' => true,
+                        'status' => 'pending',
+                        'pages_scanned' => 0,
+                        'pages_failed' => 0
+                    ];
+                    $success = 'Website saved and AI scan job created. Add AI_API_KEY to run the scan.';
+                } else {
+                    $scanResult = ai_process_scan_job($scanJobId, $savedCustomerId, $websiteUrl, $websiteDomain, 5);
+                    if (!empty($scanResult['success'])) {
+                        $success = 'Website saved and initial AI scan completed for ' . (int)$scanResult['pages_scanned'] . ' page(s).';
+                    } else {
+                        $error = 'Website was saved, but the initial scan could not complete. Scan job: ' . $scanJobId;
+                    }
+                }
+            }
+        }
     }
 }
 ?>
@@ -266,6 +294,47 @@ input:focus{
   line-height:1.6;
 }
 
+.ai-config-note{
+  margin-bottom:18px;
+  padding:12px 14px;
+  border-radius:10px;
+  background:rgba(56,189,248,.1);
+  border:1px solid rgba(56,189,248,.2);
+  color:#bae6fd;
+  font-size:12px;
+  line-height:1.55;
+}
+
+.ai-config-note strong{
+  color:#f8fafc;
+}
+
+.scan-summary{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:10px;
+  margin:0 0 16px;
+}
+
+.scan-summary span{
+  min-height:58px;
+  padding:10px 12px;
+  border-radius:8px;
+  background:rgba(15,23,42,.78);
+  border:1px solid rgba(148,163,184,.18);
+  color:#94a3b8;
+  font-size:12px;
+  line-height:1.35;
+}
+
+.scan-summary strong{
+  display:block;
+  color:#f8fafc;
+  font-size:15px;
+  margin-top:4px;
+  word-break:break-word;
+}
+
 @media(max-width:860px){
   .setup-grid{
     grid-template-columns:1fr;
@@ -287,6 +356,10 @@ input:focus{
 
   .form-actions{
     display:grid;
+  }
+
+  .scan-summary{
+    grid-template-columns:1fr;
   }
 }
 </style>
@@ -319,12 +392,28 @@ input:focus{
       <h2>Website details</h2>
       <p>Enter the full website URL. Only valid HTTP or HTTPS URLs are accepted.</p>
 
+      <div class="ai-config-note">
+        AI provider: <strong><?php echo htmlspecialchars($aiConfig['provider'], ENT_QUOTES, 'UTF-8'); ?></strong>
+        &nbsp; Model: <strong><?php echo htmlspecialchars($aiConfig['model'], ENT_QUOTES, 'UTF-8'); ?></strong>
+        <?php if (!ai_is_configured()): ?>
+          <br>Set <strong>AI_API_KEY</strong> in your environment before running the scan step.
+        <?php endif; ?>
+      </div>
+
       <?php if ($error !== ''): ?>
         <div class="message error"><?php echo htmlspecialchars($error, ENT_QUOTES, 'UTF-8'); ?></div>
       <?php endif; ?>
 
       <?php if ($success !== ''): ?>
         <div class="message success"><?php echo htmlspecialchars($success, ENT_QUOTES, 'UTF-8'); ?></div>
+      <?php endif; ?>
+
+      <?php if ($scanResult !== null): ?>
+        <div class="scan-summary" aria-label="AI scan summary">
+          <span>Status<strong><?php echo htmlspecialchars((string)$scanResult['status'], ENT_QUOTES, 'UTF-8'); ?></strong></span>
+          <span>Pages scanned<strong><?php echo htmlspecialchars((string)$scanResult['pages_scanned'], ENT_QUOTES, 'UTF-8'); ?></strong></span>
+          <span>Scan job<strong><?php echo htmlspecialchars($scanJobId, ENT_QUOTES, 'UTF-8'); ?></strong></span>
+        </div>
       <?php endif; ?>
 
       <form method="POST" novalidate>

@@ -1253,6 +1253,105 @@ create table if not exists public.customer_remember_tokens (
   last_used_at timestamptz
 );
 
+create table if not exists public.ai_scan_jobs (
+  id uuid primary key default gen_random_uuid(),
+  customer_id uuid not null references public.chatbot_signups(customer_id) on delete cascade,
+  email text not null,
+  website_url text not null,
+  website_domain text not null,
+  status text not null default 'pending' check (status in ('pending', 'running', 'completed', 'failed')),
+  provider text,
+  model text,
+  pages_requested integer not null default 0,
+  pages_scanned integer not null default 0,
+  pages_failed integer not null default 0,
+  error_message text,
+  started_at timestamptz,
+  completed_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists ai_scan_jobs_customer_id_idx
+on public.ai_scan_jobs(customer_id);
+
+create index if not exists ai_scan_jobs_status_idx
+on public.ai_scan_jobs(status);
+
+create table if not exists public.ai_website_pages (
+  id uuid primary key default gen_random_uuid(),
+  scan_job_id uuid not null references public.ai_scan_jobs(id) on delete cascade,
+  customer_id uuid not null references public.chatbot_signups(customer_id) on delete cascade,
+  url text not null,
+  normalized_url text not null,
+  page_title text,
+  page_status text not null default 'pending' check (page_status in ('pending', 'fetched', 'summarized', 'failed')),
+  http_status integer,
+  content_hash text,
+  clean_text text,
+  summary_json jsonb,
+  embedding jsonb,
+  ai_error text,
+  fetched_at timestamptz,
+  summarized_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (customer_id, normalized_url)
+);
+
+create index if not exists ai_website_pages_scan_job_id_idx
+on public.ai_website_pages(scan_job_id);
+
+create index if not exists ai_website_pages_customer_id_idx
+on public.ai_website_pages(customer_id);
+
+alter table public.ai_scan_jobs enable row level security;
+alter table public.ai_website_pages enable row level security;
+
+drop policy if exists "ai scan jobs readable" on public.ai_scan_jobs;
+create policy "ai scan jobs readable"
+on public.ai_scan_jobs
+for select
+to anon, authenticated
+using (true);
+
+drop policy if exists "ai scan jobs insertable" on public.ai_scan_jobs;
+create policy "ai scan jobs insertable"
+on public.ai_scan_jobs
+for insert
+to anon, authenticated
+with check (true);
+
+drop policy if exists "ai scan jobs updatable" on public.ai_scan_jobs;
+create policy "ai scan jobs updatable"
+on public.ai_scan_jobs
+for update
+to anon, authenticated
+using (true)
+with check (true);
+
+drop policy if exists "ai website pages readable" on public.ai_website_pages;
+create policy "ai website pages readable"
+on public.ai_website_pages
+for select
+to anon, authenticated
+using (true);
+
+drop policy if exists "ai website pages insertable" on public.ai_website_pages;
+create policy "ai website pages insertable"
+on public.ai_website_pages
+for insert
+to anon, authenticated
+with check (true);
+
+drop policy if exists "ai website pages updatable" on public.ai_website_pages;
+create policy "ai website pages updatable"
+on public.ai_website_pages
+for update
+to anon, authenticated
+using (true)
+with check (true);
+
 create index if not exists customer_remember_tokens_email_idx
 on public.customer_remember_tokens(email);
 
@@ -1291,6 +1390,8 @@ to anon, authenticated
 using (true);
 
 grant select, insert, update, delete on public.customer_remember_tokens to anon, authenticated;
+grant select, insert, update on public.ai_scan_jobs to anon, authenticated;
+grant select, insert, update on public.ai_website_pages to anon, authenticated;
 grant usage, select on sequence public.chatbot_settings_id_seq to anon, authenticated;
 grant usage, select on sequence public.chatbot_conversations_id_seq to anon, authenticated;
 grant usage, select on sequence public.faq_action_feedback_id_seq to anon, authenticated;
