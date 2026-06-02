@@ -595,20 +595,37 @@ function ai_decode_json_result(array $result): array {
     }
 
     $text = trim((string)$result['text']);
+    $text = preg_replace('/^```(?:json)?\s*/i', '', $text) ?: $text;
+    $text = preg_replace('/\s*```$/', '', $text) ?: $text;
     $decoded = json_decode($text, true);
 
     if (!is_array($decoded)) {
-        $jsonStart = strpos($text, '{');
-        $jsonEnd = strrpos($text, '}');
-        if ($jsonStart !== false && $jsonEnd !== false && $jsonEnd > $jsonStart) {
-            $decoded = json_decode(substr($text, $jsonStart, $jsonEnd - $jsonStart + 1), true);
+        $objectStart = strpos($text, '{');
+        $objectEnd = strrpos($text, '}');
+        $arrayStart = strpos($text, '[');
+        $arrayEnd = strrpos($text, ']');
+
+        $candidates = [];
+        if ($objectStart !== false && $objectEnd !== false && $objectEnd > $objectStart) {
+            $candidates[] = substr($text, $objectStart, $objectEnd - $objectStart + 1);
+        }
+        if ($arrayStart !== false && $arrayEnd !== false && $arrayEnd > $arrayStart) {
+            $candidates[] = substr($text, $arrayStart, $arrayEnd - $arrayStart + 1);
+        }
+
+        foreach ($candidates as $candidate) {
+            $candidateDecoded = json_decode($candidate, true);
+            if (is_array($candidateDecoded)) {
+                $decoded = $candidateDecoded;
+                break;
+            }
         }
     }
 
     return [
         'success' => is_array($decoded),
         'data' => is_array($decoded) ? $decoded : null,
-        'error' => is_array($decoded) ? '' : 'AI response was not valid JSON.',
+        'error' => is_array($decoded) ? '' : 'AI response was not valid JSON: ' . substr($text, 0, 240),
         'raw_text' => $text,
     ];
 }
@@ -624,8 +641,22 @@ function ai_summarize_page(string $url, string $title, string $cleanText): array
         ];
     }
 
-    $systemPrompt = 'You extract structured business knowledge from website pages. Return only valid JSON.';
-    $userPrompt = "Analyze this website page and return JSON with these keys: url, page_title, page_type, summary, key_facts, services, pricing_info, locations, contact_info, faq_candidates, target_audience, entities.\n\n"
+    $systemPrompt = 'You extract structured business knowledge from website pages. Return exactly one valid JSON object. Do not use markdown fences, comments, prose, or trailing commas.';
+    $userPrompt = "Analyze this website page and return exactly this JSON object shape:\n"
+        . "{\n"
+        . "  \"url\": \"string\",\n"
+        . "  \"page_title\": \"string\",\n"
+        . "  \"page_type\": \"home|about|services|pricing|contact|faq|blog|other\",\n"
+        . "  \"summary\": \"string\",\n"
+        . "  \"key_facts\": [\"string\"],\n"
+        . "  \"services\": [\"string\"],\n"
+        . "  \"pricing_info\": [\"string\"],\n"
+        . "  \"locations\": [\"string\"],\n"
+        . "  \"contact_info\": {\"emails\": [\"string\"], \"phones\": [\"string\"], \"addresses\": [\"string\"]},\n"
+        . "  \"faq_candidates\": [{\"question\": \"string\", \"answer\": \"string\"}],\n"
+        . "  \"target_audience\": [\"string\"],\n"
+        . "  \"entities\": [\"string\"]\n"
+        . "}\n\n"
         . "URL: {$url}\n"
         . "Title: {$title}\n\n"
         . "Page text:\n" . substr($cleanText, 0, 30000);
