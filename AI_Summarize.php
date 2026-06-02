@@ -178,7 +178,7 @@ foreach ($pages as $page) {
 body.dark{--bg:#07111f;--panel:#0f1b2d;--ink:#f8fafc;--muted:#a8b3c7;--line:#26364f;--soft:#15243a;--link:#7dd3fc;--field:#0b1728}
 *{box-sizing:border-box;font-family:Inter,Arial,sans-serif}
 body{margin:0;background:var(--bg);color:var(--ink)}
-.shell{max-width:1220px;margin:0 auto;padding:34px 18px 70px}
+.shell{max-width:1280px;margin:0 auto;padding:34px 18px 70px}
 .top{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:22px}
 .top h1{margin:0;font-size:32px;line-height:1.15}
 .top p{margin:8px 0 0;color:var(--muted);line-height:1.6}
@@ -186,17 +186,24 @@ body{margin:0;background:var(--bg);color:var(--ink)}
 button,.btn{min-height:42px;border:0;border-radius:8px;padding:0 14px;font-weight:800;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}
 button{background:#2563eb;color:#fff}
 .btn{background:#e2e8f0;color:#0f172a}
-.grid{display:grid;grid-template-columns:1.45fr .85fr;gap:18px;align-items:start}
+.grid{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(340px,.75fr);gap:18px;align-items:start}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:18px;box-shadow:0 12px 34px rgba(15,23,42,.06)}
+.pages-panel{min-width:0}
+.faq-panel{position:sticky;top:18px;max-height:calc(100vh - 36px);overflow:auto}
 .metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:18px}
 .metric{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px}
 .metric span{display:block;color:var(--muted);font-size:12px;font-weight:800}
 .metric strong{display:block;margin-top:6px;font-size:22px}
 .message{margin-bottom:14px;padding:12px 14px;border-radius:8px;font-weight:800}
 .success{background:#dcfce7;color:#166534}.error{background:#fee2e2;color:#991b1b}
-.page-tabs{display:flex;gap:8px;overflow:auto;padding:4px 0 12px;border-bottom:1px solid var(--line);margin-bottom:16px}
-.page-tab-label{min-height:38px;display:inline-flex;align-items:center;max-width:220px;padding:0 12px;border:1px solid var(--line);border-radius:8px;background:var(--soft);color:var(--ink);font-size:13px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
+.page-tabs-wrap{position:relative;margin-bottom:16px}
+.page-tabs-meta{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:8px;color:var(--muted);font-size:12px;font-weight:800}
+.page-tabs{display:flex;gap:8px;overflow-x:auto;overflow-y:hidden;max-width:100%;padding:4px 0 12px;border-bottom:1px solid var(--line);scroll-snap-type:x proximity;scrollbar-width:thin}
+.page-tab-label{min-height:38px;display:inline-flex;align-items:center;gap:8px;flex:0 0 auto;max-width:210px;padding:0 12px;border:1px solid var(--line);border-radius:8px;background:var(--soft);color:var(--ink);font-size:13px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;scroll-snap-align:start}
 .page-tab-label.is-selected{background:#2563eb;border-color:#2563eb;color:#fff}
+.tab-number{display:inline-flex;align-items:center;justify-content:center;min-width:24px;height:24px;border-radius:999px;background:rgba(148,163,184,.2);font-size:12px}
+.page-tab-label.is-selected .tab-number{background:rgba(255,255,255,.22);color:#fff}
+.tab-title{overflow:hidden;text-overflow:ellipsis}
 .add-tab{min-width:42px;justify-content:center;font-size:20px}
 .page-panel{display:none}
 .page-panel.is-active{display:block}
@@ -210,9 +217,12 @@ textarea{min-height:120px;resize:vertical;line-height:1.5}
 .summary-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;align-items:center}
 .summary-actions form{margin:0}
 .faq,.manual-page{border-top:1px solid var(--line);padding:14px 0}
+.faq textarea{min-height:96px}
 .faq:first-child{border-top:0}
 .muted{color:var(--muted);font-size:13px;line-height:1.5}
-@media(max-width:900px){.grid,.metrics{grid-template-columns:1fr}.top{display:grid}}
+@media(max-width:1100px){.grid{grid-template-columns:minmax(0,1fr) minmax(300px,.72fr)}.page-tab-label{max-width:170px}}
+@media(max-width:860px){.grid,.metrics{grid-template-columns:1fr}.top{display:grid}.faq-panel{position:static;max-height:none}.page-tab-label{max-width:180px}.shell{padding:26px 14px 56px}}
+@media(max-width:560px){.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.panel{padding:14px}.top h1{font-size:26px}.page-tabs-meta{display:grid}.page-tab-label{max-width:150px}.summary-actions button,.summary-actions form{width:100%}.summary-actions button{width:100%}}
 </style>
 </head>
 <body>
@@ -240,17 +250,26 @@ textarea{min-height:120px;resize:vertical;line-height:1.5}
   </div>
 
   <div class="grid">
-    <section class="panel">
+    <section class="panel pages-panel">
       <h2>Pages</h2>
       <?php if (empty($pages)): ?>
         <p class="muted">No pages were captured. Check scan diagnostics or try a sitemap/manual content source.</p>
       <?php endif; ?>
-      <div class="page-tabs" role="tablist" aria-label="Captured pages">
-        <?php foreach ($pages as $index => $page): ?>
-          <?php $tabTitle = trim((string)($page['page_title'] ?? '')) ?: (parse_url((string)$page['url'], PHP_URL_PATH) ?: 'Untitled'); ?>
-          <button class="page-tab-label js-page-tab <?php echo $index === 0 ? 'is-selected' : ''; ?>" type="button" data-tab-target="page-panel-<?php echo (int)$index; ?>" title="<?php echo ai_h($tabTitle); ?>"><?php echo ai_h($tabTitle); ?></button>
-        <?php endforeach; ?>
-        <button class="page-tab-label add-tab js-page-tab <?php echo empty($pages) ? 'is-selected' : ''; ?>" type="button" data-tab-target="page-panel-add" title="Add missed page">+</button>
+      <div class="page-tabs-wrap">
+        <div class="page-tabs-meta">
+          <span><?php echo count($pages); ?> page<?php echo count($pages) === 1 ? '' : 's'; ?> captured</span>
+          <span>Scroll tabs sideways to review all pages</span>
+        </div>
+        <div class="page-tabs" role="tablist" aria-label="Captured pages">
+          <?php foreach ($pages as $index => $page): ?>
+            <?php $tabTitle = trim((string)($page['page_title'] ?? '')) ?: (parse_url((string)$page['url'], PHP_URL_PATH) ?: 'Untitled'); ?>
+            <button class="page-tab-label js-page-tab <?php echo $index === 0 ? 'is-selected' : ''; ?>" type="button" data-tab-target="page-panel-<?php echo (int)$index; ?>" title="<?php echo ai_h(($index + 1) . '. ' . $tabTitle); ?>">
+              <span class="tab-number"><?php echo (int)($index + 1); ?></span>
+              <span class="tab-title"><?php echo ai_h($tabTitle); ?></span>
+            </button>
+          <?php endforeach; ?>
+          <button class="page-tab-label add-tab js-page-tab <?php echo empty($pages) ? 'is-selected' : ''; ?>" type="button" data-tab-target="page-panel-add" title="Add missed page">+</button>
+        </div>
       </div>
       <div id="page-panel-add" class="add-page-panel page-panel <?php echo empty($pages) ? 'is-active' : ''; ?>">
         <form method="POST" class="manual-page">
@@ -292,7 +311,7 @@ textarea{min-height:120px;resize:vertical;line-height:1.5}
       <?php endforeach; ?>
     </section>
 
-    <aside class="panel">
+    <aside class="panel faq-panel">
       <h2>Captured FAQs</h2>
       <p class="muted">FAQs detected from FAQ schema, HTML accordions, and AI extraction after summarizing FAQ-like pages.</p>
       <form method="POST" class="faq">
