@@ -101,10 +101,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $message = 'Summarized ' . $done . ' page(s).';
             $error = $failed > 0 ? $failed . ' page(s) could not be summarized.' : '';
         }
-    } elseif ($action === 'save_context') {
-        $result = ai_update_page_context($pageId, $customerId, (string)($_POST['clean_text'] ?? ''));
-        $message = !empty($result['success']) ? 'Page context saved. Please summarize again.' : '';
-        $error = empty($result['success']) ? (string)$result['error'] : '';
+    } elseif ($action === 'add_page') {
+        $pageUrl = trim((string)($_POST['page_url'] ?? ''));
+        $result = ai_capture_single_page($scanId, $customerId, (string)$scan['website_domain'], $pageUrl);
+        if (!empty($result['success'])) {
+            $message = 'Page captured. You can summarize it now.';
+        } elseif (!empty($result['page_id'])) {
+            $message = 'Page added, but crawler could not capture readable text. Add the summary manually.';
+        } else {
+            $error = (string)$result['error'];
+        }
     } elseif ($action === 'save_summary') {
         $result = ai_update_page_summary($pageId, $customerId, (string)($_POST['summary_text'] ?? ''));
         $message = !empty($result['success']) ? 'Summary saved.' : '';
@@ -168,35 +174,37 @@ foreach ($pages as $page) {
 <link rel="stylesheet" href="css/public-theme.css">
 <script defer src="js/public-theme.js"></script>
 <style>
+:root{--bg:#f6f8fb;--panel:#fff;--ink:#0f172a;--muted:#64748b;--line:#dbe3ee;--soft:#f8fafc;--link:#1d4ed8;--field:#fff}
+body.dark{--bg:#07111f;--panel:#0f1b2d;--ink:#f8fafc;--muted:#a8b3c7;--line:#26364f;--soft:#15243a;--link:#7dd3fc;--field:#0b1728}
 *{box-sizing:border-box;font-family:Inter,Arial,sans-serif}
-body{margin:0;background:#f6f8fb;color:#0f172a}
+body{margin:0;background:var(--bg);color:var(--ink)}
 .shell{max-width:1220px;margin:0 auto;padding:34px 18px 70px}
 .top{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:22px}
 .top h1{margin:0;font-size:32px;line-height:1.15}
-.top p{margin:8px 0 0;color:#64748b;line-height:1.6}
+.top p{margin:8px 0 0;color:var(--muted);line-height:1.6}
 .actions{display:flex;gap:10px;flex-wrap:wrap}
 button,.btn{min-height:42px;border:0;border-radius:8px;padding:0 14px;font-weight:800;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}
 button{background:#2563eb;color:#fff}
 .btn{background:#e2e8f0;color:#0f172a}
 .grid{display:grid;grid-template-columns:1.45fr .85fr;gap:18px;align-items:start}
-.panel{background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:18px;box-shadow:0 12px 34px rgba(15,23,42,.06)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:18px;box-shadow:0 12px 34px rgba(15,23,42,.06)}
 .metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:18px}
-.metric{background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:14px}
-.metric span{display:block;color:#64748b;font-size:12px;font-weight:800}
+.metric{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px}
+.metric span{display:block;color:var(--muted);font-size:12px;font-weight:800}
 .metric strong{display:block;margin-top:6px;font-size:22px}
 .message{margin-bottom:14px;padding:12px 14px;border-radius:8px;font-weight:800}
 .success{background:#dcfce7;color:#166534}.error{background:#fee2e2;color:#991b1b}
-.page-item{border-top:1px solid #e2e8f0;padding:18px 0}
+.page-item{border-top:1px solid var(--line);padding:18px 0}
 .page-item:first-child{border-top:0;padding-top:0}
-.url{color:#2563eb;word-break:break-all;font-size:13px}
+.page-title{display:block;color:var(--ink);font-size:18px;line-height:1.35;margin-bottom:4px}
+.url{color:var(--link);word-break:break-all;font-size:13px}
 .status{display:inline-flex;margin:8px 0;padding:4px 8px;border-radius:999px;background:#eef2ff;color:#3730a3;font-size:12px;font-weight:800}
-textarea,input{width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:10px 12px;font:inherit}
+textarea,input{width:100%;border:1px solid var(--line);border-radius:8px;padding:10px 12px;font:inherit;background:var(--field);color:var(--ink)}
 textarea{min-height:120px;resize:vertical;line-height:1.5}
-.context{min-height:170px;font-size:13px;color:#334155;background:#f8fafc}
 .row{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
-.faq{border-top:1px solid #e2e8f0;padding:14px 0}
+.faq,.manual-page{border-top:1px solid var(--line);padding:14px 0}
 .faq:first-child{border-top:0}
-.muted{color:#64748b;font-size:13px;line-height:1.5}
+.muted{color:var(--muted);font-size:13px;line-height:1.5}
 @media(max-width:900px){.grid,.metrics{grid-template-columns:1fr}.top{display:grid}}
 </style>
 </head>
@@ -227,13 +235,20 @@ textarea{min-height:120px;resize:vertical;line-height:1.5}
   <div class="grid">
     <section class="panel">
       <h2>Pages</h2>
+      <form method="POST" class="manual-page">
+        <input type="hidden" name="action" value="add_page">
+        <label>Add missed page URL</label>
+        <input name="page_url" placeholder="https://example.com/missed-page">
+        <p class="muted">We will try to crawl this page. If readable text is not captured, you can still add the summary manually below.</p>
+        <div class="row"><button type="submit">Add page</button></div>
+      </form>
       <?php if (empty($pages)): ?>
         <p class="muted">No pages were captured. Check scan diagnostics or try a sitemap/manual content source.</p>
       <?php endif; ?>
       <?php foreach ($pages as $page): ?>
         <?php $summaryText = ai_summary_text_from_page($page); ?>
         <article class="page-item">
-          <strong><?php echo ai_h($page['page_title'] ?: 'Untitled page'); ?></strong>
+          <strong class="page-title"><?php echo ai_h($page['page_title'] ?: parse_url((string)$page['url'], PHP_URL_PATH) ?: 'Untitled page'); ?></strong>
           <div class="url"><?php echo ai_h($page['url']); ?></div>
           <span class="status"><?php echo ai_h($page['page_status']); ?></span>
           <p class="muted">
@@ -241,16 +256,6 @@ textarea{min-height:120px;resize:vertical;line-height:1.5}
             <?php echo ai_h($page['content_length'] ?? 0); ?> bytes,
             <?php echo ai_h($page['discovered_links_count'] ?? 0); ?> links found
           </p>
-
-          <form method="POST">
-            <input type="hidden" name="action" value="save_context">
-            <input type="hidden" name="page_id" value="<?php echo ai_h($page['id']); ?>">
-            <label>Captured context</label>
-            <textarea class="context" name="clean_text"><?php echo ai_h($page['clean_text'] ?? ''); ?></textarea>
-            <div class="row">
-              <button type="submit">Save context</button>
-            </div>
-          </form>
 
           <form method="POST">
             <input type="hidden" name="action" value="save_summary">

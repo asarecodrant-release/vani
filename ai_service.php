@@ -629,6 +629,71 @@ function ai_save_scanned_page(string $jobId, string $customerId, array $payload)
     }
 }
 
+function ai_capture_single_page(string $jobId, string $customerId, string $websiteDomain, string $pageUrl): array {
+    $normalizedInput = ai_normalize_website_input($pageUrl);
+    if (empty($normalizedInput['success'])) {
+        return ['success' => false, 'page_id' => '', 'error' => (string)$normalizedInput['error']];
+    }
+    if ((string)$normalizedInput['domain'] !== $websiteDomain) {
+        return ['success' => false, 'page_id' => '', 'error' => 'Please add a page from the same website domain.'];
+    }
+
+    $url = (string)$normalizedInput['url'];
+    $fetch = ai_fetch_page($url);
+    $finalUrl = (string)($fetch['url'] ?? $url);
+    $normalized = ai_normalize_page_url($finalUrl) ?: ai_normalize_page_url($url);
+
+    if (empty($fetch['success'])) {
+        ai_save_scanned_page($jobId, $customerId, [
+            'url' => $finalUrl,
+            'normalized_url' => $normalized,
+            'page_status' => 'failed',
+            'http_status' => (int)($fetch['status'] ?? 0),
+            'ai_error' => (string)($fetch['error'] ?? 'Could not capture page.'),
+            'content_type' => (string)($fetch['content_type'] ?? ''),
+            'content_length' => (int)($fetch['content_length'] ?? 0),
+            'html_preview' => '',
+            'fetched_at' => ai_now()
+        ]);
+        return ['success' => false, 'page_id' => '', 'error' => (string)($fetch['error'] ?? 'Could not capture page.')];
+    }
+
+    $parsed = ai_parse_html_page((string)$fetch['html'], $finalUrl, $websiteDomain);
+    $cleanText = (string)$parsed['clean_text'];
+    ai_save_page_faqs($jobId, $customerId, $finalUrl, $parsed['detected_faqs']);
+    ai_save_scanned_page($jobId, $customerId, [
+        'url' => $finalUrl,
+        'normalized_url' => $normalized,
+        'page_title' => (string)$parsed['title'],
+        'page_status' => 'fetched',
+        'http_status' => (int)$fetch['status'],
+        'content_hash' => hash('sha256', $cleanText),
+        'clean_text' => $cleanText,
+        'summary_json' => null,
+        'embedding' => null,
+        'ai_error' => '',
+        'content_type' => (string)($fetch['content_type'] ?? ''),
+        'content_length' => (int)($fetch['content_length'] ?? strlen($cleanText)),
+        'discovered_links_count' => count($parsed['links']),
+        'html_preview' => substr(strip_tags((string)$fetch['html']), 0, 1000),
+        'fetched_at' => ai_now(),
+        'summarized_at' => null
+    ]);
+
+    $rows = ai_safe_rows(supabase(
+        'GET',
+        'ai_website_pages?select=id&customer_id=eq.' . urlencode($customerId)
+            . '&normalized_url=eq.' . urlencode($normalized)
+            . '&limit=1'
+    ));
+
+    return [
+        'success' => trim($cleanText) !== '',
+        'page_id' => (string)($rows[0]['id'] ?? ''),
+        'error' => trim($cleanText) === '' ? 'Page opened, but no readable text was captured. Add the summary manually.' : ''
+    ];
+}
+
 function ai_provider_access_denied(string $error): bool {
     return stripos($error, '403') !== false
         || stripos($error, 'denied access') !== false
