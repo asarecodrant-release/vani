@@ -80,6 +80,7 @@ td:last-child,th:last-child{text-align:right;font-weight:800}
 @media(max-width:992px){.pricing-grid,.checkout-form{grid-template-columns:1fr}.card,.card.featured{grid-column:auto;transform:none}h1{font-size:36px}.nav-inner{align-items:center;flex-direction:row}.nav-link{display:none}.logo{font-size:20px}.logo img{width:46px;height:46px}.checkout-head{display:grid}}
 </style>
 <link rel="stylesheet" href="css/public-theme.css">
+<script defer src="js/public-theme.js"></script>
 </head>
 <body class="subscription-page dark">
 <nav>

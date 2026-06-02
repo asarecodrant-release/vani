@@ -1008,9 +1008,9 @@ footer{
 
 body{
   background:
-    radial-gradient(circle at 16% 12%,rgba(245,158,11,.16),transparent 32%),
-    radial-gradient(circle at 84% 6%,rgba(250,204,21,.2),transparent 30%),
-    linear-gradient(135deg,#fffaf0 0%,#fff7e6 44%,#f8fafc 100%);
+    radial-gradient(circle at 16% 12%,rgba(66,133,244,.12),transparent 32%),
+    radial-gradient(circle at 84% 6%,rgba(52,168,83,.1),transparent 30%),
+    linear-gradient(135deg,#f8fafd 0%,#ffffff 48%,#f1f3f4 100%);
 }
 
 body.dark{
@@ -1022,7 +1022,7 @@ body.dark{
 
 .hero h1{
   letter-spacing:0;
-  background:linear-gradient(90deg,#18181b,#b7791f 52%,#f59e0b);
+  background:linear-gradient(90deg,#202124,#1a73e8 52%,#34a853);
   -webkit-background-clip:text;
   -webkit-text-fill-color:transparent;
 }
@@ -1040,40 +1040,42 @@ body.dark .hero h1{
 .theme-btn,
 .user-box{
   background:rgba(255,255,255,.76);
-  border-color:rgba(217,119,6,.2);
-  box-shadow:0 18px 44px rgba(180,83,9,.1);
+  border-color:#dadce0;
+  box-shadow:0 1px 3px rgba(60,64,67,.15);
 }
 
 .hero-badge{
-  color:#92400e;
+  color:#1967d2;
+  background:#e8f0fe;
+  border-color:#d2e3fc;
 }
 
 .primary-btn,
 .nav-btn,
 .nav-btn1,
 .download-button{
-  background:linear-gradient(135deg,#fef3c7,#facc15,#d97706);
-  color:#111827 !important;
-  box-shadow:0 14px 30px rgba(217,119,6,.24);
+  background:#1a73e8;
+  color:#fff !important;
+  box-shadow:0 1px 3px rgba(60,64,67,.2);
 }
 
 .secondary-btn{
-  border-color:rgba(217,119,6,.22);
-  color:#3f2f15;
-  background:rgba(255,255,255,.82);
+  border-color:#dadce0;
+  color:#3c4043;
+  background:#fff;
 }
 
 .cta{
   background:
-    radial-gradient(circle at 20% 20%,rgba(255,255,255,.42),transparent 30%),
-    linear-gradient(135deg,#f59e0b,#facc15,#92400e);
-  color:#111827;
-  box-shadow:0 24px 70px rgba(180,83,9,.24);
+    radial-gradient(circle at 20% 20%,rgba(255,255,255,.38),transparent 30%),
+    linear-gradient(135deg,#1a73e8,#34a853);
+  color:#fff;
+  box-shadow:0 8px 24px rgba(26,115,232,.18);
 }
 
 .cta button{
-  background:#111827;
-  color:#fef3c7;
+  background:#fff;
+  color:#1a73e8;
 }
 
 body.dark .logo-dark{
@@ -1430,7 +1432,7 @@ function siteDotColor(node, alpha) {
   const dark = document.body.classList.contains("dark");
   if (node.kind === "red") return `rgba(255,56,76,${alpha})`;
   if (node.kind === "silver") return dark ? `rgba(225,238,242,${alpha})` : `rgba(168,162,158,${alpha})`;
-  return dark ? `rgba(56,189,248,${alpha})` : `rgba(217,119,6,${alpha})`;
+  return dark ? `rgba(56,189,248,${alpha})` : `rgba(26,115,232,${alpha})`;
 }
 
 function drawSiteBackground(time) {

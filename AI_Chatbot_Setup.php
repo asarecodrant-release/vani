@@ -88,6 +88,11 @@ body{
   color:#f8fafc;
 }
 
+body.bright{
+  background:#f8fafd;
+  color:#202124;
+}
+
 .page-shell{
   width:100%;
   max-width:1120px;
@@ -134,6 +139,10 @@ body{
   line-height:1.75;
 }
 
+body.bright .intro p{
+  color:#5f6368;
+}
+
 .feature-strip{
   display:grid;
   grid-template-columns:repeat(3,minmax(0,1fr));
@@ -155,12 +164,24 @@ body{
   font-weight:700;
 }
 
+body.bright .feature-strip span{
+  background:#ffffff;
+  border-color:#dadce0;
+  color:#3c4043;
+}
+
 .setup-card{
   background:linear-gradient(145deg,rgba(2,12,28,.86),rgba(5,28,48,.74));
   border:1px solid rgba(56,189,248,.2);
   box-shadow:0 28px 80px rgba(0,0,0,.34);
   border-radius:16px;
   padding:28px;
+}
+
+body.bright .setup-card{
+  background:#ffffff;
+  border-color:#dadce0;
+  box-shadow:0 1px 2px rgba(60,64,67,.15);
 }
 
 .account-row{
@@ -174,9 +195,21 @@ body{
   margin-bottom:22px;
 }
 
+body.bright .account-row{
+  background:#f8fafd;
+  border-color:#dadce0;
+  color:#5f6368;
+}
+
 .account-row strong{
   color:#f8fafc;
   word-break:break-word;
+}
+
+body.bright .account-row strong,
+body.bright .setup-card h2,
+body.bright label{
+  color:#202124;
 }
 
 .setup-card h2{
@@ -189,6 +222,12 @@ body{
   line-height:1.65;
   font-size:14px;
   margin-bottom:18px;
+}
+
+body.bright .setup-card p,
+body.bright .hint,
+body.bright .login-note{
+  color:#5f6368;
 }
 
 label{
@@ -256,6 +295,12 @@ input:focus{
   color:#e5e7eb;
 }
 
+body.bright .ghost-btn{
+  background:#ffffff;
+  border-color:#dadce0;
+  color:#3c4043;
+}
+
 .message{
   margin-bottom:16px;
   padding:12px 14px;
@@ -297,8 +342,18 @@ input:focus{
   line-height:1.55;
 }
 
+body.bright .ai-config-note{
+  background:#e8f0fe;
+  border-color:#d2e3fc;
+  color:#1967d2;
+}
+
 .ai-config-note strong{
   color:#f8fafc;
+}
+
+body.bright .ai-config-note strong{
+  color:#202124;
 }
 
 .scan-summary{
@@ -319,12 +374,22 @@ input:focus{
   line-height:1.35;
 }
 
+body.bright .scan-summary span{
+  background:#f8fafd;
+  border-color:#dadce0;
+  color:#5f6368;
+}
+
 .scan-summary strong{
   display:block;
   color:#f8fafc;
   font-size:15px;
   margin-top:4px;
   word-break:break-word;
+}
+
+body.bright .scan-summary strong{
+  color:#202124;
 }
 
 @media(max-width:860px){
@@ -425,6 +490,7 @@ input:focus{
 
         <div class="form-actions">
           <button class="primary-btn" type="submit">Submit website</button>
+          <button class="ghost-btn" type="button" data-theme-toggle>Bright Mode</button>
           <a class="ghost-btn" href="index.php">Back</a>
         </div>
       </form>

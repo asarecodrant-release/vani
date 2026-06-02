@@ -12,11 +12,8 @@ body{
 }
 body.bright,
 body:not(.dark).vani-public-theme{
-  background:
-    radial-gradient(circle at 16% 12%,rgba(245,158,11,.16),transparent 32%),
-    radial-gradient(circle at 84% 6%,rgba(250,204,21,.2),transparent 30%),
-    linear-gradient(135deg,#fffaf0 0%,#fff7e6 44%,#f8fafc 100%)!important;
-  color:#334155;
+  background:#f8fafd!important;
+  color:#202124;
 }
 .container{max-width:min(1120px,100%)}
 .brand,.logo{
@@ -36,15 +33,15 @@ body.bright .brand,
 body.bright .logo,
 body:not(.dark).vani-public-theme .brand,
 body:not(.dark).vani-public-theme .logo{
-  background:linear-gradient(135deg,rgba(245,158,11,.12),rgba(250,204,21,.1))!important;
-  border-color:rgba(217,119,6,.18)!important;
-  color:#111827!important;
+  background:#ffffff!important;
+  border-color:#dadce0!important;
+  color:#202124!important;
 }
 body.bright .brand span,
 body.bright .logo span,
 body:not(.dark).vani-public-theme .brand span,
 body:not(.dark).vani-public-theme .logo span{
-  background:linear-gradient(90deg,#18181b,#b7791f 52%,#f59e0b)!important;
+  background:linear-gradient(90deg,#4285f4,#34a853 52%,#fbbc04)!important;
   -webkit-background-clip:text!important;
   -webkit-text-fill-color:transparent!important;
 }
@@ -61,9 +58,9 @@ body:not(.dark).vani-public-theme .nav-link,
 body:not(.dark).vani-public-theme .theme-btn,
 body:not(.dark).vani-public-theme .site-menu-trigger,
 body:not(.dark).vani-public-theme .home-link{
-  background:rgba(255,255,255,.86)!important;
-  border-color:rgba(217,119,6,.2)!important;
-  color:#3f2f15!important;
+  background:#ffffff!important;
+  border-color:#dadce0!important;
+  color:#3c4043!important;
 }
 .nav-btn,.login-btn,button[type=submit],.choose-plan-btn{
   background:linear-gradient(135deg,#38bdf8,#2563eb,#0f172a)!important;
@@ -78,9 +75,9 @@ body:not(.dark).vani-public-theme .nav-btn,
 body:not(.dark).vani-public-theme .login-btn,
 body:not(.dark).vani-public-theme button[type=submit],
 body:not(.dark).vani-public-theme .choose-plan-btn{
-  background:linear-gradient(135deg,#fef3c7,#facc15,#d97706)!important;
-  color:#111827!important;
-  box-shadow:0 14px 30px rgba(217,119,6,.24)!important;
+  background:#1a73e8!important;
+  color:#ffffff!important;
+  box-shadow:0 1px 2px rgba(60,64,67,.3),0 1px 3px rgba(60,64,67,.15)!important;
 }
 .eyebrow{
   color:#7dd3fc!important;
@@ -89,9 +86,9 @@ body:not(.dark).vani-public-theme .choose-plan-btn{
 }
 body.bright .eyebrow,
 body:not(.dark).vani-public-theme .eyebrow{
-  color:#92400e!important;
-  background:rgba(255,255,255,.78)!important;
-  border-color:rgba(217,119,6,.18)!important;
+  color:#1a73e8!important;
+  background:#e8f0fe!important;
+  border-color:#d2e3fc!important;
 }
 h1{
   color:#f8fafc!important;
@@ -106,7 +103,7 @@ body.bright .hero h1,
 body.bright h1,
 body:not(.dark).vani-public-theme .hero h1,
 body:not(.dark).vani-public-theme h1{
-  background:linear-gradient(90deg,#18181b,#b7791f 52%,#f59e0b)!important;
+  background:linear-gradient(90deg,#202124,#1a73e8 52%,#34a853)!important;
   -webkit-background-clip:text!important;
   -webkit-text-fill-color:transparent!important;
 }
@@ -162,9 +159,9 @@ body:not(.dark).vani-public-theme .detail,
 body:not(.dark).vani-public-theme .trust-card,
 body:not(.dark).vani-public-theme .highlight,
 body:not(.dark).vani-public-theme .assurance{
-  background:rgba(255,255,255,.86)!important;
-  border-color:rgba(217,119,6,.18)!important;
-  box-shadow:0 22px 55px rgba(180,83,9,.12)!important;
+  background:#ffffff!important;
+  border-color:#dadce0!important;
+  box-shadow:0 1px 2px rgba(60,64,67,.15)!important;
 }
 h2,.detail strong,.trust-card strong,label,.field label,.wallet-note strong{
   color:#f8fafc!important;
@@ -181,7 +178,7 @@ body:not(.dark).vani-public-theme .trust-card strong,
 body:not(.dark).vani-public-theme label,
 body:not(.dark).vani-public-theme .field label,
 body:not(.dark).vani-public-theme .wallet-note strong{
-  color:#111827!important;
+  color:#202124!important;
 }
 input,select,textarea{
   max-width:100%;
@@ -196,14 +193,14 @@ body:not(.dark).vani-public-theme input,
 body:not(.dark).vani-public-theme select,
 body:not(.dark).vani-public-theme textarea{
   background:#fff!important;
-  color:#111827!important;
-  border-color:rgba(217,119,6,.22)!important;
+  color:#202124!important;
+  border-color:#dadce0!important;
 }
 a{color:#7dd3fc}
-body.bright a,body:not(.dark).vani-public-theme a{color:#b45309}
+body.bright a,body:not(.dark).vani-public-theme a{color:#1a73e8}
 body.bright .price,
 body:not(.dark).vani-public-theme .price{
-  color:#111827!important;
+  color:#202124!important;
 }
 body.bright .price small,
 body:not(.dark).vani-public-theme .price small{
@@ -229,8 +226,8 @@ body:not(.dark).vani-public-theme .features .is-excluded:before{
 }
 body.bright .tag,
 body:not(.dark).vani-public-theme .tag{
-  background:rgba(245,158,11,.16)!important;
-  color:#92400e!important;
+  background:#e8f0fe!important;
+  color:#1967d2!important;
 }
 body.bright .tag.good,
 body:not(.dark).vani-public-theme .tag.good{

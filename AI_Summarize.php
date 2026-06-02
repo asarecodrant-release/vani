@@ -235,6 +235,7 @@ textarea{min-height:120px;resize:vertical;line-height:1.5}
     </div>
     <div class="actions">
       <form method="POST"><input type="hidden" name="action" value="summarize_all"><button type="submit">Summarize all pages</button></form>
+      <button class="btn" type="button" data-theme-toggle>Bright Mode</button>
       <a class="btn" href="AI_Chatbot_Setup.php">Scan another website</a>
     </div>
   </div>

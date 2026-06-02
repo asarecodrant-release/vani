@@ -88,7 +88,7 @@ $apiKeyRows = api_doc_rows(supabase(
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0;font-family:Inter,sans-serif}
-:root{--bg:#f8fafc;--panel:#fff;--panel-soft:rgba(255,255,255,.74);--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--brand:#4f46e5;--brand-2:#0891b2;--good:#15803d;--bad:#b91c1c;--hero-bg:#eef2ff;--thead:#f8fafc;--inline-bg:#e2e8f0;--inline-ink:#0f172a;--shadow:0 18px 45px rgba(15,23,42,.06)}
+:root{--bg:#f8fafd;--panel:#fff;--panel-soft:rgba(255,255,255,.86);--ink:#202124;--muted:#5f6368;--line:#dadce0;--brand:#1a73e8;--brand-2:#34a853;--good:#188038;--bad:#d93025;--hero-bg:#f8fafd;--thead:#f1f3f4;--inline-bg:#e8f0fe;--inline-ink:#1967d2;--shadow:0 1px 3px rgba(60,64,67,.15)}
 body.dark{--bg:#020617;--panel:#0f172a;--panel-soft:rgba(15,23,42,.74);--ink:#e5e7eb;--muted:#94a3b8;--line:rgba(148,163,184,.24);--brand:#818cf8;--brand-2:#22d3ee;--good:#86efac;--bad:#fca5a5;--hero-bg:#111827;--thead:#111827;--inline-bg:rgba(129,140,248,.18);--inline-ink:#dbeafe;--shadow:0 18px 45px rgba(0,0,0,.28)}
 body{background:linear-gradient(180deg,var(--hero-bg) 0,var(--bg) 260px);color:var(--ink);min-height:100vh}
 .container{width:100%;max-width:1180px;margin:0 auto;padding:24px 20px 54px}

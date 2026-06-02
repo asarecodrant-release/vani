@@ -38,8 +38,8 @@ body.bright nav,
 body.setup-theme-light nav,
 body.vani-public-theme.bright nav{
   background:rgba(255,255,255,.86);
-  border-bottom-color:rgba(217,119,6,.18);
-  box-shadow:0 14px 38px rgba(180,83,9,.12);
+  border-bottom-color:#dadce0;
+  box-shadow:0 1px 2px rgba(60,64,67,.15);
 }
 
 /* page spacing */
@@ -110,15 +110,15 @@ nav .container{
 body.bright .logo,
 body.setup-theme-light .logo,
 body.vani-public-theme.bright .logo{
-  background:linear-gradient(135deg,rgba(245,158,11,.12),rgba(250,204,21,.1));
-  border-color:rgba(217,119,6,.18);
-  color:#111827;
+  background:#ffffff;
+  border-color:#dadce0;
+  color:#202124;
 }
 
 body.bright .logo span,
 body.setup-theme-light .logo span,
 body.vani-public-theme.bright .logo span{
-  background:linear-gradient(90deg,#18181b,#b7791f 52%,#f59e0b);
+  background:linear-gradient(90deg,#4285f4,#34a853 52%,#fbbc04);
   -webkit-background-clip:text;
   -webkit-text-fill-color:transparent;
 }
@@ -181,14 +181,14 @@ body.vani-public-theme.dark .nav-link:hover{
 body.bright .nav-link,
 body.setup-theme-light .nav-link,
 body.vani-public-theme.bright .nav-link{
-  color:#3f2f15;
+  color:#3c4043;
 }
 
 body.bright .nav-link:hover,
 body.setup-theme-light .nav-link:hover,
 body.vani-public-theme.bright .nav-link:hover{
-  color:#92400e;
-  background:rgba(245,158,11,.12);
+  color:#1a73e8;
+  background:#e8f0fe;
 }
 
 nav .site-menu-trigger{
@@ -249,8 +249,8 @@ body.vani-public-theme.dark .user-box{
 body.bright .user-box,
 body.setup-theme-light .user-box,
 body.vani-public-theme.bright .user-box{
-  background:rgba(255,255,255,.78);
-  border:1px solid rgba(217,119,6,.18);
+  background:#ffffff;
+  border:1px solid #dadce0;
 }
 
 .user-avatar{
@@ -286,7 +286,7 @@ body.vani-public-theme.dark .user-box span{
 body.bright .user-box span,
 body.setup-theme-light .user-box span,
 body.vani-public-theme.bright .user-box span{
-  color:#3f2f15;
+  color:#3c4043;
 }
 
 .user-box .nav-btn{

@@ -20,6 +20,8 @@ function h($value): string {
 <link rel="icon" type="image/png" href="images/logo_img.png">
 <title>Upgrade Chatbot to AI - Vani AI</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/public-theme.css">
+<script defer src="js/public-theme.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;font-family:Inter,Arial,sans-serif}
 body{min-height:100vh;background:#020706;color:#e7fff7;overflow-x:hidden}
@@ -39,7 +41,7 @@ h1{margin:26px 0 16px;font-size:clamp(38px,6vw,76px);line-height:1.02;letter-spa
 .hero p{max-width:720px;color:#b8d8d2;font-size:17px;line-height:1.8}
 .actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:26px}
 .gold-btn,.dark-btn{min-height:48px;border-radius:14px;padding:0 18px;font-weight:950;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}
-.gold-btn{background:linear-gradient(135deg,#fef08a,#facc15,#d97706);color:#050505;border:1px solid rgba(234,179,8,.68);box-shadow:0 16px 34px rgba(234,179,8,.28)}
+.gold-btn{background:linear-gradient(135deg,#1a73e8,#34a853);color:#fff;border:1px solid rgba(26,115,232,.68);box-shadow:0 16px 34px rgba(26,115,232,.24)}
 .dark-btn{background:rgba(4,18,22,.78);color:#d7fff5;border:1px solid rgba(148,255,220,.22)}
 .mode-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:26px}
 .mode{padding:15px;border-radius:18px;border:1px solid rgba(148,255,220,.16);background:rgba(0,0,0,.22)}
@@ -51,15 +53,29 @@ h1{margin:26px 0 16px;font-size:clamp(38px,6vw,76px);line-height:1.02;letter-spa
 .step strong{display:block;color:#f8fffb;margin-bottom:5px}.step span{display:block;color:#a8c8c1;font-size:13px;line-height:1.6}
 .notice{padding:15px;border-radius:18px;background:rgba(250,204,21,.1);border:1px solid rgba(250,204,21,.24);color:#fde68a;line-height:1.65;font-size:14px}
 .top-links{position:fixed;top:18px;right:18px;z-index:5;display:flex;gap:10px}
-.top-links a{min-height:42px;padding:0 14px;border-radius:13px;background:rgba(3,16,18,.76);border:1px solid rgba(148,255,220,.18);color:#e7fff7;text-decoration:none;font-weight:850;display:inline-flex;align-items:center}
-@media(max-width:900px){.page{padding:18px;padding-top:72px}.shell{grid-template-columns:1fr}.hero{min-height:auto}.mode-grid{grid-template-columns:1fr}.top-links{left:18px;right:18px;justify-content:space-between}.top-links a{flex:1;justify-content:center}}
+.top-links a,.top-links button{min-height:42px;padding:0 14px;border-radius:13px;background:rgba(3,16,18,.76);border:1px solid rgba(148,255,220,.18);color:#e7fff7;text-decoration:none;font-weight:850;display:inline-flex;align-items:center;cursor:pointer}
+body.bright{background:#f8fafd;color:#202124}
+body.bright #neuralCanvas{display:none}
+body.bright .hero,body.bright .panel{background:#fff;border-color:#dadce0;box-shadow:0 1px 3px rgba(60,64,67,.15)}
+body.bright .hero:before{background:radial-gradient(circle,rgba(66,133,244,.1),transparent 62%)}
+body.bright .brand,body.bright h1,body.bright .panel h2,body.bright .mode strong,body.bright .step strong{color:#202124}
+body.bright .brand span{background:linear-gradient(90deg,#4285f4,#34a853,#fbbc04);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+body.bright .hero p,body.bright .mode span,body.bright .step span{color:#5f6368}
+body.bright .badge{background:#e8f0fe;border-color:#d2e3fc;color:#1967d2}
+body.bright .gold-btn{background:#1a73e8;color:#fff;border-color:#1a73e8;box-shadow:0 1px 3px rgba(60,64,67,.2)}
+body.bright .dark-btn,body.bright .top-links a,body.bright .top-links button{background:#fff;color:#3c4043;border-color:#dadce0}
+body.bright .mode,body.bright .step{background:#f8fafd;border-color:#dadce0}
+body.bright .step i{background:#e8f0fe;border-color:#d2e3fc;color:#1a73e8}
+body.bright .notice{background:#e8f0fe;border-color:#d2e3fc;color:#1967d2}
+@media(max-width:900px){.page{padding:18px;padding-top:72px}.shell{grid-template-columns:1fr}.hero{min-height:auto}.mode-grid{grid-template-columns:1fr}.top-links{left:18px;right:18px;justify-content:space-between}.top-links a,.top-links button{flex:1;justify-content:center}}
 @media(max-width:520px){.hero,.panel{border-radius:20px;padding:20px}.actions{display:grid}.gold-btn,.dark-btn{width:100%}}
 </style>
 </head>
-<body>
+<body class="vani-public-theme">
 <canvas id="neuralCanvas" aria-hidden="true"></canvas>
 <div class="top-links">
   <a href="dashboard.php<?php echo $selectedBotId !== '' ? '?bot=' . h(urlencode($selectedBotId)) : ''; ?>">Back to Narada</a>
+  <button type="button" data-theme-toggle>Bright Mode</button>
   <a href="logout.php">Logout</a>
 </div>
 <main class="page">
