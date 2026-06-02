@@ -194,14 +194,21 @@ button{background:#2563eb;color:#fff}
 .metric strong{display:block;margin-top:6px;font-size:22px}
 .message{margin-bottom:14px;padding:12px 14px;border-radius:8px;font-weight:800}
 .success{background:#dcfce7;color:#166534}.error{background:#fee2e2;color:#991b1b}
-.page-item{border-top:1px solid var(--line);padding:18px 0}
-.page-item:first-child{border-top:0;padding-top:0}
+.page-tabs{display:flex;gap:8px;overflow:auto;padding:4px 0 12px;border-bottom:1px solid var(--line);margin-bottom:16px}
+.page-tab-label{min-height:38px;display:inline-flex;align-items:center;max-width:220px;padding:0 12px;border:1px solid var(--line);border-radius:8px;background:var(--soft);color:var(--ink);font-size:13px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
+.page-tab-label.is-selected{background:#2563eb;border-color:#2563eb;color:#fff}
+.add-tab{min-width:42px;justify-content:center;font-size:20px}
+.page-panel{display:none}
+.page-panel.is-active{display:block}
+.page-item{padding:6px 0}
 .page-title{display:block;color:var(--ink);font-size:18px;line-height:1.35;margin-bottom:4px}
 .url{color:var(--link);word-break:break-all;font-size:13px}
 .status{display:inline-flex;margin:8px 0;padding:4px 8px;border-radius:999px;background:#eef2ff;color:#3730a3;font-size:12px;font-weight:800}
 textarea,input{width:100%;border:1px solid var(--line);border-radius:8px;padding:10px 12px;font:inherit;background:var(--field);color:var(--ink)}
 textarea{min-height:120px;resize:vertical;line-height:1.5}
 .row{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+.summary-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;align-items:center}
+.summary-actions form{margin:0}
 .faq,.manual-page{border-top:1px solid var(--line);padding:14px 0}
 .faq:first-child{border-top:0}
 .muted{color:var(--muted);font-size:13px;line-height:1.5}
@@ -235,19 +242,28 @@ textarea{min-height:120px;resize:vertical;line-height:1.5}
   <div class="grid">
     <section class="panel">
       <h2>Pages</h2>
-      <form method="POST" class="manual-page">
-        <input type="hidden" name="action" value="add_page">
-        <label>Add missed page URL</label>
-        <input name="page_url" placeholder="https://example.com/missed-page">
-        <p class="muted">We will try to crawl this page. If readable text is not captured, you can still add the summary manually below.</p>
-        <div class="row"><button type="submit">Add page</button></div>
-      </form>
       <?php if (empty($pages)): ?>
         <p class="muted">No pages were captured. Check scan diagnostics or try a sitemap/manual content source.</p>
       <?php endif; ?>
-      <?php foreach ($pages as $page): ?>
+      <div class="page-tabs" role="tablist" aria-label="Captured pages">
+        <?php foreach ($pages as $index => $page): ?>
+          <?php $tabTitle = trim((string)($page['page_title'] ?? '')) ?: (parse_url((string)$page['url'], PHP_URL_PATH) ?: 'Untitled'); ?>
+          <button class="page-tab-label js-page-tab <?php echo $index === 0 ? 'is-selected' : ''; ?>" type="button" data-tab-target="page-panel-<?php echo (int)$index; ?>" title="<?php echo ai_h($tabTitle); ?>"><?php echo ai_h($tabTitle); ?></button>
+        <?php endforeach; ?>
+        <button class="page-tab-label add-tab js-page-tab <?php echo empty($pages) ? 'is-selected' : ''; ?>" type="button" data-tab-target="page-panel-add" title="Add missed page">+</button>
+      </div>
+      <div id="page-panel-add" class="add-page-panel page-panel <?php echo empty($pages) ? 'is-active' : ''; ?>">
+        <form method="POST" class="manual-page">
+          <input type="hidden" name="action" value="add_page">
+          <label>Add missed page URL</label>
+          <input name="page_url" placeholder="https://example.com/missed-page">
+          <p class="muted">We will try to crawl this page. If readable text is not captured, you can still add the summary manually below.</p>
+          <div class="row"><button type="submit">Add page</button></div>
+        </form>
+      </div>
+      <?php foreach ($pages as $index => $page): ?>
         <?php $summaryText = ai_summary_text_from_page($page); ?>
-        <article class="page-item">
+        <article id="page-panel-<?php echo (int)$index; ?>" class="page-item page-panel <?php echo $index === 0 ? 'is-active' : ''; ?>">
           <strong class="page-title"><?php echo ai_h($page['page_title'] ?: parse_url((string)$page['url'], PHP_URL_PATH) ?: 'Untitled page'); ?></strong>
           <div class="url"><?php echo ai_h($page['url']); ?></div>
           <span class="status"><?php echo ai_h($page['page_status']); ?></span>
@@ -257,18 +273,20 @@ textarea{min-height:120px;resize:vertical;line-height:1.5}
             <?php echo ai_h($page['discovered_links_count'] ?? 0); ?> links found
           </p>
 
-          <form method="POST">
-            <input type="hidden" name="action" value="save_summary">
-            <input type="hidden" name="page_id" value="<?php echo ai_h($page['id']); ?>">
-            <label>Editable summary</label>
-            <textarea name="summary_text" placeholder="Summarize this page to generate editable summary."><?php echo ai_h($summaryText); ?></textarea>
-            <div class="row"><button type="submit">Save summary</button></div>
-          </form>
-          <form method="POST">
-            <input type="hidden" name="action" value="summarize_page">
-            <input type="hidden" name="page_id" value="<?php echo ai_h($page['id']); ?>">
-            <div class="row"><button type="submit">Summarize this page</button></div>
-          </form>
+          <label>Editable summary</label>
+          <textarea form="save-summary-<?php echo (int)$index; ?>" name="summary_text" placeholder="Summarize this page to generate editable summary."><?php echo ai_h($summaryText); ?></textarea>
+          <div class="summary-actions">
+            <form id="save-summary-<?php echo (int)$index; ?>" method="POST">
+              <input type="hidden" name="action" value="save_summary">
+              <input type="hidden" name="page_id" value="<?php echo ai_h($page['id']); ?>">
+              <button type="submit">Save summary</button>
+            </form>
+            <form method="POST">
+              <input type="hidden" name="action" value="summarize_page">
+              <input type="hidden" name="page_id" value="<?php echo ai_h($page['id']); ?>">
+              <button type="submit">Summarize this page</button>
+            </form>
+          </div>
           <?php if (!empty($page['ai_error'])): ?><p class="muted"><?php echo ai_h($page['ai_error']); ?></p><?php endif; ?>
         </article>
       <?php endforeach; ?>
@@ -300,5 +318,16 @@ textarea{min-height:120px;resize:vertical;line-height:1.5}
     </aside>
   </div>
 </main>
+<script>
+document.querySelectorAll(".js-page-tab").forEach((tab) => {
+  tab.addEventListener("click", () => {
+    const target = tab.dataset.tabTarget;
+    document.querySelectorAll(".js-page-tab").forEach((item) => item.classList.remove("is-selected"));
+    document.querySelectorAll(".page-panel").forEach((panel) => panel.classList.remove("is-active"));
+    tab.classList.add("is-selected");
+    document.getElementById(target)?.classList.add("is-active");
+  });
+});
+</script>
 </body>
 </html>

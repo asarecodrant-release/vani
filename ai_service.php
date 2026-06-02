@@ -1184,21 +1184,26 @@ function ai_summarize_page(string $url, string $title, string $cleanText): array
         ];
     }
 
-    $systemPrompt = 'You extract structured business knowledge from website pages. Return exactly one valid JSON object. Do not use markdown fences, comments, prose, or trailing commas.';
-    $userPrompt = "Analyze this website page and return exactly this JSON object shape. Keep arrays short: maximum 5 items each, maximum 2 FAQ candidates, and no value longer than 500 characters.\n"
+    $systemPrompt = 'You extract chatbot-ready business knowledge from website pages. The output will be used as context for a customer support chatbot, so preserve answerable facts, service details, rules, prices, eligibility, locations, timings, contact details, processes, and limitations. Return exactly one valid JSON object. Do not use markdown fences, comments, prose, or trailing commas.';
+    $userPrompt = "Analyze this website page and return exactly this JSON object shape. Capture enough detail for a chatbot to answer visitor questions accurately. Keep each string concise but do not omit important facts. Maximum 12 items per array, maximum 8 FAQ candidates, and no value longer than 900 characters.\n"
         . "{\n"
         . "  \"url\": \"string\",\n"
         . "  \"page_title\": \"string\",\n"
         . "  \"page_type\": \"home|about|services|pricing|contact|faq|blog|other\",\n"
-        . "  \"summary\": \"string\",\n"
+        . "  \"summary\": \"chatbot-ready summary with the most important facts from this page\",\n"
         . "  \"key_facts\": [\"string\"],\n"
         . "  \"services\": [\"string\"],\n"
         . "  \"pricing_info\": [\"string\"],\n"
         . "  \"locations\": [\"string\"],\n"
+        . "  \"timings\": [\"string\"],\n"
+        . "  \"policies\": [\"string\"],\n"
+        . "  \"steps_or_processes\": [\"string\"],\n"
+        . "  \"requirements_or_eligibility\": [\"string\"],\n"
         . "  \"contact_info\": {\"emails\": [\"string\"], \"phones\": [\"string\"], \"addresses\": [\"string\"]},\n"
         . "  \"faq_candidates\": [{\"question\": \"string\", \"answer\": \"string\"}],\n"
         . "  \"target_audience\": [\"string\"],\n"
-        . "  \"entities\": [\"string\"]\n"
+        . "  \"entities\": [\"string\"],\n"
+        . "  \"answer_boundaries\": [\"things the chatbot should not claim beyond this page\"]\n"
         . "}\n\n"
         . "URL: {$url}\n"
         . "Title: {$title}\n\n"
@@ -1207,7 +1212,7 @@ function ai_summarize_page(string $url, string $title, string $cleanText): array
     $decoded = ai_decode_json_result(ai_generate_text($systemPrompt, $userPrompt, [
         'json' => true,
         'temperature' => 0.1,
-        'max_output_tokens' => 4096,
+        'max_output_tokens' => 8192,
     ]));
 
     if (empty($decoded['success'])) {
