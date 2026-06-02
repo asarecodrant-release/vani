@@ -179,6 +179,14 @@ function ai_normalize_page_url(string $url): string {
     return rtrim($scheme . '://' . $host . $path . $query, '/');
 }
 
+function ai_should_scan_url(string $url, string $websiteDomain): bool {
+    if ($url === '' || ai_host_from_value($url) !== $websiteDomain) {
+        return false;
+    }
+    $path = strtolower((string)(parse_url($url, PHP_URL_PATH) ?: ''));
+    return !preg_match('/\.(?:jpg|jpeg|png|gif|webp|svg|ico|css|js|pdf|zip|rar|7z|mp4|mp3|avi|mov|woff|woff2|ttf|eot)$/i', $path);
+}
+
 function ai_resolve_url(string $baseUrl, string $href): string {
     $href = trim(html_entity_decode($href, ENT_QUOTES, 'UTF-8'));
     if ($href === '' || preg_match('/^(mailto|tel|javascript):/i', $href)) {
@@ -258,7 +266,7 @@ function ai_parse_html_page(string $html, string $baseUrl, string $websiteDomain
         foreach ($dom->getElementsByTagName('a') as $anchor) {
             $resolved = ai_resolve_url($baseUrl, (string)$anchor->getAttribute('href'));
             $normalized = ai_normalize_page_url($resolved);
-            if ($normalized === '' || ai_host_from_value($normalized) !== $websiteDomain) {
+            if (!ai_should_scan_url($normalized, $websiteDomain)) {
                 continue;
             }
             $links[$normalized] = true;
@@ -270,6 +278,19 @@ function ai_parse_html_page(string $html, string $baseUrl, string $websiteDomain
         $withoutScripts = preg_replace('/<(script|style|noscript|svg)\b[^>]*>.*?<\/\1>/is', ' ', $html) ?: $html;
         if (preg_match('/<title[^>]*>(.*?)<\/title>/is', $html, $match)) {
             $title = trim(html_entity_decode(strip_tags($match[1]), ENT_QUOTES, 'UTF-8'));
+        }
+        if (preg_match_all('/<a\b[^>]*\bhref\s*=\s*["\']([^"\']+)["\']/i', $html, $matches)) {
+            foreach ($matches[1] as $href) {
+                $resolved = ai_resolve_url($baseUrl, (string)$href);
+                $normalized = ai_normalize_page_url($resolved);
+                if (!ai_should_scan_url($normalized, $websiteDomain)) {
+                    continue;
+                }
+                $links[$normalized] = true;
+                if (count($links) >= $linkLimit) {
+                    break;
+                }
+            }
         }
         $cleanText = preg_replace('/\s+/', ' ', trim(html_entity_decode(strip_tags($withoutScripts), ENT_QUOTES, 'UTF-8'))) ?: '';
     }
@@ -298,6 +319,13 @@ function ai_save_scanned_page(string $jobId, string $customerId, array $payload)
     }
 }
 
+function ai_provider_access_denied(string $error): bool {
+    return stripos($error, '403') !== false
+        || stripos($error, 'denied access') !== false
+        || stripos($error, 'permission') !== false
+        || stripos($error, 'forbidden') !== false;
+}
+
 function ai_process_scan_job(string $jobId, string $customerId, string $websiteUrl, string $websiteDomain, int $maxPages = 5): array {
     $maxPages = max(1, min(10, $maxPages));
     ai_patch_scan_job($jobId, [
@@ -311,6 +339,7 @@ function ai_process_scan_job(string $jobId, string $customerId, string $websiteU
     $seen = [];
     $scanned = 0;
     $failed = 0;
+    $aiDisabledReason = '';
 
     while (!empty($queue) && $scanned < $maxPages) {
         $url = array_shift($queue);
@@ -342,11 +371,24 @@ function ai_process_scan_job(string $jobId, string $customerId, string $websiteU
         }
 
         $cleanText = (string)$parsed['clean_text'];
-        $summary = ai_summarize_page($url, (string)$parsed['title'], $cleanText);
+        $summary = [
+            'success' => false,
+            'data' => null,
+            'error' => $aiDisabledReason,
+            'raw_text' => ''
+        ];
         $embedding = ['success' => false, 'embedding' => [], 'error' => ''];
-        if (!empty($summary['success'])) {
-            $embeddingText = json_encode($summary['data'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: $cleanText;
-            $embedding = ai_create_embedding(substr($embeddingText, 0, 12000));
+        if ($aiDisabledReason === '') {
+            $summary = ai_summarize_page($url, (string)$parsed['title'], $cleanText);
+            if (!empty($summary['success'])) {
+                $embeddingText = json_encode($summary['data'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: $cleanText;
+                $embedding = ai_create_embedding(substr($embeddingText, 0, 12000));
+                if (empty($embedding['success']) && ai_provider_access_denied((string)($embedding['error'] ?? ''))) {
+                    $aiDisabledReason = (string)$embedding['error'];
+                }
+            } elseif (ai_provider_access_denied((string)($summary['error'] ?? ''))) {
+                $aiDisabledReason = (string)$summary['error'];
+            }
         }
 
         $aiErrors = [];
@@ -381,14 +423,15 @@ function ai_process_scan_job(string $jobId, string $customerId, string $websiteU
         'pages_scanned' => $scanned,
         'pages_failed' => $failed,
         'completed_at' => ai_now(),
-        'error_message' => $status === 'failed' ? 'No pages could be scanned.' : null
+        'error_message' => $status === 'failed' ? 'No pages could be scanned.' : ($aiDisabledReason !== '' ? $aiDisabledReason : null)
     ]);
 
     return [
         'success' => $status === 'completed',
         'pages_scanned' => $scanned,
         'pages_failed' => $failed,
-        'status' => $status
+        'status' => $status,
+        'ai_error' => $aiDisabledReason
     ];
 }
 

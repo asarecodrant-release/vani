@@ -59,7 +59,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } else {
                     $scanResult = ai_process_scan_job($scanJobId, $savedCustomerId, $websiteUrl, $websiteDomain, 5);
                     if (!empty($scanResult['success'])) {
-                        $success = 'Website saved and initial AI scan completed for ' . (int)$scanResult['pages_scanned'] . ' page(s).';
+                        if (!empty($scanResult['ai_error'])) {
+                            $success = 'Website pages were saved, but AI summaries were skipped because the provider denied access. Scan job: ' . $scanJobId;
+                        } else {
+                            $success = 'Website saved and initial AI scan completed for ' . (int)$scanResult['pages_scanned'] . ' page(s).';
+                        }
                     } else {
                         $error = 'Website was saved, but the initial scan could not complete. Scan job: ' . $scanJobId;
                     }
