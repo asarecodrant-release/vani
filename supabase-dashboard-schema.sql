@@ -1305,8 +1305,28 @@ on public.ai_website_pages(scan_job_id);
 create index if not exists ai_website_pages_customer_id_idx
 on public.ai_website_pages(customer_id);
 
+create table if not exists public.ai_website_faqs (
+  id uuid primary key default gen_random_uuid(),
+  scan_job_id uuid not null references public.ai_scan_jobs(id) on delete cascade,
+  customer_id uuid not null references public.chatbot_signups(customer_id) on delete cascade,
+  page_url text not null,
+  question text not null,
+  answer text not null,
+  source text not null default 'ai',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (customer_id, page_url, question)
+);
+
+create index if not exists ai_website_faqs_scan_job_id_idx
+on public.ai_website_faqs(scan_job_id);
+
+create index if not exists ai_website_faqs_customer_id_idx
+on public.ai_website_faqs(customer_id);
+
 alter table public.ai_scan_jobs enable row level security;
 alter table public.ai_website_pages enable row level security;
+alter table public.ai_website_faqs enable row level security;
 
 drop policy if exists "ai scan jobs readable" on public.ai_scan_jobs;
 create policy "ai scan jobs readable"
@@ -1352,6 +1372,28 @@ to anon, authenticated
 using (true)
 with check (true);
 
+drop policy if exists "ai website faqs readable" on public.ai_website_faqs;
+create policy "ai website faqs readable"
+on public.ai_website_faqs
+for select
+to anon, authenticated
+using (true);
+
+drop policy if exists "ai website faqs insertable" on public.ai_website_faqs;
+create policy "ai website faqs insertable"
+on public.ai_website_faqs
+for insert
+to anon, authenticated
+with check (true);
+
+drop policy if exists "ai website faqs updatable" on public.ai_website_faqs;
+create policy "ai website faqs updatable"
+on public.ai_website_faqs
+for update
+to anon, authenticated
+using (true)
+with check (true);
+
 create index if not exists customer_remember_tokens_email_idx
 on public.customer_remember_tokens(email);
 
@@ -1392,6 +1434,7 @@ using (true);
 grant select, insert, update, delete on public.customer_remember_tokens to anon, authenticated;
 grant select, insert, update on public.ai_scan_jobs to anon, authenticated;
 grant select, insert, update on public.ai_website_pages to anon, authenticated;
+grant select, insert, update on public.ai_website_faqs to anon, authenticated;
 grant usage, select on sequence public.chatbot_settings_id_seq to anon, authenticated;
 grant usage, select on sequence public.chatbot_conversations_id_seq to anon, authenticated;
 grant usage, select on sequence public.faq_action_feedback_id_seq to anon, authenticated;

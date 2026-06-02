@@ -187,6 +187,17 @@ function ai_should_scan_url(string $url, string $websiteDomain): bool {
     return !preg_match('/\.(?:jpg|jpeg|png|gif|webp|svg|ico|css|js|pdf|zip|rar|7z|mp4|mp3|avi|mov|woff|woff2|ttf|eot)$/i', $path);
 }
 
+function ai_url_priority(string $url): int {
+    $value = strtolower($url);
+    if (preg_match('/(faq|faqs|frequently-asked|questions|help|support)/', $value)) {
+        return 0;
+    }
+    if (preg_match('/(about|service|course|program|pricing|contact)/', $value)) {
+        return 1;
+    }
+    return 2;
+}
+
 function ai_resolve_url(string $baseUrl, string $href): string {
     $href = trim(html_entity_decode($href, ENT_QUOTES, 'UTF-8'));
     if ($href === '' || preg_match('/^(mailto|tel|javascript):/i', $href)) {
@@ -241,6 +252,16 @@ function ai_parse_html_page(string $html, string $baseUrl, string $websiteDomain
     $title = '';
     $links = [];
     $cleanText = '';
+    $detectedFaqs = [];
+
+    if (preg_match_all('/<script\b[^>]*type\s*=\s*["\'][^"\']*ld\+json[^"\']*["\'][^>]*>(.*?)<\/script>/is', $html, $jsonScripts)) {
+        foreach ($jsonScripts[1] as $scriptJson) {
+            $json = json_decode(trim(html_entity_decode($scriptJson, ENT_QUOTES, 'UTF-8')), true);
+            foreach (ai_faqs_from_json_ld($json) as $faq) {
+                $detectedFaqs[] = $faq;
+            }
+        }
+    }
 
     if (class_exists(DOMDocument::class)) {
         $previous = libxml_use_internal_errors(true);
@@ -274,6 +295,15 @@ function ai_parse_html_page(string $html, string $baseUrl, string $websiteDomain
                 break;
             }
         }
+
+        foreach ($dom->getElementsByTagName('details') as $details) {
+            $summaryNode = $details->getElementsByTagName('summary')->item(0);
+            $question = $summaryNode ? trim($summaryNode->textContent) : '';
+            $answer = trim(str_replace($question, '', $details->textContent));
+            if ($question !== '' && $answer !== '') {
+                $detectedFaqs[] = ['question' => $question, 'answer' => $answer, 'source' => 'html'];
+            }
+        }
     } else {
         $withoutScripts = preg_replace('/<(script|style|noscript|svg)\b[^>]*>.*?<\/\1>/is', ' ', $html) ?: $html;
         if (preg_match('/<title[^>]*>(.*?)<\/title>/is', $html, $match)) {
@@ -299,7 +329,124 @@ function ai_parse_html_page(string $html, string $baseUrl, string $websiteDomain
         'title' => substr($title, 0, 500),
         'clean_text' => substr($cleanText, 0, 120000),
         'links' => array_keys($links),
+        'detected_faqs' => ai_dedupe_faqs($detectedFaqs),
     ];
+}
+
+function ai_faqs_from_json_ld($json): array {
+    if (!is_array($json)) {
+        return [];
+    }
+    $items = isset($json['@graph']) && is_array($json['@graph']) ? $json['@graph'] : [$json];
+    $faqs = [];
+    foreach ($items as $item) {
+        if (!is_array($item)) {
+            continue;
+        }
+        $type = $item['@type'] ?? '';
+        $types = is_array($type) ? $type : [$type];
+        if (!in_array('FAQPage', $types, true)) {
+            continue;
+        }
+        foreach (($item['mainEntity'] ?? []) as $entity) {
+            if (!is_array($entity)) {
+                continue;
+            }
+            $question = trim((string)($entity['name'] ?? ''));
+            $answerData = $entity['acceptedAnswer']['text'] ?? '';
+            $answer = trim(preg_replace('/\s+/', ' ', html_entity_decode(strip_tags((string)$answerData), ENT_QUOTES, 'UTF-8')) ?: '');
+            if ($question !== '' && $answer !== '') {
+                $faqs[] = ['question' => $question, 'answer' => $answer, 'source' => 'json_ld'];
+            }
+        }
+    }
+    return $faqs;
+}
+
+function ai_dedupe_faqs(array $faqs): array {
+    $seen = [];
+    $clean = [];
+    foreach ($faqs as $faq) {
+        $question = trim(preg_replace('/\s+/', ' ', (string)($faq['question'] ?? '')) ?: '');
+        $answer = trim(preg_replace('/\s+/', ' ', (string)($faq['answer'] ?? '')) ?: '');
+        if ($question === '' || $answer === '') {
+            continue;
+        }
+        $key = strtolower($question);
+        if (isset($seen[$key])) {
+            continue;
+        }
+        $seen[$key] = true;
+        $clean[] = [
+            'question' => substr($question, 0, 800),
+            'answer' => substr($answer, 0, 3000),
+            'source' => (string)($faq['source'] ?? 'ai')
+        ];
+    }
+    return $clean;
+}
+
+function ai_page_looks_like_faq(string $url, string $title, string $cleanText): bool {
+    $haystack = strtolower($url . ' ' . $title . ' ' . substr($cleanText, 0, 5000));
+    return preg_match('/(faq|faqs|frequently asked|frequently-asked|questions and answers|common questions)/', $haystack) === 1;
+}
+
+function ai_extract_page_faqs(string $url, string $title, string $cleanText): array {
+    $cleanText = trim($cleanText);
+    if ($cleanText === '') {
+        return [];
+    }
+
+    $systemPrompt = 'Extract FAQ question-answer pairs from website page text. Return exactly one valid JSON object and no prose.';
+    $userPrompt = "Return JSON in this shape: {\"faqs\":[{\"question\":\"string\",\"answer\":\"string\"}]}.\n"
+        . "Capture every explicit FAQ on the page. Do not invent questions. If there are no FAQs, return {\"faqs\":[]}.\n"
+        . "URL: {$url}\nTitle: {$title}\n\nPage text:\n" . substr($cleanText, 0, 50000);
+
+    $decoded = ai_decode_json_result(ai_generate_text($systemPrompt, $userPrompt, [
+        'json' => true,
+        'temperature' => 0,
+        'max_output_tokens' => 8192,
+    ]));
+
+    if (empty($decoded['success'])) {
+        return [];
+    }
+
+    $faqs = $decoded['data']['faqs'] ?? [];
+    return is_array($faqs) ? ai_dedupe_faqs(array_map(function ($faq) {
+        return [
+            'question' => (string)($faq['question'] ?? ''),
+            'answer' => (string)($faq['answer'] ?? ''),
+            'source' => 'ai'
+        ];
+    }, $faqs)) : [];
+}
+
+function ai_save_page_faqs(string $jobId, string $customerId, string $pageUrl, array $faqs): void {
+    foreach (ai_dedupe_faqs($faqs) as $faq) {
+        $question = (string)$faq['question'];
+        $payload = [
+            'scan_job_id' => $jobId,
+            'customer_id' => $customerId,
+            'page_url' => $pageUrl,
+            'question' => $question,
+            'answer' => (string)$faq['answer'],
+            'source' => (string)($faq['source'] ?? 'ai'),
+            'updated_at' => ai_now()
+        ];
+        $existing = ai_safe_rows(supabase(
+            'GET',
+            'ai_website_faqs?select=id&customer_id=eq.' . urlencode($customerId)
+                . '&page_url=eq.' . urlencode($pageUrl)
+                . '&question=eq.' . urlencode($question)
+                . '&limit=1'
+        ));
+        if (!empty($existing[0]['id'])) {
+            supabase('PATCH', 'ai_website_faqs?id=eq.' . urlencode((string)$existing[0]['id']), $payload);
+        } else {
+            supabase('POST', 'ai_website_faqs', [$payload]);
+        }
+    }
 }
 
 function ai_save_scanned_page(string $jobId, string $customerId, array $payload): void {
@@ -326,8 +473,8 @@ function ai_provider_access_denied(string $error): bool {
         || stripos($error, 'forbidden') !== false;
 }
 
-function ai_process_scan_job(string $jobId, string $customerId, string $websiteUrl, string $websiteDomain, int $maxPages = 5): array {
-    $maxPages = max(1, min(10, $maxPages));
+function ai_process_scan_job(string $jobId, string $customerId, string $websiteUrl, string $websiteDomain, int $maxPages = 15): array {
+    $maxPages = max(1, min(30, $maxPages));
     ai_patch_scan_job($jobId, [
         'status' => 'running',
         'started_at' => ai_now(),
@@ -364,7 +511,11 @@ function ai_process_scan_job(string $jobId, string $customerId, string $websiteU
         }
 
         $parsed = ai_parse_html_page((string)$fetch['html'], $url, $websiteDomain);
-        foreach ($parsed['links'] as $link) {
+        $links = $parsed['links'];
+        usort($links, function ($a, $b) {
+            return ai_url_priority((string)$a) <=> ai_url_priority((string)$b);
+        });
+        foreach ($links as $link) {
             if (!isset($seen[$link]) && count($queue) < $maxPages * 3) {
                 $queue[] = $link;
             }
@@ -390,6 +541,21 @@ function ai_process_scan_job(string $jobId, string $customerId, string $websiteU
                 $aiDisabledReason = (string)$summary['error'];
             }
         }
+
+        $pageFaqs = $parsed['detected_faqs'];
+        if (!empty($summary['data']['faq_candidates']) && is_array($summary['data']['faq_candidates'])) {
+            foreach ($summary['data']['faq_candidates'] as $faq) {
+                $pageFaqs[] = [
+                    'question' => (string)($faq['question'] ?? ''),
+                    'answer' => (string)($faq['answer'] ?? ''),
+                    'source' => 'ai_summary'
+                ];
+            }
+        }
+        if ($aiDisabledReason === '' && ai_page_looks_like_faq($url, (string)$parsed['title'], $cleanText)) {
+            $pageFaqs = array_merge($pageFaqs, ai_extract_page_faqs($url, (string)$parsed['title'], $cleanText));
+        }
+        ai_save_page_faqs($jobId, $customerId, $url, $pageFaqs);
 
         $aiErrors = [];
         if (empty($summary['success'])) {

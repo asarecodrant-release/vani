@@ -43,7 +43,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['setup_business_type'] = 'AI Website';
             $_SESSION['ai_chatbot_website_url'] = $websiteUrl;
 
-            $scanJob = ai_create_scan_job($savedCustomerId, $email, $websiteUrl, $websiteDomain, 5);
+            $scanJob = ai_create_scan_job($savedCustomerId, $email, $websiteUrl, $websiteDomain, 15);
             if (empty($scanJob['success'])) {
                 $error = (string)$scanJob['error'];
             } else {
@@ -57,7 +57,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ];
                     $success = 'Website saved and AI scan job created. Add AI_API_KEY to run the scan.';
                 } else {
-                    $scanResult = ai_process_scan_job($scanJobId, $savedCustomerId, $websiteUrl, $websiteDomain, 5);
+                    $scanResult = ai_process_scan_job($scanJobId, $savedCustomerId, $websiteUrl, $websiteDomain, 15);
                     if (!empty($scanResult['success'])) {
                         if (!empty($scanResult['ai_error'])) {
                             $success = 'Website pages were saved, but AI summaries were skipped because the provider denied access. Scan job: ' . $scanJobId;
