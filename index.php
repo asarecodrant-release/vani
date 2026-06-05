@@ -696,9 +696,9 @@ footer{
   width:min(360px,88vw);
   height:100dvh;
   padding:24px;
-  background:rgba(255,255,255,.96);
-  border-left:1px solid rgba(99,102,241,.16);
-  box-shadow:-24px 0 60px rgba(15,23,42,.18);
+  background:linear-gradient(180deg,#ffffff 0%,#f8fafd 100%);
+  border-left:1px solid #dadce0;
+  box-shadow:-24px 0 70px rgba(60,64,67,.22);
   transform:translateX(105%);
   transition:.25s ease;
   z-index:100;
@@ -745,18 +745,32 @@ footer{
   min-height:52px;
   padding:0 14px;
   border-radius:14px;
-  background:linear-gradient(135deg,#6366f1,#8b5cf6);
+  background:linear-gradient(135deg,#4285f4 0%,#34a853 36%,#fbbc04 68%,#ea4335 100%);
   color:#fff;
   text-decoration:none;
   font-weight:800;
-  box-shadow:0 12px 26px rgba(99,102,241,.24);
+  box-shadow:0 12px 26px rgba(66,133,244,.22);
 }
 
 .side-menu-link.secondary{
-  background:#f8fafc;
-  color:#334155;
-  border:1px solid #e5e7eb;
-  box-shadow:none;
+  background:#ffffff;
+  color:#3c4043;
+  border:1px solid #dadce0;
+  box-shadow:0 1px 2px rgba(60,64,67,.08);
+}
+
+.side-menu-link[data-google-color="blue"]{border-left:4px solid #4285f4}
+.side-menu-link[data-google-color="red"]{border-left:4px solid #ea4335}
+.side-menu-link[data-google-color="yellow"]{border-left:4px solid #fbbc04}
+.side-menu-link[data-google-color="green"]{border-left:4px solid #34a853}
+.side-menu-link:not(.secondary)[data-google-color="blue"]{background:#4285f4}
+.side-menu-link:not(.secondary)[data-google-color="red"]{background:#ea4335}
+.side-menu-link:not(.secondary)[data-google-color="yellow"]{background:#fbbc04;color:#202124}
+.side-menu-link:not(.secondary)[data-google-color="green"]{background:#34a853}
+.side-menu-link.secondary:hover{
+  background:#f8fafd;
+  border-color:#d2e3fc;
+  color:#1a73e8;
 }
 
 body.dark .hero-badge,
@@ -1029,7 +1043,7 @@ body.dark{
 
 .hero h1{
   letter-spacing:0;
-  background:linear-gradient(90deg,#202124,#1a73e8 52%,#34a853);
+  background:linear-gradient(90deg,#202124 0%,#4285f4 34%,#34a853 56%,#fbbc04 76%,#ea4335 100%);
   -webkit-background-clip:text;
   -webkit-text-fill-color:transparent;
 }
@@ -1061,7 +1075,7 @@ body.dark .hero h1{
 .nav-btn,
 .nav-btn1,
 .download-button{
-  background:#1a73e8;
+  background:linear-gradient(135deg,#4285f4 0%,#34a853 38%,#fbbc04 70%,#ea4335 100%);
   color:#fff !important;
   box-shadow:0 1px 3px rgba(60,64,67,.2);
 }
@@ -1075,7 +1089,7 @@ body.dark .hero h1{
 .cta{
   background:
     radial-gradient(circle at 20% 20%,rgba(255,255,255,.38),transparent 30%),
-    linear-gradient(135deg,#1a73e8,#34a853);
+    linear-gradient(135deg,#4285f4 0%,#34a853 36%,#fbbc04 68%,#ea4335 100%);
   color:#fff;
   box-shadow:0 8px 24px rgba(26,115,232,.18);
 }
@@ -1393,9 +1407,21 @@ const themeToggle = document.getElementById("themeToggle");
 const themeChoicePanel = document.getElementById("themeChoicePanel");
 const siteBgCanvas = document.getElementById("siteBgCanvas");
 const siteBgCtx = siteBgCanvas?.getContext("2d");
+const googleMenuColors = ["blue", "red", "yellow", "green"];
 let siteBgNodes = [];
 
+function assignGoogleDrawerColors() {
+  let previousColor = "";
+  sideMenu?.querySelectorAll(".side-menu-link").forEach(link => {
+    const availableColors = googleMenuColors.filter(color => color !== previousColor);
+    const nextColor = availableColors[Math.floor(Math.random() * availableColors.length)];
+    link.dataset.googleColor = nextColor;
+    previousColor = nextColor;
+  });
+}
+
 function setMenu(open) {
+  if (open) assignGoogleDrawerColors();
   sideMenu?.classList.toggle("open", open);
   menuOverlay?.classList.toggle("show", open);
   menuToggle?.setAttribute("aria-expanded", String(open));
