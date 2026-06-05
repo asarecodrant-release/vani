@@ -318,6 +318,11 @@ async function sendPublicOtp(event) {
   const data = await response.json().catch(() => ({}));
   button.disabled = false;
   button.textContent = originalText;
+  if (data.requires_login && data.login_url) {
+    setCheckoutStatus(data.message || "Please login to buy a plan for your chatbot.");
+    setTimeout(() => { window.location.href = data.login_url; }, 1000);
+    return;
+  }
   setCheckoutStatus(data.message || (data.success ? "Verification code sent." : "OTP could not be sent."));
   if (data.success) {
     enablePublicOtpEntry();

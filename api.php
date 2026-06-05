@@ -3096,6 +3096,10 @@ if ($action === "create_public_razorpay_order") {
         echo json_encode(["success" => false, "message" => "Enter a valid email address"]);
         exit;
     }
+    $existingCustomer = safe_rows(supabase(
+        "GET",
+        "customers?select=id&email=eq." . urlencode($email) . "&limit=1"
+    ));
     if (!preg_match('/^\+?[1-9]\d{7,14}$/', $contact)) {
         echo json_encode(["success" => false, "message" => "Enter mobile number with country code"]);
         exit;
@@ -3104,11 +3108,11 @@ if ($action === "create_public_razorpay_order") {
         "GET",
         "chatbot_signups?select=customer_id&email=eq." . urlencode($email) . "&limit=1"
     ));
-    if (!empty($botRows)) {
+    if (!empty($botRows) || !empty($existingCustomer)) {
         echo json_encode([
             "success" => false,
             "requires_login" => true,
-            "message" => "This email already has a chatbot. Login to upgrade your existing chatbot.",
+            "message" => "This email already has a Vani AI account. Please login and buy the plan for the required chatbot.",
             "login_url" => "login.php?upgrade=1"
         ]);
         exit;
@@ -3185,6 +3189,25 @@ if ($action === "send_email_otp") {
     if (!filter_var($email, FILTER_VALIDATE_EMAIL) || !in_array($flow, $allowedFlows, true)) {
         echo json_encode(["success" => false, "message" => "Enter a valid email address"]);
         exit;
+    }
+    if ($flow === 'public_subscription') {
+        $existingBots = safe_rows(supabase(
+            "GET",
+            "chatbot_signups?select=customer_id&email=eq." . urlencode($email) . "&limit=1"
+        ));
+        $existingCustomer = safe_rows(supabase(
+            "GET",
+            "customers?select=id&email=eq." . urlencode($email) . "&limit=1"
+        ));
+        if (!empty($existingBots) || !empty($existingCustomer)) {
+            echo json_encode([
+                "success" => false,
+                "requires_login" => true,
+                "message" => "This email already has a Vani AI account. Please login and buy the plan for the required chatbot.",
+                "login_url" => "login.php?upgrade=1"
+            ]);
+            exit;
+        }
     }
     if ($flow === 'freebot_signup' && !is_authenticated_user()) {
         $existingBots = safe_rows(supabase(
