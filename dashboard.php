@@ -6490,7 +6490,7 @@ themeToggle?.addEventListener("click", () => {
   localStorage.setItem("vani_setup_theme", themeValue);
 });
 
-const dashboardTheme = localStorage.getItem("vani-index-theme") || localStorage.getItem("vani_dashboard_theme") || localStorage.getItem("vani_setup_theme") || "dark";
+const dashboardTheme = localStorage.getItem("vani-index-theme") || localStorage.getItem("vani_dashboard_theme") || localStorage.getItem("vani_setup_theme") || "bright";
 if (dashboardTheme !== "bright") {
   document.body.classList.add("dark");
   if (themeToggle) themeToggle.textContent = "Bright";

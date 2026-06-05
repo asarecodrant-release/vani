@@ -3,7 +3,7 @@
     return localStorage.getItem("vani-index-theme")
       || localStorage.getItem("vani_dashboard_theme")
       || localStorage.getItem("vani_setup_theme")
-      || "dark";
+      || "bright";
   }
   function setPublicTheme(mode){
     const dark = mode !== "bright";

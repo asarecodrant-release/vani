@@ -11,7 +11,7 @@
     if (saved === "light" || saved === "dark") {
       return saved;
     }
-    return "dark";
+    return "bright";
   }
 
   function applyTheme(theme) {

@@ -109,37 +109,89 @@
 }
 body.bright .site-menu-trigger,
 body:not(.dark).vani-public-theme .site-menu-trigger{
-  background:rgba(255,255,255,.86);
-  color:#3f2f15;
-  border-color:rgba(217,119,6,.2);
+  background:#ffffff;
+  color:#3c4043;
+  border-color:#dadce0;
+  box-shadow:0 1px 2px rgba(60,64,67,.3),0 1px 3px rgba(60,64,67,.15);
 }
 body.bright .site-menu-overlay,
 body:not(.dark).vani-public-theme .site-menu-overlay{
-  background:rgba(63,47,21,.28);
+  background:rgba(32,33,36,.32);
 }
 body.bright .site-side-menu,
 body:not(.dark).vani-public-theme .site-side-menu{
-  background:linear-gradient(180deg,rgba(255,255,255,.98),rgba(255,247,230,.98));
-  border-left-color:rgba(217,119,6,.2);
-  box-shadow:-24px 0 70px rgba(180,83,9,.18);
+  background:linear-gradient(180deg,#ffffff 0%,#f8fafd 100%);
+  border-left-color:#dadce0;
+  box-shadow:-24px 0 70px rgba(60,64,67,.22);
 }
 body.bright .site-side-menu-head h3,
 body:not(.dark).vani-public-theme .site-side-menu-head h3{
-  color:#111827;
+  color:#202124;
 }
 body.bright .site-menu-close,
 body.bright .site-side-menu-link,
 body:not(.dark).vani-public-theme .site-menu-close,
 body:not(.dark).vani-public-theme .site-side-menu-link{
-  background:#fff;
-  color:#3f2f15;
-  border-color:rgba(217,119,6,.18);
+  background:#ffffff;
+  color:#3c4043;
+  border-color:#dadce0;
+  box-shadow:0 1px 2px rgba(60,64,67,.08);
+}
+body.bright .site-side-menu-link[data-google-color="blue"],
+body:not(.dark).vani-public-theme .site-side-menu-link[data-google-color="blue"]{
+  border-left:4px solid #4285f4;
+}
+body.bright .site-side-menu-link[data-google-color="red"],
+body:not(.dark).vani-public-theme .site-side-menu-link[data-google-color="red"]{
+  border-left:4px solid #ea4335;
+}
+body.bright .site-side-menu-link[data-google-color="yellow"],
+body:not(.dark).vani-public-theme .site-side-menu-link[data-google-color="yellow"]{
+  border-left:4px solid #fbbc04;
+}
+body.bright .site-side-menu-link[data-google-color="green"],
+body:not(.dark).vani-public-theme .site-side-menu-link[data-google-color="green"]{
+  border-left:4px solid #34a853;
 }
 body.bright .site-side-menu-link.primary,
 body:not(.dark).vani-public-theme .site-side-menu-link.primary{
-  background:linear-gradient(135deg,#fef3c7,#facc15,#d97706);
-  color:#111827;
-  box-shadow:0 12px 26px rgba(217,119,6,.22);
+  background:linear-gradient(135deg,#4285f4 0%,#34a853 36%,#fbbc04 68%,#ea4335 100%);
+  color:#ffffff;
+  border-color:transparent;
+  box-shadow:0 12px 26px rgba(66,133,244,.22);
+}
+body.bright .site-side-menu-link.primary[data-google-color="blue"],
+body:not(.dark).vani-public-theme .site-side-menu-link.primary[data-google-color="blue"]{
+  background:#4285f4;
+}
+body.bright .site-side-menu-link.primary[data-google-color="red"],
+body:not(.dark).vani-public-theme .site-side-menu-link.primary[data-google-color="red"]{
+  background:#ea4335;
+}
+body.bright .site-side-menu-link.primary[data-google-color="yellow"],
+body:not(.dark).vani-public-theme .site-side-menu-link.primary[data-google-color="yellow"]{
+  background:#fbbc04;
+  color:#202124;
+}
+body.bright .site-side-menu-link.primary[data-google-color="green"],
+body:not(.dark).vani-public-theme .site-side-menu-link.primary[data-google-color="green"]{
+  background:#34a853;
+}
+body.bright .site-menu-close:hover,
+body.bright .site-side-menu-link:hover,
+body:not(.dark).vani-public-theme .site-menu-close:hover,
+body:not(.dark).vani-public-theme .site-side-menu-link:hover{
+  background:#f8fafd;
+  border-color:#d2e3fc;
+  color:#1a73e8;
+}
+body.bright .site-side-menu-link.primary:hover,
+body:not(.dark).vani-public-theme .site-side-menu-link.primary:hover{
+  color:#ffffff;
+}
+body.bright .site-side-menu-link.primary[data-google-color="yellow"]:hover,
+body:not(.dark).vani-public-theme .site-side-menu-link.primary[data-google-color="yellow"]:hover{
+  color:#202124;
 }
 body.dark .site-side-menu-link.primary{
   background:linear-gradient(135deg,#38bdf8,#2563eb,#0f172a);
@@ -187,8 +239,20 @@ body.dark .site-side-menu-link.primary{
   const overlay = document.getElementById("siteMenuOverlay");
   const closeBtn = document.getElementById("siteMenuClose");
   const triggers = document.querySelectorAll(".site-menu-trigger");
+  const googleColors = ["blue", "red", "yellow", "green"];
+
+  function assignGoogleMenuColors() {
+    let previousColor = "";
+    menu?.querySelectorAll(".site-side-menu-link").forEach(link => {
+      const availableColors = googleColors.filter(color => color !== previousColor);
+      const nextColor = availableColors[Math.floor(Math.random() * availableColors.length)];
+      link.dataset.googleColor = nextColor;
+      previousColor = nextColor;
+    });
+  }
 
   function setSiteMenu(open) {
+    if (open) assignGoogleMenuColors();
     menu?.classList.toggle("open", open);
     overlay?.classList.toggle("show", open);
     triggers.forEach(trigger => trigger.setAttribute("aria-expanded", String(open)));

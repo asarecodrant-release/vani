@@ -343,6 +343,13 @@ body.dark .customer-notice-card p{color:#cbd5e1}
   line-height:1.7;
 }
 
+.mini-charge-note{
+  margin-top:10px;
+  color:#64748b;
+  font-size:12px;
+  line-height:1.5;
+}
+
 .download-button{
   display:inline-block;
   margin-top:26px;
@@ -1258,7 +1265,7 @@ body.dark .cta button{
   <div class="container">
 
     <div class="hero-badge">
-      🚀 AI Chatbots for Modern Businesses
+      🚀 Setup your chatbot in minutes
     </div>
 
     <h1>
@@ -1267,15 +1274,14 @@ body.dark .cta button{
     </h1>
 
     <p>
-      Offer your customers a ready-to-use chatbot powered by your FAQs.
-      Select the version that best fits your needs — a lightweight free bot
-      or a powerful AI-driven chatbot for smarter engagement.
+      Create your Vani AI chatbot in a few minutes and give visitors instant answers,
+      lead verification, and 24/7 sales support from your own FAQs.
     </p>
 
     <div class="hero-buttons">
 
       <a href="freebot.php" class="primary-btn">
-        Start Free →
+        Build My Chatbot →
       </a>
 
       <a href="#products" class="secondary-btn">
@@ -1301,20 +1307,21 @@ body.dark .cta button{
       <h2>Free FAQ Chatbot</h2>
 
       <p>
-        Perfect for businesses that want a simple FAQ-driven chatbot
-        without advanced AI complexity.
+        Launch your first chatbot with 25 FAQ answers completely free.
+        A quick, friendly way to start helping visitors right away.
       </p>
 
       <ul class="feature-list">
-        <li>FAQ-based conversation flow</li>
+        <li>25 FAQs included at no cost</li>
         <li>No AI training required</li>
-        <li>Fast setup & lightweight performance</li>
+        <li>Setup in minutes with lightweight performance</li>
         <li>Responsive chatbot widget</li>
       </ul>
 
       <a class="download-button" href="freebot.php">
         Get Started Free
       </a>
+      <p class="mini-charge-note">Small charges apply only for lead generation usage.</p>
 
     </div>
 
@@ -1333,6 +1340,7 @@ body.dark .cta button{
       <ul class="feature-list">
         <li>Natural language understanding</li>
         <li>Context-aware AI replies</li>
+        <li>Fast setup for smarter automation</li>
         <li>AI-powered support automation</li>
         <li>Smart learning system</li>
       </ul>
@@ -1476,7 +1484,7 @@ function drawSiteBackground(time) {
   requestAnimationFrame(drawSiteBackground);
 }
 
-const savedTheme = localStorage.getItem("vani-index-theme") || localStorage.getItem("vani_dashboard_theme") || localStorage.getItem("vani_setup_theme") || "dark";
+const savedTheme = localStorage.getItem("vani-index-theme") || localStorage.getItem("vani_dashboard_theme") || localStorage.getItem("vani_setup_theme") || "bright";
 setTheme(savedTheme === "bright" ? "bright" : "dark");
 resizeSiteBackground();
 window.addEventListener("resize", resizeSiteBackground);
@@ -1525,3 +1533,5 @@ cards.forEach(card => observer.observe(card));
 
 </body>
 </html>
+
+

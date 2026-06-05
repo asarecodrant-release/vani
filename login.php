@@ -820,7 +820,7 @@ body.bright .page-actions .site-menu-trigger{
 <body>
 <script>
 try {
-    const initialTheme = localStorage.getItem("vani-index-theme") || localStorage.getItem("vani_dashboard_theme") || localStorage.getItem("vani_setup_theme") || "dark";
+    const initialTheme = localStorage.getItem("vani-index-theme") || localStorage.getItem("vani_dashboard_theme") || localStorage.getItem("vani_setup_theme") || "bright";
     document.body.classList.toggle("bright", initialTheme !== "dark");
     document.body.classList.toggle("dark", initialTheme === "dark");
 } catch (error) {
@@ -1047,7 +1047,7 @@ function setVaniTheme(mode) {
     localStorage.setItem("vani_dashboard_theme", themeValue);
     localStorage.setItem("vani_setup_theme", themeValue);
 }
-setVaniTheme(localStorage.getItem("vani-index-theme") || localStorage.getItem("vani_dashboard_theme") || localStorage.getItem("vani_setup_theme") || "dark");
+setVaniTheme(localStorage.getItem("vani-index-theme") || localStorage.getItem("vani_dashboard_theme") || localStorage.getItem("vani_setup_theme") || "bright");
 
 function resizeSiteBackground() {
     if (!siteBgCanvas || !siteBgCtx) return;
