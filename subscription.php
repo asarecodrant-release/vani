@@ -74,6 +74,8 @@ td:last-child,th:last-child{text-align:right;font-weight:800}
 .checkout-help{grid-column:1/-1;color:#cbd5e1;font-size:13px;line-height:1.55}
 .otp-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end}
 .otp-row button{height:46px;white-space:nowrap}
+.otp-code-field{display:none}
+.otp-code-field.active{display:grid}
 .checkout-help.error{color:#fecaca}
 .checkout-status{display:none;grid-column:1/-1;padding:12px 14px;border-radius:12px;background:rgba(99,102,241,.14);border:1px solid rgba(129,140,248,.24);color:#e0e7ff;line-height:1.55}
 .checkout-status.show{display:block}
@@ -156,12 +158,16 @@ td:last-child,th:last-child{text-align:right;font-weight:800}
         <label for="publicCustomerPhone">Mobile number with country code <span class="required">*</span></label>
         <input id="publicCustomerPhone" type="tel" inputmode="tel" placeholder="+919876543210" autocomplete="tel" required>
       </div>
-      <div class="field">
+      <div class="field otp-code-field" id="publicEmailOtpField">
         <label for="publicEmailOtp">Email OTP <span class="required">*</span></label>
         <div class="otp-row">
-          <input id="publicEmailOtp" inputmode="numeric" maxlength="6" placeholder="6-digit code" required>
+          <input id="publicEmailOtp" inputmode="numeric" maxlength="6" placeholder="6-digit code" required disabled>
           <button class="nav-link" type="button" id="sendPublicOtpBtn">Send OTP</button>
         </div>
+      </div>
+      <div class="field" id="publicSendOtpField">
+        <label>Email verification <span class="required">*</span></label>
+        <button class="nav-link" type="button" id="sendPublicOtpInitialBtn">Send OTP</button>
       </div>
       <button class="nav-btn" type="submit" id="publicPayBtn">Recharge Now</button>
       <p class="checkout-help" id="publicCheckoutHelp"><span class="required">*</span> These details and email OTP verification are required to create your Vani AI account and activate your wallet plan benefits.</p>
@@ -175,11 +181,29 @@ let selectedPublicPlan = "";
 const checkoutPanel = document.getElementById("publicCheckoutPanel");
 const checkoutStatus = document.getElementById("publicCheckoutStatus");
 const checkoutHelp = document.getElementById("publicCheckoutHelp");
+const publicEmailOtpField = document.getElementById("publicEmailOtpField");
+const publicSendOtpField = document.getElementById("publicSendOtpField");
+const publicEmailOtpInput = document.getElementById("publicEmailOtp");
 
 function setCheckoutStatus(message, show = true) {
   if (!checkoutStatus) return;
   checkoutStatus.textContent = message;
   checkoutStatus.classList.toggle("show", show);
+}
+
+function resetPublicOtpState() {
+  publicEmailOtpInput.value = "";
+  publicEmailOtpInput.disabled = true;
+  publicEmailOtpInput.classList.remove("error");
+  publicEmailOtpField?.classList.remove("active");
+  if (publicSendOtpField) publicSendOtpField.style.display = "";
+}
+
+function enablePublicOtpEntry() {
+  publicEmailOtpInput.disabled = false;
+  publicEmailOtpField?.classList.add("active");
+  if (publicSendOtpField) publicSendOtpField.style.display = "none";
+  publicEmailOtpInput.focus();
 }
 
 async function recordPublicRazorpayFailure(orderId, response) {
@@ -246,13 +270,14 @@ document.querySelectorAll(".choose-plan-btn").forEach((button) => {
     document.getElementById("checkoutPlanName").textContent = button.dataset.planName || "Selected Plan";
     document.getElementById("checkoutPlanPrice").textContent = button.dataset.planPrice || "";
     checkoutPanel?.classList.add("active");
+    resetPublicOtpState();
     setCheckoutStatus("", false);
     checkoutPanel?.scrollIntoView({behavior: "smooth", block: "nearest"});
     document.getElementById("publicCustomerName")?.focus();
   });
 });
 
-document.getElementById("sendPublicOtpBtn")?.addEventListener("click", async (event) => {
+async function sendPublicOtp(event) {
   const email = document.getElementById("publicCustomerEmail")?.value.trim() || "";
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     setCheckoutStatus("Enter a valid customer email before sending OTP.");
@@ -272,12 +297,21 @@ document.getElementById("sendPublicOtpBtn")?.addEventListener("click", async (ev
   button.disabled = false;
   button.textContent = originalText;
   setCheckoutStatus(data.message || (data.success ? "Verification code sent." : "OTP could not be sent."));
-});
+  if (data.success) {
+    enablePublicOtpEntry();
+  }
+}
+
+document.getElementById("sendPublicOtpBtn")?.addEventListener("click", sendPublicOtp);
+document.getElementById("sendPublicOtpInitialBtn")?.addEventListener("click", sendPublicOtp);
 
 ["publicCustomerName", "publicCustomerEmail", "publicCustomerPhone"].forEach((id) => {
   document.getElementById(id)?.addEventListener("input", (event) => {
     event.currentTarget.classList.remove("error");
     checkoutHelp?.classList.remove("error");
+    if (id === "publicCustomerEmail") {
+      resetPublicOtpState();
+    }
   });
 });
 
@@ -287,8 +321,13 @@ document.getElementById("publicSubscriptionForm")?.addEventListener("submit", as
     setCheckoutStatus("Please select a plan first.");
     return;
   }
+  if (publicEmailOtpInput.disabled) {
+    setCheckoutStatus("Please send the email OTP first, then enter the verification code.");
+    document.getElementById("sendPublicOtpInitialBtn")?.focus();
+    return;
+  }
   if (!validatePublicCheckout()) {
-    setCheckoutStatus("Please enter customer name, valid email, and mobile number with country code.");
+    setCheckoutStatus("Please enter customer name, valid email, mobile number with country code, and the emailed OTP.");
     return;
   }
   if (!window.Razorpay) {
