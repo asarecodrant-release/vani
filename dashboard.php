@@ -1681,7 +1681,11 @@ body.dark .tab-btn:hover,body.dark .tab-btn.active{background:rgba(66,133,244,.1
 .nadara-pill{min-height:38px;border-radius:13px;padding:0 16px;border:1px solid rgba(34,197,94,.46);background:linear-gradient(135deg,rgba(34,197,94,.18),rgba(22,163,74,.28));color:#15803d;font-size:14px;font-weight:900;display:inline-flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 10px 24px rgba(34,197,94,.16);white-space:nowrap}
 .nadara-pill:before{content:"";width:9px;height:9px;border-radius:50%;background:#22c55e;box-shadow:0 0 0 4px rgba(34,197,94,.14)}
 body.dark .nadara-pill{color:#86efac;background:linear-gradient(135deg,rgba(34,197,94,.16),rgba(21,128,61,.28));border-color:rgba(74,222,128,.34)}
-.ai-upgrade-btn{min-height:44px;max-width:100%;border-radius:13px;padding:6px 18px;border:1px solid transparent;background:linear-gradient(135deg,#4285f4 0%,#34a853 38%,#fbbc04 70%,#ea4335 100%);color:#fff;font-size:14px;font-weight:950;display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;line-height:1.12;box-shadow:0 12px 26px rgba(66,133,244,.22);white-space:nowrap;text-align:center}
+.ai-upgrade-btn{min-height:44px;max-width:100%;border-radius:13px;padding:6px 18px;border:1px solid transparent;background:#4285f4;color:#fff;font-size:14px;font-weight:950;display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;line-height:1.12;box-shadow:0 12px 26px rgba(66,133,244,.22);white-space:nowrap;text-align:center}
+.ai-upgrade-btn[data-google-color="blue"]{background:#4285f4;color:#fff}
+.ai-upgrade-btn[data-google-color="green"]{background:#34a853;color:#fff}
+.ai-upgrade-btn[data-google-color="yellow"]{background:#fbbc04;color:#202124}
+.ai-upgrade-btn[data-google-color="red"]{background:#ea4335;color:#fff}
 .ai-upgrade-btn small{font-size:10px;font-weight:900;line-height:1.15;color:#fff;padding:2px 7px;border-radius:999px;background:rgba(15,23,42,.28);box-shadow:inset 0 0 0 1px rgba(255,255,255,.28),0 3px 10px rgba(120,53,15,.18);text-shadow:0 1px 2px rgba(0,0,0,.34)}
 .ai-upgrade-btn:hover{transform:translateY(-1px);box-shadow:0 16px 34px rgba(234,179,8,.34)}
 .mobile-ai-upgrade{display:none}
@@ -1707,7 +1711,11 @@ body.dark .topbar{background:rgba(15,23,42,.66)}
   min-height:40px;border:0;border-radius:12px;padding:0 14px;font-weight:700;cursor:pointer;
   display:inline-flex;align-items:center;justify-content:center;gap:8px;
 }
-.pill-btn{color:#fff;background:linear-gradient(135deg,#4285f4,#34a853);box-shadow:0 10px 22px rgba(66,133,244,.2)}
+.pill-btn{color:#fff;background:#4285f4;box-shadow:0 10px 22px rgba(66,133,244,.2)}
+.pill-btn[data-google-color="blue"]{background:#4285f4;color:#fff}
+.pill-btn[data-google-color="green"]{background:#34a853;color:#fff}
+.pill-btn[data-google-color="yellow"]{background:#fbbc04;color:#202124}
+.pill-btn[data-google-color="red"]{background:#ea4335;color:#fff}
 .ghost-btn{color:var(--ink);background:var(--panel);border:1px solid var(--line)}
 .danger-btn{color:#b91c1c;background:#fee2e2;border:1px solid #fecaca}
 .content{padding:28px;display:grid;gap:22px;min-width:0;max-width:100%}
@@ -1948,7 +1956,11 @@ body.dark .analytics-period-card{background:rgba(15,23,42,.38)}
 .analytics-head-actions{display:grid;gap:12px;justify-items:end;align-self:center;min-width:260px}
 .filter-bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
 .filter-chip{border:1px solid var(--line);background:var(--panel-strong);color:var(--ink);border-radius:999px;padding:8px 12px;font-size:13px;font-weight:700;text-decoration:none}
-.filter-chip.active{background:linear-gradient(135deg,var(--brand),var(--brand-2));border-color:transparent;color:#fff}
+.filter-chip.active{background:#4285f4;border-color:transparent;color:#fff}
+.filter-chip.active[data-google-color="blue"],#accountToggle[data-google-color="blue"]{background:#4285f4;color:#fff}
+.filter-chip.active[data-google-color="green"],#accountToggle[data-google-color="green"]{background:#34a853;color:#fff}
+.filter-chip.active[data-google-color="yellow"],#accountToggle[data-google-color="yellow"]{background:#fbbc04;color:#202124}
+.filter-chip.active[data-google-color="red"],#accountToggle[data-google-color="red"]{background:#ea4335;color:#fff}
 .analytics-filter-form{display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin-top:16px}
 .analytics-filter-form .field{min-width:150px}
 .analytics-filter-form .pill-btn{min-height:42px}
@@ -1956,7 +1968,11 @@ body.dark .analytics-period-card{background:rgba(15,23,42,.38)}
 .analytics-filter-actions .analytics-pdf-report-btn{white-space:nowrap}
 .analytics-tabs{display:flex;gap:8px;flex-wrap:wrap}
 .analytics-tab-btn{border:1px solid var(--line);background:var(--panel-strong);color:var(--ink);border-radius:999px;padding:9px 13px;font-size:13px;font-weight:800;cursor:pointer}
-.analytics-tab-btn.active{background:linear-gradient(135deg,#4285f4 0%,#34a853 42%,#fbbc04 70%,#ea4335 100%);border-color:transparent;color:#fff}
+.analytics-tab-btn.active{background:var(--google-button-color,#4285f4);border-color:transparent;color:var(--google-button-text,#fff)}
+.analytics-tab-btn[data-google-color="blue"]{--google-button-color:#4285f4;--google-button-text:#fff}
+.analytics-tab-btn[data-google-color="green"]{--google-button-color:#34a853;--google-button-text:#fff}
+.analytics-tab-btn[data-google-color="yellow"]{--google-button-color:#fbbc04;--google-button-text:#202124}
+.analytics-tab-btn[data-google-color="red"]{--google-button-color:#ea4335;--google-button-text:#fff}
 .payment-subtabs{display:flex;gap:8px;flex-wrap:wrap}
 .payment-subtab-btn{border:1px solid var(--line);background:var(--panel-strong);color:var(--muted);border-radius:12px;min-height:38px;padding:0 13px;font-weight:800;cursor:pointer}
 .payment-subtab-btn:hover,.payment-subtab-btn.active{background:#e8f0fe;color:#1a73e8;border-color:#d2e3fc}
@@ -2219,7 +2235,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
     right:18px;
     z-index:60;
   }
-  #accountToggle{border-radius:50%;background:linear-gradient(135deg,var(--brand),var(--brand-2));color:#fff;border:0;font-size:13px}
+  #accountToggle{border-radius:50%;background:#4285f4;color:#fff;border:0;font-size:13px}
   body.dark .top-actions{background:rgba(15,23,42,.92)}
   body.account-open .top-actions{transform:translateX(0);visibility:visible;pointer-events:auto}
   .top-actions .pill-btn,.top-actions .ghost-btn{width:100%;justify-content:center}
@@ -4684,7 +4700,7 @@ body.dark .lead-option{background:rgba(15,23,42,.38)}
 <script>
 const tabs = document.querySelectorAll(".tab-btn");
 const panels = document.querySelectorAll(".tab-panel");
-const googleTabColors = ["blue", "red", "yellow", "green"];
+const googleTabColors = ["blue", "green", "yellow", "red"];
 const toast = document.getElementById("toast");
 const themeToggle = document.getElementById("themeToggle");
 const navToggle = document.getElementById("navToggle");
@@ -4696,16 +4712,31 @@ const razorpayConsentModal = document.getElementById("razorpayConsentModal");
 const razorpayConsentCheckbox = document.getElementById("razorpayConsentCheckbox");
 const razorpayConsentAcceptBtn = document.getElementById("razorpayConsentAcceptBtn");
 
-function assignGoogleTabColors() {
-  let previousColor = "";
-  tabs.forEach(tab => {
-    const availableColors = googleTabColors.filter(color => color !== previousColor);
-    const nextColor = availableColors[Math.floor(Math.random() * availableColors.length)];
-    tab.dataset.googleColor = nextColor;
-    previousColor = nextColor;
+function rotatingGoogleColors(storageKey) {
+  const previousStart = localStorage.getItem(storageKey) || "";
+  const availableStarts = googleTabColors.filter(color => color !== previousStart);
+  const startColor = availableStarts[Math.floor(Math.random() * availableStarts.length)] || googleTabColors[0];
+  const startIndex = googleTabColors.indexOf(startColor);
+  const colors = [...googleTabColors.slice(startIndex), ...googleTabColors.slice(0, startIndex)];
+  localStorage.setItem(storageKey, startColor);
+  return colors;
+}
+
+function assignGoogleSequence(elements, storageKey) {
+  const colors = rotatingGoogleColors(storageKey);
+  elements.forEach((element, index) => {
+    element.dataset.googleColor = colors[index % colors.length];
   });
 }
+
+function assignGoogleTabColors() {
+  assignGoogleSequence(tabs, "vani_dashboard_tab_color_order");
+}
 assignGoogleTabColors();
+assignGoogleSequence(
+  document.querySelectorAll(".pill-btn,.ai-upgrade-btn,.analytics-tab-btn,.filter-chip,#accountToggle"),
+  "vani_dashboard_button_color_order"
+);
 const razorpayConsentCancelBtn = document.getElementById("razorpayConsentCancelBtn");
 const upiConsentModal = document.getElementById("upiConsentModal");
 const upiConsentCheckbox = document.getElementById("upiConsentCheckbox");

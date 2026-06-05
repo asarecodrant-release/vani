@@ -144,7 +144,7 @@ body.dark .logo-dark{
 }
 
 .nav-btn{
-  background: linear-gradient(45deg,#6366f1,#8b5cf6);
+  background:#4285f4;
   color:#fff !important;
   padding:11px 18px;
   border-radius:10px;
@@ -159,7 +159,7 @@ body.dark .logo-dark{
     
 
 .nav-btn1{
-  background: linear-gradient(45deg,#6366f1,#8b5cf6);
+  background:#4285f4;
   color:#fff !important;
   padding:11px 18px;
   border-radius:10px;
@@ -258,8 +258,7 @@ body.dark .customer-notice-card p{color:#cbd5e1}
 }
 
 .primary-btn{
-  background:
-    linear-gradient(45deg,#6366f1,#ec4899);
+  background:#4285f4;
   color:#fff;
   box-shadow:
     0 12px 25px rgba(99,102,241,0.25);
@@ -356,8 +355,7 @@ body.dark .customer-notice-card p{color:#cbd5e1}
   padding:13px 22px;
   border-radius:12px;
   text-decoration:none;
-  background:
-    linear-gradient(45deg,#6366f1,#ec4899);
+  background:#4285f4;
   color:#fff;
   font-weight:600;
   transition:0.3s ease;
@@ -745,7 +743,7 @@ footer{
   min-height:52px;
   padding:0 14px;
   border-radius:14px;
-  background:linear-gradient(135deg,#4285f4 0%,#34a853 36%,#fbbc04 68%,#ea4335 100%);
+  background:#4285f4;
   color:#fff;
   text-decoration:none;
   font-weight:800;
@@ -763,10 +761,10 @@ footer{
 .side-menu-link[data-google-color="red"]{border-left:4px solid #ea4335}
 .side-menu-link[data-google-color="yellow"]{border-left:4px solid #fbbc04}
 .side-menu-link[data-google-color="green"]{border-left:4px solid #34a853}
-.side-menu-link:not(.secondary)[data-google-color="blue"]{background:#4285f4}
-.side-menu-link:not(.secondary)[data-google-color="red"]{background:#ea4335}
+.side-menu-link:not(.secondary)[data-google-color="blue"]{background:#4285f4;color:#fff}
+.side-menu-link:not(.secondary)[data-google-color="green"]{background:#34a853;color:#fff}
 .side-menu-link:not(.secondary)[data-google-color="yellow"]{background:#fbbc04;color:#202124}
-.side-menu-link:not(.secondary)[data-google-color="green"]{background:#34a853}
+.side-menu-link:not(.secondary)[data-google-color="red"]{background:#ea4335;color:#fff}
 .side-menu-link.secondary:hover{
   background:#f8fafd;
   border-color:#d2e3fc;
@@ -1075,10 +1073,27 @@ body.dark .hero h1{
 .nav-btn,
 .nav-btn1,
 .download-button{
-  background:linear-gradient(135deg,#4285f4 0%,#34a853 38%,#fbbc04 70%,#ea4335 100%);
+  background:#4285f4;
   color:#fff !important;
   box-shadow:0 1px 3px rgba(60,64,67,.2);
 }
+
+.primary-btn[data-google-color="blue"],
+.nav-btn[data-google-color="blue"],
+.nav-btn1[data-google-color="blue"],
+.download-button[data-google-color="blue"]{background:#4285f4;color:#fff!important}
+.primary-btn[data-google-color="green"],
+.nav-btn[data-google-color="green"],
+.nav-btn1[data-google-color="green"],
+.download-button[data-google-color="green"]{background:#34a853;color:#fff!important}
+.primary-btn[data-google-color="yellow"],
+.nav-btn[data-google-color="yellow"],
+.nav-btn1[data-google-color="yellow"],
+.download-button[data-google-color="yellow"]{background:#fbbc04;color:#202124!important}
+.primary-btn[data-google-color="red"],
+.nav-btn[data-google-color="red"],
+.nav-btn1[data-google-color="red"],
+.download-button[data-google-color="red"]{background:#ea4335;color:#fff!important}
 
 .secondary-btn{
   border-color:#dadce0;
@@ -1138,7 +1153,7 @@ body.dark .primary-btn,
 body.dark .nav-btn,
 body.dark .nav-btn1,
 body.dark .download-button{
-  background:linear-gradient(135deg,#38bdf8,#2563eb,#0f172a);
+  background:#4285f4;
   color:#fff !important;
   box-shadow:0 14px 34px rgba(37,99,235,.28);
 }
@@ -1159,9 +1174,25 @@ body.dark .cta{
 }
 
 body.dark .cta button{
-  background:linear-gradient(135deg,#38bdf8,#22d3ee);
+  background:#38bdf8;
   color:#020617;
 }
+body.dark .primary-btn[data-google-color="blue"],
+body.dark .nav-btn[data-google-color="blue"],
+body.dark .nav-btn1[data-google-color="blue"],
+body.dark .download-button[data-google-color="blue"]{background:#4285f4;color:#fff!important}
+body.dark .primary-btn[data-google-color="green"],
+body.dark .nav-btn[data-google-color="green"],
+body.dark .nav-btn1[data-google-color="green"],
+body.dark .download-button[data-google-color="green"]{background:#34a853;color:#fff!important}
+body.dark .primary-btn[data-google-color="yellow"],
+body.dark .nav-btn[data-google-color="yellow"],
+body.dark .nav-btn1[data-google-color="yellow"],
+body.dark .download-button[data-google-color="yellow"]{background:#fbbc04;color:#202124!important}
+body.dark .primary-btn[data-google-color="red"],
+body.dark .nav-btn[data-google-color="red"],
+body.dark .nav-btn1[data-google-color="red"],
+body.dark .download-button[data-google-color="red"]{background:#ea4335;color:#fff!important}
 </style>
 </head>
 
@@ -1407,18 +1438,37 @@ const themeToggle = document.getElementById("themeToggle");
 const themeChoicePanel = document.getElementById("themeChoicePanel");
 const siteBgCanvas = document.getElementById("siteBgCanvas");
 const siteBgCtx = siteBgCanvas?.getContext("2d");
-const googleMenuColors = ["blue", "red", "yellow", "green"];
+const googleMenuColors = ["blue", "green", "yellow", "red"];
 let siteBgNodes = [];
 
-function assignGoogleDrawerColors() {
-  let previousColor = "";
-  sideMenu?.querySelectorAll(".side-menu-link").forEach(link => {
-    const availableColors = googleMenuColors.filter(color => color !== previousColor);
-    const nextColor = availableColors[Math.floor(Math.random() * availableColors.length)];
-    link.dataset.googleColor = nextColor;
-    previousColor = nextColor;
+function rotatingGoogleColors(storageKey) {
+  const previousStart = localStorage.getItem(storageKey) || "";
+  const availableStarts = googleMenuColors.filter(color => color !== previousStart);
+  const startColor = availableStarts[Math.floor(Math.random() * availableStarts.length)] || googleMenuColors[0];
+  const startIndex = googleMenuColors.indexOf(startColor);
+  const colors = [...googleMenuColors.slice(startIndex), ...googleMenuColors.slice(0, startIndex)];
+  localStorage.setItem(storageKey, startColor);
+  return colors;
+}
+
+function assignGoogleSequence(elements, storageKey) {
+  const colors = rotatingGoogleColors(storageKey);
+  elements.forEach((element, index) => {
+    element.dataset.googleColor = colors[index % colors.length];
   });
 }
+
+function assignGoogleDrawerColors() {
+  assignGoogleSequence(
+    sideMenu?.querySelectorAll(".side-menu-link") || [],
+    "vani_index_drawer_color_order"
+  );
+}
+
+assignGoogleSequence(
+  document.querySelectorAll(".primary-btn,.nav-btn,.nav-btn1,.download-button"),
+  "vani_index_button_color_order"
+);
 
 function setMenu(open) {
   if (open) assignGoogleDrawerColors();
