@@ -1801,7 +1801,7 @@ function otp_email_html(string $code, string $purpose = 'verify your email'): st
         . '</div></div></body></html>';
 }
 
-function require_verified_email_for_flow(string $email, string $code, string $flow): array {
+function check_verified_email_for_flow(string $email, string $code, string $flow, bool $consume = true): array {
     $state = $_SESSION['email_otp'][$flow] ?? [];
     if (($state['email'] ?? '') !== $email || empty($state['code_hash']) || (int)($state['expires_at'] ?? 0) < time()) {
         return ["success" => false, "message" => "Please verify your email before continuing"];
@@ -1810,8 +1810,14 @@ function require_verified_email_for_flow(string $email, string $code, string $fl
         $_SESSION['email_otp'][$flow]['attempts'] = (int)($state['attempts'] ?? 0) + 1;
         return ["success" => false, "message" => "Invalid email verification code"];
     }
-    unset($_SESSION['email_otp'][$flow]);
+    if ($consume) {
+        unset($_SESSION['email_otp'][$flow]);
+    }
     return ["success" => true];
+}
+
+function require_verified_email_for_flow(string $email, string $code, string $flow): array {
+    return check_verified_email_for_flow($email, $code, $flow, true);
 }
 
 function public_subscription_customer_upsert(string $email, string $password): array {
@@ -3212,6 +3218,20 @@ if ($action === "send_email_otp") {
         "success" => $sent,
         "message" => $sent ? "Verification code sent" : "Verification email could not be sent"
     ]);
+    exit;
+}
+
+if ($action === "validate_email_otp") {
+    $data = getJSON();
+    $email = strtolower(trim((string)($data['email'] ?? '')));
+    $flow = trim((string)($data['flow'] ?? ''));
+    $code = trim((string)($data['email_otp'] ?? ''));
+    $allowedFlows = ['public_subscription', 'freebot_signup'];
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL) || !in_array($flow, $allowedFlows, true) || !preg_match('/^\d{6}$/', $code)) {
+        echo json_encode(["success" => false, "message" => "Enter a valid email verification code"]);
+        exit;
+    }
+    echo json_encode(check_verified_email_for_flow($email, $code, $flow, false));
     exit;
 }
 

@@ -76,10 +76,11 @@ td:last-child,th:last-child{text-align:right;font-weight:800}
 .otp-row button{height:46px;white-space:nowrap}
 .otp-code-field{display:none}
 .otp-code-field.active{display:grid}
+.pay-btn-hidden{display:none}
 .checkout-help.error{color:#fecaca}
 .checkout-status{display:none;grid-column:1/-1;padding:12px 14px;border-radius:12px;background:rgba(99,102,241,.14);border:1px solid rgba(129,140,248,.24);color:#e0e7ff;line-height:1.55}
 .checkout-status.show{display:block}
-@media(max-width:992px){.pricing-grid,.checkout-form{grid-template-columns:1fr}.card,.card.featured{grid-column:auto;transform:none}h1{font-size:36px}.nav-inner{align-items:center;flex-direction:row}.nav-link{display:none}.logo{font-size:20px}.logo img{width:46px;height:46px}.checkout-head{display:grid}}
+@media(max-width:992px){.pricing-grid,.checkout-form{grid-template-columns:1fr}.card,.card.featured{grid-column:auto;transform:none}h1{font-size:36px}.nav-inner{align-items:center;flex-direction:row}nav .nav-link{display:none}.logo{font-size:20px}.logo img{width:46px;height:46px}.checkout-head{display:grid}}
 </style>
 <link rel="stylesheet" href="css/public-theme.css">
 <script defer src="js/public-theme.js"></script>
@@ -162,14 +163,14 @@ td:last-child,th:last-child{text-align:right;font-weight:800}
         <label for="publicEmailOtp">Email OTP <span class="required">*</span></label>
         <div class="otp-row">
           <input id="publicEmailOtp" inputmode="numeric" maxlength="6" placeholder="6-digit code" required disabled>
-          <button class="nav-link" type="button" id="sendPublicOtpBtn">Send OTP</button>
+          <button class="nav-link" type="button" id="sendPublicOtpBtn">Resend OTP</button>
         </div>
       </div>
       <div class="field" id="publicSendOtpField">
         <label>Email verification <span class="required">*</span></label>
         <button class="nav-link" type="button" id="sendPublicOtpInitialBtn">Send OTP</button>
       </div>
-      <button class="nav-btn" type="submit" id="publicPayBtn">Recharge Now</button>
+      <button class="nav-btn pay-btn-hidden" type="submit" id="publicPayBtn">Recharge Now</button>
       <p class="checkout-help" id="publicCheckoutHelp"><span class="required">*</span> These details and email OTP verification are required to create your Vani AI account and activate your wallet plan benefits.</p>
       <div class="checkout-status" id="publicCheckoutStatus"></div>
     </form>
@@ -184,6 +185,9 @@ const checkoutHelp = document.getElementById("publicCheckoutHelp");
 const publicEmailOtpField = document.getElementById("publicEmailOtpField");
 const publicSendOtpField = document.getElementById("publicSendOtpField");
 const publicEmailOtpInput = document.getElementById("publicEmailOtp");
+const publicPayBtn = document.getElementById("publicPayBtn");
+let publicOtpValidationTimer = null;
+let publicOtpValidated = false;
 
 function setCheckoutStatus(message, show = true) {
   if (!checkoutStatus) return;
@@ -192,18 +196,36 @@ function setCheckoutStatus(message, show = true) {
 }
 
 function resetPublicOtpState() {
+  publicOtpValidated = false;
+  clearTimeout(publicOtpValidationTimer);
   publicEmailOtpInput.value = "";
   publicEmailOtpInput.disabled = true;
   publicEmailOtpInput.classList.remove("error");
   publicEmailOtpField?.classList.remove("active");
+  publicPayBtn?.classList.add("pay-btn-hidden");
   if (publicSendOtpField) publicSendOtpField.style.display = "";
 }
 
 function enablePublicOtpEntry() {
+  publicOtpValidated = false;
   publicEmailOtpInput.disabled = false;
   publicEmailOtpField?.classList.add("active");
+  publicPayBtn?.classList.add("pay-btn-hidden");
   if (publicSendOtpField) publicSendOtpField.style.display = "none";
   publicEmailOtpInput.focus();
+}
+
+function markPublicOtpValidated() {
+  publicOtpValidated = true;
+  publicEmailOtpInput.classList.remove("error");
+  publicPayBtn?.classList.remove("pay-btn-hidden");
+}
+
+function markPublicOtpInvalid(message = "Invalid email verification code") {
+  publicOtpValidated = false;
+  publicEmailOtpInput.classList.add("error");
+  publicPayBtn?.classList.add("pay-btn-hidden");
+  setCheckoutStatus(message);
 }
 
 async function recordPublicRazorpayFailure(orderId, response) {
@@ -299,11 +321,43 @@ async function sendPublicOtp(event) {
   setCheckoutStatus(data.message || (data.success ? "Verification code sent." : "OTP could not be sent."));
   if (data.success) {
     enablePublicOtpEntry();
+    setCheckoutStatus("Verification code sent. Enter the 6-digit OTP to continue.");
   }
 }
 
 document.getElementById("sendPublicOtpBtn")?.addEventListener("click", sendPublicOtp);
 document.getElementById("sendPublicOtpInitialBtn")?.addEventListener("click", sendPublicOtp);
+
+publicEmailOtpInput?.addEventListener("input", () => {
+  publicOtpValidated = false;
+  publicPayBtn?.classList.add("pay-btn-hidden");
+  publicEmailOtpInput.classList.remove("error");
+  clearTimeout(publicOtpValidationTimer);
+  const code = publicEmailOtpInput.value.trim();
+  const email = document.getElementById("publicCustomerEmail")?.value.trim() || "";
+  if (!/^\d{6}$/.test(code)) {
+    return;
+  }
+  publicOtpValidationTimer = setTimeout(async () => {
+    setCheckoutStatus("Validating email OTP...");
+    try {
+      const response = await fetch("/api.php?action=validate_email_otp", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({email, email_otp: code, flow: "public_subscription"})
+      });
+      const data = await response.json().catch(() => ({}));
+      if (data.success) {
+        markPublicOtpValidated();
+        setCheckoutStatus("Email verified. You can recharge now.");
+        return;
+      }
+      markPublicOtpInvalid(data.message || "Invalid email verification code");
+    } catch (error) {
+      markPublicOtpInvalid("OTP could not be validated. Please try again.");
+    }
+  }, 250);
+});
 
 ["publicCustomerName", "publicCustomerEmail", "publicCustomerPhone"].forEach((id) => {
   document.getElementById(id)?.addEventListener("input", (event) => {
@@ -324,6 +378,11 @@ document.getElementById("publicSubscriptionForm")?.addEventListener("submit", as
   if (publicEmailOtpInput.disabled) {
     setCheckoutStatus("Please send the email OTP first, then enter the verification code.");
     document.getElementById("sendPublicOtpInitialBtn")?.focus();
+    return;
+  }
+  if (!publicOtpValidated) {
+    setCheckoutStatus("Please enter the valid email OTP before recharging.");
+    publicEmailOtpInput.focus();
     return;
   }
   if (!validatePublicCheckout()) {
