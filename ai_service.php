@@ -1467,6 +1467,7 @@ function ai_process_scan_job_batch(string $jobId, string $customerId, int $batch
     $urls = array_map(function ($page) {
         return (string)$page['url'];
     }, $pendingPages);
+    $activeUrls = array_slice($urls, 0, 5);
     $fetches = ai_fetch_pages_parallel($urls, max(1, min((int)ai_env('AI_CRAWL_CONCURRENCY', '8'), $batchSize)));
     $websiteDomain = (string)$scan['website_domain'];
     $processed = 0;
@@ -1558,7 +1559,15 @@ function ai_process_scan_job_batch(string $jobId, string $customerId, int $batch
     ]);
     ai_release_scan_job($jobId, $workerId);
 
-    return ['success' => true, 'status' => $complete ? 'completed' : 'running', 'counts' => $counts, 'processed' => $processed, 'error' => ''];
+    return [
+        'success' => true,
+        'status' => $complete ? 'completed' : 'running',
+        'counts' => $counts,
+        'processed' => $processed,
+        'active_url' => (string)($activeUrls[0] ?? ''),
+        'active_urls' => $activeUrls,
+        'error' => ''
+    ];
 }
 
 function ai_summarize_scan_job_batch(string $jobId, string $customerId, int $batchSize = 2): array {

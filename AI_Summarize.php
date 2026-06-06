@@ -272,6 +272,11 @@ body.dark .diag-error{color:#fca5a5}
 .diag-pill{display:inline-flex;align-items:center;min-height:22px;border-radius:999px;padding:0 8px;background:#e0f2fe;color:#075985;font-weight:900}
 .diag-pill.warn{background:#fef3c7;color:#92400e}
 .diag-pill.bad{background:#fee2e2;color:#991b1b}
+.diag-live{display:flex;align-items:center;gap:8px;min-width:0}
+.diag-spinner{display:none;width:14px;height:14px;border:2px solid rgba(37,99,235,.24);border-top-color:#2563eb;border-radius:999px;animation:diag-spin .8s linear infinite}
+.diag-live.is-running .diag-spinner{display:inline-block}
+.diag-live-text{display:inline-block;max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-size:12px;font-weight:800}
+@keyframes diag-spin{to{transform:rotate(360deg)}}
 @media(max-width:1100px){.grid{grid-template-columns:minmax(0,1fr) minmax(300px,.72fr)}.page-tab-label{max-width:170px}}
 @media(max-width:860px){.grid,.metrics,.diag-grid{grid-template-columns:1fr}.top{display:grid}.faq-panel{position:static;max-height:none}.page-tab-label{max-width:180px}.shell{padding:26px 14px 56px}.diag-table{display:block;overflow-x:auto;white-space:nowrap}}
 @media(max-width:560px){.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.panel{padding:14px}.top h1{font-size:26px}.page-tabs-meta{display:grid}.page-tab-label{max-width:150px}.summary-actions button,.summary-actions form{width:100%}.summary-actions button{width:100%}}
@@ -306,7 +311,11 @@ body.dark .diag-error{color:#fca5a5}
   <details class="panel diagnostics" <?php echo !empty($diagnostics['failed']) || !empty($diagnostics['waiting_retry']) ? 'open' : ''; ?>>
     <summary>
       <span>Crawler Diagnostics</span>
-      <span class="diag-pill <?php echo $workerActive ? '' : 'warn'; ?>"><?php echo $workerActive ? 'Worker active' : 'No active lock'; ?></span>
+      <span class="diag-live <?php echo $workerActive ? 'is-running' : ''; ?>" id="diagLive">
+        <i class="diag-spinner" aria-hidden="true"></i>
+        <span class="diag-live-text" id="diagLiveText"><?php echo $workerActive ? 'Crawler working' : 'Crawler idle'; ?></span>
+        <span class="diag-pill <?php echo $workerActive ? '' : 'warn'; ?>" id="diagLivePill"><?php echo $workerActive ? 'Worker active' : 'No active lock'; ?></span>
+      </span>
     </summary>
 
     <div class="diag-grid">
@@ -561,8 +570,29 @@ const scanStatusMetric = document.getElementById("scanStatusMetric");
 const summarizeAllBtn = document.getElementById("summarizeAllBtn");
 const runScanBatchBtn = document.getElementById("runScanBatchBtn");
 const runSummaryBatchBtn = document.getElementById("runSummaryBatchBtn");
+const diagLive = document.getElementById("diagLive");
+const diagLiveText = document.getElementById("diagLiveText");
+const diagLivePill = document.getElementById("diagLivePill");
 let scanBusy = false;
 let summaryBusy = false;
+
+function shortUrlLabel(url = "") {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.pathname || "/"}${parsed.search || ""}`;
+  } catch (error) {
+    return url || "";
+  }
+}
+
+function setDiagnosticsLive(isRunning, text, pillText) {
+  diagLive?.classList.toggle("is-running", Boolean(isRunning));
+  if (diagLiveText) diagLiveText.textContent = text || (isRunning ? "Crawler working" : "Crawler idle");
+  if (diagLivePill) {
+    diagLivePill.textContent = pillText || (isRunning ? "Worker active" : "No active lock");
+    diagLivePill.classList.toggle("warn", !isRunning);
+  }
+}
 
 function updateWorkerUi(data, mode = "scan") {
   const counts = data?.counts || {};
@@ -583,6 +613,17 @@ function updateWorkerUi(data, mode = "scan") {
       ? `Summarized ${summarized} page(s). ${captured - summarized} fetched page(s) still need summaries.`
       : `Captured ${captured} page(s), failed ${failed}, ${Number(counts.pending || 0)} still queued.`;
   }
+  if (mode === "scan") {
+    const activeUrl = data?.active_url || "";
+    const processed = Number(data?.processed || 0);
+    if (activeUrl) {
+      setDiagnosticsLive(scan.status === "pending" || scan.status === "running", `Scanning: ${shortUrlLabel(activeUrl)}`, `${processed} processed`);
+    } else if (data?.waiting_for_retry) {
+      setDiagnosticsLive(false, "Waiting for retry window", "Retry wait");
+    } else {
+      setDiagnosticsLive(scan.status === "pending" || scan.status === "running", scan.status === "completed" ? "Crawler complete" : "Crawler working", scan.status || "");
+    }
+  }
 }
 
 async function callWorker(action) {
@@ -597,6 +638,7 @@ async function callWorker(action) {
 async function processScanBatch() {
   if (!scanId || scanBusy) return;
   scanBusy = true;
+  setDiagnosticsLive(true, "Scanning batch...", "Working");
   try {
     const data = await callWorker("scan_batch");
     updateWorkerUi(data, "scan");
@@ -613,6 +655,7 @@ async function processScanBatch() {
     }
   } catch (error) {
     if (workerText) workerText.textContent = "Worker could not update scan progress. Refresh to retry.";
+    setDiagnosticsLive(false, "Worker update failed", "Error");
   } finally {
     scanBusy = false;
   }
@@ -643,6 +686,7 @@ async function processSummaryBatches() {
 summarizeAllBtn?.addEventListener("click", processSummaryBatches);
 runScanBatchBtn?.addEventListener("click", async () => {
   runScanBatchBtn.disabled = true;
+  setDiagnosticsLive(true, "Scanning batch...", "Working");
   try {
     const data = await callWorker("scan_batch");
     updateWorkerUi(data, "scan");
