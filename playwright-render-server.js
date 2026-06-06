@@ -1,11 +1,13 @@
 const http = require("http");
 const { chromium } = require("playwright");
 
-const host = process.env.AI_RENDER_HOST || "127.0.0.1";
-const port = Number(process.env.AI_RENDER_PORT || 8787);
+const host = process.env.AI_RENDER_HOST || "0.0.0.0";
+const port = Number(process.env.PORT || process.env.AI_RENDER_PORT || 8787);
 const token = process.env.AI_RENDER_TOKEN || "";
+const maxHtmlBytes = Number(process.env.AI_RENDER_MAX_HTML_BYTES || 1500000);
 
 let browserPromise;
+let renderedCount = 0;
 
 function json(res, status, payload) {
   res.writeHead(status, { "Content-Type": "application/json" });
@@ -26,6 +28,15 @@ async function browser() {
 }
 
 const server = http.createServer(async (req, res) => {
+  if (req.method === "GET" && (req.url === "/" || req.url === "/health")) {
+    return json(res, 200, {
+      ok: true,
+      service: "vani-playwright-render",
+      rendered_count: renderedCount,
+      uptime_seconds: Math.round(process.uptime()),
+    });
+  }
+
   if (req.method !== "POST") return json(res, 405, { error: "POST required" });
   if (token && req.headers["x-render-token"] !== token) return json(res, 401, { error: "Invalid token" });
 
@@ -42,9 +53,11 @@ const server = http.createServer(async (req, res) => {
     });
     await page.goto(url, { waitUntil: "networkidle", timeout });
     await page.waitForTimeout(600);
-    const html = await page.content();
+    const html = (await page.content()).slice(0, maxHtmlBytes);
+    const finalUrl = page.url();
     await page.close();
-    json(res, 200, { html });
+    renderedCount += 1;
+    json(res, 200, { html, final_url: finalUrl || url });
   } catch (error) {
     json(res, 500, { error: error.message || "Render failed" });
   }
