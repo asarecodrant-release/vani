@@ -24,7 +24,7 @@ foreach (ai_active_scan_jobs($maxJobs) as $scan) {
     $result = ai_process_scan_job_batch(
         (string)$scan['id'],
         (string)$scan['customer_id'],
-        (int)ai_env('AI_CRAWL_BATCH_SIZE', '4')
+        (int)ai_env('AI_CRAWL_BATCH_SIZE', '8')
     );
     $scanUnits += (int)($result['processed'] ?? 0);
     $details[] = ['type' => 'scan', 'id' => (string)$scan['id'], 'result' => $result];

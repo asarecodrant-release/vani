@@ -27,7 +27,7 @@ while (time() - $started < $maxSeconds) {
         $result = ai_process_scan_job_batch(
             (string)$scan['id'],
             (string)$scan['customer_id'],
-            (int)ai_env('AI_CRAWL_BATCH_SIZE', '4')
+            (int)ai_env('AI_CRAWL_BATCH_SIZE', '8')
         );
         $processed = (int)($result['processed'] ?? 0);
         $roundWork += $processed;

@@ -57,7 +57,7 @@ $action = (string)($_POST['action'] ?? $_GET['action'] ?? 'status');
 $result = ['success' => true];
 
 if ($action === 'scan_batch') {
-    $result = ai_process_scan_job_batch($scanId, $customerId, (int)ai_env('AI_CRAWL_BATCH_SIZE', '4'));
+    $result = ai_process_scan_job_batch($scanId, $customerId, (int)ai_env('AI_CRAWL_BATCH_SIZE', '8'));
 } elseif ($action === 'summarize_batch') {
     if (!ai_is_configured()) {
         $result = ['success' => false, 'error' => 'AI provider is not configured.'];

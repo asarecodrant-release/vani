@@ -427,7 +427,7 @@ function ai_fetch_page(string $url): array {
             return ['success' => false, 'status' => $status, 'html' => '', 'url' => $finalUrl, 'content_type' => $contentType, 'content_length' => strlen((string)$html), 'error' => 'URL did not return HTML content.'];
         }
         $html = ai_html_with_optional_render($finalUrl, (string)$html);
-        return ['success' => true, 'status' => $status, 'html' => substr((string)$html, 0, 1200000), 'url' => $finalUrl, 'content_type' => $contentType, 'content_length' => strlen((string)$html), 'error' => ''];
+        return ['success' => true, 'status' => $status, 'html' => substr((string)$html, 0, ai_page_html_limit()), 'url' => $finalUrl, 'content_type' => $contentType, 'content_length' => strlen((string)$html), 'error' => ''];
     }
 
     $context = stream_context_create([
@@ -457,7 +457,7 @@ function ai_fetch_page(string $url): array {
         return ['success' => false, 'status' => $status, 'html' => '', 'url' => $finalUrl, 'content_type' => '', 'content_length' => 0, 'error' => 'Could not fetch page.'];
     }
     $html = ai_html_with_optional_render($finalUrl, (string)$html);
-    return ['success' => true, 'status' => $status, 'html' => substr((string)$html, 0, 1200000), 'url' => $finalUrl, 'content_type' => '', 'content_length' => strlen((string)$html), 'error' => ''];
+    return ['success' => true, 'status' => $status, 'html' => substr((string)$html, 0, ai_page_html_limit()), 'url' => $finalUrl, 'content_type' => '', 'content_length' => strlen((string)$html), 'error' => ''];
 }
 
 function ai_html_with_optional_render(string $url, string $html): string {
@@ -490,9 +490,17 @@ function ai_render_page_html(string $url): string {
     }
     $data = $response['data'] ?? [];
     if (is_array($data) && isset($data['html'])) {
-        return substr((string)$data['html'], 0, 1200000);
+        return substr((string)$data['html'], 0, ai_page_html_limit());
     }
     return '';
+}
+
+function ai_page_html_limit(): int {
+    return max(250000, min(3000000, (int)ai_env('AI_PAGE_HTML_LIMIT', '1500000')));
+}
+
+function ai_page_clean_text_limit(): int {
+    return max(50000, min(500000, (int)ai_env('AI_PAGE_CLEAN_TEXT_LIMIT', '200000')));
 }
 
 function ai_fetch_pages_parallel(array $urls, int $concurrency = 4): array {
@@ -508,7 +516,7 @@ function ai_fetch_pages_parallel(array $urls, int $concurrency = 4): array {
         return $results;
     }
 
-    $concurrency = max(1, min(8, $concurrency));
+    $concurrency = max(1, min(12, $concurrency));
     $headers = [
         'User-Agent: VaniAI-Scanner/1.0',
         'Accept: text/html,application/xhtml+xml',
@@ -563,7 +571,7 @@ function ai_fetch_pages_parallel(array $urls, int $concurrency = 4): array {
                 continue;
             }
             $html = ai_html_with_optional_render($finalUrl, (string)$html);
-            $results[$sourceUrl] = ['success' => true, 'status' => $httpStatus, 'html' => substr((string)$html, 0, 1200000), 'url' => $finalUrl, 'content_type' => $contentType, 'content_length' => strlen((string)$html), 'error' => ''];
+            $results[$sourceUrl] = ['success' => true, 'status' => $httpStatus, 'html' => substr((string)$html, 0, ai_page_html_limit()), 'url' => $finalUrl, 'content_type' => $contentType, 'content_length' => strlen((string)$html), 'error' => ''];
         }
 
         if ($running) {
@@ -780,6 +788,7 @@ function ai_parse_html_page(string $html, string $baseUrl, string $websiteDomain
     $title = '';
     $links = [];
     $cleanText = '';
+    $extraText = [];
     $detectedFaqs = [];
 
     if (preg_match_all('/<script\b[^>]*type\s*=\s*["\'][^"\']*ld\+json[^"\']*["\'][^>]*>(.*?)<\/script>/is', $html, $jsonScripts)) {
@@ -800,6 +809,38 @@ function ai_parse_html_page(string $html, string $baseUrl, string $websiteDomain
 
         $titleNode = $dom->getElementsByTagName('title')->item(0);
         $title = $titleNode ? trim($titleNode->textContent) : '';
+        if ($title !== '') {
+            $extraText[] = 'Page title: ' . $title;
+        }
+
+        foreach ($dom->getElementsByTagName('meta') as $meta) {
+            $name = strtolower(trim((string)($meta->getAttribute('name') ?: $meta->getAttribute('property'))));
+            if (!in_array($name, ['description', 'keywords', 'og:title', 'og:description', 'twitter:title', 'twitter:description'], true)) {
+                continue;
+            }
+            $content = trim((string)$meta->getAttribute('content'));
+            if ($content !== '') {
+                $extraText[] = $name . ': ' . $content;
+            }
+        }
+
+        foreach (['h1', 'h2', 'h3'] as $headingTag) {
+            foreach ($dom->getElementsByTagName($headingTag) as $heading) {
+                $headingText = trim(preg_replace('/\s+/', ' ', $heading->textContent) ?: '');
+                if ($headingText !== '') {
+                    $extraText[] = strtoupper($headingTag) . ': ' . $headingText;
+                }
+            }
+        }
+
+        foreach (['img' => 'alt', 'input' => 'placeholder', 'button' => 'aria-label', 'a' => 'aria-label'] as $tag => $attribute) {
+            foreach ($dom->getElementsByTagName($tag) as $node) {
+                $value = trim((string)$node->getAttribute($attribute));
+                if ($value !== '') {
+                    $extraText[] = $value;
+                }
+            }
+        }
 
         foreach (['script', 'style', 'noscript', 'svg'] as $tag) {
             while (($nodes = $dom->getElementsByTagName($tag))->length > 0) {
@@ -836,6 +877,30 @@ function ai_parse_html_page(string $html, string $baseUrl, string $websiteDomain
         $withoutScripts = preg_replace('/<(script|style|noscript|svg)\b[^>]*>.*?<\/\1>/is', ' ', $html) ?: $html;
         if (preg_match('/<title[^>]*>(.*?)<\/title>/is', $html, $match)) {
             $title = trim(html_entity_decode(strip_tags($match[1]), ENT_QUOTES, 'UTF-8'));
+            if ($title !== '') {
+                $extraText[] = 'Page title: ' . $title;
+            }
+        }
+        if (preg_match_all('/<meta\b[^>]*(?:name|property)\s*=\s*["\'](description|keywords|og:title|og:description|twitter:title|twitter:description)["\'][^>]*content\s*=\s*["\']([^"\']+)["\'][^>]*>/i', $html, $metaMatches, PREG_SET_ORDER)) {
+            foreach ($metaMatches as $metaMatch) {
+                $extraText[] = strtolower((string)$metaMatch[1]) . ': ' . html_entity_decode((string)$metaMatch[2], ENT_QUOTES, 'UTF-8');
+            }
+        }
+        if (preg_match_all('/<h([1-3])\b[^>]*>(.*?)<\/h\1>/is', $html, $headingMatches, PREG_SET_ORDER)) {
+            foreach ($headingMatches as $headingMatch) {
+                $headingText = trim(preg_replace('/\s+/', ' ', html_entity_decode(strip_tags((string)$headingMatch[2]), ENT_QUOTES, 'UTF-8')) ?: '');
+                if ($headingText !== '') {
+                    $extraText[] = 'H' . (string)$headingMatch[1] . ': ' . $headingText;
+                }
+            }
+        }
+        if (preg_match_all('/\b(?:alt|placeholder|aria-label)\s*=\s*["\']([^"\']+)["\']/i', $html, $attributeMatches)) {
+            foreach ($attributeMatches[1] as $attributeText) {
+                $attributeText = trim(html_entity_decode((string)$attributeText, ENT_QUOTES, 'UTF-8'));
+                if ($attributeText !== '') {
+                    $extraText[] = $attributeText;
+                }
+            }
         }
         if (preg_match_all('/<a\b[^>]*\bhref\s*=\s*["\']([^"\']+)["\']/i', $html, $matches)) {
             foreach ($matches[1] as $href) {
@@ -853,9 +918,16 @@ function ai_parse_html_page(string $html, string $baseUrl, string $websiteDomain
         $cleanText = preg_replace('/\s+/', ' ', trim(html_entity_decode(strip_tags($withoutScripts), ENT_QUOTES, 'UTF-8'))) ?: '';
     }
 
+    $extraText = array_values(array_unique(array_filter(array_map(function ($value) {
+        return trim(preg_replace('/\s+/', ' ', (string)$value) ?: '');
+    }, $extraText))));
+    if (!empty($extraText)) {
+        $cleanText = trim(implode(' ', $extraText) . ' ' . $cleanText);
+    }
+
     return [
         'title' => substr($title, 0, 500),
-        'clean_text' => substr($cleanText, 0, 120000),
+        'clean_text' => substr($cleanText, 0, ai_page_clean_text_limit()),
         'links' => array_keys($links),
         'detected_faqs' => ai_dedupe_faqs($detectedFaqs),
     ];
@@ -1201,6 +1273,99 @@ function ai_scan_job_counts(string $jobId, string $customerId): array {
     return $counts;
 }
 
+function ai_scan_diagnostics(string $jobId, string $customerId): array {
+    $retrySupported = ai_db_supports_retry_columns();
+    $scan = ai_get_scan_job_for_customer($jobId, $customerId);
+    $counts = ai_scan_job_counts($jobId, $customerId);
+    $pageSelect = $retrySupported
+        ? 'id,url,page_title,page_status,http_status,ai_error,content_type,content_length,discovered_links_count,crawl_attempts,next_retry_at,summary_attempts,summary_next_retry_at,fetched_at,summarized_at,updated_at'
+        : 'id,url,page_title,page_status,http_status,ai_error,content_type,content_length,discovered_links_count,fetched_at,summarized_at,updated_at';
+
+    $pending = ai_safe_rows(supabase(
+        'GET',
+        'ai_website_pages?select=' . $pageSelect
+            . '&scan_job_id=eq.' . urlencode($jobId)
+            . '&customer_id=eq.' . urlencode($customerId)
+            . '&page_status=eq.pending'
+            . '&order=created_at.asc&limit=10'
+    ));
+    $failed = ai_safe_rows(supabase(
+        'GET',
+        'ai_website_pages?select=' . $pageSelect
+            . '&scan_job_id=eq.' . urlencode($jobId)
+            . '&customer_id=eq.' . urlencode($customerId)
+            . '&page_status=eq.failed'
+            . '&order=updated_at.desc&limit=10'
+    ));
+    $recentFetched = ai_safe_rows(supabase(
+        'GET',
+        'ai_website_pages?select=' . $pageSelect
+            . '&scan_job_id=eq.' . urlencode($jobId)
+            . '&customer_id=eq.' . urlencode($customerId)
+            . '&page_status=in.(fetched,summarized)'
+            . '&order=fetched_at.desc&limit=10'
+    ));
+    $recentSummarized = ai_safe_rows(supabase(
+        'GET',
+        'ai_website_pages?select=' . $pageSelect
+            . '&scan_job_id=eq.' . urlencode($jobId)
+            . '&customer_id=eq.' . urlencode($customerId)
+            . '&page_status=eq.summarized'
+            . '&order=summarized_at.desc&limit=10'
+    ));
+    $quality = ai_safe_rows(supabase(
+        'GET',
+        'ai_website_pages?select=id,url,page_title,page_status,content_length,clean_text,ai_error,updated_at'
+            . '&scan_job_id=eq.' . urlencode($jobId)
+            . '&customer_id=eq.' . urlencode($customerId)
+            . '&page_status=in.(fetched,summarized)'
+            . '&order=content_length.asc&limit=10'
+    ));
+
+    $waitingRetry = [];
+    $waitingSummaryRetry = [];
+    if ($retrySupported) {
+        $waitingRetry = ai_safe_rows(supabase(
+            'GET',
+            'ai_website_pages?select=' . $pageSelect
+                . '&scan_job_id=eq.' . urlencode($jobId)
+                . '&customer_id=eq.' . urlencode($customerId)
+                . '&page_status=eq.pending'
+                . '&next_retry_at=not.is.null'
+                . '&order=next_retry_at.asc&limit=10'
+        ));
+        $waitingSummaryRetry = ai_safe_rows(supabase(
+            'GET',
+            'ai_website_pages?select=' . $pageSelect
+                . '&scan_job_id=eq.' . urlencode($jobId)
+                . '&customer_id=eq.' . urlencode($customerId)
+                . '&page_status=eq.fetched'
+                . '&summary_next_retry_at=not.is.null'
+                . '&order=summary_next_retry_at.asc&limit=10'
+        ));
+    }
+
+    return [
+        'scan' => $scan,
+        'counts' => $counts,
+        'pending' => $pending,
+        'failed' => $failed,
+        'recent_fetched' => $recentFetched,
+        'recent_summarized' => $recentSummarized,
+        'waiting_retry' => $waitingRetry,
+        'waiting_summary_retry' => $waitingSummaryRetry,
+        'quality' => $quality,
+        'retry_supported' => $retrySupported,
+        'settings' => [
+            'crawl_batch_size' => (int)ai_env('AI_CRAWL_BATCH_SIZE', '8'),
+            'crawl_concurrency' => (int)ai_env('AI_CRAWL_CONCURRENCY', '8'),
+            'summary_batch_size' => (int)ai_env('AI_SUMMARY_BATCH_SIZE', '2'),
+            'crawl_delay_ms' => (int)ai_env('AI_CRAWL_BATCH_DELAY_MS', '250'),
+            'render_enabled' => ai_env('AI_RENDER_ENDPOINT') !== '',
+        ],
+    ];
+}
+
 function ai_get_scan_job_for_customer(string $jobId, string $customerId): array {
     $rows = ai_safe_rows(supabase(
         'GET',
@@ -1259,16 +1424,17 @@ function ai_process_scan_job_batch(string $jobId, string $customerId, int $batch
     }
 
     $retrySupported = ai_db_supports_retry_columns();
+    $batchLimit = max(1, min((int)ai_env('AI_CRAWL_MAX_BATCH_SIZE', '12'), $batchSize));
     $pendingEndpoint = 'ai_website_pages?select=id,url,normalized_url&scan_job_id=eq.' . urlencode($jobId)
         . '&customer_id=eq.' . urlencode($customerId)
         . '&page_status=eq.pending'
-        . '&order=created_at.asc&limit=' . max(1, min(8, $batchSize));
+        . '&order=created_at.asc&limit=' . $batchLimit;
     if ($retrySupported) {
         $pendingEndpoint = 'ai_website_pages?select=id,url,normalized_url,crawl_attempts,next_retry_at&scan_job_id=eq.' . urlencode($jobId)
             . '&customer_id=eq.' . urlencode($customerId)
             . '&page_status=eq.pending'
             . '&or=(next_retry_at.is.null,next_retry_at.lte.' . urlencode(ai_now()) . ')'
-            . '&order=created_at.asc&limit=' . max(1, min(8, $batchSize));
+            . '&order=created_at.asc&limit=' . $batchLimit;
     }
     $pendingPages = ai_safe_rows(supabase('GET', $pendingEndpoint));
 
@@ -1301,9 +1467,11 @@ function ai_process_scan_job_batch(string $jobId, string $customerId, int $batch
     $urls = array_map(function ($page) {
         return (string)$page['url'];
     }, $pendingPages);
-    $fetches = ai_fetch_pages_parallel($urls, max(1, min(4, $batchSize)));
+    $fetches = ai_fetch_pages_parallel($urls, max(1, min((int)ai_env('AI_CRAWL_CONCURRENCY', '8'), $batchSize)));
     $websiteDomain = (string)$scan['website_domain'];
     $processed = 0;
+    $countsBeforeLoop = ai_scan_job_counts($jobId, $customerId);
+    $knownTotal = (int)$countsBeforeLoop['total'];
 
     foreach ($pendingPages as $page) {
         ai_extend_scan_job_lock($jobId, $workerId);
@@ -1349,10 +1517,10 @@ function ai_process_scan_job_batch(string $jobId, string $customerId, int $batch
             return ai_url_priority((string)$a) <=> ai_url_priority((string)$b);
         });
 
-        $counts = ai_scan_job_counts($jobId, $customerId);
-        $remainingSlots = max(0, $maxPages - (int)$counts['total']);
+        $remainingSlots = max(0, $maxPages - $knownTotal);
         if ($remainingSlots > 0) {
-            ai_enqueue_scan_urls($jobId, $customerId, array_slice($links, 0, $remainingSlots), $remainingSlots, true);
+            $queuedLinks = ai_enqueue_scan_urls($jobId, $customerId, array_slice($links, 0, $remainingSlots), $remainingSlots, true);
+            $knownTotal += $queuedLinks;
         }
 
         $cleanText = (string)$parsed['clean_text'];

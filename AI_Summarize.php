@@ -26,6 +26,39 @@ function ai_summary_text_from_page(array $page): string {
     return trim((string)($summary['summary'] ?? ''));
 }
 
+function ai_short_url_label(string $url): string {
+    $path = (string)(parse_url($url, PHP_URL_PATH) ?: '/');
+    $query = (string)(parse_url($url, PHP_URL_QUERY) ?: '');
+    $label = $path . ($query !== '' ? '?' . $query : '');
+    return $label === '/' ? $url : $label;
+}
+
+function ai_time_label($value): string {
+    $value = trim((string)$value);
+    if ($value === '') {
+        return '-';
+    }
+    $ts = strtotime($value);
+    if ($ts === false) {
+        return $value;
+    }
+    $diff = time() - $ts;
+    if ($diff >= 0 && $diff < 60) {
+        return $diff . 's ago';
+    }
+    if ($diff >= 60 && $diff < 3600) {
+        return floor($diff / 60) . 'm ago';
+    }
+    if ($diff >= 3600 && $diff < 86400) {
+        return floor($diff / 3600) . 'h ago';
+    }
+    return gmdate('Y-m-d H:i', $ts) . ' UTC';
+}
+
+function ai_text_length_from_page(array $page): int {
+    return strlen(trim((string)($page['clean_text'] ?? '')));
+}
+
 $email = authenticated_email();
 $customerId = (string)($_SESSION['setup_customer_id'] ?? '');
 if ($customerId === '') {
@@ -150,6 +183,15 @@ foreach ($pages as $page) {
         $summarizedCount++;
     }
 }
+$diagnostics = ai_scan_diagnostics($scanId, $customerId);
+$diagScan = $diagnostics['scan'] ?: $scan;
+$diagCounts = $diagnostics['counts'];
+$workerLockedUntil = (string)($diagScan['locked_until'] ?? '');
+$workerActive = $workerLockedUntil !== '' && strtotime($workerLockedUntil) !== false && strtotime($workerLockedUntil) > time();
+$lastActivity = ai_time_label($diagScan['updated_at'] ?? '');
+$progressRequested = max(1, (int)($diagScan['pages_requested'] ?? 0));
+$progressDone = (int)($diagCounts['scanned'] ?? 0) + (int)($diagCounts['failed'] ?? 0);
+$progressPercent = min(100, (int)round(($progressDone / $progressRequested) * 100));
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -212,8 +254,26 @@ textarea{min-height:120px;resize:vertical;line-height:1.5}
 .progress-strip span{color:var(--muted);font-size:13px}
 .progress-bar{height:8px;flex:1;min-width:120px;border-radius:999px;background:var(--soft);overflow:hidden}
 .progress-bar i{display:block;height:100%;width:0;background:#2563eb;transition:width .25s ease}
+.diagnostics{margin-bottom:18px}
+.diagnostics summary{cursor:pointer;font-weight:900;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.diag-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:14px}
+.diag-card{border:1px solid var(--line);border-radius:8px;background:var(--soft);padding:12px;min-width:0}
+.diag-card span{display:block;color:var(--muted);font-size:11px;font-weight:900;text-transform:uppercase}
+.diag-card strong{display:block;margin-top:5px;font-size:16px;word-break:break-word}
+.diag-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+.diag-section{margin-top:16px}
+.diag-section h3{margin:0 0 8px;font-size:15px}
+.diag-table{width:100%;border-collapse:collapse;font-size:12px}
+.diag-table th,.diag-table td{border-top:1px solid var(--line);padding:8px 6px;text-align:left;vertical-align:top}
+.diag-table th{color:var(--muted);font-size:11px;text-transform:uppercase}
+.diag-url{max-width:360px;word-break:break-all;color:var(--link)}
+.diag-error{max-width:420px;color:#991b1b;word-break:break-word}
+body.dark .diag-error{color:#fca5a5}
+.diag-pill{display:inline-flex;align-items:center;min-height:22px;border-radius:999px;padding:0 8px;background:#e0f2fe;color:#075985;font-weight:900}
+.diag-pill.warn{background:#fef3c7;color:#92400e}
+.diag-pill.bad{background:#fee2e2;color:#991b1b}
 @media(max-width:1100px){.grid{grid-template-columns:minmax(0,1fr) minmax(300px,.72fr)}.page-tab-label{max-width:170px}}
-@media(max-width:860px){.grid,.metrics{grid-template-columns:1fr}.top{display:grid}.faq-panel{position:static;max-height:none}.page-tab-label{max-width:180px}.shell{padding:26px 14px 56px}}
+@media(max-width:860px){.grid,.metrics,.diag-grid{grid-template-columns:1fr}.top{display:grid}.faq-panel{position:static;max-height:none}.page-tab-label{max-width:180px}.shell{padding:26px 14px 56px}.diag-table{display:block;overflow-x:auto;white-space:nowrap}}
 @media(max-width:560px){.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.panel{padding:14px}.top h1{font-size:26px}.page-tabs-meta{display:grid}.page-tab-label{max-width:150px}.summary-actions button,.summary-actions form{width:100%}.summary-actions button{width:100%}}
 </style>
 </head>
@@ -242,6 +302,146 @@ textarea{min-height:120px;resize:vertical;line-height:1.5}
     </div>
     <div class="progress-bar" aria-hidden="true"><i id="workerBar"></i></div>
   </div>
+
+  <details class="panel diagnostics" <?php echo !empty($diagnostics['failed']) || !empty($diagnostics['waiting_retry']) ? 'open' : ''; ?>>
+    <summary>
+      <span>Crawler Diagnostics</span>
+      <span class="diag-pill <?php echo $workerActive ? '' : 'warn'; ?>"><?php echo $workerActive ? 'Worker active' : 'No active lock'; ?></span>
+    </summary>
+
+    <div class="diag-grid">
+      <div class="diag-card"><span>Status</span><strong><?php echo ai_h($diagScan['status'] ?? ''); ?></strong></div>
+      <div class="diag-card"><span>Progress</span><strong><?php echo (int)$progressPercent; ?>%</strong></div>
+      <div class="diag-card"><span>Last Activity</span><strong><?php echo ai_h($lastActivity); ?></strong></div>
+      <div class="diag-card"><span>Worker</span><strong><?php echo ai_h(($diagScan['worker_id'] ?? '') ?: '-'); ?></strong></div>
+      <div class="diag-card"><span>Requested</span><strong><?php echo (int)($diagScan['pages_requested'] ?? 0); ?></strong></div>
+      <div class="diag-card"><span>Pending</span><strong><?php echo (int)($diagCounts['pending'] ?? 0); ?></strong></div>
+      <div class="diag-card"><span>Fetched</span><strong><?php echo (int)($diagCounts['fetched'] ?? 0); ?></strong></div>
+      <div class="diag-card"><span>Summarized</span><strong><?php echo (int)($diagCounts['summarized'] ?? 0); ?></strong></div>
+      <div class="diag-card"><span>Failed</span><strong><?php echo (int)($diagCounts['failed'] ?? 0); ?></strong></div>
+      <div class="diag-card"><span>Lock Expires</span><strong><?php echo ai_h(ai_time_label($diagScan['locked_until'] ?? '')); ?></strong></div>
+      <div class="diag-card"><span>Crawl Batch</span><strong><?php echo (int)$diagnostics['settings']['crawl_batch_size']; ?> / <?php echo (int)$diagnostics['settings']['crawl_concurrency']; ?></strong></div>
+      <div class="diag-card"><span>Render Service</span><strong><?php echo !empty($diagnostics['settings']['render_enabled']) ? 'Enabled' : 'Off'; ?></strong></div>
+    </div>
+
+    <div class="diag-actions">
+      <button type="button" id="runScanBatchBtn">Run scan batch</button>
+      <button type="button" id="runSummaryBatchBtn">Run summary batch</button>
+      <button class="btn" type="button" onclick="location.reload()">Refresh diagnostics</button>
+    </div>
+
+    <div class="diag-section">
+      <h3>Next Pending URLs</h3>
+      <table class="diag-table">
+        <thead><tr><th>URL</th><th>Attempts</th><th>Next Retry</th><th>Error</th></tr></thead>
+        <tbody>
+        <?php foreach ($diagnostics['pending'] as $row): ?>
+          <tr>
+            <td class="diag-url" title="<?php echo ai_h($row['url'] ?? ''); ?>"><?php echo ai_h(ai_short_url_label((string)($row['url'] ?? ''))); ?></td>
+            <td><?php echo ai_h($row['crawl_attempts'] ?? '0'); ?></td>
+            <td><?php echo ai_h(ai_time_label($row['next_retry_at'] ?? '')); ?></td>
+            <td class="diag-error"><?php echo ai_h($row['ai_error'] ?? ''); ?></td>
+          </tr>
+        <?php endforeach; ?>
+        <?php if (empty($diagnostics['pending'])): ?><tr><td colspan="4" class="muted">No pending pages.</td></tr><?php endif; ?>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="diag-section">
+      <h3>Failed Pages</h3>
+      <table class="diag-table">
+        <thead><tr><th>URL</th><th>HTTP</th><th>Attempts</th><th>Error</th><th>Updated</th></tr></thead>
+        <tbody>
+        <?php foreach ($diagnostics['failed'] as $row): ?>
+          <tr>
+            <td class="diag-url" title="<?php echo ai_h($row['url'] ?? ''); ?>"><?php echo ai_h(ai_short_url_label((string)($row['url'] ?? ''))); ?></td>
+            <td><?php echo ai_h($row['http_status'] ?? ''); ?></td>
+            <td><?php echo ai_h($row['crawl_attempts'] ?? '0'); ?></td>
+            <td class="diag-error"><?php echo ai_h($row['ai_error'] ?? ''); ?></td>
+            <td><?php echo ai_h(ai_time_label($row['updated_at'] ?? '')); ?></td>
+          </tr>
+        <?php endforeach; ?>
+        <?php if (empty($diagnostics['failed'])): ?><tr><td colspan="5" class="muted">No failed pages.</td></tr><?php endif; ?>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="diag-section">
+      <h3>Retry Waits</h3>
+      <table class="diag-table">
+        <thead><tr><th>Type</th><th>URL</th><th>Attempts</th><th>Next Retry</th><th>Error</th></tr></thead>
+        <tbody>
+        <?php foreach ($diagnostics['waiting_retry'] as $row): ?>
+          <tr>
+            <td><span class="diag-pill warn">crawl</span></td>
+            <td class="diag-url" title="<?php echo ai_h($row['url'] ?? ''); ?>"><?php echo ai_h(ai_short_url_label((string)($row['url'] ?? ''))); ?></td>
+            <td><?php echo ai_h($row['crawl_attempts'] ?? '0'); ?></td>
+            <td><?php echo ai_h(ai_time_label($row['next_retry_at'] ?? '')); ?></td>
+            <td class="diag-error"><?php echo ai_h($row['ai_error'] ?? ''); ?></td>
+          </tr>
+        <?php endforeach; ?>
+        <?php foreach ($diagnostics['waiting_summary_retry'] as $row): ?>
+          <tr>
+            <td><span class="diag-pill warn">summary</span></td>
+            <td class="diag-url" title="<?php echo ai_h($row['url'] ?? ''); ?>"><?php echo ai_h(ai_short_url_label((string)($row['url'] ?? ''))); ?></td>
+            <td><?php echo ai_h($row['summary_attempts'] ?? '0'); ?></td>
+            <td><?php echo ai_h(ai_time_label($row['summary_next_retry_at'] ?? '')); ?></td>
+            <td class="diag-error"><?php echo ai_h($row['ai_error'] ?? ''); ?></td>
+          </tr>
+        <?php endforeach; ?>
+        <?php if (empty($diagnostics['waiting_retry']) && empty($diagnostics['waiting_summary_retry'])): ?><tr><td colspan="5" class="muted">No pages are waiting for retry.</td></tr><?php endif; ?>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="diag-section">
+      <h3>Recent Activity</h3>
+      <table class="diag-table">
+        <thead><tr><th>Status</th><th>URL</th><th>HTTP</th><th>Text/Bytes</th><th>Links</th><th>Time</th></tr></thead>
+        <tbody>
+        <?php foreach ($diagnostics['recent_fetched'] as $row): ?>
+          <tr>
+            <td><span class="diag-pill"><?php echo ai_h($row['page_status'] ?? ''); ?></span></td>
+            <td class="diag-url" title="<?php echo ai_h($row['url'] ?? ''); ?>"><?php echo ai_h(ai_short_url_label((string)($row['url'] ?? ''))); ?></td>
+            <td><?php echo ai_h($row['http_status'] ?? ''); ?></td>
+            <td><?php echo ai_h($row['content_length'] ?? '0'); ?></td>
+            <td><?php echo ai_h($row['discovered_links_count'] ?? '0'); ?></td>
+            <td><?php echo ai_h(ai_time_label($row['fetched_at'] ?? $row['updated_at'] ?? '')); ?></td>
+          </tr>
+        <?php endforeach; ?>
+        <?php if (empty($diagnostics['recent_fetched'])): ?><tr><td colspan="6" class="muted">No fetched pages yet.</td></tr><?php endif; ?>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="diag-section">
+      <h3>Content Quality Watchlist</h3>
+      <table class="diag-table">
+        <thead><tr><th>URL</th><th>Status</th><th>Clean Text</th><th>Signal</th></tr></thead>
+        <tbody>
+        <?php foreach ($diagnostics['quality'] as $row): ?>
+          <?php $textLength = ai_text_length_from_page($row); ?>
+          <tr>
+            <td class="diag-url" title="<?php echo ai_h($row['url'] ?? ''); ?>"><?php echo ai_h(ai_short_url_label((string)($row['url'] ?? ''))); ?></td>
+            <td><?php echo ai_h($row['page_status'] ?? ''); ?></td>
+            <td><?php echo (int)$textLength; ?></td>
+            <td>
+              <?php if ($textLength < 300): ?>
+                <span class="diag-pill bad">very low text</span>
+              <?php elseif ($textLength < 900): ?>
+                <span class="diag-pill warn">short text</span>
+              <?php else: ?>
+                <span class="diag-pill">ok</span>
+              <?php endif; ?>
+            </td>
+          </tr>
+        <?php endforeach; ?>
+        <?php if (empty($diagnostics['quality'])): ?><tr><td colspan="4" class="muted">No content quality data yet.</td></tr><?php endif; ?>
+        </tbody>
+      </table>
+    </div>
+  </details>
 
   <div class="metrics">
     <div class="metric"><span>Captured Pages</span><strong id="capturedMetric"><?php echo count($pages); ?></strong></div>
@@ -359,6 +559,8 @@ const capturedMetric = document.getElementById("capturedMetric");
 const summarizedMetric = document.getElementById("summarizedMetric");
 const scanStatusMetric = document.getElementById("scanStatusMetric");
 const summarizeAllBtn = document.getElementById("summarizeAllBtn");
+const runScanBatchBtn = document.getElementById("runScanBatchBtn");
+const runSummaryBatchBtn = document.getElementById("runSummaryBatchBtn");
 let scanBusy = false;
 let summaryBusy = false;
 
@@ -439,6 +641,26 @@ async function processSummaryBatches() {
 }
 
 summarizeAllBtn?.addEventListener("click", processSummaryBatches);
+runScanBatchBtn?.addEventListener("click", async () => {
+  runScanBatchBtn.disabled = true;
+  try {
+    const data = await callWorker("scan_batch");
+    updateWorkerUi(data, "scan");
+    location.reload();
+  } finally {
+    runScanBatchBtn.disabled = false;
+  }
+});
+runSummaryBatchBtn?.addEventListener("click", async () => {
+  runSummaryBatchBtn.disabled = true;
+  try {
+    const data = await callWorker("summarize_batch");
+    updateWorkerUi(data, "summary");
+    location.reload();
+  } finally {
+    runSummaryBatchBtn.disabled = false;
+  }
+});
 if (shell?.dataset.scanStatus === "pending" || shell?.dataset.scanStatus === "running") {
   processScanBatch();
 }
