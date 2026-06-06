@@ -439,7 +439,9 @@ function ai_url_matches_any_pattern(string $url, array $patterns): bool {
 function ai_default_block_url_patterns(): array {
     return [
         '/[?&](?:q|query|search|s|filter|sort|order|page|p|offset|limit|start|checkin|checkout|adults|children|infants|pets|guests|currency|locale|language|utm_[^=]+|fbclid|gclid|yclid|msclkid)=/i',
-        '/\/(?:search|find|results|listings|listing|rooms|stays|experiences|marketplace|category|categories|tag|tags|author|archive|feed|rss|cart|basket|checkout|login|signin|signup|register|account|profile|wishlist|favorites|booking|calendar|availability|admin|wp-admin|wp-json)\b/i',
+        '/\/(?:search|find|results|listings|listing|rooms|stays|experiences|marketplace|category|categories|tag|tags|author|archive|feed|rss|cart|basket|checkout|login|signin|signup|register|account|profile|wishlist|wishlists|favorites|booking|book|calendar|availability|trips|hosting|host|admin|wp-admin|wp-json)\b/i',
+        '/\/(?:s|users|things-to-do|luxury|plus|giftcards)(?:\/|$)/i',
+        '/\/(?:rooms|listings|experiences)\/[a-z0-9-]{4,}/i',
         '/\/(?:page|p)\/\d+\b/i',
         '/\/\d{4}\/\d{2}\//i',
     ];
@@ -1637,6 +1639,25 @@ function ai_scan_job_counts(string $jobId, string $customerId): array {
     return $counts;
 }
 
+function ai_scan_review_pages(string $jobId, string $customerId, int $limit = 100): array {
+    return ai_safe_rows(supabase(
+        'GET',
+        'ai_website_pages?select=*&scan_job_id=eq.' . urlencode($jobId)
+            . '&customer_id=eq.' . urlencode($customerId)
+            . '&page_status=in.(fetched,summarized)'
+            . '&order=created_at.asc&limit=' . max(1, min(250, $limit))
+    ));
+}
+
+function ai_scan_review_faqs(string $jobId, string $customerId, int $limit = 500): array {
+    return ai_safe_rows(supabase(
+        'GET',
+        'ai_website_faqs?select=*&scan_job_id=eq.' . urlencode($jobId)
+            . '&customer_id=eq.' . urlencode($customerId)
+            . '&order=created_at.asc&limit=' . max(1, min(1000, $limit))
+    ));
+}
+
 function ai_scan_diagnostics(string $jobId, string $customerId): array {
     $retrySupported = ai_db_supports_retry_columns();
     $advancedSupported = ai_db_supports_advanced_crawler_columns();
@@ -1999,7 +2020,8 @@ function ai_process_scan_job_batch(string $jobId, string $customerId, int $batch
 
         $remainingSlots = max(0, $maxPages - $knownTotal);
         if ($remainingSlots > 0) {
-            $queuedLinks = ai_enqueue_scan_urls($jobId, $customerId, array_slice($links, 0, $remainingSlots), $remainingSlots, true);
+            $linksPerPage = max(1, (int)ai_env('AI_CRAWL_MAX_LINKS_PER_PAGE', '8'));
+            $queuedLinks = ai_enqueue_scan_urls($jobId, $customerId, array_slice($links, 0, min($remainingSlots, $linksPerPage)), $remainingSlots, true);
             $knownTotal += $queuedLinks;
         }
 

@@ -64,6 +64,13 @@ if ($action === 'scan_batch') {
     } else {
         $result = ai_summarize_scan_job_batch($scanId, $customerId, (int)ai_env('AI_SUMMARY_BATCH_SIZE', '2'));
     }
+} elseif ($action === 'summarize_page') {
+    $pageId = trim((string)($_POST['page_id'] ?? $_GET['page_id'] ?? ''));
+    if (!ai_is_configured()) {
+        $result = ['success' => false, 'error' => 'AI provider is not configured.'];
+    } else {
+        $result = ai_summarize_scanned_page($pageId, $customerId);
+    }
 }
 
 $freshScan = ai_get_scan_job_for_customer($scanId, $customerId);
@@ -79,4 +86,7 @@ ai_worker_json(array_merge($result, [
         'error_message' => (string)($freshScan['error_message'] ?? ''),
     ],
     'counts' => $counts,
+    'diagnostics' => ai_scan_diagnostics($scanId, $customerId),
+    'pages' => ai_scan_review_pages($scanId, $customerId),
+    'faqs' => ai_scan_review_faqs($scanId, $customerId),
 ]));

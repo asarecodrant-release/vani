@@ -163,20 +163,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$pages = ai_safe_rows(supabase(
-    'GET',
-    'ai_website_pages?select=*&scan_job_id=eq.' . urlencode($scanId)
-        . '&customer_id=eq.' . urlencode($customerId)
-        . '&page_status=in.(fetched,summarized)'
-        . '&order=created_at.asc&limit=100'
-));
-
-$faqs = ai_safe_rows(supabase(
-    'GET',
-    'ai_website_faqs?select=*&scan_job_id=eq.' . urlencode($scanId)
-        . '&customer_id=eq.' . urlencode($customerId)
-        . '&order=created_at.asc&limit=500'
-));
+$pages = ai_scan_review_pages($scanId, $customerId);
+$faqs = ai_scan_review_faqs($scanId, $customerId);
 
 $summarizedCount = 0;
 foreach ($pages as $page) {
@@ -338,17 +326,17 @@ body.dark .diag-error{color:#fca5a5}
     </summary>
 
     <div class="diag-grid">
-      <div class="diag-card"><span>Status</span><strong><?php echo ai_h($diagScan['status'] ?? ''); ?></strong></div>
-      <div class="diag-card"><span>Crawling</span><strong><?php echo (int)$crawlPercent; ?>%</strong></div>
-      <div class="diag-card"><span>Summarizing</span><strong><?php echo (int)$summaryPercent; ?>%</strong></div>
-      <div class="diag-card"><span>Last Activity</span><strong><?php echo ai_h($lastActivity); ?></strong></div>
-      <div class="diag-card"><span>Worker</span><strong><?php echo ai_h(($diagScan['worker_id'] ?? '') ?: '-'); ?></strong></div>
-      <div class="diag-card"><span>Requested</span><strong><?php echo (int)($diagScan['pages_requested'] ?? 0); ?></strong></div>
-      <div class="diag-card"><span>Pending</span><strong><?php echo (int)($diagCounts['pending'] ?? 0); ?></strong></div>
-      <div class="diag-card"><span>Fetched</span><strong><?php echo (int)($diagCounts['fetched'] ?? 0); ?></strong></div>
-      <div class="diag-card"><span>Summarized</span><strong><?php echo (int)($diagCounts['summarized'] ?? 0); ?></strong></div>
-      <div class="diag-card"><span>Failed</span><strong><?php echo (int)($diagCounts['failed'] ?? 0); ?></strong></div>
-      <div class="diag-card"><span>Lock Expires</span><strong><?php echo ai_h(ai_time_label($diagScan['locked_until'] ?? '')); ?></strong></div>
+      <div class="diag-card"><span>Status</span><strong id="diagStatus"><?php echo ai_h($diagScan['status'] ?? ''); ?></strong></div>
+      <div class="diag-card"><span>Crawling</span><strong id="diagCrawlPercent"><?php echo (int)$crawlPercent; ?>%</strong></div>
+      <div class="diag-card"><span>Summarizing</span><strong id="diagSummaryPercent"><?php echo (int)$summaryPercent; ?>%</strong></div>
+      <div class="diag-card"><span>Last Activity</span><strong id="diagLastActivity"><?php echo ai_h($lastActivity); ?></strong></div>
+      <div class="diag-card"><span>Worker</span><strong id="diagWorker"><?php echo ai_h(($diagScan['worker_id'] ?? '') ?: '-'); ?></strong></div>
+      <div class="diag-card"><span>Requested</span><strong id="diagRequested"><?php echo (int)($diagScan['pages_requested'] ?? 0); ?></strong></div>
+      <div class="diag-card"><span>Pending</span><strong id="diagPending"><?php echo (int)($diagCounts['pending'] ?? 0); ?></strong></div>
+      <div class="diag-card"><span>Fetched</span><strong id="diagFetched"><?php echo (int)($diagCounts['fetched'] ?? 0); ?></strong></div>
+      <div class="diag-card"><span>Summarized</span><strong id="diagSummarized"><?php echo (int)($diagCounts['summarized'] ?? 0); ?></strong></div>
+      <div class="diag-card"><span>Failed</span><strong id="diagFailed"><?php echo (int)($diagCounts['failed'] ?? 0); ?></strong></div>
+      <div class="diag-card"><span>Lock Expires</span><strong id="diagLockExpires"><?php echo ai_h(ai_time_label($diagScan['locked_until'] ?? '')); ?></strong></div>
       <div class="diag-card"><span>Crawl Batch</span><strong><?php echo (int)$diagnostics['settings']['crawl_batch_size']; ?> / <?php echo (int)$diagnostics['settings']['crawl_concurrency']; ?></strong></div>
       <div class="diag-card"><span>Render Service</span><strong><?php echo !empty($diagnostics['settings']['render_enabled']) ? 'Enabled' : 'Off'; ?></strong></div>
     </div>
@@ -356,14 +344,14 @@ body.dark .diag-error{color:#fca5a5}
     <div class="diag-actions">
       <button type="button" id="runScanBatchBtn">Run scan batch</button>
       <button type="button" id="runSummaryBatchBtn">Run summary batch</button>
-      <button class="btn" type="button" onclick="location.reload()">Refresh diagnostics</button>
+      <button class="btn" type="button" id="refreshLiveBtn">Refresh live data</button>
     </div>
 
     <div class="diag-section">
       <h3>Currently Scanning</h3>
       <table class="diag-table">
         <thead><tr><th>URL</th><th>Worker</th><th>Priority</th><th>Attempts</th><th>Lock Expires</th></tr></thead>
-        <tbody>
+        <tbody id="diagClaimedRows">
         <?php foreach ($diagnostics['claimed'] as $row): ?>
           <tr>
             <td class="diag-url" title="<?php echo ai_h($row['url'] ?? ''); ?>"><?php echo ai_h(ai_short_url_label((string)($row['url'] ?? ''))); ?></td>
@@ -382,7 +370,7 @@ body.dark .diag-error{color:#fca5a5}
       <h3>Next Pending URLs</h3>
       <table class="diag-table">
         <thead><tr><th>URL</th><th>Attempts</th><th>Next Retry</th><th>Error</th></tr></thead>
-        <tbody>
+        <tbody id="diagPendingRows">
         <?php foreach ($diagnostics['pending'] as $row): ?>
           <tr>
             <td class="diag-url" title="<?php echo ai_h($row['url'] ?? ''); ?>"><?php echo ai_h(ai_short_url_label((string)($row['url'] ?? ''))); ?></td>
@@ -400,7 +388,7 @@ body.dark .diag-error{color:#fca5a5}
       <h3>Failed Pages</h3>
       <table class="diag-table">
         <thead><tr><th>URL</th><th>HTTP</th><th>Attempts</th><th>Error</th><th>Updated</th></tr></thead>
-        <tbody>
+        <tbody id="diagFailedRows">
         <?php foreach ($diagnostics['failed'] as $row): ?>
           <tr>
             <td class="diag-url" title="<?php echo ai_h($row['url'] ?? ''); ?>"><?php echo ai_h(ai_short_url_label((string)($row['url'] ?? ''))); ?></td>
@@ -419,7 +407,7 @@ body.dark .diag-error{color:#fca5a5}
       <h3>Retry Waits</h3>
       <table class="diag-table">
         <thead><tr><th>Type</th><th>URL</th><th>Attempts</th><th>Next Retry</th><th>Error</th></tr></thead>
-        <tbody>
+        <tbody id="diagRetryRows">
         <?php foreach ($diagnostics['waiting_retry'] as $row): ?>
           <tr>
             <td><span class="diag-pill warn">crawl</span></td>
@@ -447,7 +435,7 @@ body.dark .diag-error{color:#fca5a5}
       <h3>Recent Activity</h3>
       <table class="diag-table">
         <thead><tr><th>Status</th><th>URL</th><th>HTTP</th><th>Text/Bytes</th><th>Links</th><th>Time</th></tr></thead>
-        <tbody>
+        <tbody id="diagRecentRows">
         <?php foreach ($diagnostics['recent_fetched'] as $row): ?>
           <tr>
             <td><span class="diag-pill"><?php echo ai_h($row['page_status'] ?? ''); ?></span></td>
@@ -467,7 +455,7 @@ body.dark .diag-error{color:#fca5a5}
       <h3>Content Quality Watchlist</h3>
       <table class="diag-table">
         <thead><tr><th>URL</th><th>Status</th><th>Clean Text</th><th>Signal</th></tr></thead>
-        <tbody>
+        <tbody id="diagQualityRows">
         <?php foreach ($diagnostics['quality'] as $row): ?>
           <?php $textLength = ai_text_length_from_page($row); ?>
           <tr>
@@ -494,7 +482,7 @@ body.dark .diag-error{color:#fca5a5}
   <div class="metrics">
     <div class="metric"><span>Captured Pages</span><strong id="capturedMetric"><?php echo count($pages); ?></strong></div>
     <div class="metric"><span>Summarized</span><strong id="summarizedMetric"><?php echo $summarizedCount; ?></strong></div>
-    <div class="metric"><span>Captured FAQs</span><strong><?php echo count($faqs); ?></strong></div>
+    <div class="metric"><span>Captured FAQs</span><strong id="faqMetric"><?php echo count($faqs); ?></strong></div>
     <div class="metric"><span>Scan Status</span><strong id="scanStatusMetric"><?php echo ai_h($scan['status'] ?? ''); ?></strong></div>
   </div>
 
@@ -506,13 +494,13 @@ body.dark .diag-error{color:#fca5a5}
       <?php endif; ?>
       <div class="page-tabs-wrap">
         <div class="page-tabs-meta">
-          <span><?php echo count($pages); ?> page<?php echo count($pages) === 1 ? '' : 's'; ?> captured</span>
+          <span id="pageTabsCount"><?php echo count($pages); ?> page<?php echo count($pages) === 1 ? '' : 's'; ?> captured</span>
           <span>Scroll tabs sideways to review all pages</span>
         </div>
-        <div class="page-tabs" role="tablist" aria-label="Captured pages">
+        <div class="page-tabs" id="pageTabs" role="tablist" aria-label="Captured pages">
           <?php foreach ($pages as $index => $page): ?>
             <?php $tabTitle = trim((string)($page['page_title'] ?? '')) ?: (parse_url((string)$page['url'], PHP_URL_PATH) ?: 'Untitled'); ?>
-            <button class="page-tab-label js-page-tab <?php echo $index === 0 ? 'is-selected' : ''; ?>" type="button" data-tab-target="page-panel-<?php echo (int)$index; ?>" title="<?php echo ai_h(($index + 1) . '. ' . $tabTitle); ?>">
+            <button class="page-tab-label js-page-tab <?php echo $index === 0 ? 'is-selected' : ''; ?>" type="button" data-page-id="<?php echo ai_h($page['id']); ?>" data-tab-target="page-panel-<?php echo ai_h($page['id']); ?>" title="<?php echo ai_h(($index + 1) . '. ' . $tabTitle); ?>">
               <span class="tab-number"><?php echo (int)($index + 1); ?></span>
               <span class="tab-title"><?php echo ai_h($tabTitle); ?></span>
             </button>
@@ -529,9 +517,10 @@ body.dark .diag-error{color:#fca5a5}
           <div class="row"><button type="submit">Add page</button></div>
         </form>
       </div>
+      <div id="pagePanels">
       <?php foreach ($pages as $index => $page): ?>
         <?php $summaryText = ai_summary_text_from_page($page); ?>
-        <article id="page-panel-<?php echo (int)$index; ?>" class="page-item page-panel <?php echo $index === 0 ? 'is-active' : ''; ?>">
+        <article id="page-panel-<?php echo ai_h($page['id']); ?>" class="page-item page-panel <?php echo $index === 0 ? 'is-active' : ''; ?>" data-page-id="<?php echo ai_h($page['id']); ?>">
           <strong class="page-title"><?php echo ai_h($page['page_title'] ?: parse_url((string)$page['url'], PHP_URL_PATH) ?: 'Untitled page'); ?></strong>
           <div class="url"><?php echo ai_h($page['url']); ?></div>
           <span class="status"><?php echo ai_h($page['page_status']); ?></span>
@@ -542,14 +531,14 @@ body.dark .diag-error{color:#fca5a5}
           </p>
 
           <label>Editable summary</label>
-          <textarea form="save-summary-<?php echo (int)$index; ?>" name="summary_text" placeholder="Summarize this page to generate editable summary."><?php echo ai_h($summaryText); ?></textarea>
+          <textarea form="save-summary-<?php echo ai_h($page['id']); ?>" name="summary_text" placeholder="Summarize this page to generate editable summary."><?php echo ai_h($summaryText); ?></textarea>
           <div class="summary-actions">
-            <form id="save-summary-<?php echo (int)$index; ?>" method="POST">
+            <form id="save-summary-<?php echo ai_h($page['id']); ?>" method="POST">
               <input type="hidden" name="action" value="save_summary">
               <input type="hidden" name="page_id" value="<?php echo ai_h($page['id']); ?>">
               <button type="submit">Save summary</button>
             </form>
-            <form method="POST">
+            <form method="POST" class="js-summarize-page-form">
               <input type="hidden" name="action" value="summarize_page">
               <input type="hidden" name="page_id" value="<?php echo ai_h($page['id']); ?>">
               <button type="submit">Summarize this page</button>
@@ -558,6 +547,7 @@ body.dark .diag-error{color:#fca5a5}
           <?php if (!empty($page['ai_error'])): ?><p class="muted"><?php echo ai_h($page['ai_error']); ?></p><?php endif; ?>
         </article>
       <?php endforeach; ?>
+      </div>
     </section>
 
     <aside class="panel faq-panel">
@@ -587,19 +577,12 @@ body.dark .diag-error{color:#fca5a5}
   </div>
 </main>
 <script>
-document.querySelectorAll(".js-page-tab").forEach((tab) => {
-  tab.addEventListener("click", () => {
-    const target = tab.dataset.tabTarget;
-    document.querySelectorAll(".js-page-tab").forEach((item) => item.classList.remove("is-selected"));
-    document.querySelectorAll(".page-panel").forEach((panel) => panel.classList.remove("is-active"));
-    tab.classList.add("is-selected");
-    document.getElementById(target)?.classList.add("is-active");
-  });
-});
-
 const shell = document.querySelector(".shell");
 const scanId = shell?.dataset.scanId || "";
 const workerCsrf = shell?.dataset.workerCsrf || "";
+const pageTabs = document.getElementById("pageTabs");
+const pagePanels = document.getElementById("pagePanels");
+const pageTabsCount = document.getElementById("pageTabsCount");
 const crawlTitle = document.getElementById("crawlTitle");
 const crawlText = document.getElementById("crawlText");
 const crawlBar = document.getElementById("crawlBar");
@@ -610,15 +593,33 @@ const summaryBar = document.getElementById("summaryBar");
 const summaryPercent = document.getElementById("summaryPercent");
 const capturedMetric = document.getElementById("capturedMetric");
 const summarizedMetric = document.getElementById("summarizedMetric");
+const faqMetric = document.getElementById("faqMetric");
 const scanStatusMetric = document.getElementById("scanStatusMetric");
 const summarizeAllBtn = document.getElementById("summarizeAllBtn");
 const runScanBatchBtn = document.getElementById("runScanBatchBtn");
 const runSummaryBatchBtn = document.getElementById("runSummaryBatchBtn");
+const refreshLiveBtn = document.getElementById("refreshLiveBtn");
 const diagLive = document.getElementById("diagLive");
 const diagLiveText = document.getElementById("diagLiveText");
 const diagLivePill = document.getElementById("diagLivePill");
 let scanBusy = false;
 let summaryBusy = false;
+let liveStatusBusy = false;
+
+function escapeHtml(value = "") {
+  return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#039;"
+  }[char]));
+}
+
+function cssEscape(value = "") {
+  if (window.CSS && typeof window.CSS.escape === "function") return CSS.escape(String(value));
+  return String(value).replace(/[^a-zA-Z0-9_-]/g, "\\$&");
+}
 
 function shortUrlLabel(url = "") {
   try {
@@ -628,6 +629,34 @@ function shortUrlLabel(url = "") {
     return url || "";
   }
 }
+
+function summaryTextFromPage(page = {}) {
+  const summary = page.summary_json || {};
+  if (summary && typeof summary === "object" && typeof summary.summary === "string") return summary.summary;
+  return "";
+}
+
+function pageTitle(page = {}) {
+  try {
+    return page.page_title || new URL(page.url || "").pathname || "Untitled page";
+  } catch (error) {
+    return page.page_title || "Untitled page";
+  }
+}
+
+function selectPageTab(target, pageId = "") {
+  document.querySelectorAll(".js-page-tab").forEach((item) => item.classList.remove("is-selected"));
+  document.querySelectorAll(".page-panel").forEach((panel) => panel.classList.remove("is-active"));
+  const tab = pageId ? document.querySelector(`.js-page-tab[data-page-id="${cssEscape(pageId)}"]`) : document.querySelector(`.js-page-tab[data-tab-target="${cssEscape(target)}"]`);
+  tab?.classList.add("is-selected");
+  document.getElementById(target)?.classList.add("is-active");
+}
+
+pageTabs?.addEventListener("click", (event) => {
+  const tab = event.target.closest(".js-page-tab");
+  if (!tab) return;
+  selectPageTab(tab.dataset.tabTarget || "", tab.dataset.pageId || "");
+});
 
 function setDiagnosticsLive(isRunning, text, pillText) {
   diagLive?.classList.toggle("is-running", Boolean(isRunning));
@@ -674,13 +703,191 @@ function updateWorkerUi(data, mode = "scan") {
   }
 }
 
-async function callWorker(action) {
+async function callWorker(action, extra = {}) {
   const form = new FormData();
   form.append("scan", scanId);
   form.append("action", action);
   form.append("csrf", workerCsrf);
+  Object.entries(extra).forEach(([key, value]) => form.append(key, value));
   const res = await fetch("AI_Scan_Worker.php", { method: "POST", body: form });
   return res.json();
+}
+
+function renderPageTab(page, index) {
+  const title = pageTitle(page);
+  return `<button class="page-tab-label js-page-tab" type="button" data-page-id="${escapeHtml(page.id)}" data-tab-target="page-panel-${escapeHtml(page.id)}" title="${escapeHtml(`${index + 1}. ${title}`)}">
+    <span class="tab-number">${index + 1}</span>
+    <span class="tab-title">${escapeHtml(title)}</span>
+  </button>`;
+}
+
+function renderPagePanel(page) {
+  const title = pageTitle(page);
+  const summary = summaryTextFromPage(page);
+  return `<article id="page-panel-${escapeHtml(page.id)}" class="page-item page-panel" data-page-id="${escapeHtml(page.id)}">
+    <strong class="page-title">${escapeHtml(title)}</strong>
+    <div class="url">${escapeHtml(page.url || "")}</div>
+    <span class="status">${escapeHtml(page.page_status || "")}</span>
+    <p class="muted">HTTP ${escapeHtml(page.http_status || "")}, ${escapeHtml(page.content_length || 0)} bytes, ${escapeHtml(page.discovered_links_count || 0)} links found</p>
+    <label>Editable summary</label>
+    <textarea form="save-summary-${escapeHtml(page.id)}" name="summary_text" placeholder="Summarize this page to generate editable summary.">${escapeHtml(summary)}</textarea>
+    <div class="summary-actions">
+      <form id="save-summary-${escapeHtml(page.id)}" method="POST">
+        <input type="hidden" name="action" value="save_summary">
+        <input type="hidden" name="page_id" value="${escapeHtml(page.id)}">
+        <button type="submit">Save summary</button>
+      </form>
+      <form method="POST" class="js-summarize-page-form">
+        <input type="hidden" name="action" value="summarize_page">
+        <input type="hidden" name="page_id" value="${escapeHtml(page.id)}">
+        <button type="submit">Summarize this page</button>
+      </form>
+    </div>
+    ${page.ai_error ? `<p class="muted">${escapeHtml(page.ai_error)}</p>` : ""}
+  </article>`;
+}
+
+function updatePages(pages = []) {
+  if (!pageTabs || !pagePanels) return;
+  const activePanel = document.querySelector(".page-panel.is-active");
+  const activePageId = activePanel?.dataset.pageId || "";
+  const addTab = pageTabs.querySelector(".add-tab");
+  pages.forEach((page, index) => {
+    let tab = pageTabs.querySelector(`.js-page-tab[data-page-id="${cssEscape(page.id)}"]`);
+    if (!tab) {
+      const wrapper = document.createElement("div");
+      wrapper.innerHTML = renderPageTab(page, index).trim();
+      tab = wrapper.firstElementChild;
+      pageTabs.insertBefore(tab, addTab);
+    }
+    tab.querySelector(".tab-number").textContent = String(index + 1);
+    tab.querySelector(".tab-title").textContent = pageTitle(page);
+    tab.title = `${index + 1}. ${pageTitle(page)}`;
+
+    let panel = document.getElementById(`page-panel-${page.id}`);
+    if (!panel) {
+      const wrapper = document.createElement("div");
+      wrapper.innerHTML = renderPagePanel(page).trim();
+      panel = wrapper.firstElementChild;
+      pagePanels.appendChild(panel);
+    } else {
+      panel.querySelector(".page-title").textContent = pageTitle(page);
+      panel.querySelector(".url").textContent = page.url || "";
+      panel.querySelector(".status").textContent = page.page_status || "";
+      const muted = panel.querySelector(".muted");
+      if (muted) muted.textContent = `HTTP ${page.http_status || ""}, ${page.content_length || 0} bytes, ${page.discovered_links_count || 0} links found`;
+      const textarea = panel.querySelector("textarea[name='summary_text']");
+      if (textarea && document.activeElement !== textarea && summaryTextFromPage(page) !== "") {
+        textarea.value = summaryTextFromPage(page);
+      }
+    }
+  });
+  if (pageTabsCount) pageTabsCount.textContent = `${pages.length} page${pages.length === 1 ? "" : "s"} captured`;
+  if (pages.length > 0 && (!document.querySelector(".page-panel.is-active") || activePanel?.id === "page-panel-add")) {
+    selectPageTab(`page-panel-${pages[0].id}`, pages[0].id);
+  } else if (activePageId) {
+    selectPageTab(`page-panel-${activePageId}`, activePageId);
+  }
+}
+
+function timeLabel(value = "") {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString();
+}
+
+function tableRows(rows, columns, emptyText) {
+  if (!rows || rows.length === 0) return `<tr><td colspan="${columns.length}" class="muted">${escapeHtml(emptyText)}</td></tr>`;
+  return rows.map((row) => `<tr>${columns.map((column) => `<td class="${column.className || ""}" title="${escapeHtml(column.title ? column.title(row) : "")}">${column.render(row)}</td>`).join("")}</tr>`).join("");
+}
+
+function updateDiagnostics(data = {}) {
+  const diagnostics = data.diagnostics || {};
+  const scan = diagnostics.scan || data.scan || {};
+  const counts = diagnostics.counts || data.counts || {};
+  const setText = (id, value) => { const node = document.getElementById(id); if (node) node.textContent = value; };
+  setText("diagStatus", scan.status || "");
+  setText("diagCrawlPercent", `${Number(counts.crawl_percent || 0)}%`);
+  setText("diagSummaryPercent", `${Number(counts.summary_percent || 0)}%`);
+  setText("diagLastActivity", timeLabel(scan.updated_at || ""));
+  setText("diagWorker", scan.worker_id || "-");
+  setText("diagRequested", scan.pages_requested || 0);
+  setText("diagPending", counts.pending || 0);
+  setText("diagFetched", counts.fetched || 0);
+  setText("diagSummarized", counts.summarized || 0);
+  setText("diagFailed", counts.failed || 0);
+  setText("diagLockExpires", timeLabel(scan.locked_until || ""));
+
+  const claimedRows = document.getElementById("diagClaimedRows");
+  if (claimedRows) claimedRows.innerHTML = tableRows(diagnostics.claimed || [], [
+    { render: (r) => escapeHtml(shortUrlLabel(r.url || "")), title: (r) => r.url || "", className: "diag-url" },
+    { render: (r) => escapeHtml(r.page_worker_id || "-") },
+    { render: (r) => escapeHtml(r.priority ?? "") },
+    { render: (r) => escapeHtml(r.crawl_attempts ?? "0") },
+    { render: (r) => escapeHtml(timeLabel(r.page_locked_until || "")) }
+  ], "No page is currently locked by a worker.");
+
+  const pendingRows = document.getElementById("diagPendingRows");
+  if (pendingRows) pendingRows.innerHTML = tableRows(diagnostics.pending || [], [
+    { render: (r) => escapeHtml(shortUrlLabel(r.url || "")), title: (r) => r.url || "", className: "diag-url" },
+    { render: (r) => escapeHtml(r.crawl_attempts ?? "0") },
+    { render: (r) => escapeHtml(timeLabel(r.next_retry_at || "")) },
+    { render: (r) => escapeHtml(r.ai_error || ""), className: "diag-error" }
+  ], "No pending pages.");
+
+  const failedRows = document.getElementById("diagFailedRows");
+  if (failedRows) failedRows.innerHTML = tableRows(diagnostics.failed || [], [
+    { render: (r) => escapeHtml(shortUrlLabel(r.url || "")), title: (r) => r.url || "", className: "diag-url" },
+    { render: (r) => escapeHtml(r.http_status || "") },
+    { render: (r) => escapeHtml(r.crawl_attempts ?? "0") },
+    { render: (r) => escapeHtml(r.ai_error || ""), className: "diag-error" },
+    { render: (r) => escapeHtml(timeLabel(r.updated_at || "")) }
+  ], "No failed pages.");
+
+  const retryRows = document.getElementById("diagRetryRows");
+  if (retryRows) {
+    const crawl = (diagnostics.waiting_retry || []).map((row) => ({...row, retry_type: "crawl"}));
+    const summary = (diagnostics.waiting_summary_retry || []).map((row) => ({...row, retry_type: "summary"}));
+    retryRows.innerHTML = tableRows([...crawl, ...summary], [
+      { render: (r) => `<span class="diag-pill warn">${escapeHtml(r.retry_type)}</span>` },
+      { render: (r) => escapeHtml(shortUrlLabel(r.url || "")), title: (r) => r.url || "", className: "diag-url" },
+      { render: (r) => escapeHtml(r.retry_type === "summary" ? (r.summary_attempts ?? "0") : (r.crawl_attempts ?? "0")) },
+      { render: (r) => escapeHtml(timeLabel(r.retry_type === "summary" ? r.summary_next_retry_at : r.next_retry_at)) },
+      { render: (r) => escapeHtml(r.ai_error || ""), className: "diag-error" }
+    ], "No pages are waiting for retry.");
+  }
+
+  const recentRows = document.getElementById("diagRecentRows");
+  if (recentRows) recentRows.innerHTML = tableRows(diagnostics.recent_fetched || [], [
+    { render: (r) => `<span class="diag-pill">${escapeHtml(r.page_status || "")}</span>` },
+    { render: (r) => escapeHtml(shortUrlLabel(r.url || "")), title: (r) => r.url || "", className: "diag-url" },
+    { render: (r) => escapeHtml(r.http_status || "") },
+    { render: (r) => escapeHtml(r.content_length || "0") },
+    { render: (r) => escapeHtml(r.discovered_links_count || "0") },
+    { render: (r) => escapeHtml(timeLabel(r.fetched_at || r.updated_at || "")) }
+  ], "No fetched pages yet.");
+
+  const qualityRows = document.getElementById("diagQualityRows");
+  if (qualityRows) qualityRows.innerHTML = tableRows(diagnostics.quality || [], [
+    { render: (r) => escapeHtml(shortUrlLabel(r.url || "")), title: (r) => r.url || "", className: "diag-url" },
+    { render: (r) => escapeHtml(r.page_status || "") },
+    { render: (r) => escapeHtml((r.clean_text || "").length || r.content_length || 0) },
+    { render: (r) => {
+      const length = (r.clean_text || "").length || Number(r.content_length || 0);
+      if (length < 300) return '<span class="diag-pill bad">very low text</span>';
+      if (length < 900) return '<span class="diag-pill warn">short text</span>';
+      return '<span class="diag-pill">ok</span>';
+    } }
+  ], "No content quality data yet.");
+}
+
+function applyLiveData(data = {}, mode = "scan") {
+  updateWorkerUi(data, mode);
+  updateDiagnostics(data);
+  updatePages(data.pages || []);
+  if (capturedMetric && data.pages) capturedMetric.textContent = String(data.pages.length);
+  if (faqMetric && data.faqs) faqMetric.textContent = String(data.faqs.length);
 }
 
 async function processScanBatch() {
@@ -689,15 +896,8 @@ async function processScanBatch() {
   setDiagnosticsLive(true, "Scanning batch...", "Working");
   try {
     const data = await callWorker("scan_batch");
-    updateWorkerUi(data, "scan");
+    applyLiveData(data, "scan");
     const scan = data.scan || {};
-    const counts = data.counts || {};
-    const reloadKey = `ai-scan-reloaded-${scanId}`;
-    if ((scan.status === "completed" || scan.status === "failed") && Number(counts.total || 0) !== <?php echo count($pages); ?> && !sessionStorage.getItem(reloadKey)) {
-      sessionStorage.setItem(reloadKey, "1");
-      location.reload();
-      return;
-    }
     if (scan.status === "pending" || scan.status === "running") {
       setTimeout(processScanBatch, 900);
     }
@@ -717,12 +917,10 @@ async function processSummaryBatches() {
     let keepGoing = true;
     while (keepGoing) {
       const data = await callWorker("summarize_batch");
-      updateWorkerUi(data, "summary");
+      applyLiveData(data, "summary");
       keepGoing = Boolean(data.remaining) && !data.error;
       await new Promise((resolve) => setTimeout(resolve, 350));
     }
-    sessionStorage.removeItem(`ai-scan-reloaded-${scanId}`);
-    location.reload();
   } catch (error) {
     if (summaryText) summaryText.textContent = "Summarization worker failed. Try again.";
   } finally {
@@ -737,8 +935,7 @@ runScanBatchBtn?.addEventListener("click", async () => {
   setDiagnosticsLive(true, "Scanning batch...", "Working");
   try {
     const data = await callWorker("scan_batch");
-    updateWorkerUi(data, "scan");
-    location.reload();
+    applyLiveData(data, "scan");
   } finally {
     runScanBatchBtn.disabled = false;
   }
@@ -747,15 +944,50 @@ runSummaryBatchBtn?.addEventListener("click", async () => {
   runSummaryBatchBtn.disabled = true;
   try {
     const data = await callWorker("summarize_batch");
-    updateWorkerUi(data, "summary");
-    location.reload();
+    applyLiveData(data, "summary");
   } finally {
     runSummaryBatchBtn.disabled = false;
   }
 });
+refreshLiveBtn?.addEventListener("click", refreshLiveStatus);
 if (shell?.dataset.scanStatus === "pending" || shell?.dataset.scanStatus === "running") {
   processScanBatch();
 }
+
+document.addEventListener("submit", async (event) => {
+  const form = event.target.closest(".js-summarize-page-form");
+  if (!form) return;
+  event.preventDefault();
+  const button = form.querySelector("button");
+  const pageId = form.querySelector("input[name='page_id']")?.value || "";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Summarizing...";
+  }
+  try {
+    const data = await callWorker("summarize_page", { page_id: pageId });
+    applyLiveData(data, "summary");
+    selectPageTab(`page-panel-${pageId}`, pageId);
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = "Summarize this page";
+    }
+  }
+});
+
+async function refreshLiveStatus() {
+  if (!scanId || liveStatusBusy) return;
+  liveStatusBusy = true;
+  try {
+    const data = await callWorker("status");
+    applyLiveData(data, "scan");
+  } finally {
+    liveStatusBusy = false;
+  }
+}
+
+setInterval(refreshLiveStatus, 2500);
 </script>
 </body>
 </html>
