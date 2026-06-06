@@ -1266,6 +1266,8 @@ create table if not exists public.ai_scan_jobs (
   pages_scanned integer not null default 0,
   pages_failed integer not null default 0,
   error_message text,
+  worker_id text,
+  locked_until timestamptz,
   started_at timestamptz,
   completed_at timestamptz,
   created_at timestamptz not null default now(),
@@ -1277,6 +1279,15 @@ on public.ai_scan_jobs(customer_id);
 
 create index if not exists ai_scan_jobs_status_idx
 on public.ai_scan_jobs(status);
+
+alter table public.ai_scan_jobs
+  add column if not exists worker_id text;
+
+alter table public.ai_scan_jobs
+  add column if not exists locked_until timestamptz;
+
+create index if not exists ai_scan_jobs_worker_idx
+on public.ai_scan_jobs(status, locked_until);
 
 create table if not exists public.ai_website_pages (
   id uuid primary key default gen_random_uuid(),
@@ -1323,11 +1334,29 @@ alter table public.ai_website_pages
 alter table public.ai_website_pages
   add column if not exists summary_edited boolean not null default false;
 
+alter table public.ai_website_pages
+  add column if not exists crawl_attempts integer not null default 0;
+
+alter table public.ai_website_pages
+  add column if not exists next_retry_at timestamptz;
+
+alter table public.ai_website_pages
+  add column if not exists summary_attempts integer not null default 0;
+
+alter table public.ai_website_pages
+  add column if not exists summary_next_retry_at timestamptz;
+
 create index if not exists ai_website_pages_scan_job_id_idx
 on public.ai_website_pages(scan_job_id);
 
 create index if not exists ai_website_pages_customer_id_idx
 on public.ai_website_pages(customer_id);
+
+create index if not exists ai_website_pages_pending_idx
+on public.ai_website_pages(scan_job_id, page_status, next_retry_at);
+
+create index if not exists ai_website_pages_summary_idx
+on public.ai_website_pages(scan_job_id, page_status, summary_next_retry_at);
 
 create table if not exists public.ai_website_faqs (
   id uuid primary key default gen_random_uuid(),

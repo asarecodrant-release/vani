@@ -43,18 +43,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['setup_business_type'] = 'AI Website';
             $_SESSION['ai_chatbot_website_url'] = $websiteUrl;
 
-            $scanJob = ai_create_scan_job($savedCustomerId, $email, $websiteUrl, $websiteDomain, 30);
+            $pagesRequested = (int)ai_env('AI_CRAWL_MAX_PAGES', '120');
+            $scanJob = ai_create_scan_job($savedCustomerId, $email, $websiteUrl, $websiteDomain, $pagesRequested);
             if (empty($scanJob['success'])) {
                 $error = (string)$scanJob['error'];
             } else {
                 $scanJobId = (string)$scanJob['job_id'];
-                $scanResult = ai_process_scan_job($scanJobId, $savedCustomerId, $websiteUrl, $websiteDomain, 30);
-                if (!empty($scanResult['success'])) {
+                $seedResult = ai_seed_scan_job($scanJobId, $savedCustomerId, $websiteUrl, $websiteDomain, $pagesRequested);
+                if (!empty($seedResult['success'])) {
                     $_SESSION['ai_scan_job_id'] = $scanJobId;
                     header('Location: AI_Summarize.php?scan=' . urlencode($scanJobId));
                     exit;
                 } else {
-                    $error = 'Website was saved, but pages could not be captured. Scan job: ' . $scanJobId;
+                    $error = 'Website was saved, but crawlable pages could not be queued. Scan job: ' . $scanJobId;
                 }
             }
         }

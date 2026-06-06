@@ -62,6 +62,10 @@ if (empty($scan)) {
 }
 $scanId = (string)$scan['id'];
 $_SESSION['ai_scan_job_id'] = $scanId;
+if (empty($_SESSION['ai_worker_csrf'])) {
+    $_SESSION['ai_worker_csrf'] = bin2hex(random_bytes(24));
+}
+$workerCsrf = (string)$_SESSION['ai_worker_csrf'];
 
 $message = '';
 $error = '';
@@ -82,24 +86,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!ai_is_configured()) {
             $error = 'AI provider is not configured.';
         } else {
-            $pagesToSummarize = ai_safe_rows(supabase(
-                'GET',
-                'ai_website_pages?select=id&page_status=neq.summarized&scan_job_id=eq.' . urlencode($scanId)
-                    . '&customer_id=eq.' . urlencode($customerId)
-                    . '&order=created_at.asc&limit=60'
-            ));
-            $done = 0;
-            $failed = 0;
-            foreach ($pagesToSummarize as $page) {
-                $result = ai_summarize_scanned_page((string)$page['id'], $customerId);
-                if (!empty($result['success'])) {
-                    $done++;
-                } else {
-                    $failed++;
-                }
-            }
-            $message = 'Summarized ' . $done . ' page(s).';
-            $error = $failed > 0 ? $failed . ' page(s) could not be summarized.' : '';
+            $message = 'Summarization will run in the background on this page.';
         }
     } elseif ($action === 'add_page') {
         $pageUrl = trim((string)($_POST['page_url'] ?? ''));
@@ -220,6 +207,11 @@ textarea{min-height:120px;resize:vertical;line-height:1.5}
 .faq textarea{min-height:96px}
 .faq:first-child{border-top:0}
 .muted{color:var(--muted);font-size:13px;line-height:1.5}
+.progress-strip{display:flex;justify-content:space-between;gap:12px;align-items:center;border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:12px 14px;margin-bottom:16px}
+.progress-strip strong{display:block;font-size:14px}
+.progress-strip span{color:var(--muted);font-size:13px}
+.progress-bar{height:8px;flex:1;min-width:120px;border-radius:999px;background:var(--soft);overflow:hidden}
+.progress-bar i{display:block;height:100%;width:0;background:#2563eb;transition:width .25s ease}
 @media(max-width:1100px){.grid{grid-template-columns:minmax(0,1fr) minmax(300px,.72fr)}.page-tab-label{max-width:170px}}
 @media(max-width:860px){.grid,.metrics{grid-template-columns:1fr}.top{display:grid}.faq-panel{position:static;max-height:none}.page-tab-label{max-width:180px}.shell{padding:26px 14px 56px}}
 @media(max-width:560px){.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.panel{padding:14px}.top h1{font-size:26px}.page-tabs-meta{display:grid}.page-tab-label{max-width:150px}.summary-actions button,.summary-actions form{width:100%}.summary-actions button{width:100%}}
@@ -227,14 +219,14 @@ textarea{min-height:120px;resize:vertical;line-height:1.5}
 </head>
 <body>
 <?php include 'navbar.php'; ?>
-<main class="shell">
+<main class="shell" data-scan-id="<?php echo ai_h($scanId); ?>" data-scan-status="<?php echo ai_h($scan['status'] ?? ''); ?>" data-worker-csrf="<?php echo ai_h($workerCsrf); ?>">
   <div class="top">
     <div>
       <h1>Review captured website pages</h1>
       <p><?php echo ai_h($scan['website_domain'] ?? ''); ?> pages are captured first. Summaries and FAQs can be reviewed and edited here.</p>
     </div>
     <div class="actions">
-      <form method="POST"><input type="hidden" name="action" value="summarize_all"><button type="submit">Summarize all pages</button></form>
+      <button type="button" id="summarizeAllBtn">Summarize all pages</button>
       <button class="btn" type="button" data-theme-toggle>Bright Mode</button>
       <a class="btn" href="AI_Chatbot_Setup.php">Scan another website</a>
     </div>
@@ -243,11 +235,19 @@ textarea{min-height:120px;resize:vertical;line-height:1.5}
   <?php if ($message !== ''): ?><div class="message success"><?php echo ai_h($message); ?></div><?php endif; ?>
   <?php if ($error !== ''): ?><div class="message error"><?php echo ai_h($error); ?></div><?php endif; ?>
 
+  <div class="progress-strip" aria-live="polite">
+    <div>
+      <strong id="workerTitle">Website scan <?php echo ai_h($scan['status'] ?? 'pending'); ?></strong>
+      <span id="workerText">Captured <?php echo count($pages); ?> of <?php echo (int)($scan['pages_requested'] ?? 0); ?> requested pages.</span>
+    </div>
+    <div class="progress-bar" aria-hidden="true"><i id="workerBar"></i></div>
+  </div>
+
   <div class="metrics">
-    <div class="metric"><span>Captured Pages</span><strong><?php echo count($pages); ?></strong></div>
-    <div class="metric"><span>Summarized</span><strong><?php echo $summarizedCount; ?></strong></div>
+    <div class="metric"><span>Captured Pages</span><strong id="capturedMetric"><?php echo count($pages); ?></strong></div>
+    <div class="metric"><span>Summarized</span><strong id="summarizedMetric"><?php echo $summarizedCount; ?></strong></div>
     <div class="metric"><span>Captured FAQs</span><strong><?php echo count($faqs); ?></strong></div>
-    <div class="metric"><span>Scan Status</span><strong><?php echo ai_h($scan['status'] ?? ''); ?></strong></div>
+    <div class="metric"><span>Scan Status</span><strong id="scanStatusMetric"><?php echo ai_h($scan['status'] ?? ''); ?></strong></div>
   </div>
 
   <div class="grid">
@@ -348,6 +348,100 @@ document.querySelectorAll(".js-page-tab").forEach((tab) => {
     document.getElementById(target)?.classList.add("is-active");
   });
 });
+
+const shell = document.querySelector(".shell");
+const scanId = shell?.dataset.scanId || "";
+const workerCsrf = shell?.dataset.workerCsrf || "";
+const workerTitle = document.getElementById("workerTitle");
+const workerText = document.getElementById("workerText");
+const workerBar = document.getElementById("workerBar");
+const capturedMetric = document.getElementById("capturedMetric");
+const summarizedMetric = document.getElementById("summarizedMetric");
+const scanStatusMetric = document.getElementById("scanStatusMetric");
+const summarizeAllBtn = document.getElementById("summarizeAllBtn");
+let scanBusy = false;
+let summaryBusy = false;
+
+function updateWorkerUi(data, mode = "scan") {
+  const counts = data?.counts || {};
+  const scan = data?.scan || {};
+  const requested = Number(scan.pages_requested || 0);
+  const captured = Number(counts.scanned || 0);
+  const summarized = Number(counts.summarized || 0);
+  const failed = Number(counts.failed || 0);
+  const totalDone = captured + failed;
+  const percent = requested > 0 ? Math.min(100, Math.round((totalDone / requested) * 100)) : 0;
+  if (workerBar) workerBar.style.width = `${percent}%`;
+  if (capturedMetric) capturedMetric.textContent = String(captured);
+  if (summarizedMetric) summarizedMetric.textContent = String(summarized);
+  if (scanStatusMetric) scanStatusMetric.textContent = scan.status || "";
+  if (workerTitle) workerTitle.textContent = mode === "summary" ? "Summarization running" : `Website scan ${scan.status || "pending"}`;
+  if (workerText) {
+    workerText.textContent = mode === "summary"
+      ? `Summarized ${summarized} page(s). ${captured - summarized} fetched page(s) still need summaries.`
+      : `Captured ${captured} page(s), failed ${failed}, ${Number(counts.pending || 0)} still queued.`;
+  }
+}
+
+async function callWorker(action) {
+  const form = new FormData();
+  form.append("scan", scanId);
+  form.append("action", action);
+  form.append("csrf", workerCsrf);
+  const res = await fetch("AI_Scan_Worker.php", { method: "POST", body: form });
+  return res.json();
+}
+
+async function processScanBatch() {
+  if (!scanId || scanBusy) return;
+  scanBusy = true;
+  try {
+    const data = await callWorker("scan_batch");
+    updateWorkerUi(data, "scan");
+    const scan = data.scan || {};
+    const counts = data.counts || {};
+    const reloadKey = `ai-scan-reloaded-${scanId}`;
+    if ((scan.status === "completed" || scan.status === "failed") && Number(counts.total || 0) !== <?php echo count($pages); ?> && !sessionStorage.getItem(reloadKey)) {
+      sessionStorage.setItem(reloadKey, "1");
+      location.reload();
+      return;
+    }
+    if (scan.status === "pending" || scan.status === "running") {
+      setTimeout(processScanBatch, 900);
+    }
+  } catch (error) {
+    if (workerText) workerText.textContent = "Worker could not update scan progress. Refresh to retry.";
+  } finally {
+    scanBusy = false;
+  }
+}
+
+async function processSummaryBatches() {
+  if (!scanId || summaryBusy) return;
+  summaryBusy = true;
+  if (summarizeAllBtn) summarizeAllBtn.disabled = true;
+  try {
+    let keepGoing = true;
+    while (keepGoing) {
+      const data = await callWorker("summarize_batch");
+      updateWorkerUi(data, "summary");
+      keepGoing = Boolean(data.remaining) && !data.error;
+      await new Promise((resolve) => setTimeout(resolve, 350));
+    }
+    sessionStorage.removeItem(`ai-scan-reloaded-${scanId}`);
+    location.reload();
+  } catch (error) {
+    if (workerText) workerText.textContent = "Summarization worker failed. Try again.";
+  } finally {
+    summaryBusy = false;
+    if (summarizeAllBtn) summarizeAllBtn.disabled = false;
+  }
+}
+
+summarizeAllBtn?.addEventListener("click", processSummaryBatches);
+if (shell?.dataset.scanStatus === "pending" || shell?.dataset.scanStatus === "running") {
+  processScanBatch();
+}
 </script>
 </body>
 </html>
