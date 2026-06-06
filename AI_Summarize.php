@@ -369,17 +369,18 @@ body.dark .diag-error{color:#fca5a5}
     <div class="diag-section">
       <h3>Next Pending URLs</h3>
       <table class="diag-table">
-        <thead><tr><th>URL</th><th>Attempts</th><th>Next Retry</th><th>Error</th></tr></thead>
+        <thead><tr><th>URL</th><th>Signal</th><th>Attempts</th><th>Next Retry</th><th>Error</th></tr></thead>
         <tbody id="diagPendingRows">
         <?php foreach ($diagnostics['pending'] as $row): ?>
           <tr>
             <td class="diag-url" title="<?php echo ai_h($row['url'] ?? ''); ?>"><?php echo ai_h(ai_short_url_label((string)($row['url'] ?? ''))); ?></td>
+            <td><span class="diag-pill"><?php echo ai_h($row['diagnostic_label'] ?? 'queued'); ?></span></td>
             <td><?php echo ai_h($row['crawl_attempts'] ?? '0'); ?></td>
             <td><?php echo ai_h(ai_time_label($row['next_retry_at'] ?? '')); ?></td>
             <td class="diag-error"><?php echo ai_h($row['ai_error'] ?? ''); ?></td>
           </tr>
         <?php endforeach; ?>
-        <?php if (empty($diagnostics['pending'])): ?><tr><td colspan="4" class="muted">No pending pages.</td></tr><?php endif; ?>
+        <?php if (empty($diagnostics['pending'])): ?><tr><td colspan="5" class="muted">No pending pages.</td></tr><?php endif; ?>
         </tbody>
       </table>
     </div>
@@ -387,18 +388,19 @@ body.dark .diag-error{color:#fca5a5}
     <div class="diag-section">
       <h3>Failed Pages</h3>
       <table class="diag-table">
-        <thead><tr><th>URL</th><th>HTTP</th><th>Attempts</th><th>Error</th><th>Updated</th></tr></thead>
+        <thead><tr><th>URL</th><th>Signal</th><th>HTTP</th><th>Attempts</th><th>Error</th><th>Updated</th></tr></thead>
         <tbody id="diagFailedRows">
         <?php foreach ($diagnostics['failed'] as $row): ?>
           <tr>
             <td class="diag-url" title="<?php echo ai_h($row['url'] ?? ''); ?>"><?php echo ai_h(ai_short_url_label((string)($row['url'] ?? ''))); ?></td>
+            <td><span class="diag-pill bad"><?php echo ai_h($row['diagnostic_label'] ?? 'failed'); ?></span></td>
             <td><?php echo ai_h($row['http_status'] ?? ''); ?></td>
             <td><?php echo ai_h($row['crawl_attempts'] ?? '0'); ?></td>
             <td class="diag-error"><?php echo ai_h($row['ai_error'] ?? ''); ?></td>
             <td><?php echo ai_h(ai_time_label($row['updated_at'] ?? '')); ?></td>
           </tr>
         <?php endforeach; ?>
-        <?php if (empty($diagnostics['failed'])): ?><tr><td colspan="5" class="muted">No failed pages.</td></tr><?php endif; ?>
+        <?php if (empty($diagnostics['failed'])): ?><tr><td colspan="6" class="muted">No failed pages.</td></tr><?php endif; ?>
         </tbody>
       </table>
     </div>
@@ -434,11 +436,12 @@ body.dark .diag-error{color:#fca5a5}
     <div class="diag-section">
       <h3>Recent Activity</h3>
       <table class="diag-table">
-        <thead><tr><th>Status</th><th>URL</th><th>HTTP</th><th>Text/Bytes</th><th>Links</th><th>Time</th></tr></thead>
+        <thead><tr><th>Status</th><th>Signal</th><th>URL</th><th>HTTP</th><th>Text/Bytes</th><th>Links</th><th>Time</th></tr></thead>
         <tbody id="diagRecentRows">
         <?php foreach ($diagnostics['recent_fetched'] as $row): ?>
           <tr>
             <td><span class="diag-pill"><?php echo ai_h($row['page_status'] ?? ''); ?></span></td>
+            <td><span class="diag-pill"><?php echo ai_h($row['diagnostic_label'] ?? 'ok'); ?></span></td>
             <td class="diag-url" title="<?php echo ai_h($row['url'] ?? ''); ?>"><?php echo ai_h(ai_short_url_label((string)($row['url'] ?? ''))); ?></td>
             <td><?php echo ai_h($row['http_status'] ?? ''); ?></td>
             <td><?php echo ai_h($row['content_length'] ?? '0'); ?></td>
@@ -446,7 +449,25 @@ body.dark .diag-error{color:#fca5a5}
             <td><?php echo ai_h(ai_time_label($row['fetched_at'] ?? $row['updated_at'] ?? '')); ?></td>
           </tr>
         <?php endforeach; ?>
-        <?php if (empty($diagnostics['recent_fetched'])): ?><tr><td colspan="6" class="muted">No fetched pages yet.</td></tr><?php endif; ?>
+        <?php if (empty($diagnostics['recent_fetched'])): ?><tr><td colspan="7" class="muted">No fetched pages yet.</td></tr><?php endif; ?>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="diag-section">
+      <h3>Recent Crawler Signals</h3>
+      <table class="diag-table">
+        <thead><tr><th>Signal</th><th>URL</th><th>Message</th><th>Time</th></tr></thead>
+        <tbody id="diagLogRows">
+        <?php foreach ($diagnostics['logs'] as $row): ?>
+          <tr>
+            <td><span class="diag-pill <?php echo ($row['severity'] ?? '') === 'error' ? 'bad' : (($row['severity'] ?? '') === 'warning' ? 'warn' : ''); ?>"><?php echo ai_h($row['event_type'] ?? ''); ?></span></td>
+            <td class="diag-url" title="<?php echo ai_h($row['url'] ?? ''); ?>"><?php echo ai_h(ai_short_url_label((string)($row['url'] ?? ''))); ?></td>
+            <td class="diag-error"><?php echo ai_h($row['message'] ?? ''); ?></td>
+            <td><?php echo ai_h(ai_time_label($row['created_at'] ?? '')); ?></td>
+          </tr>
+        <?php endforeach; ?>
+        <?php if (empty($diagnostics['logs'])): ?><tr><td colspan="4" class="muted">No crawler signals yet.</td></tr><?php endif; ?>
         </tbody>
       </table>
     </div>
@@ -831,6 +852,7 @@ function updateDiagnostics(data = {}) {
   const pendingRows = document.getElementById("diagPendingRows");
   if (pendingRows) pendingRows.innerHTML = tableRows(diagnostics.pending || [], [
     { render: (r) => escapeHtml(shortUrlLabel(r.url || "")), title: (r) => r.url || "", className: "diag-url" },
+    { render: (r) => `<span class="diag-pill">${escapeHtml(r.diagnostic_label || "queued")}</span>` },
     { render: (r) => escapeHtml(r.crawl_attempts ?? "0") },
     { render: (r) => escapeHtml(timeLabel(r.next_retry_at || "")) },
     { render: (r) => escapeHtml(r.ai_error || ""), className: "diag-error" }
@@ -839,6 +861,7 @@ function updateDiagnostics(data = {}) {
   const failedRows = document.getElementById("diagFailedRows");
   if (failedRows) failedRows.innerHTML = tableRows(diagnostics.failed || [], [
     { render: (r) => escapeHtml(shortUrlLabel(r.url || "")), title: (r) => r.url || "", className: "diag-url" },
+    { render: (r) => `<span class="diag-pill bad">${escapeHtml(r.diagnostic_label || "failed")}</span>` },
     { render: (r) => escapeHtml(r.http_status || "") },
     { render: (r) => escapeHtml(r.crawl_attempts ?? "0") },
     { render: (r) => escapeHtml(r.ai_error || ""), className: "diag-error" },
@@ -861,6 +884,7 @@ function updateDiagnostics(data = {}) {
   const recentRows = document.getElementById("diagRecentRows");
   if (recentRows) recentRows.innerHTML = tableRows(diagnostics.recent_fetched || [], [
     { render: (r) => `<span class="diag-pill">${escapeHtml(r.page_status || "")}</span>` },
+    { render: (r) => `<span class="diag-pill">${escapeHtml(r.diagnostic_label || "ok")}</span>` },
     { render: (r) => escapeHtml(shortUrlLabel(r.url || "")), title: (r) => r.url || "", className: "diag-url" },
     { render: (r) => escapeHtml(r.http_status || "") },
     { render: (r) => escapeHtml(r.content_length || "0") },
@@ -880,6 +904,14 @@ function updateDiagnostics(data = {}) {
       return '<span class="diag-pill">ok</span>';
     } }
   ], "No content quality data yet.");
+
+  const logRows = document.getElementById("diagLogRows");
+  if (logRows) logRows.innerHTML = tableRows(diagnostics.logs || [], [
+    { render: (r) => `<span class="diag-pill ${r.severity === "error" ? "bad" : (r.severity === "warning" ? "warn" : "")}">${escapeHtml(r.event_type || "")}</span>` },
+    { render: (r) => escapeHtml(shortUrlLabel(r.url || "")), title: (r) => r.url || "", className: "diag-url" },
+    { render: (r) => escapeHtml(r.message || ""), className: "diag-error" },
+    { render: (r) => escapeHtml(timeLabel(r.created_at || "")) }
+  ], "No crawler signals yet.");
 }
 
 function applyLiveData(data = {}, mode = "scan") {

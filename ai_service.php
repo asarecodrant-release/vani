@@ -84,6 +84,10 @@ function ai_supabase_upsert(string $table, array $rows, string $conflictColumns)
     );
 }
 
+function ai_supabase_rpc(string $functionName, array $payload = []): array {
+    return ai_supabase_custom('POST', 'rpc/' . rawurlencode($functionName), $payload);
+}
+
 function ai_now(): string {
     return gmdate('Y-m-d\TH:i:s\Z');
 }
@@ -129,6 +133,23 @@ function ai_db_supports_crawl_logs(): bool {
     }
     $probe = supabase('GET', 'ai_crawl_logs?select=id&limit=1');
     $supported = ($probe['status'] ?? 0) >= 200 && ($probe['status'] ?? 0) < 300;
+    return $supported;
+}
+
+function ai_db_supports_page_claim_rpc(): bool {
+    static $supported = null;
+    if ($supported !== null) {
+        return $supported;
+    }
+    $probe = ai_supabase_rpc('ai_claim_pending_pages', [
+        'p_scan_job_id' => '00000000-0000-0000-0000-000000000000',
+        'p_customer_id' => '00000000-0000-0000-0000-000000000000',
+        'p_worker_id' => 'probe',
+        'p_limit' => 1,
+        'p_lock_seconds' => 1,
+    ]);
+    $status = (int)($probe['status'] ?? 0);
+    $supported = $status >= 200 && $status < 300;
     return $supported;
 }
 
@@ -453,6 +474,24 @@ function ai_default_allow_url_patterns(): array {
     ];
 }
 
+function ai_domain_block_url_patterns(string $websiteDomain): array {
+    $domain = strtolower($websiteDomain);
+    if (strpos($domain, 'airbnb.') !== false || $domain === 'airbnb.com') {
+        return [
+            '/\/s(?:\/|$|\?)/i',
+            '/\/rooms\/[0-9a-z-]+/i',
+            '/\/experiences\/[0-9a-z-]+/i',
+            '/\/users\/show\//i',
+            '/\/wishlists?(?:\/|$)/i',
+            '/\/trips(?:\/|$)/i',
+            '/\/host(?:\/|$)/i',
+            '/\/hosting(?:\/|$)/i',
+            '/[?&](?:checkin|checkout|adults|children|infants|pets|guests|price_min|price_max|place_id|ne_lat|ne_lng|sw_lat|sw_lng)=/i',
+        ];
+    }
+    return [];
+}
+
 function ai_should_scan_url(string $url, string $websiteDomain): bool {
     if ($url === '' || ai_host_from_value($url) !== $websiteDomain) {
         return false;
@@ -470,7 +509,7 @@ function ai_should_scan_url(string $url, string $websiteDomain): bool {
         return true;
     }
 
-    $blockPatterns = array_merge(ai_default_block_url_patterns(), ai_env_list('AI_CRAWL_BLOCK_PATTERNS'));
+    $blockPatterns = array_merge(ai_default_block_url_patterns(), ai_domain_block_url_patterns($websiteDomain), ai_env_list('AI_CRAWL_BLOCK_PATTERNS'));
     if (ai_url_matches_any_pattern($url, $blockPatterns)) {
         return false;
     }
@@ -526,6 +565,63 @@ function ai_page_source_from_url(string $url, string $default = 'crawl'): string
         return 'document';
     }
     return $default;
+}
+
+function ai_detect_js_challenge_html(string $html): bool {
+    $sample = strtolower(substr($html, 0, 5000));
+    return strpos($sample, 'document.cookie') !== false && strpos($sample, 'location.href') !== false
+        || strpos($sample, 'requires javascript') !== false
+        || strpos($sample, 'cf-browser-verification') !== false
+        || strpos($sample, 'cloudflare') !== false && strpos($sample, 'challenge') !== false
+        || strpos($sample, '/aes.js') !== false;
+}
+
+function ai_diagnostic_label(array $row): string {
+    $error = strtolower((string)($row['ai_error'] ?? ''));
+    $status = (int)($row['http_status'] ?? 0);
+    $url = strtolower((string)($row['url'] ?? ''));
+    $textLength = strlen(trim((string)($row['clean_text'] ?? '')));
+    if (strpos($error, 'robots') !== false) {
+        return 'blocked by robots';
+    }
+    if (strpos($error, 'js challenge') !== false || strpos($error, 'javascript challenge') !== false || strpos($error, 'challenge') !== false) {
+        return 'JS challenge';
+    }
+    if (strpos($error, 'timed out') !== false || strpos($error, 'timeout') !== false || strpos($error, 'operation timed') !== false) {
+        return 'timeout';
+    }
+    if (strpos($error, 'duplicate') !== false || strpos($error, 'unchanged') !== false) {
+        return 'duplicate skipped';
+    }
+    if (strpos($error, 'marketplace') !== false || ai_url_matches_any_pattern($url, ai_default_block_url_patterns())) {
+        return 'marketplace/filter URL';
+    }
+    if ($status === 401 || $status === 403) {
+        return 'access denied';
+    }
+    if ($status === 404) {
+        return 'not found';
+    }
+    if ($status >= 500) {
+        return 'server error';
+    }
+    if ($textLength > 0 && $textLength < 300) {
+        return 'very low text';
+    }
+    if ($textLength >= 300 && $textLength < 900) {
+        return 'short text';
+    }
+    return $error !== '' ? 'needs attention' : 'ok';
+}
+
+function ai_add_diagnostic_labels(array $rows): array {
+    foreach ($rows as &$row) {
+        if (is_array($row)) {
+            $row['diagnostic_label'] = ai_diagnostic_label($row);
+        }
+    }
+    unset($row);
+    return $rows;
 }
 
 function ai_is_document_url_or_type(string $url, string $contentType = ''): bool {
@@ -619,12 +715,14 @@ function ai_fetch_page(string $url): array {
 
     if (function_exists('curl_init')) {
         $ch = curl_init($url);
+        $connectTimeout = max(2, (int)ai_env('AI_HTTP_CONNECT_TIMEOUT', '6'));
+        $pageTimeout = max(5, (int)ai_env('AI_HTTP_PAGE_TIMEOUT', '14'));
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_FOLLOWLOCATION => true,
             CURLOPT_MAXREDIRS => 5,
-            CURLOPT_CONNECTTIMEOUT => 10,
-            CURLOPT_TIMEOUT => 25,
+            CURLOPT_CONNECTTIMEOUT => $connectTimeout,
+            CURLOPT_TIMEOUT => $pageTimeout,
             CURLOPT_HTTPHEADER => $headers,
             CURLOPT_SSL_VERIFYPEER => true,
             CURLOPT_SSL_VERIFYHOST => 2,
@@ -657,7 +755,7 @@ function ai_fetch_page(string $url): array {
             'method' => 'GET',
             'header' => implode("\r\n", $headers) . "\r\n",
             'ignore_errors' => true,
-            'timeout' => 25,
+            'timeout' => max(5, (int)ai_env('AI_HTTP_PAGE_TIMEOUT', '14')),
             'max_redirects' => 5,
         ],
     ]);
@@ -692,12 +790,13 @@ function ai_html_with_optional_render(string $url, string $html): string {
     if ($maxRenders === 0 || $rendersThisRequest >= $maxRenders) {
         return $html;
     }
+    $isChallenge = ai_detect_js_challenge_html($html);
     $priorityThreshold = max(0, (int)ai_env('AI_RENDER_MAX_PRIORITY', '35'));
-    if (ai_page_priority($url) > $priorityThreshold) {
+    if (!$isChallenge && ai_page_priority($url) > $priorityThreshold) {
         return $html;
     }
     $textLength = strlen(trim(strip_tags(preg_replace('/<(script|style|noscript|svg)\b[^>]*>.*?<\/\1>/is', ' ', $html) ?: $html)));
-    if ($textLength >= (int)ai_env('AI_RENDER_MIN_TEXT_LENGTH', '600')) {
+    if (!$isChallenge && $textLength >= (int)ai_env('AI_RENDER_MIN_TEXT_LENGTH', '600')) {
         return $html;
     }
 
@@ -755,7 +854,7 @@ function ai_fetch_pages_parallel(array $urls, int $concurrency = 4): array {
         return $results;
     }
 
-    $concurrency = max(1, min(12, $concurrency));
+    $concurrency = max(1, min(8, $concurrency));
     $headers = [
         'User-Agent: VaniAI-Scanner/1.0',
         'Accept: text/html,application/xhtml+xml',
@@ -770,12 +869,14 @@ function ai_fetch_pages_parallel(array $urls, int $concurrency = 4): array {
         while (count($active) < $concurrency && !empty($pending)) {
             $url = array_shift($pending);
             $ch = curl_init($url);
+            $connectTimeout = max(2, (int)ai_env('AI_HTTP_CONNECT_TIMEOUT', '6'));
+            $pageTimeout = max(5, (int)ai_env('AI_HTTP_PAGE_TIMEOUT', '14'));
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_FOLLOWLOCATION => true,
                 CURLOPT_MAXREDIRS => 5,
-                CURLOPT_CONNECTTIMEOUT => 10,
-                CURLOPT_TIMEOUT => 25,
+                CURLOPT_CONNECTTIMEOUT => $connectTimeout,
+                CURLOPT_TIMEOUT => $pageTimeout,
                 CURLOPT_HTTPHEADER => $headers,
                 CURLOPT_SSL_VERIFYPEER => true,
                 CURLOPT_SSL_VERIFYHOST => 2,
@@ -1552,6 +1653,10 @@ function ai_enqueue_scan_urls(string $jobId, string $customerId, array $urls, in
             ));
             $status = (string)($existing[0]['page_status'] ?? '');
             if ($status !== '' && $status !== 'pending') {
+                ai_crawl_log($jobId, $customerId, 'duplicate_skipped', 'Duplicate or already processed URL skipped.', [
+                    'normalized_url' => $normalized,
+                    'existing_status' => $status,
+                ], 'info', (string)($rows[$normalized]['url'] ?? ''));
                 unset($rows[$normalized]);
             }
         }
@@ -1743,25 +1848,35 @@ function ai_scan_diagnostics(string $jobId, string $customerId): array {
                 . '&customer_id=eq.' . urlencode($customerId)
                 . '&page_status=eq.fetched'
                 . '&summary_next_retry_at=not.is.null'
-                . '&order=summary_next_retry_at.asc&limit=10'
+            . '&order=summary_next_retry_at.asc&limit=10'
+        ));
+    }
+    $logs = [];
+    if (ai_db_supports_crawl_logs()) {
+        $logs = ai_safe_rows(supabase(
+            'GET',
+            'ai_crawl_logs?select=event_type,severity,url,message,metadata,created_at'
+                . '&scan_job_id=eq.' . urlencode($jobId)
+                . '&order=created_at.desc&limit=12'
         ));
     }
 
     return [
         'scan' => $scan,
         'counts' => $counts,
-        'pending' => $pending,
-        'claimed' => $claimed,
-        'failed' => $failed,
-        'recent_fetched' => $recentFetched,
-        'recent_summarized' => $recentSummarized,
-        'waiting_retry' => $waitingRetry,
-        'waiting_summary_retry' => $waitingSummaryRetry,
-        'quality' => $quality,
+        'pending' => ai_add_diagnostic_labels($pending),
+        'claimed' => ai_add_diagnostic_labels($claimed),
+        'failed' => ai_add_diagnostic_labels($failed),
+        'recent_fetched' => ai_add_diagnostic_labels($recentFetched),
+        'recent_summarized' => ai_add_diagnostic_labels($recentSummarized),
+        'waiting_retry' => ai_add_diagnostic_labels($waitingRetry),
+        'waiting_summary_retry' => ai_add_diagnostic_labels($waitingSummaryRetry),
+        'quality' => ai_add_diagnostic_labels($quality),
+        'logs' => $logs,
         'retry_supported' => $retrySupported,
         'settings' => [
-            'crawl_batch_size' => (int)ai_env('AI_CRAWL_BATCH_SIZE', '8'),
-            'crawl_concurrency' => (int)ai_env('AI_CRAWL_CONCURRENCY', '8'),
+            'crawl_batch_size' => (int)ai_env('AI_CRAWL_BATCH_SIZE', '4'),
+            'crawl_concurrency' => (int)ai_env('AI_CRAWL_CONCURRENCY', '4'),
             'summary_batch_size' => (int)ai_env('AI_SUMMARY_BATCH_SIZE', '2'),
             'crawl_delay_ms' => (int)ai_env('AI_CRAWL_BATCH_DELAY_MS', '250'),
             'render_enabled' => ai_env('AI_RENDER_ENDPOINT') !== '',
@@ -1808,6 +1923,18 @@ function ai_page_retry_payload(string $error, int $attempts): array {
 
 function ai_claim_pending_pages(string $jobId, string $customerId, int $batchLimit, string $workerId, bool $retrySupported): array {
     $advanced = ai_db_supports_advanced_crawler_columns();
+    if ($advanced && ai_db_supports_page_claim_rpc()) {
+        $claimed = ai_safe_rows(ai_supabase_rpc('ai_claim_pending_pages', [
+            'p_scan_job_id' => $jobId,
+            'p_customer_id' => $customerId,
+            'p_worker_id' => $workerId,
+            'p_limit' => max(1, min(50, $batchLimit)),
+            'p_lock_seconds' => (int)ai_env('AI_PAGE_LOCK_SECONDS', '120'),
+        ]));
+        if (!empty($claimed)) {
+            return $claimed;
+        }
+    }
     $now = ai_now();
     $select = $retrySupported
         ? 'id,url,normalized_url,crawl_attempts,next_retry_at'
@@ -1847,7 +1974,7 @@ function ai_claim_pending_pages(string $jobId, string $customerId, int $batchLim
                 . '&or=(page_locked_until.is.null,page_locked_until.lt.' . urlencode($now) . ',page_worker_id.eq.' . urlencode($workerId) . ')',
             [
                 'page_worker_id' => $workerId,
-                'page_locked_until' => ai_seconds_from_now(120),
+                'page_locked_until' => ai_seconds_from_now((int)ai_env('AI_PAGE_LOCK_SECONDS', '120')),
                 'updated_at' => ai_now(),
             ]
         );
@@ -1958,7 +2085,7 @@ function ai_process_scan_job_batch(string $jobId, string $customerId, int $batch
         return (string)$page['url'];
     }, $pendingPages);
     $activeUrls = array_slice($urls, 0, 5);
-    $fetches = ai_fetch_pages_parallel($urls, max(1, min((int)ai_env('AI_CRAWL_CONCURRENCY', '8'), $batchSize)));
+    $fetches = ai_fetch_pages_parallel($urls, max(1, min((int)ai_env('AI_CRAWL_CONCURRENCY', '4'), $batchSize)));
     $websiteDomain = (string)$scan['website_domain'];
     $processed = 0;
     $countsBeforeLoop = ai_scan_job_counts($jobId, $customerId);
@@ -2009,14 +2136,46 @@ function ai_process_scan_job_batch(string $jobId, string $customerId, int $batch
 
         $finalUrl = (string)($fetch['url'] ?? $url);
         $finalNormalized = ai_normalize_page_url($finalUrl) ?: $normalized;
+        if (ai_detect_js_challenge_html((string)($fetch['html'] ?? ''))) {
+            $errorMessage = 'JS challenge detected. Enable Playwright rendering or ask the site owner to whitelist the crawler.';
+            $payload = [
+                'url' => $finalUrl,
+                'normalized_url' => $finalNormalized,
+                'page_status' => 'failed',
+                'http_status' => (int)($fetch['status'] ?? 0),
+                'ai_error' => $errorMessage,
+                'content_type' => (string)($fetch['content_type'] ?? ''),
+                'content_length' => (int)($fetch['content_length'] ?? 0),
+                'html_preview' => substr(strip_tags((string)($fetch['html'] ?? '')), 0, 1000),
+                'fetched_at' => ai_now(),
+            ];
+            if ($retrySupported) {
+                $payload['crawl_attempts'] = $attempts;
+                $payload['next_retry_at'] = ai_seconds_from_now(31536000);
+            }
+            ai_save_scanned_page($jobId, $customerId, $payload);
+            ai_crawl_log($jobId, $customerId, 'js_challenge_detected', $errorMessage, [
+                'http_status' => (int)($fetch['status'] ?? 0),
+                'render_enabled' => ai_env('AI_RENDER_ENDPOINT') !== '',
+            ], 'warning', $finalUrl, (string)($page['id'] ?? ''));
+            ai_release_page_claim((string)($page['id'] ?? ''), $workerId);
+            $processed++;
+            continue;
+        }
         $parsed = ai_parse_html_page((string)$fetch['html'], $finalUrl, $websiteDomain);
         $links = $parsed['links'];
         usort($links, function ($a, $b) {
             return ai_url_priority((string)$a) <=> ai_url_priority((string)$b);
         });
+        $beforeRobotsFilter = count($links);
         $links = array_values(array_filter($links, function ($link) use ($scan) {
             return ai_robots_allows_url((string)$link, (string)($scan['website_url'] ?? ''));
         }));
+        if ($beforeRobotsFilter > count($links)) {
+            ai_crawl_log($jobId, $customerId, 'robots_blocked', 'Some discovered links were blocked by robots.txt.', [
+                'blocked_count' => $beforeRobotsFilter - count($links),
+            ], 'info', $finalUrl, (string)($page['id'] ?? ''));
+        }
 
         $remainingSlots = max(0, $maxPages - $knownTotal);
         if ($remainingSlots > 0) {

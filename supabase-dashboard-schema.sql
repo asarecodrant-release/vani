@@ -1377,6 +1377,56 @@ on public.ai_website_pages(scan_job_id, page_status, summary_next_retry_at);
 create index if not exists ai_website_pages_claim_idx
 on public.ai_website_pages(scan_job_id, page_status, priority, page_locked_until, next_retry_at);
 
+create or replace function public.ai_claim_pending_pages(
+  p_scan_job_id uuid,
+  p_customer_id uuid,
+  p_worker_id text,
+  p_limit integer default 4,
+  p_lock_seconds integer default 120
+)
+returns table (
+  id uuid,
+  url text,
+  normalized_url text,
+  crawl_attempts integer,
+  next_retry_at timestamptz,
+  priority integer,
+  page_worker_id text,
+  page_locked_until timestamptz
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  return query
+  with claimable as (
+    select p.id
+    from public.ai_website_pages p
+    where p.scan_job_id = p_scan_job_id
+      and p.customer_id = p_customer_id
+      and p.page_status = 'pending'
+      and (p.next_retry_at is null or p.next_retry_at <= now())
+      and (p.page_locked_until is null or p.page_locked_until < now() or p.page_worker_id = p_worker_id)
+    order by p.priority asc, p.created_at asc
+    limit greatest(1, least(coalesce(p_limit, 4), 50))
+    for update skip locked
+  ),
+  updated as (
+    update public.ai_website_pages p
+    set page_worker_id = p_worker_id,
+        page_locked_until = now() + make_interval(secs => greatest(30, least(coalesce(p_lock_seconds, 120), 900))),
+        updated_at = now()
+    from claimable c
+    where p.id = c.id
+    returning p.id, p.url, p.normalized_url, p.crawl_attempts, p.next_retry_at, p.priority, p.page_worker_id, p.page_locked_until
+  )
+  select * from updated;
+end;
+$$;
+
+grant execute on function public.ai_claim_pending_pages(uuid, uuid, text, integer, integer) to anon, authenticated;
+
 create table if not exists public.ai_crawl_logs (
   id uuid primary key default gen_random_uuid(),
   scan_job_id uuid references public.ai_scan_jobs(id) on delete cascade,
