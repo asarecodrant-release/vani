@@ -19,6 +19,7 @@ $maxJobs = max(1, min(20, (int)($_POST['jobs'] ?? $_GET['jobs'] ?? ai_env('AI_WO
 $scanUnits = 0;
 $summaryUnits = 0;
 $details = [];
+$recovered = ai_recover_stuck_scan_jobs();
 
 foreach (ai_active_scan_jobs($maxJobs) as $scan) {
     $result = ai_process_scan_job_batch(
@@ -46,6 +47,7 @@ if (ai_is_configured()) {
 
 ai_cron_json([
     'success' => true,
+    'recovered_stuck_jobs' => $recovered,
     'scan_units' => $scanUnits,
     'summary_units' => $summaryUnits,
     'details' => $details,

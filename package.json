@@ -1,0 +1,9 @@
+{
+  "private": true,
+  "scripts": {
+    "render:server": "node playwright-render-server.js"
+  },
+  "dependencies": {
+    "playwright": "^1.45.0"
+  }
+}

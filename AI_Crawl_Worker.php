@@ -12,6 +12,7 @@ $maxSeconds = max(10, (int)ai_env('AI_WORKER_MAX_SECONDS', '55'));
 $jobLimit = max(1, min(20, (int)ai_env('AI_WORKER_JOB_LIMIT', '8')));
 $sleepMs = max(0, (int)ai_env('AI_WORKER_IDLE_SLEEP_MS', '500'));
 $didWork = 0;
+ai_recover_stuck_scan_jobs();
 
 function ai_worker_log(string $message): void {
     echo '[' . gmdate('Y-m-d H:i:s') . ' UTC] ' . $message . PHP_EOL;

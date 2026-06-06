@@ -1295,6 +1295,8 @@ create table if not exists public.ai_website_pages (
   customer_id uuid not null references public.chatbot_signups(customer_id) on delete cascade,
   url text not null,
   normalized_url text not null,
+  source text not null default 'crawl',
+  priority integer not null default 50,
   page_title text,
   page_status text not null default 'pending' check (page_status in ('pending', 'fetched', 'summarized', 'failed')),
   http_status integer,
@@ -1309,6 +1311,8 @@ create table if not exists public.ai_website_pages (
   html_preview text,
   context_edited boolean not null default false,
   summary_edited boolean not null default false,
+  page_worker_id text,
+  page_locked_until timestamptz,
   fetched_at timestamptz,
   summarized_at timestamptz,
   created_at timestamptz not null default now(),
@@ -1346,6 +1350,18 @@ alter table public.ai_website_pages
 alter table public.ai_website_pages
   add column if not exists summary_next_retry_at timestamptz;
 
+alter table public.ai_website_pages
+  add column if not exists source text not null default 'crawl';
+
+alter table public.ai_website_pages
+  add column if not exists priority integer not null default 50;
+
+alter table public.ai_website_pages
+  add column if not exists page_worker_id text;
+
+alter table public.ai_website_pages
+  add column if not exists page_locked_until timestamptz;
+
 create index if not exists ai_website_pages_scan_job_id_idx
 on public.ai_website_pages(scan_job_id);
 
@@ -1357,6 +1373,59 @@ on public.ai_website_pages(scan_job_id, page_status, next_retry_at);
 
 create index if not exists ai_website_pages_summary_idx
 on public.ai_website_pages(scan_job_id, page_status, summary_next_retry_at);
+
+create index if not exists ai_website_pages_claim_idx
+on public.ai_website_pages(scan_job_id, page_status, priority, page_locked_until, next_retry_at);
+
+create table if not exists public.ai_crawl_logs (
+  id uuid primary key default gen_random_uuid(),
+  scan_job_id uuid references public.ai_scan_jobs(id) on delete cascade,
+  page_id uuid references public.ai_website_pages(id) on delete cascade,
+  customer_id uuid references public.chatbot_signups(customer_id) on delete cascade,
+  event_type text not null,
+  severity text not null default 'info' check (severity in ('info', 'warning', 'error')),
+  url text,
+  message text,
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists ai_crawl_logs_scan_created_idx
+on public.ai_crawl_logs(scan_job_id, created_at desc);
+
+create table if not exists public.ai_sitemap_diagnostics (
+  id uuid primary key default gen_random_uuid(),
+  scan_job_id uuid not null references public.ai_scan_jobs(id) on delete cascade,
+  customer_id uuid not null references public.chatbot_signups(customer_id) on delete cascade,
+  sitemap_url text not null,
+  http_status integer,
+  urls_found integer not null default 0,
+  child_sitemaps_found integer not null default 0,
+  error_message text,
+  fetched_at timestamptz not null default now(),
+  unique (scan_job_id, sitemap_url)
+);
+
+create index if not exists ai_sitemap_diagnostics_scan_idx
+on public.ai_sitemap_diagnostics(scan_job_id, fetched_at desc);
+
+create table if not exists public.ai_website_chunks (
+  id uuid primary key default gen_random_uuid(),
+  scan_job_id uuid not null references public.ai_scan_jobs(id) on delete cascade,
+  page_id uuid not null references public.ai_website_pages(id) on delete cascade,
+  customer_id uuid not null references public.chatbot_signups(customer_id) on delete cascade,
+  url text not null,
+  chunk_index integer not null,
+  chunk_text text not null,
+  content_hash text not null,
+  embedding jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (page_id, chunk_index)
+);
+
+create index if not exists ai_website_chunks_customer_idx
+on public.ai_website_chunks(customer_id, scan_job_id);
 
 create table if not exists public.ai_website_faqs (
   id uuid primary key default gen_random_uuid(),
@@ -1383,6 +1452,9 @@ on public.ai_website_faqs(customer_id, lower(question));
 alter table public.ai_scan_jobs enable row level security;
 alter table public.ai_website_pages enable row level security;
 alter table public.ai_website_faqs enable row level security;
+alter table public.ai_crawl_logs enable row level security;
+alter table public.ai_sitemap_diagnostics enable row level security;
+alter table public.ai_website_chunks enable row level security;
 
 drop policy if exists "ai scan jobs readable" on public.ai_scan_jobs;
 create policy "ai scan jobs readable"
@@ -1450,6 +1522,50 @@ to anon, authenticated
 using (true)
 with check (true);
 
+drop policy if exists "ai crawl logs readable" on public.ai_crawl_logs;
+create policy "ai crawl logs readable"
+on public.ai_crawl_logs
+for select
+to anon, authenticated
+using (true);
+
+drop policy if exists "ai crawl logs insertable" on public.ai_crawl_logs;
+create policy "ai crawl logs insertable"
+on public.ai_crawl_logs
+for insert
+to anon, authenticated
+with check (true);
+
+drop policy if exists "ai sitemap diagnostics readable" on public.ai_sitemap_diagnostics;
+create policy "ai sitemap diagnostics readable"
+on public.ai_sitemap_diagnostics
+for select
+to anon, authenticated
+using (true);
+
+drop policy if exists "ai sitemap diagnostics writable" on public.ai_sitemap_diagnostics;
+create policy "ai sitemap diagnostics writable"
+on public.ai_sitemap_diagnostics
+for all
+to anon, authenticated
+using (true)
+with check (true);
+
+drop policy if exists "ai website chunks readable" on public.ai_website_chunks;
+create policy "ai website chunks readable"
+on public.ai_website_chunks
+for select
+to anon, authenticated
+using (true);
+
+drop policy if exists "ai website chunks writable" on public.ai_website_chunks;
+create policy "ai website chunks writable"
+on public.ai_website_chunks
+for all
+to anon, authenticated
+using (true)
+with check (true);
+
 create index if not exists customer_remember_tokens_email_idx
 on public.customer_remember_tokens(email);
 
@@ -1491,6 +1607,9 @@ grant select, insert, update, delete on public.customer_remember_tokens to anon,
 grant select, insert, update on public.ai_scan_jobs to anon, authenticated;
 grant select, insert, update on public.ai_website_pages to anon, authenticated;
 grant select, insert, update on public.ai_website_faqs to anon, authenticated;
+grant select, insert on public.ai_crawl_logs to anon, authenticated;
+grant select, insert, update on public.ai_sitemap_diagnostics to anon, authenticated;
+grant select, insert, update, delete on public.ai_website_chunks to anon, authenticated;
 grant usage, select on sequence public.chatbot_settings_id_seq to anon, authenticated;
 grant usage, select on sequence public.chatbot_conversations_id_seq to anon, authenticated;
 grant usage, select on sequence public.faq_action_feedback_id_seq to anon, authenticated;
