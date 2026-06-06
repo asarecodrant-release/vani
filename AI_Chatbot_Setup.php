@@ -53,10 +53,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (!empty($seedResult['success'])) {
                     if (ai_external_queue_enabled()) {
                         $queueResult = ai_enqueue_external_job($scanJobId, 'scan', 5);
-                        ai_crawl_log($scanJobId, $savedCustomerId, 'external_queue_enqueue', !empty($queueResult['success']) ? 'Scan job sent to external queue.' : 'External queue enqueue failed; browser/Supabase worker fallback remains available.', [
+                        $queueMessage = !empty($queueResult['success'])
+                            ? 'Scan job sent to external queue.'
+                            : 'External queue enqueue failed: ' . (string)($queueResult['error'] ?? 'unknown error') . '. Browser/Supabase worker fallback remains available.';
+                        ai_crawl_log($scanJobId, $savedCustomerId, 'external_queue_enqueue', $queueMessage, [
                             'queued' => !empty($queueResult['queued']),
                             'queue_job_id' => (string)($queueResult['job_id'] ?? ''),
                             'error' => (string)($queueResult['error'] ?? ''),
+                            'endpoint' => (string)($queueResult['endpoint'] ?? ''),
                         ], empty($queueResult['success']) ? 'warning' : 'info', $websiteUrl);
                     }
                     $_SESSION['ai_scan_job_id'] = $scanJobId;

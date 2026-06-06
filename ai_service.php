@@ -314,7 +314,11 @@ function ai_queue_endpoint_url(): string {
     if ($endpoint === '') {
         return '';
     }
-    return preg_match('{/enqueue$}i', $endpoint) ? $endpoint : $endpoint . '/enqueue';
+    if (!preg_match('{^https?://}i', $endpoint)) {
+        $endpoint = 'https://' . $endpoint;
+    }
+    $endpoint = preg_replace('{/(health|enqueue)$}i', '', $endpoint) ?: $endpoint;
+    return rtrim($endpoint, '/') . '/enqueue';
 }
 
 function ai_enqueue_external_job(string $scanId, string $type = 'scan', int $priority = 5): array {
@@ -338,6 +342,7 @@ function ai_enqueue_external_job(string $scanId, string $type = 'scan', int $pri
             'success' => false,
             'queued' => false,
             'error' => ai_response_error($response),
+            'endpoint' => $endpoint,
             'raw' => $response,
         ];
     }

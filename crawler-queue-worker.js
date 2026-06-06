@@ -163,11 +163,12 @@ const server = http.createServer(async (req, res) => {
     });
   }
 
-  if (req.method !== "POST" || req.url !== "/enqueue") {
+  const path = (req.url || "").split("?")[0].replace(/\/+$/, "") || "/";
+  if (req.method !== "POST" || path !== "/enqueue") {
     return json(res, 404, { error: "Not found" });
   }
   if (queueToken && req.headers["x-queue-token"] !== queueToken) {
-    return json(res, 401, { error: "Invalid queue token" });
+    return json(res, 401, { error: "Invalid queue token", received_token: Boolean(req.headers["x-queue-token"]) });
   }
 
   try {

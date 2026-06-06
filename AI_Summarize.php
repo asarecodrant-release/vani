@@ -984,7 +984,7 @@ runSummaryBatchBtn?.addEventListener("click", async () => {
   }
 });
 refreshLiveBtn?.addEventListener("click", refreshLiveStatus);
-if (!externalQueueEnabled && (shell?.dataset.scanStatus === "pending" || shell?.dataset.scanStatus === "running")) {
+if (shell?.dataset.scanStatus === "pending" || shell?.dataset.scanStatus === "running") {
   processScanBatch();
 }
 
