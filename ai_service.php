@@ -361,7 +361,23 @@ function ai_normalize_page_url(string $url): string {
     $host = ai_strip_www((string)$parts['host']);
     $path = (string)($parts['path'] ?? '/');
     $path = $path === '' ? '/' : $path;
-    $query = isset($parts['query']) ? '?' . $parts['query'] : '';
+    $query = '';
+    if (isset($parts['query'])) {
+        parse_str((string)$parts['query'], $queryParts);
+        $dropKeys = [
+            'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content',
+            'fbclid', 'gclid', 'yclid', 'msclkid', 'ref', 'source',
+            'sort', 'order', 'filter', 'page', 'p', 'offset', 'limit', 'start',
+            'checkin', 'checkout', 'adults', 'children', 'infants', 'pets', 'guests',
+            'currency', 'locale', 'language', 'q', 'query', 'search', 's'
+        ];
+        foreach ($dropKeys as $key) {
+            unset($queryParts[$key]);
+        }
+        ksort($queryParts);
+        $queryString = http_build_query($queryParts);
+        $query = $queryString !== '' ? '?' . $queryString : '';
+    }
     return rtrim($scheme . '://' . $host . $path . $query, '/');
 }
 
@@ -392,34 +408,111 @@ function ai_remove_www_variant(string $url): string {
     return ai_url_with_host_variant($url, substr($host, 4));
 }
 
+function ai_env_list(string $key): array {
+    $raw = ai_env($key);
+    if ($raw === '') {
+        return [];
+    }
+    return array_values(array_filter(array_map('trim', preg_split('/[\n,]+/', $raw) ?: [])));
+}
+
+function ai_url_matches_any_pattern(string $url, array $patterns): bool {
+    $url = strtolower($url);
+    foreach ($patterns as $pattern) {
+        $pattern = strtolower(trim((string)$pattern));
+        if ($pattern === '') {
+            continue;
+        }
+        if (@preg_match($pattern, '') !== false) {
+            if (preg_match($pattern, $url)) {
+                return true;
+            }
+            continue;
+        }
+        if (strpos($url, $pattern) !== false) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function ai_default_block_url_patterns(): array {
+    return [
+        '/[?&](?:q|query|search|s|filter|sort|order|page|p|offset|limit|start|checkin|checkout|adults|children|infants|pets|guests|currency|locale|language|utm_[^=]+|fbclid|gclid|yclid|msclkid)=/i',
+        '/\/(?:search|find|results|listings|listing|rooms|stays|experiences|marketplace|category|categories|tag|tags|author|archive|feed|rss|cart|basket|checkout|login|signin|signup|register|account|profile|wishlist|favorites|booking|calendar|availability|admin|wp-admin|wp-json)\b/i',
+        '/\/(?:page|p)\/\d+\b/i',
+        '/\/\d{4}\/\d{2}\//i',
+    ];
+}
+
+function ai_default_allow_url_patterns(): array {
+    return [
+        '/\/(?:about|contact|support|help|faq|faqs|pricing|plans|services|service|products|product|features|solutions|terms|privacy|refund|shipping|returns)\b/i',
+    ];
+}
+
 function ai_should_scan_url(string $url, string $websiteDomain): bool {
     if ($url === '' || ai_host_from_value($url) !== $websiteDomain) {
         return false;
     }
+    if (strlen($url) > (int)ai_env('AI_CRAWL_MAX_URL_LENGTH', '220')) {
+        return false;
+    }
     $path = strtolower((string)(parse_url($url, PHP_URL_PATH) ?: ''));
-    return !preg_match('/\.(?:jpg|jpeg|png|gif|webp|svg|ico|css|js|zip|rar|7z|mp4|mp3|avi|mov|woff|woff2|ttf|eot)$/i', $path);
+    if (preg_match('/\.(?:jpg|jpeg|png|gif|webp|svg|ico|css|js|zip|rar|7z|mp4|mp3|avi|mov|woff|woff2|ttf|eot)$/i', $path)) {
+        return false;
+    }
+
+    $allowPatterns = array_merge(ai_default_allow_url_patterns(), ai_env_list('AI_CRAWL_ALLOW_PATTERNS'));
+    if (ai_url_matches_any_pattern($url, $allowPatterns)) {
+        return true;
+    }
+
+    $blockPatterns = array_merge(ai_default_block_url_patterns(), ai_env_list('AI_CRAWL_BLOCK_PATTERNS'));
+    if (ai_url_matches_any_pattern($url, $blockPatterns)) {
+        return false;
+    }
+
+    $segments = array_values(array_filter(explode('/', trim($path, '/'))));
+    if (count($segments) > (int)ai_env('AI_CRAWL_MAX_PATH_DEPTH', '5')) {
+        return false;
+    }
+    if (preg_match('/(?:^|\/)[a-f0-9]{16,}(?:\/|$)/i', $path)) {
+        return false;
+    }
+    if (preg_match('/(?:^|\/)\d{5,}(?:\/|$)/', $path) && !ai_url_matches_any_pattern($url, $allowPatterns)) {
+        return false;
+    }
+
+    return true;
 }
 
 function ai_url_priority(string $url): int {
-    $value = strtolower($url);
-    if (preg_match('/(faq|faqs|frequently-asked|questions|help|support)/', $value)) {
-        return 0;
-    }
-    if (preg_match('/(about|service|course|program|pricing|contact)/', $value)) {
-        return 1;
-    }
-    return 2;
+    return ai_page_priority($url);
 }
 
 function ai_page_priority(string $url): int {
     $value = strtolower($url);
+    $path = strtolower((string)(parse_url($url, PHP_URL_PATH) ?: '/'));
+    if ($path === '/' || $path === '') {
+        return 0;
+    }
     if (preg_match('/(faq|faqs|frequently-asked|questions|help|support)/', $value)) {
         return 5;
     }
-    if (preg_match('/(about|service|services|product|products|course|program|pricing|contact)/', $value)) {
+    if (preg_match('/(contact|pricing|plans|book-demo|demo|quote|consultation)/', $value)) {
         return 10;
     }
-    if (preg_match('/\/(?:blog|news|article|tag|category|author|page\/\d+)/', $value)) {
+    if (preg_match('/(about|service|services|product|products|feature|features|solution|solutions|course|program)/', $value)) {
+        return 15;
+    }
+    if (preg_match('/(privacy|terms|refund|shipping|returns|cancellation)/', $value)) {
+        return 35;
+    }
+    if (preg_match('/\/(?:blog|news|article)\b/', $value)) {
+        return 70;
+    }
+    if (preg_match('/\/(?:tag|category|author|archive|page\/\d+|search|listings|rooms|stays|experiences)\b/', $value)) {
         return 80;
     }
     return 50;
@@ -592,12 +685,24 @@ function ai_html_with_optional_render(string $url, string $html): string {
     if ($endpoint === '') {
         return $html;
     }
+    static $rendersThisRequest = 0;
+    $maxRenders = max(0, (int)ai_env('AI_RENDER_MAX_PER_REQUEST', '2'));
+    if ($maxRenders === 0 || $rendersThisRequest >= $maxRenders) {
+        return $html;
+    }
+    $priorityThreshold = max(0, (int)ai_env('AI_RENDER_MAX_PRIORITY', '35'));
+    if (ai_page_priority($url) > $priorityThreshold) {
+        return $html;
+    }
     $textLength = strlen(trim(strip_tags(preg_replace('/<(script|style|noscript|svg)\b[^>]*>.*?<\/\1>/is', ' ', $html) ?: $html)));
     if ($textLength >= (int)ai_env('AI_RENDER_MIN_TEXT_LENGTH', '600')) {
         return $html;
     }
 
     $rendered = ai_render_page_html($url);
+    if ($rendered !== '') {
+        $rendersThisRequest++;
+    }
     return $rendered !== '' ? $rendered : $html;
 }
 
@@ -614,8 +719,8 @@ function ai_render_page_html(string $url): string {
     }
     $response = ai_http_json($endpoint, $headers, [
         'url' => $url,
-        'timeout_ms' => max(3000, (int)ai_env('AI_RENDER_TIMEOUT_MS', '12000')),
-    ], max(5, (int)ceil(((int)ai_env('AI_RENDER_TIMEOUT_MS', '12000')) / 1000) + 3));
+        'timeout_ms' => max(3000, (int)ai_env('AI_RENDER_TIMEOUT_MS', '8000')),
+    ], max(5, (int)ceil(((int)ai_env('AI_RENDER_TIMEOUT_MS', '8000')) / 1000) + 3));
 
     if (($response['status'] ?? 0) < 200 || ($response['status'] ?? 0) >= 400) {
         return '';
@@ -1518,16 +1623,31 @@ function ai_scan_job_counts(string $jobId, string $customerId): array {
         }
     }
     $counts['scanned'] = $counts['fetched'] + $counts['summarized'];
+    $counts['crawl_done'] = $counts['scanned'] + $counts['failed'];
+    $counts['crawl_total'] = $counts['total'];
+    $counts['crawl_percent'] = $counts['crawl_total'] > 0
+        ? min(100, (int)round(($counts['crawl_done'] / $counts['crawl_total']) * 100))
+        : 0;
+    $counts['summary_total'] = $counts['scanned'];
+    $counts['summary_done'] = $counts['summarized'];
+    $counts['summary_pending'] = $counts['fetched'];
+    $counts['summary_percent'] = $counts['summary_total'] > 0
+        ? min(100, (int)round(($counts['summary_done'] / $counts['summary_total']) * 100))
+        : 0;
     return $counts;
 }
 
 function ai_scan_diagnostics(string $jobId, string $customerId): array {
     $retrySupported = ai_db_supports_retry_columns();
+    $advancedSupported = ai_db_supports_advanced_crawler_columns();
     $scan = ai_get_scan_job_for_customer($jobId, $customerId);
     $counts = ai_scan_job_counts($jobId, $customerId);
     $pageSelect = $retrySupported
         ? 'id,url,page_title,page_status,http_status,ai_error,content_type,content_length,discovered_links_count,crawl_attempts,next_retry_at,summary_attempts,summary_next_retry_at,fetched_at,summarized_at,updated_at'
         : 'id,url,page_title,page_status,http_status,ai_error,content_type,content_length,discovered_links_count,fetched_at,summarized_at,updated_at';
+    if ($advancedSupported) {
+        $pageSelect .= ',source,priority,page_worker_id,page_locked_until';
+    }
 
     $pending = ai_safe_rows(supabase(
         'GET',
@@ -1535,8 +1655,21 @@ function ai_scan_diagnostics(string $jobId, string $customerId): array {
             . '&scan_job_id=eq.' . urlencode($jobId)
             . '&customer_id=eq.' . urlencode($customerId)
             . '&page_status=eq.pending'
+            . ($advancedSupported ? '&page_worker_id=is.null' : '')
             . '&order=created_at.asc&limit=10'
     ));
+    $claimed = [];
+    if ($advancedSupported) {
+        $claimed = ai_safe_rows(supabase(
+            'GET',
+            'ai_website_pages?select=' . $pageSelect
+                . '&scan_job_id=eq.' . urlencode($jobId)
+                . '&customer_id=eq.' . urlencode($customerId)
+                . '&page_status=eq.pending'
+                . '&page_worker_id=not.is.null'
+                . '&order=page_locked_until.desc&limit=10'
+        ));
+    }
     $failed = ai_safe_rows(supabase(
         'GET',
         'ai_website_pages?select=' . $pageSelect
@@ -1597,6 +1730,7 @@ function ai_scan_diagnostics(string $jobId, string $customerId): array {
         'scan' => $scan,
         'counts' => $counts,
         'pending' => $pending,
+        'claimed' => $claimed,
         'failed' => $failed,
         'recent_fetched' => $recentFetched,
         'recent_summarized' => $recentSummarized,

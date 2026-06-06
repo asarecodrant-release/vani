@@ -57,14 +57,34 @@ Set these on the PHP Render service:
 ```env
 AI_RENDER_ENDPOINT=https://your-node-render-service.onrender.com/
 AI_RENDER_TOKEN=use-the-same-long-random-secret
-AI_RENDER_TIMEOUT_MS=12000
+AI_RENDER_TIMEOUT_MS=8000
 AI_RENDER_MIN_TEXT_LENGTH=600
+AI_RENDER_MAX_PER_REQUEST=2
+AI_RENDER_MAX_PRIORITY=35
 AI_WORKER_TOKEN=another-long-random-secret
 AI_CRAWL_BATCH_SIZE=8
 AI_CRAWL_CONCURRENCY=8
 AI_CRAWL_MAX_BATCH_SIZE=12
 AI_CRAWL_BATCH_DELAY_MS=100
+AI_CRAWL_MAX_URL_LENGTH=220
+AI_CRAWL_MAX_PATH_DEPTH=5
 ```
+
+Optional URL filtering overrides:
+
+```env
+# Comma or newline separated. Strings or regex patterns are accepted.
+AI_CRAWL_BLOCK_PATTERNS=/\/search\b/i,/\/listings\b/i,?checkin=
+AI_CRAWL_ALLOW_PATTERNS=/\/important-custom-page\b/i,/\/docs\b/i
+```
+
+Default filtering already blocks common crawler traps:
+
+- search/filter/sort/pagination URLs
+- marketplace/listing/search result URLs
+- login/cart/checkout/account URLs
+- tracking query params
+- deep paths and long ID-like paths
 
 ## UptimeRobot
 

@@ -167,6 +167,7 @@ $pages = ai_safe_rows(supabase(
     'GET',
     'ai_website_pages?select=*&scan_job_id=eq.' . urlencode($scanId)
         . '&customer_id=eq.' . urlencode($customerId)
+        . '&page_status=in.(fetched,summarized)'
         . '&order=created_at.asc&limit=100'
 ));
 
@@ -188,10 +189,14 @@ $diagScan = $diagnostics['scan'] ?: $scan;
 $diagCounts = $diagnostics['counts'];
 $workerLockedUntil = (string)($diagScan['locked_until'] ?? '');
 $workerActive = $workerLockedUntil !== '' && strtotime($workerLockedUntil) !== false && strtotime($workerLockedUntil) > time();
+$activeScanUrl = (string)($diagnostics['claimed'][0]['url'] ?? '');
 $lastActivity = ai_time_label($diagScan['updated_at'] ?? '');
-$progressRequested = max(1, (int)($diagScan['pages_requested'] ?? 0));
-$progressDone = (int)($diagCounts['scanned'] ?? 0) + (int)($diagCounts['failed'] ?? 0);
-$progressPercent = min(100, (int)round(($progressDone / $progressRequested) * 100));
+$crawlPercent = (int)($diagCounts['crawl_percent'] ?? 0);
+$summaryPercent = (int)($diagCounts['summary_percent'] ?? 0);
+$crawlDone = (int)($diagCounts['crawl_done'] ?? 0);
+$crawlTotal = (int)($diagCounts['crawl_total'] ?? 0);
+$summaryDone = (int)($diagCounts['summary_done'] ?? 0);
+$summaryTotal = (int)($diagCounts['summary_total'] ?? 0);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -249,11 +254,14 @@ textarea{min-height:120px;resize:vertical;line-height:1.5}
 .faq textarea{min-height:96px}
 .faq:first-child{border-top:0}
 .muted{color:var(--muted);font-size:13px;line-height:1.5}
-.progress-strip{display:flex;justify-content:space-between;gap:12px;align-items:center;border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:12px 14px;margin-bottom:16px}
+.progress-strip{display:grid;gap:8px;border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:12px 14px;margin-bottom:16px}
+.progress-row{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
 .progress-strip strong{display:block;font-size:14px}
 .progress-strip span{color:var(--muted);font-size:13px}
-.progress-bar{height:8px;flex:1;min-width:120px;border-radius:999px;background:var(--soft);overflow:hidden}
+.progress-bar{height:8px;width:100%;border-radius:999px;background:var(--soft);overflow:hidden}
 .progress-bar i{display:block;height:100%;width:0;background:#2563eb;transition:width .25s ease}
+.summary-row{margin-top:4px}
+.summary-progress i{background:#16a34a}
 .diagnostics{margin-bottom:18px}
 .diagnostics summary{cursor:pointer;font-weight:900;display:flex;align-items:center;justify-content:space-between;gap:12px}
 .diag-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:14px}
@@ -301,26 +309,38 @@ body.dark .diag-error{color:#fca5a5}
   <?php if ($error !== ''): ?><div class="message error"><?php echo ai_h($error); ?></div><?php endif; ?>
 
   <div class="progress-strip" aria-live="polite">
-    <div>
-      <strong id="workerTitle">Website scan <?php echo ai_h($scan['status'] ?? 'pending'); ?></strong>
-      <span id="workerText">Captured <?php echo count($pages); ?> of <?php echo (int)($scan['pages_requested'] ?? 0); ?> requested pages.</span>
+    <div class="progress-row">
+      <div>
+        <strong id="crawlTitle">Crawling <?php echo ai_h($scan['status'] ?? 'pending'); ?></strong>
+        <span id="crawlText"><?php echo (int)$crawlDone; ?> of <?php echo (int)$crawlTotal; ?> queued page(s) crawled.</span>
+      </div>
+      <strong id="crawlPercent"><?php echo (int)$crawlPercent; ?>%</strong>
     </div>
-    <div class="progress-bar" aria-hidden="true"><i id="workerBar"></i></div>
+    <div class="progress-bar" aria-hidden="true"><i id="crawlBar" style="width:<?php echo (int)$crawlPercent; ?>%"></i></div>
+    <div class="progress-row summary-row">
+      <div>
+        <strong id="summaryTitle">Summarizing</strong>
+        <span id="summaryText"><?php echo (int)$summaryDone; ?> of <?php echo (int)$summaryTotal; ?> captured page(s) summarized.</span>
+      </div>
+      <strong id="summaryPercent"><?php echo (int)$summaryPercent; ?>%</strong>
+    </div>
+    <div class="progress-bar summary-progress" aria-hidden="true"><i id="summaryBar" style="width:<?php echo (int)$summaryPercent; ?>%"></i></div>
   </div>
 
-  <details class="panel diagnostics" <?php echo !empty($diagnostics['failed']) || !empty($diagnostics['waiting_retry']) ? 'open' : ''; ?>>
+  <details class="panel diagnostics" <?php echo !empty($diagnostics['claimed']) || !empty($diagnostics['failed']) || !empty($diagnostics['waiting_retry']) ? 'open' : ''; ?>>
     <summary>
       <span>Crawler Diagnostics</span>
       <span class="diag-live <?php echo $workerActive ? 'is-running' : ''; ?>" id="diagLive">
         <i class="diag-spinner" aria-hidden="true"></i>
-        <span class="diag-live-text" id="diagLiveText"><?php echo $workerActive ? 'Crawler working' : 'Crawler idle'; ?></span>
-        <span class="diag-pill <?php echo $workerActive ? '' : 'warn'; ?>" id="diagLivePill"><?php echo $workerActive ? 'Worker active' : 'No active lock'; ?></span>
+        <span class="diag-live-text" id="diagLiveText"><?php echo $activeScanUrl !== '' ? 'Scanning: ' . ai_short_url_label($activeScanUrl) : ($workerActive ? 'Crawler working' : 'Crawler idle'); ?></span>
+        <span class="diag-pill <?php echo $workerActive ? '' : 'warn'; ?>" id="diagLivePill"><?php echo $activeScanUrl !== '' ? 'Page locked' : ($workerActive ? 'Worker active' : 'No active lock'); ?></span>
       </span>
     </summary>
 
     <div class="diag-grid">
       <div class="diag-card"><span>Status</span><strong><?php echo ai_h($diagScan['status'] ?? ''); ?></strong></div>
-      <div class="diag-card"><span>Progress</span><strong><?php echo (int)$progressPercent; ?>%</strong></div>
+      <div class="diag-card"><span>Crawling</span><strong><?php echo (int)$crawlPercent; ?>%</strong></div>
+      <div class="diag-card"><span>Summarizing</span><strong><?php echo (int)$summaryPercent; ?>%</strong></div>
       <div class="diag-card"><span>Last Activity</span><strong><?php echo ai_h($lastActivity); ?></strong></div>
       <div class="diag-card"><span>Worker</span><strong><?php echo ai_h(($diagScan['worker_id'] ?? '') ?: '-'); ?></strong></div>
       <div class="diag-card"><span>Requested</span><strong><?php echo (int)($diagScan['pages_requested'] ?? 0); ?></strong></div>
@@ -337,6 +357,25 @@ body.dark .diag-error{color:#fca5a5}
       <button type="button" id="runScanBatchBtn">Run scan batch</button>
       <button type="button" id="runSummaryBatchBtn">Run summary batch</button>
       <button class="btn" type="button" onclick="location.reload()">Refresh diagnostics</button>
+    </div>
+
+    <div class="diag-section">
+      <h3>Currently Scanning</h3>
+      <table class="diag-table">
+        <thead><tr><th>URL</th><th>Worker</th><th>Priority</th><th>Attempts</th><th>Lock Expires</th></tr></thead>
+        <tbody>
+        <?php foreach ($diagnostics['claimed'] as $row): ?>
+          <tr>
+            <td class="diag-url" title="<?php echo ai_h($row['url'] ?? ''); ?>"><?php echo ai_h(ai_short_url_label((string)($row['url'] ?? ''))); ?></td>
+            <td><?php echo ai_h(($row['page_worker_id'] ?? '') ?: '-'); ?></td>
+            <td><?php echo ai_h($row['priority'] ?? ''); ?></td>
+            <td><?php echo ai_h($row['crawl_attempts'] ?? '0'); ?></td>
+            <td><?php echo ai_h(ai_time_label($row['page_locked_until'] ?? '')); ?></td>
+          </tr>
+        <?php endforeach; ?>
+        <?php if (empty($diagnostics['claimed'])): ?><tr><td colspan="5" class="muted">No page is currently locked by a worker.</td></tr><?php endif; ?>
+        </tbody>
+      </table>
     </div>
 
     <div class="diag-section">
@@ -561,9 +600,14 @@ document.querySelectorAll(".js-page-tab").forEach((tab) => {
 const shell = document.querySelector(".shell");
 const scanId = shell?.dataset.scanId || "";
 const workerCsrf = shell?.dataset.workerCsrf || "";
-const workerTitle = document.getElementById("workerTitle");
-const workerText = document.getElementById("workerText");
-const workerBar = document.getElementById("workerBar");
+const crawlTitle = document.getElementById("crawlTitle");
+const crawlText = document.getElementById("crawlText");
+const crawlBar = document.getElementById("crawlBar");
+const crawlPercent = document.getElementById("crawlPercent");
+const summaryTitle = document.getElementById("summaryTitle");
+const summaryText = document.getElementById("summaryText");
+const summaryBar = document.getElementById("summaryBar");
+const summaryPercent = document.getElementById("summaryPercent");
 const capturedMetric = document.getElementById("capturedMetric");
 const summarizedMetric = document.getElementById("summarizedMetric");
 const scanStatusMetric = document.getElementById("scanStatusMetric");
@@ -597,22 +641,26 @@ function setDiagnosticsLive(isRunning, text, pillText) {
 function updateWorkerUi(data, mode = "scan") {
   const counts = data?.counts || {};
   const scan = data?.scan || {};
-  const requested = Number(scan.pages_requested || 0);
   const captured = Number(counts.scanned || 0);
   const summarized = Number(counts.summarized || 0);
   const failed = Number(counts.failed || 0);
-  const totalDone = captured + failed;
-  const percent = requested > 0 ? Math.min(100, Math.round((totalDone / requested) * 100)) : 0;
-  if (workerBar) workerBar.style.width = `${percent}%`;
+  const crawlDone = Number(counts.crawl_done ?? (captured + failed));
+  const crawlTotal = Number(counts.crawl_total ?? counts.total ?? 0);
+  const summaryTotal = Number(counts.summary_total ?? captured);
+  const summaryDone = Number(counts.summary_done ?? summarized);
+  const crawlPct = Number(counts.crawl_percent ?? (crawlTotal > 0 ? Math.min(100, Math.round((crawlDone / crawlTotal) * 100)) : 0));
+  const summaryPct = Number(counts.summary_percent ?? (summaryTotal > 0 ? Math.min(100, Math.round((summaryDone / summaryTotal) * 100)) : 0));
+  if (crawlBar) crawlBar.style.width = `${crawlPct}%`;
+  if (summaryBar) summaryBar.style.width = `${summaryPct}%`;
+  if (crawlPercent) crawlPercent.textContent = `${crawlPct}%`;
+  if (summaryPercent) summaryPercent.textContent = `${summaryPct}%`;
   if (capturedMetric) capturedMetric.textContent = String(captured);
   if (summarizedMetric) summarizedMetric.textContent = String(summarized);
   if (scanStatusMetric) scanStatusMetric.textContent = scan.status || "";
-  if (workerTitle) workerTitle.textContent = mode === "summary" ? "Summarization running" : `Website scan ${scan.status || "pending"}`;
-  if (workerText) {
-    workerText.textContent = mode === "summary"
-      ? `Summarized ${summarized} page(s). ${captured - summarized} fetched page(s) still need summaries.`
-      : `Captured ${captured} page(s), failed ${failed}, ${Number(counts.pending || 0)} still queued.`;
-  }
+  if (crawlTitle) crawlTitle.textContent = `Crawling ${scan.status || "pending"}`;
+  if (crawlText) crawlText.textContent = `${crawlDone} of ${crawlTotal} queued page(s) crawled. ${failed} failed, ${Number(counts.pending || 0)} still queued.`;
+  if (summaryTitle) summaryTitle.textContent = mode === "summary" ? "Summarization running" : "Summarizing";
+  if (summaryText) summaryText.textContent = `${summaryDone} of ${summaryTotal} captured page(s) summarized. ${Number(counts.summary_pending ?? (captured - summarized))} waiting.`;
   if (mode === "scan") {
     const activeUrl = data?.active_url || "";
     const processed = Number(data?.processed || 0);
@@ -654,7 +702,7 @@ async function processScanBatch() {
       setTimeout(processScanBatch, 900);
     }
   } catch (error) {
-    if (workerText) workerText.textContent = "Worker could not update scan progress. Refresh to retry.";
+    if (crawlText) crawlText.textContent = "Worker could not update scan progress. Refresh to retry.";
     setDiagnosticsLive(false, "Worker update failed", "Error");
   } finally {
     scanBusy = false;
@@ -676,7 +724,7 @@ async function processSummaryBatches() {
     sessionStorage.removeItem(`ai-scan-reloaded-${scanId}`);
     location.reload();
   } catch (error) {
-    if (workerText) workerText.textContent = "Summarization worker failed. Try again.";
+    if (summaryText) summaryText.textContent = "Summarization worker failed. Try again.";
   } finally {
     summaryBusy = false;
     if (summarizeAllBtn) summarizeAllBtn.disabled = false;
