@@ -12,6 +12,13 @@ Use two Render services:
    - Runs `playwright-render-server.js`.
    - Renders JS-heavy pages with Chromium.
 
+Optional third service:
+
+3. Node Redis/BullMQ crawler queue
+   - Runs `crawler-queue-worker.js`.
+   - Moves scan and summarization work out of browser page requests.
+   - See `REDIS_QUEUE_SETUP.md`.
+
 ## Node Render Service
 
 Build command:

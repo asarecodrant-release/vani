@@ -1,9 +1,15 @@
 {
   "private": true,
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
-    "render:server": "node playwright-render-server.js"
+    "render:server": "node playwright-render-server.js",
+    "queue:worker": "node crawler-queue-worker.js"
   },
   "dependencies": {
+    "bullmq": "^5.0.0",
+    "ioredis": "^5.0.0",
     "playwright": "^1.45.0"
   }
 }

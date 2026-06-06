@@ -51,6 +51,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $scanJobId = (string)$scanJob['job_id'];
                 $seedResult = ai_seed_scan_job($scanJobId, $savedCustomerId, $websiteUrl, $websiteDomain, $pagesRequested);
                 if (!empty($seedResult['success'])) {
+                    if (ai_external_queue_enabled()) {
+                        $queueResult = ai_enqueue_external_job($scanJobId, 'scan', 5);
+                        ai_crawl_log($scanJobId, $savedCustomerId, 'external_queue_enqueue', !empty($queueResult['success']) ? 'Scan job sent to external queue.' : 'External queue enqueue failed; browser/Supabase worker fallback remains available.', [
+                            'queued' => !empty($queueResult['queued']),
+                            'queue_job_id' => (string)($queueResult['job_id'] ?? ''),
+                            'error' => (string)($queueResult['error'] ?? ''),
+                        ], empty($queueResult['success']) ? 'warning' : 'info', $websiteUrl);
+                    }
                     $_SESSION['ai_scan_job_id'] = $scanJobId;
                     header('Location: AI_Summarize.php?scan=' . urlencode($scanJobId));
                     exit;

@@ -185,6 +185,7 @@ $crawlDone = (int)($diagCounts['crawl_done'] ?? 0);
 $crawlTotal = (int)($diagCounts['crawl_total'] ?? 0);
 $summaryDone = (int)($diagCounts['summary_done'] ?? 0);
 $summaryTotal = (int)($diagCounts['summary_total'] ?? 0);
+$externalQueueEnabled = ai_external_queue_enabled();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -280,7 +281,7 @@ body.dark .diag-error{color:#fca5a5}
 </head>
 <body>
 <?php include 'navbar.php'; ?>
-<main class="shell" data-scan-id="<?php echo ai_h($scanId); ?>" data-scan-status="<?php echo ai_h($scan['status'] ?? ''); ?>" data-worker-csrf="<?php echo ai_h($workerCsrf); ?>">
+<main class="shell" data-scan-id="<?php echo ai_h($scanId); ?>" data-scan-status="<?php echo ai_h($scan['status'] ?? ''); ?>" data-worker-csrf="<?php echo ai_h($workerCsrf); ?>" data-external-queue="<?php echo $externalQueueEnabled ? '1' : '0'; ?>">
   <div class="top">
     <div>
       <h1>Review captured website pages</h1>
@@ -601,6 +602,7 @@ body.dark .diag-error{color:#fca5a5}
 const shell = document.querySelector(".shell");
 const scanId = shell?.dataset.scanId || "";
 const workerCsrf = shell?.dataset.workerCsrf || "";
+const externalQueueEnabled = shell?.dataset.externalQueue === "1";
 const pageTabs = document.getElementById("pageTabs");
 const pagePanels = document.getElementById("pagePanels");
 const pageTabsCount = document.getElementById("pageTabsCount");
@@ -982,7 +984,7 @@ runSummaryBatchBtn?.addEventListener("click", async () => {
   }
 });
 refreshLiveBtn?.addEventListener("click", refreshLiveStatus);
-if (shell?.dataset.scanStatus === "pending" || shell?.dataset.scanStatus === "running") {
+if (!externalQueueEnabled && (shell?.dataset.scanStatus === "pending" || shell?.dataset.scanStatus === "running")) {
   processScanBatch();
 }
 

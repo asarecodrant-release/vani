@@ -305,6 +305,50 @@ function ai_create_scan_job(string $customerId, string $email, string $websiteUr
     return ['success' => true, 'job_id' => $jobId, 'error' => ''];
 }
 
+function ai_external_queue_enabled(): bool {
+    return ai_env('AI_QUEUE_ENDPOINT') !== '';
+}
+
+function ai_queue_endpoint_url(): string {
+    $endpoint = rtrim(ai_env('AI_QUEUE_ENDPOINT'), '/');
+    if ($endpoint === '') {
+        return '';
+    }
+    return preg_match('{/enqueue$}i', $endpoint) ? $endpoint : $endpoint . '/enqueue';
+}
+
+function ai_enqueue_external_job(string $scanId, string $type = 'scan', int $priority = 5): array {
+    $endpoint = ai_queue_endpoint_url();
+    if ($endpoint === '') {
+        return ['success' => false, 'queued' => false, 'error' => 'External queue is not configured.'];
+    }
+    $headers = [];
+    $token = ai_env('AI_QUEUE_TOKEN');
+    if ($token !== '') {
+        $headers[] = 'X-Queue-Token: ' . $token;
+    }
+    $response = ai_http_json($endpoint, $headers, [
+        'scan_id' => $scanId,
+        'type' => $type,
+        'priority' => $priority,
+    ], max(3, (int)ai_env('AI_QUEUE_ENQUEUE_TIMEOUT', '8')));
+
+    if (empty($response['ok'])) {
+        return [
+            'success' => false,
+            'queued' => false,
+            'error' => ai_response_error($response),
+            'raw' => $response,
+        ];
+    }
+    return [
+        'success' => true,
+        'queued' => true,
+        'job_id' => (string)($response['data']['job_id'] ?? ''),
+        'raw' => $response,
+    ];
+}
+
 function ai_patch_scan_job(string $jobId, array $payload): void {
     $payload['updated_at'] = ai_now();
     supabase('PATCH', 'ai_scan_jobs?id=eq.' . urlencode($jobId), $payload);
