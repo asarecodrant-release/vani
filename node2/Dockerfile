@@ -2,9 +2,9 @@ FROM node:20
 
 WORKDIR /app
 
-COPY node2/package*.json ./
+COPY package*.json ./
 RUN npm install
 
-COPY node2/ .
+COPY . .
 
 CMD ["npm", "run", "queue:worker"]
