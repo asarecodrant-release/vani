@@ -2,10 +2,10 @@ FROM node:20
 
 WORKDIR /app
 
-COPY node1/package*.json ./
+COPY package*.json ./
 RUN npm install
 
-COPY node1/ .
+COPY . .
 
 RUN npx playwright install chromium --with-deps
 
