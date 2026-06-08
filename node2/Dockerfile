@@ -2,11 +2,9 @@ FROM node:20
 
 WORKDIR /app
 
-COPY package*.json ./
+COPY node2/package*.json ./
 RUN npm install
 
-COPY . .
-
-ENV PORT=3001
+COPY node2/ .
 
 CMD ["npm", "run", "queue:worker"]
