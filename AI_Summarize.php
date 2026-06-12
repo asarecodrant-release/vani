@@ -1193,9 +1193,9 @@ async function liveWorkflowLoop(force = false) {
         break;
       }
 
-      if (!crawlComplete(latest) && !externalQueueEnabled) {
+      if (!crawlComplete(latest)) {
         scanBusy = true;
-        setDiagnosticsLive(true, "Scanning next pages...", "Working");
+        setDiagnosticsLive(true, externalQueueEnabled ? "Scanning next pages with browser fallback..." : "Scanning next pages...", "Working");
         try {
           latest = await callWorker("scan_batch");
           applyLiveData(latest, "scan");
@@ -1204,12 +1204,6 @@ async function liveWorkflowLoop(force = false) {
         }
         idleRounds = Number(latest.processed || 0) === 0 ? idleRounds + 1 : 0;
         await wait(idleRounds > 2 ? 1600 : 650);
-        continue;
-      }
-
-      if (externalQueueEnabled && (!crawlComplete(latest) || !summaryComplete(latest))) {
-        await wait(1400);
-        latest = await refreshWorkflowStatus("scan");
         continue;
       }
 
