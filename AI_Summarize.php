@@ -23,7 +23,7 @@ function ai_summary_text_from_page(array $page): string {
         $decoded = json_decode($summary, true);
         $summary = is_array($decoded) ? $decoded : [];
     }
-    return trim((string)($summary['summary'] ?? ''));
+    return ai_clean_customer_text((string)($summary['summary'] ?? ''), 2200);
 }
 
 function ai_short_url_label(string $url): string {
@@ -145,8 +145,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $message = !empty($result['success']) ? 'FAQ saved.' : '';
         $error = empty($result['success']) ? (string)$result['error'] : '';
     } elseif ($action === 'add_faq') {
-        $question = trim((string)($_POST['question'] ?? ''));
-        $answer = trim((string)($_POST['answer'] ?? ''));
+        $question = ai_clean_customer_text((string)($_POST['question'] ?? ''), 800);
+        $answer = ai_clean_customer_text((string)($_POST['answer'] ?? ''), 3000);
         if ($question === '' || $answer === '') {
             $error = 'Question and answer are required.';
         } else {
@@ -718,6 +718,18 @@ function escapeHtml(value = "") {
   }[char]));
 }
 
+function cleanDisplayText(value = "") {
+  const wrapper = document.createElement("div");
+  wrapper.innerHTML = String(value ?? "")
+    .replace(/<(br|\/p|\/div|\/li|\/tr|\/h[1-6])\b[^>]*>/gi, "\n")
+    .replace(/<(script|style|noscript|svg)\b[^>]*>.*?<\/\1>/gis, " ");
+  return (wrapper.textContent || wrapper.innerText || "")
+    .replace(/[ \t\r\f\v]+/g, " ")
+    .replace(/\n\s+/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 function cssEscape(value = "") {
   if (window.CSS && typeof window.CSS.escape === "function") return CSS.escape(String(value));
   return String(value).replace(/[^a-zA-Z0-9_-]/g, "\\$&");
@@ -734,7 +746,7 @@ function shortUrlLabel(url = "") {
 
 function summaryTextFromPage(page = {}) {
   const summary = page.summary_json || {};
-  if (summary && typeof summary === "object" && typeof summary.summary === "string") return summary.summary;
+  if (summary && typeof summary === "object" && typeof summary.summary === "string") return cleanDisplayText(summary.summary);
   return "";
 }
 
@@ -896,9 +908,9 @@ function renderFaq(faq = {}) {
     <input type="hidden" name="action" value="save_faq">
     <input type="hidden" name="faq_id" value="${escapeHtml(faq.id || "")}">
     <label>Question</label>
-    <input name="question" value="${escapeHtml(faq.question || "")}">
+    <input name="question" value="${escapeHtml(cleanDisplayText(faq.question || ""))}">
     <label>Answer</label>
-    <textarea name="answer">${escapeHtml(faq.answer || "")}</textarea>
+    <textarea name="answer">${escapeHtml(cleanDisplayText(faq.answer || ""))}</textarea>
     <p class="muted">Source: ${escapeHtml(faq.source || "")}</p>
     <div class="row"><button type="submit">Save FAQ</button></div>
   </form>`;

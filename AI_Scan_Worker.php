@@ -89,8 +89,8 @@ if ($action === 'queue_test') {
         (string)($_POST['answer'] ?? '')
     );
 } elseif ($action === 'add_faq') {
-    $question = trim((string)($_POST['question'] ?? ''));
-    $answer = trim((string)($_POST['answer'] ?? ''));
+    $question = ai_clean_customer_text((string)($_POST['question'] ?? ''), 800);
+    $answer = ai_clean_customer_text((string)($_POST['answer'] ?? ''), 3000);
     if ($question === '' || $answer === '') {
         $result = ['success' => false, 'error' => 'Question and answer are required.'];
     } else {

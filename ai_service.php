@@ -890,6 +890,57 @@ function ai_page_clean_text_limit(): int {
     return max(50000, min(500000, (int)ai_env('AI_PAGE_CLEAN_TEXT_LIMIT', '200000')));
 }
 
+function ai_clean_customer_text(string $value, int $limit = 3000): string {
+    $value = html_entity_decode($value, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    $value = preg_replace('/<(script|style|noscript|svg)\b[^>]*>.*?<\/\1>/is', ' ', $value) ?: $value;
+    $value = preg_replace('/<(br|\/p|\/div|\/li|\/tr|\/h[1-6])\b[^>]*>/i', "\n", $value) ?: $value;
+    $value = strip_tags($value);
+    $value = preg_replace('/[ \t\r\f\v]+/', ' ', $value) ?: $value;
+    $value = preg_replace('/\n\s+/', "\n", $value) ?: $value;
+    $value = preg_replace('/\n{3,}/', "\n\n", $value) ?: $value;
+    $value = trim($value);
+    return $limit > 0 ? substr($value, 0, $limit) : $value;
+}
+
+function ai_clean_summary_data($value, string $key = '') {
+    if (is_array($value)) {
+        $clean = [];
+        foreach ($value as $itemKey => $itemValue) {
+            $cleanValue = ai_clean_summary_data($itemValue, (string)$itemKey);
+            if ($cleanValue === '' || $cleanValue === []) {
+                continue;
+            }
+            $clean[$itemKey] = $cleanValue;
+        }
+        return $clean;
+    }
+
+    if (is_string($value)) {
+        return ai_clean_customer_text($value, $key === 'summary' ? 2200 : 900);
+    }
+
+    return $value;
+}
+
+function ai_dom_clean_text(?DOMNode $node, int $limit = 3000): string {
+    if (!$node) {
+        return '';
+    }
+    return ai_clean_customer_text((string)$node->textContent, $limit);
+}
+
+function ai_add_detected_faq(array &$faqs, string $question, string $answer, string $source = 'html'): void {
+    $question = ai_clean_customer_text($question, 800);
+    $answer = ai_clean_customer_text($answer, 3000);
+    if ($question === '' || $answer === '') {
+        return;
+    }
+    if (strpos($question, '?') === false && !preg_match('/^(how|what|when|where|why|who|can|do|does|is|are|will|should|which)\b/i', $question)) {
+        return;
+    }
+    $faqs[] = ['question' => $question, 'answer' => $answer, 'source' => $source];
+}
+
 function ai_fetch_pages_parallel(array $urls, int $concurrency = 4): array {
     $urls = array_values(array_unique(array_filter(array_map('strval', $urls))));
     if (empty($urls)) {
@@ -1366,11 +1417,90 @@ function ai_parse_html_page(string $html, string $baseUrl, string $websiteDomain
 
         foreach ($dom->getElementsByTagName('details') as $details) {
             $summaryNode = $details->getElementsByTagName('summary')->item(0);
-            $question = $summaryNode ? trim($summaryNode->textContent) : '';
-            $answer = trim(str_replace($question, '', $details->textContent));
-            if ($question !== '' && $answer !== '') {
-                $detectedFaqs[] = ['question' => $question, 'answer' => $answer, 'source' => 'html'];
+            $question = ai_dom_clean_text($summaryNode, 800);
+            $answer = '';
+            if ($summaryNode && $details->ownerDocument) {
+                $clone = $details->cloneNode(true);
+                if ($clone instanceof DOMElement) {
+                    $cloneSummary = $clone->getElementsByTagName('summary')->item(0);
+                    if ($cloneSummary && $cloneSummary->parentNode) {
+                        $cloneSummary->parentNode->removeChild($cloneSummary);
+                    }
+                    $answer = ai_dom_clean_text($clone, 3000);
+                }
             }
+            ai_add_detected_faq($detectedFaqs, $question, $answer, 'html_details');
+        }
+
+        $xpath = new DOMXPath($dom);
+        $faqContainers = $xpath->query(
+            '//*[contains(translate(concat(" ", normalize-space(@class), " ", normalize-space(@id), " ", @aria-label), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), " faq") '
+            . 'or contains(translate(concat(" ", normalize-space(@class), " ", normalize-space(@id), " ", @aria-label), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), " question") '
+            . 'or contains(translate(concat(" ", normalize-space(@class), " ", normalize-space(@id), " ", @aria-label), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), " accordion")]'
+        );
+        foreach ($faqContainers ?: [] as $container) {
+            if (!$container instanceof DOMElement) {
+                continue;
+            }
+            $questions = $xpath->query('.//*[self::button or self::summary or self::h2 or self::h3 or self::h4 or @aria-expanded or contains(translate(concat(" ", normalize-space(@class), " "), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), " question")]', $container);
+            foreach ($questions ?: [] as $questionNode) {
+                $question = ai_dom_clean_text($questionNode, 800);
+                if ($question === '') {
+                    continue;
+                }
+                $answer = '';
+                $parent = $questionNode->parentNode;
+                if ($parent) {
+                    $parentText = ai_dom_clean_text($parent, 3500);
+                    $answer = trim(preg_replace('/^' . preg_quote($question, '/') . '\s*/u', '', $parentText) ?: $parentText);
+                }
+                if ($answer === '' && $questionNode->nextSibling) {
+                    $parts = [];
+                    $sibling = $questionNode->nextSibling;
+                    while ($sibling && count($parts) < 4) {
+                        if ($sibling instanceof DOMElement) {
+                            $tag = strtolower($sibling->tagName);
+                            if (in_array($tag, ['h1', 'h2', 'h3', 'h4', 'button', 'summary'], true)) {
+                                break;
+                            }
+                            $text = ai_dom_clean_text($sibling, 1200);
+                            if ($text !== '') {
+                                $parts[] = $text;
+                            }
+                        }
+                        $sibling = $sibling->nextSibling;
+                    }
+                    $answer = implode(' ', $parts);
+                }
+                ai_add_detected_faq($detectedFaqs, $question, $answer, 'html_faq');
+            }
+        }
+
+        $headingQuestions = $xpath->query('//h2|//h3|//h4');
+        foreach ($headingQuestions ?: [] as $headingNode) {
+            if (!$headingNode instanceof DOMElement) {
+                continue;
+            }
+            $question = ai_dom_clean_text($headingNode, 800);
+            if ($question === '' || (strpos($question, '?') === false && !preg_match('/^(how|what|when|where|why|who|can|do|does|is|are|will|should|which)\b/i', $question))) {
+                continue;
+            }
+            $parts = [];
+            $sibling = $headingNode->nextSibling;
+            while ($sibling && count($parts) < 5) {
+                if ($sibling instanceof DOMElement) {
+                    $tag = strtolower($sibling->tagName);
+                    if (in_array($tag, ['h1', 'h2', 'h3', 'h4'], true)) {
+                        break;
+                    }
+                    $text = ai_dom_clean_text($sibling, 1200);
+                    if ($text !== '') {
+                        $parts[] = $text;
+                    }
+                }
+                $sibling = $sibling->nextSibling;
+            }
+            ai_add_detected_faq($detectedFaqs, $question, implode(' ', $parts), 'html_heading');
         }
     } else {
         $withoutScripts = preg_replace('/<(script|style|noscript|svg)\b[^>]*>.*?<\/\1>/is', ' ', $html) ?: $html;
@@ -1414,6 +1544,16 @@ function ai_parse_html_page(string $html, string $baseUrl, string $websiteDomain
                 }
             }
         }
+        if (preg_match_all('/<details\b[^>]*>.*?<summary\b[^>]*>(.*?)<\/summary>(.*?)<\/details>/is', $withoutScripts, $detailMatches, PREG_SET_ORDER)) {
+            foreach ($detailMatches as $detailMatch) {
+                ai_add_detected_faq($detectedFaqs, (string)$detailMatch[1], (string)$detailMatch[2], 'html_details');
+            }
+        }
+        if (preg_match_all('/<h([2-4])\b[^>]*>(.*?)<\/h\1>(.*?)(?=<h[1-4]\b|$)/is', $withoutScripts, $questionMatches, PREG_SET_ORDER)) {
+            foreach ($questionMatches as $questionMatch) {
+                ai_add_detected_faq($detectedFaqs, (string)$questionMatch[2], (string)$questionMatch[3], 'html_heading');
+            }
+        }
         $cleanText = preg_replace('/\s+/', ' ', trim(html_entity_decode(strip_tags($withoutScripts), ENT_QUOTES, 'UTF-8'))) ?: '';
     }
 
@@ -1443,17 +1583,21 @@ function ai_faqs_from_json_ld($json): array {
             continue;
         }
         $type = $item['@type'] ?? '';
-        $types = is_array($type) ? $type : [$type];
-        if (!in_array('FAQPage', $types, true)) {
+        $types = array_map('strtolower', array_map('strval', is_array($type) ? $type : [$type]));
+        if (!in_array('faqpage', $types, true)) {
             continue;
         }
-        foreach (($item['mainEntity'] ?? []) as $entity) {
+        $mainEntity = $item['mainEntity'] ?? [];
+        if (is_array($mainEntity) && isset($mainEntity['@type'])) {
+            $mainEntity = [$mainEntity];
+        }
+        foreach ($mainEntity as $entity) {
             if (!is_array($entity)) {
                 continue;
             }
-            $question = trim((string)($entity['name'] ?? ''));
+            $question = ai_clean_customer_text((string)($entity['name'] ?? ''), 800);
             $answerData = $entity['acceptedAnswer']['text'] ?? '';
-            $answer = trim(preg_replace('/\s+/', ' ', html_entity_decode(strip_tags((string)$answerData), ENT_QUOTES, 'UTF-8')) ?: '');
+            $answer = ai_clean_customer_text((string)$answerData, 3000);
             if ($question !== '' && $answer !== '') {
                 $faqs[] = ['question' => $question, 'answer' => $answer, 'source' => 'json_ld'];
             }
@@ -1466,8 +1610,8 @@ function ai_dedupe_faqs(array $faqs): array {
     $seen = [];
     $clean = [];
     foreach ($faqs as $faq) {
-        $question = trim(preg_replace('/\s+/', ' ', (string)($faq['question'] ?? '')) ?: '');
-        $answer = trim(preg_replace('/\s+/', ' ', (string)($faq['answer'] ?? '')) ?: '');
+        $question = ai_clean_customer_text((string)($faq['question'] ?? ''), 800);
+        $answer = ai_clean_customer_text((string)($faq['answer'] ?? ''), 3000);
         if ($question === '' || $answer === '') {
             continue;
         }
@@ -1477,8 +1621,8 @@ function ai_dedupe_faqs(array $faqs): array {
         }
         $seen[$key] = true;
         $clean[] = [
-            'question' => substr($question, 0, 800),
-            'answer' => substr($answer, 0, 3000),
+            'question' => $question,
+            'answer' => $answer,
             'source' => (string)($faq['source'] ?? 'ai')
         ];
     }
@@ -1528,7 +1672,7 @@ function ai_summary_array_values(array $summary, string $key): array {
     }
     $items = [];
     foreach ($value as $item) {
-        $text = trim(preg_replace('/\s+/', ' ', (string)$item) ?: '');
+        $text = ai_clean_customer_text((string)$item, 900);
         if ($text !== '') {
             $items[] = $text;
         }
@@ -1538,7 +1682,7 @@ function ai_summary_array_values(array $summary, string $key): array {
 
 function ai_add_summary_faq(array &$faqs, string $question, array $answers, string $source = 'ai_summary_generated'): void {
     $answers = array_values(array_filter(array_map(function ($answer) {
-        return trim(preg_replace('/\s+/', ' ', (string)$answer) ?: '');
+        return ai_clean_customer_text((string)$answer, 900);
     }, $answers)));
     if ($question === '' || empty($answers)) {
         return;
@@ -2556,6 +2700,7 @@ function ai_summarize_scanned_page(string $pageId, string $customerId): array {
         return ['success' => false, 'error' => (string)($summary['error'] ?? 'Summary failed.')];
     }
 
+    $summary['data'] = ai_clean_summary_data((array)$summary['data']);
     $embeddingText = json_encode($summary['data'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: $cleanText;
     $embedding = ai_create_embedding(substr($embeddingText, 0, 12000));
     $aiErrors = [];
@@ -2599,7 +2744,7 @@ function ai_update_page_context(string $pageId, string $customerId, string $clea
     if (empty($page)) {
         return ['success' => false, 'error' => 'Page was not found.'];
     }
-    $cleanText = trim($cleanText);
+    $cleanText = ai_clean_customer_text($cleanText, ai_page_clean_text_limit());
     supabase('PATCH', 'ai_website_pages?id=eq.' . urlencode($pageId), [
         'clean_text' => $cleanText,
         'content_hash' => hash('sha256', $cleanText),
@@ -2619,7 +2764,7 @@ function ai_update_page_summary(string $pageId, string $customerId, string $summ
         return ['success' => false, 'error' => 'Page was not found.'];
     }
     $existing = is_array($page['summary_json'] ?? null) ? $page['summary_json'] : [];
-    $existing['summary'] = trim($summaryText);
+    $existing['summary'] = ai_clean_customer_text($summaryText, 2200);
     $existing['manual_edit'] = true;
     supabase('PATCH', 'ai_website_pages?id=eq.' . urlencode($pageId), [
         'summary_json' => $existing,
@@ -2639,8 +2784,8 @@ function ai_update_faq(string $faqId, string $customerId, string $question, stri
         return ['success' => false, 'error' => 'FAQ was not found.'];
     }
     supabase('PATCH', 'ai_website_faqs?id=eq.' . urlencode($faqId), [
-        'question' => trim($question),
-        'answer' => trim($answer),
+        'question' => ai_clean_customer_text($question, 800),
+        'answer' => ai_clean_customer_text($answer, 3000),
         'source' => 'manual_edit',
         'updated_at' => ai_now()
     ]);
@@ -2962,11 +3107,11 @@ function ai_decode_json_result(array $result): array {
 }
 
 function ai_fallback_page_summary(string $url, string $title, string $cleanText, string $error = ''): array {
-    $cleanText = preg_replace('/\s+/', ' ', trim($cleanText)) ?: '';
+    $cleanText = ai_clean_customer_text($cleanText, 12000);
     $sentences = preg_split('/(?<=[.!?])\s+/', $cleanText) ?: [];
-    $summary = trim(implode(' ', array_slice(array_filter($sentences), 0, 3)));
+    $summary = trim(implode(' ', array_slice(array_filter($sentences), 0, 8)));
     if ($summary === '') {
-        $summary = substr($cleanText, 0, 700);
+        $summary = substr($cleanText, 0, 1800);
     }
 
     return [
@@ -2975,8 +3120,10 @@ function ai_fallback_page_summary(string $url, string $title, string $cleanText,
             'url' => $url,
             'page_title' => $title,
             'page_type' => 'other',
-            'summary' => substr($summary, 0, 900),
-            'key_facts' => array_slice(array_values(array_filter($sentences)), 0, 5),
+            'summary' => ai_clean_customer_text($summary, 2200),
+            'key_facts' => array_slice(array_map(function ($item) {
+                return ai_clean_customer_text((string)$item, 900);
+            }, array_values(array_filter($sentences))), 0, 12),
             'services' => [],
             'pricing_info' => [],
             'locations' => [],
@@ -2997,7 +3144,7 @@ function ai_fallback_page_summary(string $url, string $title, string $cleanText,
 }
 
 function ai_summarize_page(string $url, string $title, string $cleanText): array {
-    $cleanText = trim($cleanText);
+    $cleanText = ai_clean_customer_text($cleanText, ai_page_clean_text_limit());
     if ($cleanText === '') {
         return [
             'success' => false,
@@ -3007,13 +3154,13 @@ function ai_summarize_page(string $url, string $title, string $cleanText): array
         ];
     }
 
-    $systemPrompt = 'You extract chatbot-ready business knowledge from website pages. The output will be used as context for a customer support chatbot, so preserve answerable facts, service details, rules, prices, eligibility, locations, timings, contact details, processes, and limitations. Return exactly one valid JSON object. Do not use markdown fences, comments, prose, or trailing commas.';
-    $userPrompt = "Analyze this website page and return exactly this JSON object shape. Capture enough detail for a chatbot to answer visitor questions accurately. Keep each string concise but do not omit important facts. Maximum 12 items per array, maximum 20 FAQ candidates, and no value longer than 900 characters. faq_candidates is required: create useful customer question-answer pairs for every answerable service, pricing, contact, policy, timing, location, eligibility, and process detail found on the page. Do not invent facts; if the page has no answerable facts, return an empty faq_candidates array.\n"
+    $systemPrompt = 'You extract customer-friendly business knowledge from website pages. The output will be reviewed by a business owner and used as chatbot context, so preserve every answerable fact, service detail, rule, price, eligibility point, location, timing, contact detail, process, and limitation. Write plain text only. Return exactly one valid JSON object. Do not use HTML, markdown fences, comments, prose outside JSON, or trailing commas.';
+    $userPrompt = "Analyze this website page and return exactly this JSON object shape. Capture enough detail for a chatbot to answer visitor questions accurately. The summary must be customer friendly, understandable, and cover the important details from the scanned page without raw HTML. Keep each array item focused but do not omit important facts. Maximum 20 items per array, maximum 35 FAQ candidates, and no value longer than 900 characters except summary. faq_candidates is required: create useful natural customer question-answer pairs for every answerable service, pricing, contact, policy, timing, location, eligibility, requirement, and process detail found on the page. Do not invent facts; if the page has no answerable facts, return an empty faq_candidates array.\n"
         . "{\n"
         . "  \"url\": \"string\",\n"
         . "  \"page_title\": \"string\",\n"
         . "  \"page_type\": \"home|about|services|pricing|contact|faq|blog|other\",\n"
-        . "  \"summary\": \"chatbot-ready summary with the most important facts from this page\",\n"
+        . "  \"summary\": \"plain-language customer-ready summary covering all important facts from this page\",\n"
         . "  \"key_facts\": [\"string\"],\n"
         . "  \"services\": [\"string\"],\n"
         . "  \"pricing_info\": [\"string\"],\n"
@@ -3035,13 +3182,14 @@ function ai_summarize_page(string $url, string $title, string $cleanText): array
     $decoded = ai_decode_json_result(ai_generate_text($systemPrompt, $userPrompt, [
         'json' => true,
         'temperature' => 0.1,
-        'max_output_tokens' => 8192,
+        'max_output_tokens' => 12000,
     ]));
 
     if (empty($decoded['success'])) {
         return ai_fallback_page_summary($url, $title, $cleanText, (string)$decoded['error']);
     }
 
+    $decoded['data'] = ai_clean_summary_data((array)$decoded['data']);
     return $decoded;
 }
 
