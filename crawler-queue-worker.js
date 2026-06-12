@@ -97,6 +97,7 @@ async function processScanJob(job) {
 
   let latest;
   let idleLoops = 0;
+  let summaryQueued = false;
   for (let i = 0; i < maxScanLoops; i += 1) {
     latest = await callPhpWorker("scan_batch", scanId);
     processedCount += Number(latest.processed || 0);
@@ -110,9 +111,15 @@ async function processScanJob(job) {
 
     const status = latest.scan?.status || latest.status || "";
     if (status === "completed" || status === "failed") break;
+    if (status === "paused" || latest.paused) break;
 
     const processed = Number(latest.processed || 0);
     const pending = Number(latest.counts?.pending || latest.diagnostics?.counts?.pending || 0);
+    const fetched = Number(latest.counts?.fetched || latest.diagnostics?.counts?.fetched || 0);
+    if (!summaryQueued && fetched > 0) {
+      await enqueueSummary(scanId);
+      summaryQueued = true;
+    }
     if (processed === 0) {
       idleLoops += 1;
       if (latest.waiting_for_retry || pending > 0 || idleLoops < idleScanLimit) {
@@ -124,7 +131,7 @@ async function processScanJob(job) {
     idleLoops = 0;
   }
 
-  if (latest?.scan?.status === "completed" || latest?.status === "completed") {
+  if (!summaryQueued && (latest?.scan?.status === "completed" || latest?.status === "completed")) {
     await enqueueSummary(scanId);
   }
   return latest || { success: true };

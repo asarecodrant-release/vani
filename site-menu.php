@@ -205,6 +205,7 @@ body.dark .site-side-menu-link.primary{
     <button class="site-menu-close" type="button" id="siteMenuClose" aria-label="Close menu">×</button>
   </div>
   <div class="site-side-menu-links">
+    <button class="site-side-menu-link" type="button" id="themeToggle" data-theme-toggle>Dark / Bright <span>↕</span></button>
     <?php if (function_exists('is_authenticated_user') && is_authenticated_user()): ?>
       <a class="site-side-menu-link primary" href="dashboard.php">Dashboard <span>→</span></a>
     <?php endif; ?>

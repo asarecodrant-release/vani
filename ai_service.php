@@ -392,6 +392,36 @@ function ai_release_scan_job(string $jobId, string $workerId): void {
     );
 }
 
+function ai_pause_scan_job(string $jobId, string $customerId): void {
+    ai_patch_scan_job($jobId, [
+        'status' => 'paused',
+        'worker_id' => null,
+        'locked_until' => null,
+        'error_message' => null,
+        'updated_at' => ai_now(),
+    ]);
+    supabase(
+        'PATCH',
+        'ai_website_pages?scan_job_id=eq.' . urlencode($jobId) . '&customer_id=eq.' . urlencode($customerId) . '&page_status=eq.pending',
+        ['page_worker_id' => null, 'page_locked_until' => null, 'updated_at' => ai_now()]
+    );
+}
+
+function ai_resume_scan_job(string $jobId, string $customerId): void {
+    ai_patch_scan_job($jobId, [
+        'status' => 'running',
+        'worker_id' => null,
+        'locked_until' => null,
+        'error_message' => null,
+        'updated_at' => ai_now(),
+    ]);
+    supabase(
+        'PATCH',
+        'ai_website_pages?scan_job_id=eq.' . urlencode($jobId) . '&customer_id=eq.' . urlencode($customerId) . '&page_status=eq.pending',
+        ['page_worker_id' => null, 'page_locked_until' => null, 'updated_at' => ai_now()]
+    );
+}
+
 function ai_extend_scan_job_lock(string $jobId, string $workerId, int $ttlSeconds = 90): void {
     if (!ai_db_supports_worker_columns()) {
         return;
@@ -2455,6 +2485,17 @@ function ai_process_scan_job_batch(string $jobId, string $customerId, int $batch
     if (empty($scan)) {
         return ['success' => false, 'error' => 'Scan job was not found.'];
     }
+    if ((string)($scan['status'] ?? '') === 'paused') {
+        return [
+            'success' => true,
+            'status' => 'paused',
+            'counts' => ai_scan_job_counts($jobId, $customerId),
+            'processed' => 0,
+            'queued_links' => 0,
+            'paused' => true,
+            'error' => '',
+        ];
+    }
     $workerId = ai_worker_id();
     $pageLevelClaiming = ai_db_supports_advanced_crawler_columns();
     if (!$pageLevelClaiming && !ai_claim_scan_job($jobId, $customerId, $workerId)) {
@@ -2674,6 +2715,17 @@ function ai_process_scan_job_batch(string $jobId, string $customerId, int $batch
 }
 
 function ai_summarize_scan_job_batch(string $jobId, string $customerId, int $batchSize = 2): array {
+    $scan = ai_get_scan_job_for_customer($jobId, $customerId);
+    if ((string)($scan['status'] ?? '') === 'paused') {
+        return [
+            'success' => true,
+            'summarized' => 0,
+            'failed' => 0,
+            'deferred' => 0,
+            'remaining' => false,
+            'paused' => true,
+        ];
+    }
     $retrySupported = ai_db_supports_retry_columns();
     $endpoint = 'ai_website_pages?select=id,page_status&scan_job_id=eq.' . urlencode($jobId)
         . '&customer_id=eq.' . urlencode($customerId)

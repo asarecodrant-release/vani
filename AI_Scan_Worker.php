@@ -70,9 +70,20 @@ if ($action === 'queue_test') {
     $pageId = trim((string)($_POST['page_id'] ?? $_GET['page_id'] ?? ''));
     if (!ai_is_configured()) {
         $result = ['success' => false, 'error' => 'AI provider is not configured.'];
+    } elseif ((string)($scan['status'] ?? '') === 'paused') {
+        $result = ['success' => true, 'paused' => true, 'error' => 'Workflow is paused.'];
     } else {
         $result = ai_summarize_scanned_page($pageId, $customerId);
     }
+} elseif ($action === 'pause_scan') {
+    ai_pause_scan_job($scanId, $customerId);
+    $result = ['success' => true, 'error' => ''];
+} elseif ($action === 'resume_scan') {
+    ai_resume_scan_job($scanId, $customerId);
+    if (ai_external_queue_enabled()) {
+        ai_enqueue_external_job($scanId, 'scan', 5);
+    }
+    $result = ['success' => true, 'error' => ''];
 } elseif ($action === 'backfill_faqs') {
     $result = ['success' => true, 'error' => 'FAQ capture is disabled for the summarization workflow.'];
 } elseif ($action === 'add_page') {

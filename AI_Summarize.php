@@ -181,14 +181,16 @@ body{margin:0;background:var(--bg);color:var(--ink)}
 .top h1{margin:0;font-size:32px;line-height:1.15}
 .top p{margin:8px 0 0;color:var(--muted);line-height:1.6}
 .actions{display:flex;gap:10px;flex-wrap:wrap}
-button,.btn{min-height:42px;border:0;border-radius:8px;padding:0 14px;font-weight:800;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}
+button,.btn,.icon-btn{min-height:42px;border:0;border-radius:8px;padding:0 14px;font-weight:800;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}
 button{background:#2563eb;color:#fff}
 .btn{background:#e2e8f0;color:#0f172a}
+.icon-btn{background:#e2e8f0;color:#0f172a}
 .grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,390px);gap:18px;align-items:start}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:18px;box-shadow:0 12px 34px rgba(15,23,42,.06)}
 .pages-panel{min-width:0}
 .faq-panel{position:sticky;top:18px;max-height:calc(100vh - 36px);overflow:auto}
 .faq-panel h2{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:12px}
+.faq-panel-tools{display:flex;align-items:center;gap:8px}
 .faq-add-form{display:grid;gap:8px;padding:12px;border:1px solid var(--line);border-radius:8px;background:var(--soft);margin-bottom:12px}
 .faq-add-form label{display:block;font-size:11px;font-weight:900;text-transform:uppercase;color:var(--muted)}
 .faq-add-form input,.faq-add-form textarea{width:100%}
@@ -275,8 +277,8 @@ body.dark .diag-error{color:#fca5a5}
       <p><?php echo ai_h($scan['website_domain'] ?? ''); ?> pages are captured first. Customer-ready summaries can be reviewed and edited here.</p>
     </div>
     <div class="actions">
-      <button type="button" id="summarizeAllBtn">Summarize all pages</button>
-      <button class="btn" type="button" data-theme-toggle>Bright Mode</button>
+      <button type="button" id="workflowToggleBtn"><?php echo (string)($scan['status'] ?? '') === 'paused' ? 'Start again' : 'Stop'; ?></button>
+      <button class="btn" type="button" id="refreshLiveBtn">Refresh</button>
       <a class="btn" href="AI_Chatbot_Setup.php">Scan another website</a>
     </div>
   </div>
@@ -332,7 +334,6 @@ body.dark .diag-error{color:#fca5a5}
     <div class="diag-actions">
       <button type="button" id="runScanBatchBtn">Run scan batch</button>
       <button type="button" id="runSummaryBatchBtn">Run summary batch</button>
-      <button class="btn" type="button" id="refreshLiveBtn">Refresh live data</button>
     </div>
 
     <div class="diag-section">
@@ -620,7 +621,9 @@ body.dark .diag-error{color:#fca5a5}
     <aside class="panel faq-panel">
       <h2>
         <span>Captured FAQ</span>
-        <span class="diag-pill" id="faqCountPill"><?php echo count($faqs); ?></span>
+        <span class="faq-panel-tools">
+          <span class="diag-pill" id="faqCountPill"><?php echo count($faqs); ?></span>
+        </span>
       </h2>
       <form method="POST" class="faq-add-form js-live-worker-form">
         <input type="hidden" name="action" value="add_faq">
@@ -666,6 +669,7 @@ const shell = document.querySelector(".shell");
 const scanId = shell?.dataset.scanId || "";
 const workerCsrf = shell?.dataset.workerCsrf || "";
 const externalQueueEnabled = shell?.dataset.externalQueue === "1";
+let currentScanStatus = shell?.dataset.scanStatus || "";
 const pageTabs = document.getElementById("pageTabs");
 const pagePanels = document.getElementById("pagePanels");
 const pageTabsCount = document.getElementById("pageTabsCount");
@@ -693,6 +697,7 @@ const diagLivePill = document.getElementById("diagLivePill");
 const summaryDiagLive = document.getElementById("summaryDiagLive");
 const summaryDiagLiveText = document.getElementById("summaryDiagLiveText");
 const summaryDiagLivePill = document.getElementById("summaryDiagLivePill");
+const workflowToggleBtn = document.getElementById("workflowToggleBtn");
 let scanBusy = false;
 let summaryBusy = false;
 let liveStatusBusy = false;
@@ -813,6 +818,19 @@ function setSummaryControlsCompleted(isCompleted) {
   }
 }
 
+function setWorkflowToggleState(status = "") {
+  const value = String(status || "").toLowerCase();
+  currentScanStatus = value;
+  if (!workflowToggleBtn) return;
+  if (value === "completed" || value === "failed") {
+    workflowToggleBtn.disabled = true;
+    workflowToggleBtn.textContent = "Done";
+    return;
+  }
+  workflowToggleBtn.disabled = false;
+  workflowToggleBtn.textContent = value === "paused" ? "Start again" : "Stop";
+}
+
 function updateWorkerUi(data, mode = "scan") {
   const counts = data?.counts || {};
   const scan = data?.scan || {};
@@ -834,6 +852,7 @@ function updateWorkerUi(data, mode = "scan") {
   if (capturedMetric) capturedMetric.textContent = String(captured);
   if (summarizedMetric) summarizedMetric.textContent = String(summarized);
   if (scanStatusMetric) scanStatusMetric.textContent = scan.status || "";
+  setWorkflowToggleState(scan.status || "");
   if (crawlTitle) crawlTitle.textContent = `Crawling ${scan.status || "pending"}`;
   if (crawlText) crawlText.textContent = `${crawlDone} of ${crawlTotal} queued page(s) crawled. ${failed} failed, ${Number(counts.pending || 0)} still queued.`;
   if (summaryTitle) summaryTitle.textContent = summaryIsComplete ? "Summarization completed" : (mode === "summary" ? "Summarization running" : "Summarizing");
@@ -1154,7 +1173,9 @@ async function processScanBatch() {
   try {
     const data = await callWorker("scan_batch");
     applyLiveData(data, "scan");
-    await summarizeNextFetchedPage(data);
+    if (!summaryBusy && nextFetchedPage(data)) {
+      summarizeNextFetchedPage(data).catch(() => {});
+    }
   } catch (error) {
     if (crawlText) crawlText.textContent = "Worker could not update scan progress. Refresh to retry.";
     setDiagnosticsLive(false, "Worker update failed", "Error");
@@ -1193,7 +1214,8 @@ function summaryComplete(data = {}) {
 
 async function summarizeNextFetchedPage(data = {}) {
   const page = nextFetchedPage(data);
-  if (!page?.id || summaryBusy) return data;
+  const scan = data.scan || data.diagnostics?.scan || {};
+  if (!page?.id || summaryBusy || String(scan.status || "").toLowerCase() === "paused") return data;
 
   summaryBusy = true;
   summarizingPages.add(String(page.id));
@@ -1255,6 +1277,13 @@ async function liveWorkflowLoop(force = false) {
     while (true) {
       const scan = latest.scan || latest.diagnostics?.scan || {};
       const counts = latest.counts || latest.diagnostics?.counts || {};
+      if (String(scan.status || "").toLowerCase() === "paused") {
+        setDiagnosticsLive(false, "Crawler paused", "Paused");
+        setSummaryDiagnosticsLive(false, "Summarization paused", "Paused");
+        await wait(1000);
+        latest = await refreshWorkflowStatus("scan");
+        continue;
+      }
       if ((scan.status === "failed" || scan.status === "completed") && Number(counts.total || 0) === 0) {
         autoWorkflowDone = true;
         setDiagnosticsLive(false, scan.status === "failed" ? "Crawler failed" : "Crawler complete", scan.status || "Done");
@@ -1263,10 +1292,8 @@ async function liveWorkflowLoop(force = false) {
       }
 
       const waitingSummary = nextFetchedPage(latest);
-      if (waitingSummary) {
-        latest = await summarizeNextFetchedPage(latest);
-        await wait(250);
-        continue;
+      if (waitingSummary && !summaryBusy) {
+        summarizeNextFetchedPage(latest).catch(() => {});
       }
 
       const pages = Array.isArray(latest.pages) ? latest.pages : [];
@@ -1286,6 +1313,9 @@ async function liveWorkflowLoop(force = false) {
         } finally {
           scanBusy = false;
         }
+        if (!summaryBusy && nextFetchedPage(latest)) {
+          summarizeNextFetchedPage(latest).catch(() => {});
+        }
         idleRounds = Number(latest.processed || 0) === 0 ? idleRounds + 1 : 0;
         await wait(idleRounds > 2 ? 1600 : 650);
         continue;
@@ -1299,6 +1329,9 @@ async function liveWorkflowLoop(force = false) {
         break;
       }
 
+      if (crawlComplete(latest) && waitingSummary && !summaryBusy) {
+        summarizeNextFetchedPage(latest).catch(() => {});
+      }
       await wait(900);
       latest = await refreshWorkflowStatus("scan");
     }
@@ -1308,6 +1341,26 @@ async function liveWorkflowLoop(force = false) {
 }
 
 summarizeAllBtn?.addEventListener("click", processSummaryBatches);
+workflowToggleBtn?.addEventListener("click", async () => {
+  if (!scanId || scanBusy || summaryBusy) return;
+  const wasPaused = currentScanStatus === "paused";
+  const action = wasPaused ? "resume_scan" : "pause_scan";
+  workflowToggleBtn.disabled = true;
+  try {
+    const data = await callWorker(action);
+    applyLiveData(data, "scan");
+    if (wasPaused) {
+      autoWorkflowDone = false;
+      if (!autoWorkflowBusy) {
+        liveWorkflowLoop(true);
+      }
+    }
+  } finally {
+    if (currentScanStatus !== "completed" && currentScanStatus !== "failed") {
+      workflowToggleBtn.disabled = false;
+    }
+  }
+});
 runScanBatchBtn?.addEventListener("click", async () => {
   runScanBatchBtn.disabled = true;
   setDiagnosticsLive(true, "Scanning batch...", "Working");
@@ -1393,6 +1446,10 @@ async function refreshLiveStatus() {
   try {
     const data = await callWorker("status");
     applyLiveData(data, summaryBusy ? "summary" : "scan");
+    if ((data?.scan?.status || "").toLowerCase() === "running" && !autoWorkflowBusy) {
+      autoWorkflowDone = false;
+      liveWorkflowLoop(true);
+    }
   } finally {
     liveStatusBusy = false;
   }
