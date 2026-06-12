@@ -966,14 +966,21 @@ async function processScanBatch() {
   }
 }
 
-async function processSummaryBatches() {
+async function summarizeCapturedPages(preferredPageId = "") {
   if (!scanId || summaryBusy) return;
   summaryBusy = true;
   if (summarizeAllBtn) summarizeAllBtn.disabled = true;
   try {
     let latest = await callWorker("status");
     applyLiveData(latest, "summary");
-    const pages = Array.isArray(latest.pages) ? latest.pages : [];
+    const pages = Array.isArray(latest.pages) ? [...latest.pages] : [];
+    if (preferredPageId) {
+      pages.sort((left, right) => {
+        if (left?.id === preferredPageId) return -1;
+        if (right?.id === preferredPageId) return 1;
+        return 0;
+      });
+    }
     for (const page of pages) {
       if (!page?.id) continue;
       const data = await callWorker("summarize_page", { page_id: page.id });
@@ -986,6 +993,10 @@ async function processSummaryBatches() {
     summaryBusy = false;
     if (summarizeAllBtn) summarizeAllBtn.disabled = false;
   }
+}
+
+async function processSummaryBatches() {
+  await summarizeCapturedPages();
 }
 
 summarizeAllBtn?.addEventListener("click", processSummaryBatches);
@@ -1017,6 +1028,7 @@ document.addEventListener("submit", async (event) => {
   const form = event.target.closest(".js-summarize-page-form");
   if (!form) return;
   event.preventDefault();
+  if (summaryBusy) return;
   const button = form.querySelector("button");
   const pageId = form.querySelector("input[name='page_id']")?.value || "";
   if (button) {
@@ -1024,8 +1036,7 @@ document.addEventListener("submit", async (event) => {
     button.textContent = "Summarizing...";
   }
   try {
-    const data = await callWorker("summarize_page", { page_id: pageId });
-    applyLiveData(data, "summary");
+    await summarizeCapturedPages(pageId);
     selectPageTab(`page-panel-${pageId}`, pageId);
   } finally {
     if (button) {
