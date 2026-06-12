@@ -359,6 +359,37 @@ function ai_patch_scan_job(string $jobId, array $payload): void {
     supabase('PATCH', 'ai_scan_jobs?id=eq.' . urlencode($jobId), $payload);
 }
 
+function ai_patch_active_scan_job(string $jobId, string $customerId, array $payload): bool {
+    $payload['updated_at'] = ai_now();
+    $response = supabase(
+        'PATCH',
+        'ai_scan_jobs?id=eq.' . urlencode($jobId)
+            . '&customer_id=eq.' . urlencode($customerId)
+            . '&status=neq.paused',
+        $payload
+    );
+    return !empty(ai_safe_rows($response));
+}
+
+function ai_scan_job_is_paused(string $jobId, string $customerId): bool {
+    $scan = ai_get_scan_job_for_customer($jobId, $customerId);
+    return (string)($scan['status'] ?? '') === 'paused';
+}
+
+function ai_scan_paused_batch_response(string $jobId, string $customerId, int $processed = 0, int $queuedLinks = 0): array {
+    return [
+        'success' => true,
+        'status' => 'paused',
+        'counts' => ai_scan_job_counts($jobId, $customerId),
+        'processed' => $processed,
+        'queued_links' => $queuedLinks,
+        'paused' => true,
+        'active_url' => '',
+        'active_urls' => [],
+        'error' => '',
+    ];
+}
+
 function ai_claim_scan_job(string $jobId, string $customerId, string $workerId, int $ttlSeconds = 90): bool {
     if (!ai_db_supports_worker_columns()) {
         return true;
@@ -2500,15 +2531,7 @@ function ai_process_scan_job_batch(string $jobId, string $customerId, int $batch
         return ['success' => false, 'error' => 'Scan job was not found.'];
     }
     if ((string)($scan['status'] ?? '') === 'paused') {
-        return [
-            'success' => true,
-            'status' => 'paused',
-            'counts' => ai_scan_job_counts($jobId, $customerId),
-            'processed' => 0,
-            'queued_links' => 0,
-            'paused' => true,
-            'error' => '',
-        ];
+        return ai_scan_paused_batch_response($jobId, $customerId);
     }
     $workerId = ai_worker_id();
     $pageLevelClaiming = ai_db_supports_advanced_crawler_columns();
@@ -2518,43 +2541,67 @@ function ai_process_scan_job_batch(string $jobId, string $customerId, int $batch
 
     $maxPages = max(1, min(500, (int)($scan['pages_requested'] ?? 120)));
     if ((string)($scan['status'] ?? '') === 'pending') {
-        ai_patch_scan_job($jobId, [
+        if (!ai_patch_active_scan_job($jobId, $customerId, [
             'status' => 'running',
             'started_at' => $scan['started_at'] ?: ai_now(),
             'error_message' => null,
             'updated_at' => ai_now()
-        ]);
+        ])) {
+            if (!$pageLevelClaiming) {
+                ai_release_scan_job($jobId, $workerId);
+            }
+            return ai_scan_paused_batch_response($jobId, $customerId);
+        }
         ai_crawl_log($jobId, $customerId, 'scan_started', 'Crawler started processing this scan.', [], 'info', (string)($scan['website_url'] ?? ''));
     }
 
     $retrySupported = ai_db_supports_retry_columns();
     $batchLimit = max(1, min((int)ai_env('AI_CRAWL_MAX_BATCH_SIZE', '12'), $batchSize));
     $pendingPages = ai_claim_pending_pages($jobId, $customerId, $batchLimit, $workerId, $retrySupported);
+    if (ai_scan_job_is_paused($jobId, $customerId)) {
+        foreach ($pendingPages as $page) {
+            ai_release_page_claim((string)($page['id'] ?? ''), $workerId);
+        }
+        if (!$pageLevelClaiming) {
+            ai_release_scan_job($jobId, $workerId);
+        }
+        return ai_scan_paused_batch_response($jobId, $customerId);
+    }
 
     if (empty($pendingPages)) {
         $counts = ai_scan_job_counts($jobId, $customerId);
         if ($counts['pending'] > 0) {
-            ai_patch_scan_job($jobId, [
+            if (!ai_patch_active_scan_job($jobId, $customerId, [
                 'status' => 'running',
                 'pages_scanned' => $counts['scanned'],
                 'pages_failed' => $counts['failed'],
                 'error_message' => null,
                 'updated_at' => ai_now()
-            ]);
+            ])) {
+                if (!$pageLevelClaiming) {
+                    ai_release_scan_job($jobId, $workerId);
+                }
+                return ai_scan_paused_batch_response($jobId, $customerId);
+            }
             if (!$pageLevelClaiming) {
                 ai_release_scan_job($jobId, $workerId);
             }
             return ['success' => true, 'status' => 'running', 'counts' => $counts, 'processed' => 0, 'waiting_for_retry' => true, 'error' => ''];
         }
         $status = $counts['scanned'] > 0 ? 'completed' : 'failed';
-        ai_patch_scan_job($jobId, [
+        if (!ai_patch_active_scan_job($jobId, $customerId, [
             'status' => $status,
             'pages_scanned' => $counts['scanned'],
             'pages_failed' => $counts['failed'],
             'completed_at' => ai_now(),
             'error_message' => $status === 'failed' ? 'No pages could be scanned.' : null,
             'updated_at' => ai_now()
-        ]);
+        ])) {
+            if (!$pageLevelClaiming) {
+                ai_release_scan_job($jobId, $workerId);
+            }
+            return ai_scan_paused_batch_response($jobId, $customerId);
+        }
         if (!$pageLevelClaiming) {
             ai_release_scan_job($jobId, $workerId);
         }
@@ -2724,14 +2771,25 @@ function ai_process_scan_job_batch(string $jobId, string $customerId, int $batch
         ];
     }
     usleep(ai_crawl_delay_ms((string)($scan['website_url'] ?? '')) * 1000);
+    if (ai_scan_job_is_paused($jobId, $customerId)) {
+        if (!$pageLevelClaiming) {
+            ai_release_scan_job($jobId, $workerId);
+        }
+        return ai_scan_paused_batch_response($jobId, $customerId, $processed, $queuedLinksTotal);
+    }
     $complete = $counts['pending'] === 0 && $queuedLinksTotal === 0;
-    ai_patch_scan_job($jobId, [
+    if (!ai_patch_active_scan_job($jobId, $customerId, [
         'status' => $complete ? 'completed' : 'running',
         'pages_scanned' => $counts['scanned'],
         'pages_failed' => $counts['failed'],
         'completed_at' => $complete ? ai_now() : null,
         'updated_at' => ai_now()
-    ]);
+    ])) {
+        if (!$pageLevelClaiming) {
+            ai_release_scan_job($jobId, $workerId);
+        }
+        return ai_scan_paused_batch_response($jobId, $customerId, $processed, $queuedLinksTotal);
+    }
     if (!$pageLevelClaiming) {
         ai_release_scan_job($jobId, $workerId);
     }

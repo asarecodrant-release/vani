@@ -718,8 +718,10 @@ const summaryDiagLivePill = document.getElementById("summaryDiagLivePill");
 let scanBusy = false;
 let summaryBusy = false;
 let liveStatusBusy = false;
+let liveStatusPromise = null;
 let autoWorkflowBusy = false;
 let autoWorkflowDone = false;
+let scanPauseRequestBusy = false;
 let summaryControlsFrozen = false;
 const summarizingPages = new Set();
 const skippedSummaryPages = new Set();
@@ -878,6 +880,10 @@ function setSummaryControlsCompleted(isCompleted) {
 function updateWorkerUi(data, mode = "scan") {
   const counts = data?.counts || {};
   const scan = data?.scan || {};
+  const rawScanStatus = String(scan.status || "");
+  const displayScanStatus = scanPauseRequestBusy && currentScanStatus === "paused" && rawScanStatus.toLowerCase() !== "paused"
+    ? "paused"
+    : rawScanStatus;
   const captured = Number(counts.scanned || 0);
   const summarized = Number(counts.summarized || 0);
   const failed = Number(counts.failed || 0);
@@ -896,10 +902,10 @@ function updateWorkerUi(data, mode = "scan") {
   if (summaryPercent) summaryPercent.textContent = `${summaryPct}%`;
   if (capturedMetric) capturedMetric.textContent = String(captured);
   if (summarizedMetric) summarizedMetric.textContent = String(summarized);
-  if (scanStatusMetric) scanStatusMetric.textContent = scan.status || "";
-  setScanPauseToggleState(scan.status || "");
+  if (scanStatusMetric) scanStatusMetric.textContent = displayScanStatus;
+  setScanPauseToggleState(displayScanStatus);
   setSummaryPauseToggleState(summaryPaused, summaryIsComplete);
-  if (crawlTitle) crawlTitle.textContent = `Crawling ${scan.status || "pending"}`;
+  if (crawlTitle) crawlTitle.textContent = `Crawling ${displayScanStatus || "pending"}`;
   if (crawlText) crawlText.textContent = `${crawlDone} of ${crawlTotal} queued page(s) crawled. ${failed} failed, ${Number(counts.pending || 0)} still queued.`;
   if (summaryTitle) summaryTitle.textContent = summaryPaused ? "Summarization paused" : (summaryIsComplete ? "Summarization completed" : (mode === "summary" ? "Summarization running" : "Summarizing"));
   if (summaryText) summaryText.textContent = `${summaryDone} of ${summaryTotal} captured page(s) summarized. ${summaryPending} waiting.`;
@@ -917,11 +923,11 @@ function updateWorkerUi(data, mode = "scan") {
     const activeUrl = data?.active_url || "";
     const processed = Number(data?.processed || 0);
     if (activeUrl) {
-      setDiagnosticsLive(scan.status === "pending" || scan.status === "running", `Scanning: ${shortUrlLabel(activeUrl)}`, `${processed} processed`);
+      setDiagnosticsLive(displayScanStatus === "pending" || displayScanStatus === "running", `Scanning: ${shortUrlLabel(activeUrl)}`, `${processed} processed`);
     } else if (data?.waiting_for_retry) {
       setDiagnosticsLive(false, "Waiting for retry window", "Retry wait");
     } else {
-      setDiagnosticsLive(scan.status === "pending" || scan.status === "running", scan.status === "completed" ? "Crawler complete" : "Crawler working", scan.status || "");
+      setDiagnosticsLive(displayScanStatus === "pending" || displayScanStatus === "running", displayScanStatus === "completed" ? "Crawler complete" : "Crawler working", displayScanStatus || "");
     }
   }
 }
@@ -1401,9 +1407,10 @@ summarizeAllBtn?.addEventListener("click", processSummaryBatches);
 scanPauseToggleBtn?.addEventListener("click", async (event) => {
   event.preventDefault();
   event.stopPropagation();
-  if (!scanId) return;
+  if (!scanId || scanPauseRequestBusy) return;
   const wasPaused = currentScanStatus === "paused";
   const action = wasPaused ? "resume_scan" : "pause_scan";
+  scanPauseRequestBusy = true;
   currentScanStatus = wasPaused ? "running" : "paused";
   setScanPauseToggleState(currentScanStatus);
   setDiagnosticsLive(!wasPaused, wasPaused ? "Crawler resuming" : "Crawler paused", wasPaused ? "Working" : "Paused");
@@ -1418,6 +1425,7 @@ scanPauseToggleBtn?.addEventListener("click", async (event) => {
       }
     }
   } finally {
+    scanPauseRequestBusy = false;
     if (currentScanStatus !== "completed" && currentScanStatus !== "failed") {
       scanPauseToggleBtn.disabled = false;
     }
@@ -1470,13 +1478,13 @@ runSummaryBatchBtn?.addEventListener("click", async () => {
   }
 });
 refreshLiveBtn?.addEventListener("click", async () => {
-  if (liveStatusBusy) return;
+  if (!scanId) return;
   const originalText = refreshLiveBtn.textContent;
   refreshLiveBtn.disabled = true;
   refreshLiveBtn.textContent = "Refreshing...";
   showRefreshToast("Refreshing...", false, 0);
   try {
-    await refreshLiveStatus();
+    await refreshLiveStatus({ force: true });
     showRefreshToast("Refresh done", true, 1000);
   } catch (error) {
     showRefreshToast("Refresh failed", true, 1400);
@@ -1544,22 +1552,37 @@ document.addEventListener("submit", async (event) => {
   }
 });
 
-async function refreshLiveStatus() {
-  if (!scanId || liveStatusBusy) return;
+async function refreshLiveStatus(options = {}) {
+  const force = Boolean(options.force);
+  if (!scanId) return null;
+  if (liveStatusPromise) {
+    if (!force) return liveStatusPromise;
+    await liveStatusPromise.catch(() => null);
+  }
   liveStatusBusy = true;
-  try {
+  liveStatusPromise = (async () => {
     const data = await callWorker("status");
+    if (!data || data.success === false) {
+      throw new Error(data?.error || "Status refresh failed.");
+    }
     applyLiveData(data, summaryBusy ? "summary" : "scan");
-    if ((data?.scan?.status || "").toLowerCase() === "running" && !autoWorkflowBusy) {
+    if ((data?.scan?.status || "").toLowerCase() === "running" && currentScanStatus !== "paused" && !autoWorkflowBusy) {
       autoWorkflowDone = false;
       liveWorkflowLoop(true);
     }
+    return data;
+  })();
+  try {
+    return await liveStatusPromise;
   } finally {
     liveStatusBusy = false;
+    liveStatusPromise = null;
   }
 }
 
-setInterval(refreshLiveStatus, 2500);
+setInterval(() => {
+  refreshLiveStatus().catch(() => {});
+}, 2500);
 </script>
 </body>
 </html>
