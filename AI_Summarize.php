@@ -700,6 +700,7 @@ let autoWorkflowBusy = false;
 let autoWorkflowDone = false;
 let faqBackfillBusy = false;
 let faqBackfillAttempted = false;
+let summaryControlsFrozen = false;
 const summarizingPages = new Set();
 const skippedSummaryPages = new Set();
 
@@ -777,6 +778,31 @@ function setSummaryDiagnosticsLive(isRunning, text, pillText) {
   }
 }
 
+function setSummaryControlsCompleted(isCompleted) {
+  if (isCompleted) {
+    summaryControlsFrozen = true;
+    if (summarizeAllBtn) {
+      summarizeAllBtn.disabled = true;
+      summarizeAllBtn.textContent = "Summarization completed";
+    }
+    if (runSummaryBatchBtn) {
+      runSummaryBatchBtn.disabled = true;
+      runSummaryBatchBtn.textContent = "Summarization completed";
+    }
+    return;
+  }
+
+  if (summaryControlsFrozen) return;
+  if (summarizeAllBtn && !summaryBusy) {
+    summarizeAllBtn.disabled = false;
+    summarizeAllBtn.textContent = "Summarize all pages";
+  }
+  if (runSummaryBatchBtn && !summaryBusy) {
+    runSummaryBatchBtn.disabled = false;
+    runSummaryBatchBtn.textContent = "Run summary batch";
+  }
+}
+
 function updateWorkerUi(data, mode = "scan") {
   const counts = data?.counts || {};
   const scan = data?.scan || {};
@@ -787,6 +813,8 @@ function updateWorkerUi(data, mode = "scan") {
   const crawlTotal = Number(counts.crawl_total ?? counts.total ?? 0);
   const summaryTotal = Number(counts.summary_total ?? captured);
   const summaryDone = Number(counts.summary_done ?? summarized);
+  const summaryPending = Number(counts.summary_pending ?? (captured - summarized));
+  const summaryIsComplete = summaryTotal > 0 && summaryPending <= 0 && summaryDone >= summaryTotal;
   const crawlPct = Number(counts.crawl_percent ?? (crawlTotal > 0 ? Math.min(100, Math.round((crawlDone / crawlTotal) * 100)) : 0));
   const summaryPct = Number(counts.summary_percent ?? (summaryTotal > 0 ? Math.min(100, Math.round((summaryDone / summaryTotal) * 100)) : 0));
   if (crawlBar) crawlBar.style.width = `${crawlPct}%`;
@@ -798,10 +826,11 @@ function updateWorkerUi(data, mode = "scan") {
   if (scanStatusMetric) scanStatusMetric.textContent = scan.status || "";
   if (crawlTitle) crawlTitle.textContent = `Crawling ${scan.status || "pending"}`;
   if (crawlText) crawlText.textContent = `${crawlDone} of ${crawlTotal} queued page(s) crawled. ${failed} failed, ${Number(counts.pending || 0)} still queued.`;
-  if (summaryTitle) summaryTitle.textContent = mode === "summary" ? "Summarization running" : "Summarizing";
-  if (summaryText) summaryText.textContent = `${summaryDone} of ${summaryTotal} captured page(s) summarized. ${Number(counts.summary_pending ?? (captured - summarized))} waiting.`;
+  if (summaryTitle) summaryTitle.textContent = summaryIsComplete ? "Summarization completed" : (mode === "summary" ? "Summarization running" : "Summarizing");
+  if (summaryText) summaryText.textContent = `${summaryDone} of ${summaryTotal} captured page(s) summarized. ${summaryPending} waiting.`;
+  setSummaryControlsCompleted(summaryIsComplete);
   setSummaryDiagnosticsLive(
-    mode === "summary" && Number(counts.summary_pending ?? (captured - summarized)) > 0,
+    mode === "summary" && summaryPending > 0,
     summaryDone >= summaryTotal && summaryTotal > 0 ? "All captured pages summarized" : `${Number(counts.summary_pending ?? (captured - summarized))} page(s) waiting for summary`,
     `${summaryDone} / ${summaryTotal}`
   );
@@ -1151,7 +1180,7 @@ async function summarizeNextFetchedPage(data = {}) {
   } finally {
     summarizingPages.delete(String(page.id));
     summaryBusy = false;
-    if (summarizeAllBtn) summarizeAllBtn.disabled = false;
+    if (!summaryControlsFrozen && summarizeAllBtn) summarizeAllBtn.disabled = false;
   }
 }
 
@@ -1236,6 +1265,7 @@ async function liveWorkflowLoop(force = false) {
         autoWorkflowDone = true;
         setDiagnosticsLive(false, "Crawler complete", "Completed");
         setSummaryDiagnosticsLive(false, "All captured pages summarized", "Completed");
+        setSummaryControlsCompleted(true);
         break;
       }
 
@@ -1264,7 +1294,7 @@ runSummaryBatchBtn?.addEventListener("click", async () => {
     const data = await callWorker("summarize_batch");
     applyLiveData(data, "summary");
   } finally {
-    runSummaryBatchBtn.disabled = false;
+    if (!summaryControlsFrozen) runSummaryBatchBtn.disabled = false;
   }
 });
 refreshLiveBtn?.addEventListener("click", refreshLiveStatus);
