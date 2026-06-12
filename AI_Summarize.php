@@ -655,6 +655,9 @@ body.dark .diag-error{color:#fca5a5}
             <div class="row"><button type="submit">Save FAQ</button></div>
           </form>
         <?php endforeach; ?>
+        <?php if (empty($faqs)): ?>
+          <p class="muted" id="faqEmptyState">No FAQs captured yet. They will appear here after each page is summarized.</p>
+        <?php endif; ?>
       </div>
     </aside>
   </div>
@@ -695,6 +698,8 @@ let summaryBusy = false;
 let liveStatusBusy = false;
 let autoWorkflowBusy = false;
 let autoWorkflowDone = false;
+let faqBackfillBusy = false;
+let faqBackfillAttempted = false;
 const summarizingPages = new Set();
 const skippedSummaryPages = new Set();
 
@@ -873,7 +878,9 @@ function renderFaq(faq = {}) {
 function updateFaqs(faqs = []) {
   if (!faqList) return;
   if (faqList.contains(document.activeElement)) return;
-  faqList.innerHTML = faqs.map((faq) => renderFaq(faq)).join("");
+  faqList.innerHTML = faqs.length
+    ? faqs.map((faq) => renderFaq(faq)).join("")
+    : '<p class="muted" id="faqEmptyState">No FAQs captured yet. They will appear here after each page is summarized.</p>';
   if (faqMetric) faqMetric.textContent = String(faqs.length);
 }
 
@@ -1061,6 +1068,24 @@ function applyLiveData(data = {}, mode = "scan") {
   updatePages(data.pages || []);
   if (capturedMetric && data.pages) capturedMetric.textContent = String(data.pages.length);
   if (data.faqs) updateFaqs(data.faqs);
+  maybeBackfillFaqs(data);
+}
+
+async function maybeBackfillFaqs(data = {}) {
+  const counts = data.counts || data.diagnostics?.counts || {};
+  const faqCount = Array.isArray(data.faqs) ? data.faqs.length : Number(faqMetric?.textContent || 0);
+  if (faqBackfillBusy || faqBackfillAttempted || faqCount > 0 || Number(counts.summarized || 0) <= 0) return;
+  faqBackfillBusy = true;
+  faqBackfillAttempted = true;
+  try {
+    const latest = await callWorker("backfill_faqs");
+    updateFaqs(latest.faqs || []);
+    updateSummaryDiagnostics(latest);
+  } catch (error) {
+    console.warn("FAQ backfill failed", error);
+  } finally {
+    faqBackfillBusy = false;
+  }
 }
 
 async function processScanBatch() {

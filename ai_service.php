@@ -1521,6 +1521,61 @@ function ai_extract_page_faqs(string $url, string $title, string $cleanText): ar
     }, $faqs)) : [];
 }
 
+function ai_summary_array_values(array $summary, string $key): array {
+    $value = $summary[$key] ?? [];
+    if (!is_array($value)) {
+        $value = [$value];
+    }
+    $items = [];
+    foreach ($value as $item) {
+        $text = trim(preg_replace('/\s+/', ' ', (string)$item) ?: '');
+        if ($text !== '') {
+            $items[] = $text;
+        }
+    }
+    return array_values(array_unique($items));
+}
+
+function ai_add_summary_faq(array &$faqs, string $question, array $answers, string $source = 'ai_summary_generated'): void {
+    $answers = array_values(array_filter(array_map(function ($answer) {
+        return trim(preg_replace('/\s+/', ' ', (string)$answer) ?: '');
+    }, $answers)));
+    if ($question === '' || empty($answers)) {
+        return;
+    }
+    $faqs[] = [
+        'question' => $question,
+        'answer' => substr(implode(' ', array_slice($answers, 0, 6)), 0, 3000),
+        'source' => $source
+    ];
+}
+
+function ai_generate_faqs_from_summary_data(array $summary, string $url, string $title): array {
+    $label = trim($title) !== '' ? trim($title) : (string)(parse_url($url, PHP_URL_HOST) ?: 'this page');
+    $faqs = [];
+    ai_add_summary_faq($faqs, 'What should visitors know from ' . $label . '?', ai_summary_array_values($summary, 'key_facts'));
+    ai_add_summary_faq($faqs, 'What services are mentioned on ' . $label . '?', ai_summary_array_values($summary, 'services'));
+    ai_add_summary_faq($faqs, 'What pricing information is available on ' . $label . '?', ai_summary_array_values($summary, 'pricing_info'));
+    ai_add_summary_faq($faqs, 'Where is this business or service available?', ai_summary_array_values($summary, 'locations'));
+    ai_add_summary_faq($faqs, 'What timings or hours are mentioned?', ai_summary_array_values($summary, 'timings'));
+    ai_add_summary_faq($faqs, 'What policies are mentioned on ' . $label . '?', ai_summary_array_values($summary, 'policies'));
+    ai_add_summary_faq($faqs, 'What steps or process should visitors follow?', ai_summary_array_values($summary, 'steps_or_processes'));
+    ai_add_summary_faq($faqs, 'What requirements or eligibility details are mentioned?', ai_summary_array_values($summary, 'requirements_or_eligibility'));
+
+    $contact = $summary['contact_info'] ?? [];
+    if (is_array($contact)) {
+        $contactAnswers = [];
+        foreach (['emails' => 'Email', 'phones' => 'Phone', 'addresses' => 'Address'] as $key => $labelText) {
+            foreach (ai_summary_array_values($contact, $key) as $item) {
+                $contactAnswers[] = $labelText . ': ' . $item;
+            }
+        }
+        ai_add_summary_faq($faqs, 'How can visitors contact the business?', $contactAnswers);
+    }
+
+    return array_slice(ai_dedupe_faqs($faqs), 0, 12);
+}
+
 function ai_save_page_faqs(string $jobId, string $customerId, string $pageUrl, array $faqs): void {
     $rows = [];
     foreach (ai_dedupe_faqs($faqs) as $faq) {
@@ -2359,6 +2414,43 @@ function ai_summarize_scan_job_batch(string $jobId, string $customerId, int $bat
     ];
 }
 
+function ai_backfill_scan_faqs_from_summaries(string $jobId, string $customerId, int $limit = 80): array {
+    $pages = ai_safe_rows(supabase(
+        'GET',
+        'ai_website_pages?select=id,url,page_title,summary_json,page_status&scan_job_id=eq.' . urlencode($jobId)
+            . '&customer_id=eq.' . urlencode($customerId)
+            . '&page_status=eq.summarized'
+            . '&order=summarized_at.desc&limit=' . max(1, min(250, $limit))
+    ));
+
+    $processed = 0;
+    foreach ($pages as $page) {
+        $summary = $page['summary_json'] ?? [];
+        if (is_string($summary)) {
+            $decoded = json_decode($summary, true);
+            $summary = is_array($decoded) ? $decoded : [];
+        }
+        if (empty($summary)) {
+            continue;
+        }
+        $faqs = [];
+        if (!empty($summary['faq_candidates']) && is_array($summary['faq_candidates'])) {
+            foreach ($summary['faq_candidates'] as $faq) {
+                $faqs[] = [
+                    'question' => (string)($faq['question'] ?? ''),
+                    'answer' => (string)($faq['answer'] ?? ''),
+                    'source' => 'ai_summary'
+                ];
+            }
+        }
+        $faqs = array_merge($faqs, ai_generate_faqs_from_summary_data($summary, (string)($page['url'] ?? ''), (string)($page['page_title'] ?? '')));
+        ai_save_page_faqs($jobId, $customerId, (string)($page['url'] ?? ''), $faqs);
+        $processed++;
+    }
+
+    return ['success' => true, 'processed' => $processed, 'error' => ''];
+}
+
 function ai_chunk_text(string $text, int $chunkSize = 1800, int $overlap = 220): array {
     $text = trim(preg_replace('/\s+/', ' ', $text) ?: '');
     if ($text === '') {
@@ -2481,6 +2573,7 @@ function ai_summarize_scanned_page(string $pageId, string $customerId): array {
             ];
         }
     }
+    $pageFaqs = array_merge($pageFaqs, ai_generate_faqs_from_summary_data((array)$summary['data'], $url, $title));
     if (ai_page_looks_like_faq($url, $title, $cleanText)) {
         $pageFaqs = array_merge($pageFaqs, ai_extract_page_faqs($url, $title, $cleanText));
     }
@@ -2915,7 +3008,7 @@ function ai_summarize_page(string $url, string $title, string $cleanText): array
     }
 
     $systemPrompt = 'You extract chatbot-ready business knowledge from website pages. The output will be used as context for a customer support chatbot, so preserve answerable facts, service details, rules, prices, eligibility, locations, timings, contact details, processes, and limitations. Return exactly one valid JSON object. Do not use markdown fences, comments, prose, or trailing commas.';
-    $userPrompt = "Analyze this website page and return exactly this JSON object shape. Capture enough detail for a chatbot to answer visitor questions accurately. Keep each string concise but do not omit important facts. Maximum 12 items per array, maximum 20 FAQ candidates, and no value longer than 900 characters.\n"
+    $userPrompt = "Analyze this website page and return exactly this JSON object shape. Capture enough detail for a chatbot to answer visitor questions accurately. Keep each string concise but do not omit important facts. Maximum 12 items per array, maximum 20 FAQ candidates, and no value longer than 900 characters. faq_candidates is required: create useful customer question-answer pairs for every answerable service, pricing, contact, policy, timing, location, eligibility, and process detail found on the page. Do not invent facts; if the page has no answerable facts, return an empty faq_candidates array.\n"
         . "{\n"
         . "  \"url\": \"string\",\n"
         . "  \"page_title\": \"string\",\n"

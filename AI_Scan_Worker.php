@@ -73,6 +73,8 @@ if ($action === 'queue_test') {
     } else {
         $result = ai_summarize_scanned_page($pageId, $customerId);
     }
+} elseif ($action === 'backfill_faqs') {
+    $result = ai_backfill_scan_faqs_from_summaries($scanId, $customerId);
 } elseif ($action === 'add_page') {
     $pageUrl = trim((string)($_POST['page_url'] ?? ''));
     $result = ai_capture_single_page($scanId, $customerId, (string)($scan['website_domain'] ?? ''), $pageUrl);
