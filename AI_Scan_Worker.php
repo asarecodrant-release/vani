@@ -73,6 +73,47 @@ if ($action === 'queue_test') {
     } else {
         $result = ai_summarize_scanned_page($pageId, $customerId);
     }
+} elseif ($action === 'backfill_faqs') {
+    $result = ['success' => true, 'error' => 'FAQ capture is disabled for the summarization workflow.'];
+} elseif ($action === 'add_page') {
+    $pageUrl = trim((string)($_POST['page_url'] ?? ''));
+    $result = ai_capture_single_page($scanId, $customerId, (string)($scan['website_domain'] ?? ''), $pageUrl);
+} elseif ($action === 'save_summary') {
+    $pageId = trim((string)($_POST['page_id'] ?? ''));
+    $result = ai_update_page_summary($pageId, $customerId, (string)($_POST['summary_text'] ?? ''));
+} elseif ($action === 'save_faq') {
+    $result = ai_update_faq(
+        trim((string)($_POST['faq_id'] ?? '')),
+        $customerId,
+        (string)($_POST['question'] ?? ''),
+        (string)($_POST['answer'] ?? '')
+    );
+} elseif ($action === 'add_faq') {
+    $question = ai_clean_customer_text((string)($_POST['question'] ?? ''), 800);
+    $answer = ai_clean_customer_text((string)($_POST['answer'] ?? ''), 3000);
+    if ($question === '' || $answer === '') {
+        $result = ['success' => false, 'error' => 'Question and answer are required.'];
+    } else {
+        $signature = ai_faq_signature($question);
+        $existing = ai_safe_rows(supabase(
+            'GET',
+            'ai_website_faqs?select=id,question&customer_id=eq.' . urlencode($customerId) . '&limit=2000'
+        ));
+        foreach ($existing as $row) {
+            if (ai_faq_signature((string)($row['question'] ?? '')) === $signature) {
+                ai_worker_json(['success' => false, 'error' => 'That FAQ question already exists.']);
+            }
+        }
+        supabase('POST', 'ai_website_faqs', [[
+            'scan_job_id' => $scanId,
+            'customer_id' => $customerId,
+            'page_url' => (string)($_POST['page_url'] ?? $scan['website_url'] ?? ''),
+            'question' => $question,
+            'answer' => $answer,
+            'source' => 'manual'
+        ]]);
+        $result = ['success' => true, 'error' => ''];
+    }
 }
 
 $freshScan = ai_get_scan_job_for_customer($scanId, $customerId);

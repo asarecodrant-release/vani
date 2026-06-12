@@ -14,6 +14,8 @@ const summaryConcurrency = Number(process.env.AI_QUEUE_SUMMARY_CONCURRENCY || 2)
 const workerConcurrency = Math.max(1, scanConcurrency, summaryConcurrency);
 const maxScanLoops = Number(process.env.AI_QUEUE_MAX_SCAN_LOOPS || 200);
 const maxSummaryLoops = Number(process.env.AI_QUEUE_MAX_SUMMARY_LOOPS || 300);
+const idleScanLimit = Number(process.env.AI_QUEUE_IDLE_SCAN_LIMIT || 4);
+const idleScanDelayMs = Number(process.env.AI_QUEUE_IDLE_SCAN_DELAY_MS || 1200);
 
 if (!redisUrl) throw new Error("REDIS_URL or UPSTASH_REDIS_URL is required.");
 if (!phpBaseUrl) throw new Error("AI_PHP_BASE_URL is required.");
@@ -77,7 +79,7 @@ async function enqueueScan(scanId, priority = 5) {
   return queue.add(
     "scan",
     { scanId },
-    { jobId: `scan:${scanId}`, priority, delay: Number(process.env.AI_QUEUE_SCAN_DELAY_MS || 0) }
+    { jobId: `scan-${scanId}`, priority, delay: Number(process.env.AI_QUEUE_SCAN_DELAY_MS || 0) }
   );
 }
 
@@ -85,7 +87,7 @@ async function enqueueSummary(scanId, priority = 10) {
   return queue.add(
     "summary",
     { scanId },
-    { jobId: `summary:${scanId}`, priority, delay: Number(process.env.AI_QUEUE_SUMMARY_DELAY_MS || 0) }
+    { jobId: `summary-${scanId}`, priority, delay: Number(process.env.AI_QUEUE_SUMMARY_DELAY_MS || 0) }
   );
 }
 
@@ -94,6 +96,7 @@ async function processScanJob(job) {
   if (!scanId) throw new Error("scanId is required.");
 
   let latest;
+  let idleLoops = 0;
   for (let i = 0; i < maxScanLoops; i += 1) {
     latest = await callPhpWorker("scan_batch", scanId);
     processedCount += Number(latest.processed || 0);
@@ -107,7 +110,18 @@ async function processScanJob(job) {
 
     const status = latest.scan?.status || latest.status || "";
     if (status === "completed" || status === "failed") break;
-    if (Number(latest.processed || 0) === 0 && !latest.waiting_for_retry) break;
+
+    const processed = Number(latest.processed || 0);
+    const pending = Number(latest.counts?.pending || latest.diagnostics?.counts?.pending || 0);
+    if (processed === 0) {
+      idleLoops += 1;
+      if (latest.waiting_for_retry || pending > 0 || idleLoops < idleScanLimit) {
+        await new Promise((resolve) => setTimeout(resolve, idleScanDelayMs));
+        continue;
+      }
+      break;
+    }
+    idleLoops = 0;
   }
 
   if (latest?.scan?.status === "completed" || latest?.status === "completed") {

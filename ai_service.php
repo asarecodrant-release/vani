@@ -890,6 +890,97 @@ function ai_page_clean_text_limit(): int {
     return max(50000, min(500000, (int)ai_env('AI_PAGE_CLEAN_TEXT_LIMIT', '200000')));
 }
 
+function ai_clean_customer_text(string $value, int $limit = 3000): string {
+    $value = html_entity_decode($value, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    $value = preg_replace('/<(script|style|noscript|svg)\b[^>]*>.*?<\/\1>/is', ' ', $value) ?: $value;
+    $value = preg_replace('/<(br|\/p|\/div|\/li|\/tr|\/h[1-6])\b[^>]*>/i', "\n", $value) ?: $value;
+    $value = strip_tags($value);
+    $value = preg_replace('/[ \t\r\f\v]+/', ' ', $value) ?: $value;
+    $value = preg_replace('/\n\s+/', "\n", $value) ?: $value;
+    $value = preg_replace('/\n{3,}/', "\n\n", $value) ?: $value;
+    $value = trim($value);
+    return $limit > 0 ? substr($value, 0, $limit) : $value;
+}
+
+function ai_clean_summary_text(string $value): string {
+    $value = ai_clean_customer_text($value, 0);
+    $value = preg_replace('/\b(?:the\s+)?h[1-6]\s+(?:heading|tag|section)\s+(?:says|states|mentions|contains|is|are)\s*:?\s*/i', '', $value) ?: $value;
+    $value = preg_replace('/(^|[\n.]\s*)h[1-6]\s*[:\-]\s*/i', '$1', $value) ?: $value;
+    $value = preg_replace('/\b(?:h[1-6]|heading\s+level\s+[1-6])\b/i', 'heading', $value) ?: $value;
+    $value = preg_replace('/[ \t\r\f\v]+/', ' ', $value) ?: $value;
+    return ai_clean_customer_text(trim($value), 2200);
+}
+
+function ai_clean_summary_data($value, string $key = '') {
+    if (is_array($value)) {
+        $clean = [];
+        foreach ($value as $itemKey => $itemValue) {
+            $cleanValue = ai_clean_summary_data($itemValue, (string)$itemKey);
+            if ($cleanValue === '' || $cleanValue === []) {
+                continue;
+            }
+            $clean[$itemKey] = $cleanValue;
+        }
+        return $clean;
+    }
+
+    if (is_string($value)) {
+        return $key === 'summary' ? ai_clean_summary_text($value) : ai_clean_customer_text($value, 900);
+    }
+
+    return $value;
+}
+
+function ai_dom_clean_text(?DOMNode $node, int $limit = 3000): string {
+    if (!$node) {
+        return '';
+    }
+    return ai_clean_customer_text((string)$node->textContent, $limit);
+}
+
+function ai_dom_element_by_id(DOMDocument $dom, string $id): ?DOMElement {
+    $id = trim($id);
+    if ($id === '') {
+        return null;
+    }
+    $node = $dom->getElementById($id);
+    return $node instanceof DOMElement ? $node : null;
+}
+
+function ai_add_detected_faq(array &$faqs, string $question, string $answer, string $source = 'html'): void {
+    $question = ai_clean_customer_text($question, 800);
+    $answer = ai_clean_customer_text($answer, 3000);
+    if ($question === '' || $answer === '') {
+        return;
+    }
+    if (strpos($question, '?') === false && !preg_match('/^(how|what|when|where|why|who|can|do|does|is|are|will|should|which)\b/i', $question)) {
+        return;
+    }
+    $faqs[] = ['question' => $question, 'answer' => $answer, 'source' => $source];
+}
+
+function ai_page_faq_extraction_enabled(): bool {
+    return ai_env('AI_CRAWL_CAPTURE_FAQS', '1') !== '0';
+}
+
+function ai_page_ai_faq_extraction_enabled(): bool {
+    return ai_env('AI_CRAWL_AI_FAQ_EXTRACTION', '1') !== '0' && ai_is_configured();
+}
+
+function ai_collect_page_faqs(string $url, string $title, string $cleanText, array $detectedFaqs): array {
+    if (!ai_page_faq_extraction_enabled()) {
+        return [];
+    }
+
+    $faqs = ai_dedupe_faqs($detectedFaqs);
+    $minimumStructuralFaqs = max(0, (int)ai_env('AI_CRAWL_FAQ_AI_MIN_STRUCTURAL', '3'));
+    if (count($faqs) >= $minimumStructuralFaqs || !ai_page_ai_faq_extraction_enabled() || !ai_page_looks_like_faq($url, $title, $cleanText)) {
+        return $faqs;
+    }
+
+    return ai_dedupe_faqs(array_merge($faqs, ai_extract_page_faqs($url, $title, $cleanText)));
+}
+
 function ai_fetch_pages_parallel(array $urls, int $concurrency = 4): array {
     $urls = array_values(array_unique(array_filter(array_map('strval', $urls))));
     if (empty($urls)) {
@@ -1366,11 +1457,142 @@ function ai_parse_html_page(string $html, string $baseUrl, string $websiteDomain
 
         foreach ($dom->getElementsByTagName('details') as $details) {
             $summaryNode = $details->getElementsByTagName('summary')->item(0);
-            $question = $summaryNode ? trim($summaryNode->textContent) : '';
-            $answer = trim(str_replace($question, '', $details->textContent));
-            if ($question !== '' && $answer !== '') {
-                $detectedFaqs[] = ['question' => $question, 'answer' => $answer, 'source' => 'html'];
+            $question = ai_dom_clean_text($summaryNode, 800);
+            $answer = '';
+            if ($summaryNode && $details->ownerDocument) {
+                $clone = $details->cloneNode(true);
+                if ($clone instanceof DOMElement) {
+                    $cloneSummary = $clone->getElementsByTagName('summary')->item(0);
+                    if ($cloneSummary && $cloneSummary->parentNode) {
+                        $cloneSummary->parentNode->removeChild($cloneSummary);
+                    }
+                    $answer = ai_dom_clean_text($clone, 3000);
+                }
             }
+            ai_add_detected_faq($detectedFaqs, $question, $answer, 'html_details');
+        }
+
+        $xpath = new DOMXPath($dom);
+        $faqContainers = $xpath->query(
+            '//*[contains(translate(concat(" ", normalize-space(@class), " ", normalize-space(@id), " ", @aria-label, " ", @itemtype), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), " faq") '
+            . 'or contains(translate(concat(" ", normalize-space(@class), " ", normalize-space(@id), " ", @aria-label, " ", @itemtype), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), " question") '
+            . 'or contains(translate(concat(" ", normalize-space(@class), " ", normalize-space(@id), " ", @aria-label, " ", @itemtype), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), " accordion")]'
+        );
+        foreach ($faqContainers ?: [] as $container) {
+            if (!$container instanceof DOMElement) {
+                continue;
+            }
+            $terms = $xpath->query('.//dt', $container);
+            foreach ($terms ?: [] as $termNode) {
+                if (!$termNode instanceof DOMElement) {
+                    continue;
+                }
+                $question = ai_dom_clean_text($termNode, 800);
+                $parts = [];
+                $sibling = $termNode->nextSibling;
+                while ($sibling && count($parts) < 4) {
+                    if ($sibling instanceof DOMElement) {
+                        $tag = strtolower($sibling->tagName);
+                        if ($tag === 'dt') {
+                            break;
+                        }
+                        $text = ai_dom_clean_text($sibling, 1200);
+                        if ($text !== '') {
+                            $parts[] = $text;
+                        }
+                    }
+                    $sibling = $sibling->nextSibling;
+                }
+                ai_add_detected_faq($detectedFaqs, $question, implode(' ', $parts), 'html_definition');
+            }
+
+            $questions = $xpath->query('.//*[self::button or self::summary or self::h2 or self::h3 or self::h4 or @aria-expanded or contains(translate(concat(" ", normalize-space(@class), " "), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), " question")]', $container);
+            foreach ($questions ?: [] as $questionNode) {
+                $question = ai_dom_clean_text($questionNode, 800);
+                if ($question === '') {
+                    continue;
+                }
+                $answer = '';
+                if ($questionNode instanceof DOMElement) {
+                    $controls = trim((string)$questionNode->getAttribute('aria-controls'));
+                    if ($controls !== '' && $questionNode->ownerDocument) {
+                        foreach (preg_split('/\s+/', $controls) ?: [] as $controlId) {
+                            $controlledNode = ai_dom_element_by_id($questionNode->ownerDocument, (string)$controlId);
+                            $controlledText = ai_dom_clean_text($controlledNode, 3000);
+                            if ($controlledText !== '') {
+                                $answer = $controlledText;
+                                break;
+                            }
+                        }
+                    }
+                }
+                $parent = $questionNode->parentNode;
+                if ($answer === '' && $parent) {
+                    $parentText = ai_dom_clean_text($parent, 3500);
+                    $answer = trim(preg_replace('/^' . preg_quote($question, '/') . '\s*/u', '', $parentText) ?: $parentText);
+                }
+                if ($answer === '' && $questionNode->nextSibling) {
+                    $parts = [];
+                    $sibling = $questionNode->nextSibling;
+                    while ($sibling && count($parts) < 4) {
+                        if ($sibling instanceof DOMElement) {
+                            $tag = strtolower($sibling->tagName);
+                            if (in_array($tag, ['h1', 'h2', 'h3', 'h4', 'button', 'summary'], true)) {
+                                break;
+                            }
+                            $text = ai_dom_clean_text($sibling, 1200);
+                            if ($text !== '') {
+                                $parts[] = $text;
+                            }
+                        }
+                        $sibling = $sibling->nextSibling;
+                    }
+                    $answer = implode(' ', $parts);
+                }
+                ai_add_detected_faq($detectedFaqs, $question, $answer, 'html_faq');
+            }
+        }
+
+        $schemaQuestions = $xpath->query('//*[contains(translate(@itemtype, "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "schema.org/question")]');
+        foreach ($schemaQuestions ?: [] as $schemaQuestion) {
+            if (!$schemaQuestion instanceof DOMElement) {
+                continue;
+            }
+            $nameNode = $xpath->query('.//*[@itemprop="name"]', $schemaQuestion)->item(0);
+            $answerNode = $xpath->query('.//*[contains(translate(@itemprop, "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "acceptedanswer") or @itemprop="text"]', $schemaQuestion)->item(0);
+            $question = ai_dom_clean_text($nameNode ?: $schemaQuestion, 800);
+            $answer = ai_dom_clean_text($answerNode, 3000);
+            if ($answer === $question) {
+                $answer = '';
+            }
+            ai_add_detected_faq($detectedFaqs, $question, $answer, 'html_schema');
+        }
+
+        $headingQuestions = $xpath->query('//h2|//h3|//h4');
+        foreach ($headingQuestions ?: [] as $headingNode) {
+            if (!$headingNode instanceof DOMElement) {
+                continue;
+            }
+            $question = ai_dom_clean_text($headingNode, 800);
+            if ($question === '' || (strpos($question, '?') === false && !preg_match('/^(how|what|when|where|why|who|can|do|does|is|are|will|should|which)\b/i', $question))) {
+                continue;
+            }
+            $parts = [];
+            $sibling = $headingNode->nextSibling;
+            while ($sibling && count($parts) < 5) {
+                if ($sibling instanceof DOMElement) {
+                    $tag = strtolower($sibling->tagName);
+                    if (in_array($tag, ['h1', 'h2', 'h3', 'h4'], true)) {
+                        break;
+                    }
+                    $text = ai_dom_clean_text($sibling, 1200);
+                    if ($text !== '') {
+                        $parts[] = $text;
+                    }
+                }
+                $sibling = $sibling->nextSibling;
+            }
+            ai_add_detected_faq($detectedFaqs, $question, implode(' ', $parts), 'html_heading');
         }
     } else {
         $withoutScripts = preg_replace('/<(script|style|noscript|svg)\b[^>]*>.*?<\/\1>/is', ' ', $html) ?: $html;
@@ -1414,6 +1636,16 @@ function ai_parse_html_page(string $html, string $baseUrl, string $websiteDomain
                 }
             }
         }
+        if (preg_match_all('/<details\b[^>]*>.*?<summary\b[^>]*>(.*?)<\/summary>(.*?)<\/details>/is', $withoutScripts, $detailMatches, PREG_SET_ORDER)) {
+            foreach ($detailMatches as $detailMatch) {
+                ai_add_detected_faq($detectedFaqs, (string)$detailMatch[1], (string)$detailMatch[2], 'html_details');
+            }
+        }
+        if (preg_match_all('/<h([2-4])\b[^>]*>(.*?)<\/h\1>(.*?)(?=<h[1-4]\b|$)/is', $withoutScripts, $questionMatches, PREG_SET_ORDER)) {
+            foreach ($questionMatches as $questionMatch) {
+                ai_add_detected_faq($detectedFaqs, (string)$questionMatch[2], (string)$questionMatch[3], 'html_heading');
+            }
+        }
         $cleanText = preg_replace('/\s+/', ' ', trim(html_entity_decode(strip_tags($withoutScripts), ENT_QUOTES, 'UTF-8'))) ?: '';
     }
 
@@ -1436,24 +1668,27 @@ function ai_faqs_from_json_ld($json): array {
     if (!is_array($json)) {
         return [];
     }
-    $items = isset($json['@graph']) && is_array($json['@graph']) ? $json['@graph'] : [$json];
     $faqs = [];
-    foreach ($items as $item) {
+    foreach (ai_json_ld_nodes($json) as $item) {
         if (!is_array($item)) {
             continue;
         }
         $type = $item['@type'] ?? '';
-        $types = is_array($type) ? $type : [$type];
-        if (!in_array('FAQPage', $types, true)) {
+        $types = array_map('strtolower', array_map('strval', is_array($type) ? $type : [$type]));
+        if (!in_array('faqpage', $types, true)) {
             continue;
         }
-        foreach (($item['mainEntity'] ?? []) as $entity) {
+        $mainEntity = $item['mainEntity'] ?? [];
+        if (is_array($mainEntity) && isset($mainEntity['@type'])) {
+            $mainEntity = [$mainEntity];
+        }
+        foreach ($mainEntity as $entity) {
             if (!is_array($entity)) {
                 continue;
             }
-            $question = trim((string)($entity['name'] ?? ''));
-            $answerData = $entity['acceptedAnswer']['text'] ?? '';
-            $answer = trim(preg_replace('/\s+/', ' ', html_entity_decode(strip_tags((string)$answerData), ENT_QUOTES, 'UTF-8')) ?: '');
+            $question = ai_clean_customer_text((string)($entity['name'] ?? ''), 800);
+            $answerData = $entity['acceptedAnswer']['text'] ?? ($entity['acceptedAnswer'] ?? '');
+            $answer = ai_clean_customer_text(ai_faq_json_value_text($answerData), 3000);
             if ($question !== '' && $answer !== '') {
                 $faqs[] = ['question' => $question, 'answer' => $answer, 'source' => 'json_ld'];
             }
@@ -1462,27 +1697,105 @@ function ai_faqs_from_json_ld($json): array {
     return $faqs;
 }
 
+function ai_json_ld_nodes(array $json): array {
+    $nodes = [];
+    $isList = array_keys($json) === range(0, count($json) - 1);
+    if ($isList) {
+        foreach ($json as $item) {
+            if (is_array($item)) {
+                foreach (ai_json_ld_nodes($item) as $node) {
+                    $nodes[] = $node;
+                }
+            }
+        }
+        return $nodes;
+    }
+    $nodes[] = $json;
+    if (isset($json['@graph']) && is_array($json['@graph'])) {
+        foreach ($json['@graph'] as $item) {
+            if (is_array($item)) {
+                foreach (ai_json_ld_nodes($item) as $node) {
+                    $nodes[] = $node;
+                }
+            }
+        }
+    }
+    return $nodes;
+}
+
+function ai_faq_json_value_text($value): string {
+    if (is_string($value) || is_numeric($value)) {
+        return trim(html_entity_decode(strip_tags((string)$value), ENT_QUOTES, 'UTF-8'));
+    }
+    if (!is_array($value)) {
+        return '';
+    }
+    $parts = [];
+    foreach (['text', 'name', 'description'] as $key) {
+        if (isset($value[$key])) {
+            $parts[] = ai_faq_json_value_text($value[$key]);
+        }
+    }
+    if (empty($parts)) {
+        foreach ($value as $item) {
+            $parts[] = ai_faq_json_value_text($item);
+        }
+    }
+    return trim(implode(' ', array_filter($parts)));
+}
+
 function ai_dedupe_faqs(array $faqs): array {
     $seen = [];
     $clean = [];
     foreach ($faqs as $faq) {
-        $question = trim(preg_replace('/\s+/', ' ', (string)($faq['question'] ?? '')) ?: '');
-        $answer = trim(preg_replace('/\s+/', ' ', (string)($faq['answer'] ?? '')) ?: '');
+        $question = ai_clean_customer_text((string)($faq['question'] ?? ''), 800);
+        $answer = ai_clean_customer_text((string)($faq['answer'] ?? ''), 3000);
         if ($question === '' || $answer === '') {
             continue;
         }
-        $key = strtolower($question);
+        $key = ai_faq_signature($question);
         if (isset($seen[$key])) {
             continue;
         }
         $seen[$key] = true;
         $clean[] = [
-            'question' => substr($question, 0, 800),
-            'answer' => substr($answer, 0, 3000),
+            'question' => $question,
+            'answer' => $answer,
             'source' => (string)($faq['source'] ?? 'ai')
         ];
     }
     return $clean;
+}
+
+function ai_faq_signature(string $question): string {
+    $value = strtolower(trim($question));
+    $value = html_entity_decode($value, ENT_QUOTES, 'UTF-8');
+    $value = preg_replace('/[^\pL\pN]+/u', ' ', $value) ?: $value;
+    $value = preg_replace('/\s+/', ' ', $value) ?: $value;
+    return trim($value);
+}
+
+function ai_faq_existing_signatures(string $customerId): array {
+    static $cache = [];
+    if ($customerId === '') {
+        return [];
+    }
+    if (isset($cache[$customerId])) {
+        return $cache[$customerId];
+    }
+    $rows = ai_safe_rows(supabase(
+        'GET',
+        'ai_website_faqs?select=question&customer_id=eq.' . urlencode($customerId) . '&limit=2000'
+    ));
+    $seen = [];
+    foreach ($rows as $row) {
+        $signature = ai_faq_signature((string)($row['question'] ?? ''));
+        if ($signature !== '') {
+            $seen[$signature] = true;
+        }
+    }
+    $cache[$customerId] = $seen;
+    return $seen;
 }
 
 function ai_page_looks_like_faq(string $url, string $title, string $cleanText): bool {
@@ -1521,9 +1834,70 @@ function ai_extract_page_faqs(string $url, string $title, string $cleanText): ar
     }, $faqs)) : [];
 }
 
+function ai_summary_array_values(array $summary, string $key): array {
+    $value = $summary[$key] ?? [];
+    if (!is_array($value)) {
+        $value = [$value];
+    }
+    $items = [];
+    foreach ($value as $item) {
+        $text = ai_clean_customer_text((string)$item, 900);
+        if ($text !== '') {
+            $items[] = $text;
+        }
+    }
+    return array_values(array_unique($items));
+}
+
+function ai_add_summary_faq(array &$faqs, string $question, array $answers, string $source = 'ai_summary_generated'): void {
+    $answers = array_values(array_filter(array_map(function ($answer) {
+        return ai_clean_customer_text((string)$answer, 900);
+    }, $answers)));
+    if ($question === '' || empty($answers)) {
+        return;
+    }
+    $faqs[] = [
+        'question' => $question,
+        'answer' => substr(implode(' ', array_slice($answers, 0, 6)), 0, 3000),
+        'source' => $source
+    ];
+}
+
+function ai_generate_faqs_from_summary_data(array $summary, string $url, string $title): array {
+    $label = trim($title) !== '' ? trim($title) : (string)(parse_url($url, PHP_URL_HOST) ?: 'this page');
+    $faqs = [];
+    ai_add_summary_faq($faqs, 'What should visitors know from ' . $label . '?', ai_summary_array_values($summary, 'key_facts'));
+    ai_add_summary_faq($faqs, 'What services are mentioned on ' . $label . '?', ai_summary_array_values($summary, 'services'));
+    ai_add_summary_faq($faqs, 'What pricing information is available on ' . $label . '?', ai_summary_array_values($summary, 'pricing_info'));
+    ai_add_summary_faq($faqs, 'Where is this business or service available?', ai_summary_array_values($summary, 'locations'));
+    ai_add_summary_faq($faqs, 'What timings or hours are mentioned?', ai_summary_array_values($summary, 'timings'));
+    ai_add_summary_faq($faqs, 'What policies are mentioned on ' . $label . '?', ai_summary_array_values($summary, 'policies'));
+    ai_add_summary_faq($faqs, 'What steps or process should visitors follow?', ai_summary_array_values($summary, 'steps_or_processes'));
+    ai_add_summary_faq($faqs, 'What requirements or eligibility details are mentioned?', ai_summary_array_values($summary, 'requirements_or_eligibility'));
+
+    $contact = $summary['contact_info'] ?? [];
+    if (is_array($contact)) {
+        $contactAnswers = [];
+        foreach (['emails' => 'Email', 'phones' => 'Phone', 'addresses' => 'Address'] as $key => $labelText) {
+            foreach (ai_summary_array_values($contact, $key) as $item) {
+                $contactAnswers[] = $labelText . ': ' . $item;
+            }
+        }
+        ai_add_summary_faq($faqs, 'How can visitors contact the business?', $contactAnswers);
+    }
+
+    return array_slice(ai_dedupe_faqs($faqs), 0, 12);
+}
+
 function ai_save_page_faqs(string $jobId, string $customerId, string $pageUrl, array $faqs): void {
     $rows = [];
+    $existingSignatures = ai_faq_existing_signatures($customerId);
     foreach (ai_dedupe_faqs($faqs) as $faq) {
+        $signature = ai_faq_signature((string)$faq['question']);
+        if ($signature === '' || isset($existingSignatures[$signature])) {
+            continue;
+        }
+        $existingSignatures[$signature] = true;
         $rows[] = [
             'scan_job_id' => $jobId,
             'customer_id' => $customerId,
@@ -1622,7 +1996,7 @@ function ai_capture_single_page(string $jobId, string $customerId, string $websi
 
     $parsed = ai_parse_html_page((string)$fetch['html'], $finalUrl, $websiteDomain);
     $cleanText = (string)$parsed['clean_text'];
-    ai_save_page_faqs($jobId, $customerId, $finalUrl, $parsed['detected_faqs']);
+    $capturedFaqs = ai_collect_page_faqs($finalUrl, (string)$parsed['title'], $cleanText, (array)($parsed['detected_faqs'] ?? []));
     ai_save_scanned_page($jobId, $customerId, [
         'url' => $finalUrl,
         'normalized_url' => $normalized,
@@ -1641,6 +2015,7 @@ function ai_capture_single_page(string $jobId, string $customerId, string $websi
         'fetched_at' => ai_now(),
         'summarized_at' => null
     ]);
+    ai_save_page_faqs($jobId, $customerId, $finalUrl, $capturedFaqs);
 
     $rows = ai_safe_rows(supabase(
         'GET',
@@ -1728,7 +2103,8 @@ function ai_enqueue_scan_urls(string $jobId, string $customerId, array $urls, in
 function ai_seed_scan_job(string $jobId, string $customerId, string $websiteUrl, string $websiteDomain, int $maxPages = 120): array {
     $maxPages = max(1, min(500, $maxPages));
     $urls = [$websiteUrl];
-    foreach (ai_discover_sitemap_urls($websiteUrl, $websiteDomain, $maxPages * 4, $jobId, $customerId) as $sitemapPage) {
+    $setupSitemapLimit = max(0, min($maxPages * 4, (int)ai_env('AI_SETUP_SITEMAP_SEED_LIMIT', '40')));
+    foreach (ai_discover_sitemap_urls($websiteUrl, $websiteDomain, $setupSitemapLimit, $jobId, $customerId) as $sitemapPage) {
         $urls[] = $sitemapPage;
     }
     $wwwVariant = ai_add_www_variant($websiteUrl);
@@ -1793,7 +2169,7 @@ function ai_scan_job_counts(string $jobId, string $customerId): array {
     return $counts;
 }
 
-function ai_scan_review_pages(string $jobId, string $customerId, int $limit = 100): array {
+function ai_scan_review_pages(string $jobId, string $customerId, int $limit = 250): array {
     return ai_safe_rows(supabase(
         'GET',
         'ai_website_pages?select=*&scan_job_id=eq.' . urlencode($jobId)
@@ -2137,6 +2513,7 @@ function ai_process_scan_job_batch(string $jobId, string $customerId, int $batch
     $fetches = ai_fetch_pages_parallel($urls, max(1, min((int)ai_env('AI_CRAWL_CONCURRENCY', '4'), $batchSize)));
     $websiteDomain = (string)$scan['website_domain'];
     $processed = 0;
+    $queuedLinksTotal = 0;
     $countsBeforeLoop = ai_scan_job_counts($jobId, $customerId);
     $knownTotal = (int)$countsBeforeLoop['total'];
 
@@ -2231,10 +2608,11 @@ function ai_process_scan_job_batch(string $jobId, string $customerId, int $batch
             $linksPerPage = max(1, (int)ai_env('AI_CRAWL_MAX_LINKS_PER_PAGE', '8'));
             $queuedLinks = ai_enqueue_scan_urls($jobId, $customerId, array_slice($links, 0, min($remainingSlots, $linksPerPage)), $remainingSlots, true);
             $knownTotal += $queuedLinks;
+            $queuedLinksTotal += $queuedLinks;
         }
 
         $cleanText = (string)$parsed['clean_text'];
-        ai_save_page_faqs($jobId, $customerId, $finalUrl, $parsed['detected_faqs']);
+        $capturedFaqs = ai_collect_page_faqs($finalUrl, (string)$parsed['title'], $cleanText, (array)($parsed['detected_faqs'] ?? []));
         ai_save_scanned_page($jobId, $customerId, [
             'url' => $finalUrl,
             'normalized_url' => $finalNormalized,
@@ -2253,12 +2631,14 @@ function ai_process_scan_job_batch(string $jobId, string $customerId, int $batch
             'fetched_at' => ai_now(),
             'summarized_at' => null
         ]);
+        ai_save_page_faqs($jobId, $customerId, $finalUrl, $capturedFaqs);
         ai_crawl_log($jobId, $customerId, 'page_fetched', 'Page content captured.', [
             'http_status' => (int)$fetch['status'],
             'content_type' => (string)($fetch['content_type'] ?? ''),
             'content_length' => (int)($fetch['content_length'] ?? strlen($cleanText)),
             'clean_text_length' => strlen($cleanText),
             'links_found' => count($links),
+            'faqs_found' => count($capturedFaqs),
         ], 'info', $finalUrl, (string)($page['id'] ?? ''));
         ai_release_page_claim((string)($page['id'] ?? ''), $workerId);
         $processed++;
@@ -2266,7 +2646,7 @@ function ai_process_scan_job_batch(string $jobId, string $customerId, int $batch
 
     usleep(ai_crawl_delay_ms((string)($scan['website_url'] ?? '')) * 1000);
     $counts = ai_scan_job_counts($jobId, $customerId);
-    $complete = $counts['pending'] === 0 || $counts['total'] >= $maxPages && $counts['pending'] === 0;
+    $complete = $counts['pending'] === 0 && $queuedLinksTotal === 0;
     ai_patch_scan_job($jobId, [
         'status' => $complete ? 'completed' : 'running',
         'pages_scanned' => $counts['scanned'],
@@ -2286,6 +2666,7 @@ function ai_process_scan_job_batch(string $jobId, string $customerId, int $batch
         'status' => $complete ? 'completed' : 'running',
         'counts' => $counts,
         'processed' => $processed,
+        'queued_links' => $queuedLinksTotal,
         'active_url' => (string)($activeUrls[0] ?? ''),
         'active_urls' => $activeUrls,
         'error' => ''
@@ -2356,6 +2737,10 @@ function ai_summarize_scan_job_batch(string $jobId, string $customerId, int $bat
         'deferred' => $deferred,
         'remaining' => count($pages) >= max(1, min(6, $batchSize)),
     ];
+}
+
+function ai_backfill_scan_faqs_from_summaries(string $jobId, string $customerId, int $limit = 80): array {
+    return ['success' => true, 'processed' => 0, 'error' => 'FAQ capture is disabled for the summarization workflow.'];
 }
 
 function ai_chunk_text(string $text, int $chunkSize = 1800, int $overlap = 220): array {
@@ -2463,27 +2848,13 @@ function ai_summarize_scanned_page(string $pageId, string $customerId): array {
         return ['success' => false, 'error' => (string)($summary['error'] ?? 'Summary failed.')];
     }
 
+    $summary['data'] = ai_clean_summary_data((array)$summary['data']);
     $embeddingText = json_encode($summary['data'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: $cleanText;
     $embedding = ai_create_embedding(substr($embeddingText, 0, 12000));
     $aiErrors = [];
     if (empty($embedding['success'])) {
         $aiErrors[] = (string)($embedding['error'] ?? 'Embedding failed.');
     }
-
-    $pageFaqs = [];
-    if (!empty($summary['data']['faq_candidates']) && is_array($summary['data']['faq_candidates'])) {
-        foreach ($summary['data']['faq_candidates'] as $faq) {
-            $pageFaqs[] = [
-                'question' => (string)($faq['question'] ?? ''),
-                'answer' => (string)($faq['answer'] ?? ''),
-                'source' => 'ai_summary'
-            ];
-        }
-    }
-    if (ai_page_looks_like_faq($url, $title, $cleanText)) {
-        $pageFaqs = array_merge($pageFaqs, ai_extract_page_faqs($url, $title, $cleanText));
-    }
-    ai_save_page_faqs((string)$page['scan_job_id'], $customerId, $url, $pageFaqs);
 
     supabase('PATCH', 'ai_website_pages?id=eq.' . urlencode($pageId), [
         'page_status' => 'summarized',
@@ -2505,7 +2876,7 @@ function ai_update_page_context(string $pageId, string $customerId, string $clea
     if (empty($page)) {
         return ['success' => false, 'error' => 'Page was not found.'];
     }
-    $cleanText = trim($cleanText);
+    $cleanText = ai_clean_customer_text($cleanText, ai_page_clean_text_limit());
     supabase('PATCH', 'ai_website_pages?id=eq.' . urlencode($pageId), [
         'clean_text' => $cleanText,
         'content_hash' => hash('sha256', $cleanText),
@@ -2525,7 +2896,7 @@ function ai_update_page_summary(string $pageId, string $customerId, string $summ
         return ['success' => false, 'error' => 'Page was not found.'];
     }
     $existing = is_array($page['summary_json'] ?? null) ? $page['summary_json'] : [];
-    $existing['summary'] = trim($summaryText);
+    $existing['summary'] = ai_clean_customer_text($summaryText, 2200);
     $existing['manual_edit'] = true;
     supabase('PATCH', 'ai_website_pages?id=eq.' . urlencode($pageId), [
         'summary_json' => $existing,
@@ -2544,9 +2915,21 @@ function ai_update_faq(string $faqId, string $customerId, string $question, stri
     if (empty($rows[0])) {
         return ['success' => false, 'error' => 'FAQ was not found.'];
     }
+    $signature = ai_faq_signature($question);
+    if ($signature !== '') {
+        $existing = ai_safe_rows(supabase(
+            'GET',
+            'ai_website_faqs?select=id,question&customer_id=eq.' . urlencode($customerId) . '&limit=2000'
+        ));
+        foreach ($existing as $row) {
+            if ((string)($row['id'] ?? '') !== $faqId && ai_faq_signature((string)($row['question'] ?? '')) === $signature) {
+                return ['success' => false, 'error' => 'That FAQ question already exists.'];
+            }
+        }
+    }
     supabase('PATCH', 'ai_website_faqs?id=eq.' . urlencode($faqId), [
-        'question' => trim($question),
-        'answer' => trim($answer),
+        'question' => ai_clean_customer_text($question, 800),
+        'answer' => ai_clean_customer_text($answer, 3000),
         'source' => 'manual_edit',
         'updated_at' => ai_now()
     ]);
@@ -2626,9 +3009,6 @@ function ai_process_scan_job(string $jobId, string $customerId, string $websiteU
         }
 
         $cleanText = (string)$parsed['clean_text'];
-
-        $pageFaqs = $parsed['detected_faqs'];
-        ai_save_page_faqs($jobId, $customerId, $finalUrl, $pageFaqs);
 
         ai_save_scanned_page($jobId, $customerId, [
             'url' => $finalUrl,
@@ -2868,11 +3248,11 @@ function ai_decode_json_result(array $result): array {
 }
 
 function ai_fallback_page_summary(string $url, string $title, string $cleanText, string $error = ''): array {
-    $cleanText = preg_replace('/\s+/', ' ', trim($cleanText)) ?: '';
+    $cleanText = ai_clean_customer_text($cleanText, 12000);
     $sentences = preg_split('/(?<=[.!?])\s+/', $cleanText) ?: [];
-    $summary = trim(implode(' ', array_slice(array_filter($sentences), 0, 3)));
+    $summary = trim(implode(' ', array_slice(array_filter($sentences), 0, 8)));
     if ($summary === '') {
-        $summary = substr($cleanText, 0, 700);
+        $summary = substr($cleanText, 0, 1800);
     }
 
     return [
@@ -2881,8 +3261,10 @@ function ai_fallback_page_summary(string $url, string $title, string $cleanText,
             'url' => $url,
             'page_title' => $title,
             'page_type' => 'other',
-            'summary' => substr($summary, 0, 900),
-            'key_facts' => array_slice(array_values(array_filter($sentences)), 0, 5),
+            'summary' => ai_clean_customer_text($summary, 2200),
+            'key_facts' => array_slice(array_map(function ($item) {
+                return ai_clean_customer_text((string)$item, 900);
+            }, array_values(array_filter($sentences))), 0, 12),
             'services' => [],
             'pricing_info' => [],
             'locations' => [],
@@ -2891,7 +3273,6 @@ function ai_fallback_page_summary(string $url, string $title, string $cleanText,
                 'phones' => [],
                 'addresses' => []
             ],
-            'faq_candidates' => [],
             'target_audience' => [],
             'entities' => [],
             'fallback_used' => true,
@@ -2903,7 +3284,7 @@ function ai_fallback_page_summary(string $url, string $title, string $cleanText,
 }
 
 function ai_summarize_page(string $url, string $title, string $cleanText): array {
-    $cleanText = trim($cleanText);
+    $cleanText = ai_clean_customer_text($cleanText, ai_page_clean_text_limit());
     if ($cleanText === '') {
         return [
             'success' => false,
@@ -2913,13 +3294,13 @@ function ai_summarize_page(string $url, string $title, string $cleanText): array
         ];
     }
 
-    $systemPrompt = 'You extract chatbot-ready business knowledge from website pages. The output will be used as context for a customer support chatbot, so preserve answerable facts, service details, rules, prices, eligibility, locations, timings, contact details, processes, and limitations. Return exactly one valid JSON object. Do not use markdown fences, comments, prose, or trailing commas.';
-    $userPrompt = "Analyze this website page and return exactly this JSON object shape. Capture enough detail for a chatbot to answer visitor questions accurately. Keep each string concise but do not omit important facts. Maximum 12 items per array, maximum 8 FAQ candidates, and no value longer than 900 characters.\n"
+    $systemPrompt = 'You extract customer-friendly business knowledge from website pages. The output will be reviewed by a business owner and used as chatbot context, so preserve every answerable fact, service detail, rule, price, eligibility point, location, timing, contact detail, process, and limitation. Write plain text only. Return exactly one valid JSON object. Do not create FAQs. Do not mention page heading levels such as H1, H2, H3, title tag, meta description, schema, or HTML structure in the summary. Do not use HTML, markdown fences, comments, prose outside JSON, or trailing commas.';
+    $userPrompt = "Analyze this website page and return exactly this JSON object shape. Capture enough detail for a chatbot to answer visitor questions accurately. The summary must be customer friendly, understandable, and cover the important details from the scanned page without raw HTML or references to heading tags such as H1, H2, or H3. Write the summary as natural prose a customer can read easily, combining related facts instead of listing the page structure. Keep each array item focused but do not omit important facts. Maximum 20 items per array, and no value longer than 900 characters except summary. Do not invent facts; if a field has no facts from the page, return an empty array for that field.\n"
         . "{\n"
         . "  \"url\": \"string\",\n"
         . "  \"page_title\": \"string\",\n"
         . "  \"page_type\": \"home|about|services|pricing|contact|faq|blog|other\",\n"
-        . "  \"summary\": \"chatbot-ready summary with the most important facts from this page\",\n"
+        . "  \"summary\": \"plain-language customer-ready summary covering all important facts from this page\",\n"
         . "  \"key_facts\": [\"string\"],\n"
         . "  \"services\": [\"string\"],\n"
         . "  \"pricing_info\": [\"string\"],\n"
@@ -2929,7 +3310,6 @@ function ai_summarize_page(string $url, string $title, string $cleanText): array
         . "  \"steps_or_processes\": [\"string\"],\n"
         . "  \"requirements_or_eligibility\": [\"string\"],\n"
         . "  \"contact_info\": {\"emails\": [\"string\"], \"phones\": [\"string\"], \"addresses\": [\"string\"]},\n"
-        . "  \"faq_candidates\": [{\"question\": \"string\", \"answer\": \"string\"}],\n"
         . "  \"target_audience\": [\"string\"],\n"
         . "  \"entities\": [\"string\"],\n"
         . "  \"answer_boundaries\": [\"things the chatbot should not claim beyond this page\"]\n"
@@ -2941,13 +3321,14 @@ function ai_summarize_page(string $url, string $title, string $cleanText): array
     $decoded = ai_decode_json_result(ai_generate_text($systemPrompt, $userPrompt, [
         'json' => true,
         'temperature' => 0.1,
-        'max_output_tokens' => 8192,
+        'max_output_tokens' => 12000,
     ]));
 
     if (empty($decoded['success'])) {
         return ai_fallback_page_summary($url, $title, $cleanText, (string)$decoded['error']);
     }
 
+    $decoded['data'] = ai_clean_summary_data((array)$decoded['data']);
     return $decoded;
 }
 
