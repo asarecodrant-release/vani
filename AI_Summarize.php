@@ -188,19 +188,22 @@ button{background:#2563eb;color:#fff}
 .grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,390px);gap:18px;align-items:start}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:18px;box-shadow:0 12px 34px rgba(15,23,42,.06)}
 .pages-panel{min-width:0}
-.faq-panel{position:sticky;top:18px;max-height:calc(100vh - 36px);overflow:auto}
-.faq-panel h2{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:12px}
-.faq-panel-tools{display:flex;align-items:center;gap:8px}
+.faq-panel{position:sticky;top:18px;max-height:calc(100vh - 36px);overflow:auto;min-width:0}
+.faq-panel h2{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:12px;min-width:0}
+.faq-panel h2>span:first-child{min-width:0;overflow-wrap:anywhere}
+.faq-panel-tools{display:flex;align-items:center;gap:8px;flex:0 0 auto}
 .faq-add-form{display:grid;gap:8px;padding:12px;border:1px solid var(--line);border-radius:8px;background:var(--soft);margin-bottom:12px}
 .faq-add-form label{display:block;font-size:11px;font-weight:900;text-transform:uppercase;color:var(--muted)}
 .faq-add-form input,.faq-add-form textarea{width:100%}
 .faq-add-form textarea{min-height:92px;resize:vertical}
 .faq-list{display:grid;gap:10px}
-.faq-item{border:1px solid var(--line);border-radius:8px;background:var(--soft);padding:12px}
-.faq-item strong{display:block;font-size:14px;line-height:1.35}
-.faq-item p{margin:8px 0 0;color:var(--muted);font-size:13px;line-height:1.45;white-space:pre-wrap}
-.faq-meta{display:flex;justify-content:space-between;gap:8px;margin-top:10px;color:var(--muted);font-size:11px;font-weight:800}
-.faq-source{display:inline-flex;align-items:center;min-height:22px;border-radius:999px;background:#dcfce7;color:#166534;padding:0 8px}
+.faq-list,.faq-item,.faq-add-form,.faq-edit-form{min-width:0}
+.faq-item{border:1px solid var(--line);border-radius:8px;background:var(--soft);padding:12px;overflow:hidden}
+.faq-item strong{display:block;font-size:14px;line-height:1.35;overflow-wrap:anywhere;word-break:break-word}
+.faq-item p{margin:8px 0 0;color:var(--muted);font-size:13px;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word}
+.faq-meta{display:flex;justify-content:space-between;gap:8px;margin-top:10px;color:var(--muted);font-size:11px;font-weight:800;min-width:0}
+.faq-meta span:last-child{min-width:0;overflow:hidden;text-overflow:ellipsis;overflow-wrap:anywhere;word-break:break-all}
+.faq-source{display:inline-flex;align-items:center;min-height:22px;border-radius:999px;background:#dcfce7;color:#166534;padding:0 8px;flex:0 0 auto}
 .faq-edit-form{display:grid;gap:8px;margin-top:8px}
 .faq-edit-form textarea{min-height:86px}
 .faq-empty{border:1px dashed var(--line);border-radius:8px;padding:14px;color:var(--muted);font-size:13px;line-height:1.5}
@@ -210,6 +213,10 @@ button{background:#2563eb;color:#fff}
 .metric strong{display:block;margin-top:6px;font-size:22px}
 .message{margin-bottom:14px;padding:12px 14px;border-radius:8px;font-weight:800}
 .success{background:#dcfce7;color:#166534}.error{background:#fee2e2;color:#991b1b}
+.refresh-toast{position:fixed;left:50%;top:86px;z-index:80;display:none;align-items:center;gap:10px;min-height:44px;max-width:calc(100vw - 28px);transform:translateX(-50%);border:1px solid var(--line);border-radius:8px;background:var(--panel);box-shadow:0 16px 40px rgba(15,23,42,.16);padding:0 14px;color:var(--ink);font-size:13px;font-weight:900}
+.refresh-toast.is-visible{display:flex}
+.refresh-toast i{width:16px;height:16px;border:2px solid rgba(37,99,235,.24);border-top-color:#2563eb;border-radius:999px;animation:diag-spin .8s linear infinite}
+.refresh-toast.is-done i{border-color:#16a34a;background:#16a34a;animation:none}
 .page-tabs-wrap{position:relative;margin-bottom:16px}
 .page-tabs-meta{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:8px;color:var(--muted);font-size:12px;font-weight:800}
 .page-tabs{display:flex;gap:8px;overflow-x:auto;overflow-y:hidden;max-width:100%;padding:4px 0 12px;border-bottom:1px solid var(--line);scroll-snap-type:x proximity;scrollbar-width:thin}
@@ -266,11 +273,15 @@ body.dark .diag-error{color:#fca5a5}
 @keyframes diag-spin{to{transform:rotate(360deg)}}
 @media(max-width:1100px){.page-tab-label{max-width:170px}}
 @media(max-width:980px){.grid,.metrics,.diag-grid{grid-template-columns:1fr}.faq-panel{position:static;max-height:none}.top{display:grid}.page-tab-label{max-width:180px}.shell{padding:26px 14px 56px}.diag-table{display:block;overflow-x:auto;white-space:nowrap}}
-@media(max-width:560px){.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.panel{padding:14px}.top h1{font-size:26px}.page-tabs-meta{display:grid}.page-tab-label{max-width:150px}.summary-actions button,.summary-actions form{width:100%}.summary-actions button{width:100%}}
+@media(max-width:560px){.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.panel{padding:14px}.top h1{font-size:26px}.page-tabs-meta{display:grid}.page-tab-label{max-width:150px}.summary-actions button,.summary-actions form{width:100%}.summary-actions button{width:100%}.faq-meta{display:grid;justify-content:start}.faq-add-form button,.faq-edit-form button{width:100%}.refresh-toast{top:74px;width:calc(100vw - 28px);justify-content:center}}
 </style>
 </head>
 <body>
 <?php include 'navbar.php'; ?>
+<div class="refresh-toast" id="refreshToast" role="status" aria-live="polite">
+  <i aria-hidden="true"></i>
+  <span id="refreshToastText">Refreshing...</span>
+</div>
 <main class="shell" data-scan-id="<?php echo ai_h($scanId); ?>" data-scan-status="<?php echo ai_h($scan['status'] ?? ''); ?>" data-summary-paused="<?php echo !empty($scan['summary_paused']) ? '1' : '0'; ?>" data-worker-csrf="<?php echo ai_h($workerCsrf); ?>" data-external-queue="<?php echo $externalQueueEnabled ? '1' : '0'; ?>">
   <div class="top">
     <div>
@@ -694,6 +705,8 @@ const summarizeAllBtn = document.getElementById("summarizeAllBtn");
 const runScanBatchBtn = document.getElementById("runScanBatchBtn");
 const runSummaryBatchBtn = document.getElementById("runSummaryBatchBtn");
 const refreshLiveBtn = document.getElementById("refreshLiveBtn");
+const refreshToast = document.getElementById("refreshToast");
+const refreshToastText = document.getElementById("refreshToastText");
 const scanPauseToggleBtn = document.getElementById("scanPauseToggleBtn");
 const summaryPauseToggleBtn = document.getElementById("summaryPauseToggleBtn");
 const diagLive = document.getElementById("diagLive");
@@ -713,6 +726,21 @@ const skippedSummaryPages = new Set();
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+let refreshToastTimer = 0;
+
+function showRefreshToast(message = "Refreshing...", isDone = false, visibleMs = 1000) {
+  if (!refreshToast || !refreshToastText) return;
+  window.clearTimeout(refreshToastTimer);
+  refreshToastText.textContent = message;
+  refreshToast.classList.toggle("is-done", Boolean(isDone));
+  refreshToast.classList.add("is-visible");
+  if (visibleMs > 0) {
+    refreshToastTimer = window.setTimeout(() => {
+      refreshToast.classList.remove("is-visible", "is-done");
+    }, visibleMs);
+  }
 }
 
 function escapeHtml(value = "") {
@@ -1371,10 +1399,14 @@ async function liveWorkflowLoop(force = false) {
 
 summarizeAllBtn?.addEventListener("click", processSummaryBatches);
 scanPauseToggleBtn?.addEventListener("click", async (event) => {
+  event.preventDefault();
   event.stopPropagation();
-  if (!scanId || scanBusy) return;
+  if (!scanId) return;
   const wasPaused = currentScanStatus === "paused";
   const action = wasPaused ? "resume_scan" : "pause_scan";
+  currentScanStatus = wasPaused ? "running" : "paused";
+  setScanPauseToggleState(currentScanStatus);
+  setDiagnosticsLive(!wasPaused, wasPaused ? "Crawler resuming" : "Crawler paused", wasPaused ? "Working" : "Paused");
   scanPauseToggleBtn.disabled = true;
   try {
     const data = await callWorker(action);
@@ -1392,10 +1424,14 @@ scanPauseToggleBtn?.addEventListener("click", async (event) => {
   }
 });
 summaryPauseToggleBtn?.addEventListener("click", async (event) => {
+  event.preventDefault();
   event.stopPropagation();
-  if (!scanId || summaryBusy) return;
+  if (!scanId) return;
   const wasPaused = currentSummaryPaused;
   const action = wasPaused ? "resume_summary" : "pause_summary";
+  currentSummaryPaused = !wasPaused;
+  setSummaryPauseToggleState(currentSummaryPaused, false);
+  setSummaryDiagnosticsLive(false, wasPaused ? "Summarization resuming" : "Summarization paused", wasPaused ? "Working" : "Paused");
   summaryPauseToggleBtn.disabled = true;
   try {
     const data = await callWorker(action);
@@ -1433,7 +1469,22 @@ runSummaryBatchBtn?.addEventListener("click", async () => {
     if (!summaryControlsFrozen) runSummaryBatchBtn.disabled = false;
   }
 });
-refreshLiveBtn?.addEventListener("click", refreshLiveStatus);
+refreshLiveBtn?.addEventListener("click", async () => {
+  if (liveStatusBusy) return;
+  const originalText = refreshLiveBtn.textContent;
+  refreshLiveBtn.disabled = true;
+  refreshLiveBtn.textContent = "Refreshing...";
+  showRefreshToast("Refreshing...", false, 0);
+  try {
+    await refreshLiveStatus();
+    showRefreshToast("Refresh done", true, 1000);
+  } catch (error) {
+    showRefreshToast("Refresh failed", true, 1400);
+  } finally {
+    refreshLiveBtn.disabled = false;
+    refreshLiveBtn.textContent = originalText;
+  }
+});
 liveWorkflowLoop();
 
 document.addEventListener("submit", async (event) => {

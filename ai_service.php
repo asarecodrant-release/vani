@@ -2571,8 +2571,15 @@ function ai_process_scan_job_batch(string $jobId, string $customerId, int $batch
     $queuedLinksTotal = 0;
     $countsBeforeLoop = ai_scan_job_counts($jobId, $customerId);
     $knownTotal = (int)$countsBeforeLoop['total'];
+    $pausedDuringBatch = false;
 
     foreach ($pendingPages as $page) {
+        $freshScan = ai_get_scan_job_for_customer($jobId, $customerId);
+        if ((string)($freshScan['status'] ?? '') === 'paused') {
+            ai_release_page_claim((string)($page['id'] ?? ''), $workerId);
+            $pausedDuringBatch = true;
+            continue;
+        }
         if (!$pageLevelClaiming) {
             ai_extend_scan_job_lock($jobId, $workerId);
         }
@@ -2699,8 +2706,24 @@ function ai_process_scan_job_batch(string $jobId, string $customerId, int $batch
         $processed++;
     }
 
-    usleep(ai_crawl_delay_ms((string)($scan['website_url'] ?? '')) * 1000);
     $counts = ai_scan_job_counts($jobId, $customerId);
+    if ($pausedDuringBatch || (string)(ai_get_scan_job_for_customer($jobId, $customerId)['status'] ?? '') === 'paused') {
+        if (!$pageLevelClaiming) {
+            ai_release_scan_job($jobId, $workerId);
+        }
+        return [
+            'success' => true,
+            'status' => 'paused',
+            'counts' => $counts,
+            'processed' => $processed,
+            'queued_links' => $queuedLinksTotal,
+            'paused' => true,
+            'active_url' => '',
+            'active_urls' => [],
+            'error' => ''
+        ];
+    }
+    usleep(ai_crawl_delay_ms((string)($scan['website_url'] ?? '')) * 1000);
     $complete = $counts['pending'] === 0 && $queuedLinksTotal === 0;
     ai_patch_scan_job($jobId, [
         'status' => $complete ? 'completed' : 'running',
@@ -2757,8 +2780,18 @@ function ai_summarize_scan_job_batch(string $jobId, string $customerId, int $bat
     $done = 0;
     $failed = 0;
     $deferred = 0;
+    $pausedDuringBatch = false;
     foreach ($pages as $page) {
+        $freshScan = ai_get_scan_job_for_customer($jobId, $customerId);
+        if (!empty($freshScan['summary_paused'])) {
+            $pausedDuringBatch = true;
+            break;
+        }
         $result = ai_summarize_scanned_page((string)$page['id'], $customerId);
+        if (!empty($result['paused'])) {
+            $pausedDuringBatch = true;
+            break;
+        }
         if (!empty($result['success'])) {
             $done++;
             if ($retrySupported) {
@@ -2801,7 +2834,8 @@ function ai_summarize_scan_job_batch(string $jobId, string $customerId, int $bat
         'summarized' => $done,
         'failed' => $failed,
         'deferred' => $deferred,
-        'remaining' => count($pages) >= max(1, min(6, $batchSize)),
+        'remaining' => !$pausedDuringBatch && count($pages) >= max(1, min(6, $batchSize)),
+        'paused' => $pausedDuringBatch,
     ];
 }
 

@@ -52,6 +52,9 @@ if ($tokenAuthenticated) {
 if (empty($scan) || $customerId === '') {
     ai_worker_json(['success' => false, 'error' => 'Scan job was not found.'], 404);
 }
+if (!$tokenAuthenticated && session_status() === PHP_SESSION_ACTIVE) {
+    session_write_close();
+}
 
 $action = (string)($_POST['action'] ?? $_GET['action'] ?? 'status');
 $result = ['success' => true];
