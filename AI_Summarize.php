@@ -583,18 +583,20 @@ body.dark .diag-error{color:#fca5a5}
         <textarea name="answer" placeholder="Answer"></textarea>
         <div class="row"><button type="submit">Add FAQ</button></div>
       </form>
-      <?php foreach ($faqs as $faq): ?>
-        <form method="POST" class="faq">
-          <input type="hidden" name="action" value="save_faq">
-          <input type="hidden" name="faq_id" value="<?php echo ai_h($faq['id']); ?>">
-          <label>Question</label>
-          <input name="question" value="<?php echo ai_h($faq['question']); ?>">
-          <label>Answer</label>
-          <textarea name="answer"><?php echo ai_h($faq['answer']); ?></textarea>
-          <p class="muted">Source: <?php echo ai_h($faq['source']); ?></p>
-          <div class="row"><button type="submit">Save FAQ</button></div>
-        </form>
-      <?php endforeach; ?>
+      <div id="faqList">
+        <?php foreach ($faqs as $faq): ?>
+          <form method="POST" class="faq">
+            <input type="hidden" name="action" value="save_faq">
+            <input type="hidden" name="faq_id" value="<?php echo ai_h($faq['id']); ?>">
+            <label>Question</label>
+            <input name="question" value="<?php echo ai_h($faq['question']); ?>">
+            <label>Answer</label>
+            <textarea name="answer"><?php echo ai_h($faq['answer']); ?></textarea>
+            <p class="muted">Source: <?php echo ai_h($faq['source']); ?></p>
+            <div class="row"><button type="submit">Save FAQ</button></div>
+          </form>
+        <?php endforeach; ?>
+      </div>
     </aside>
   </div>
 </main>
@@ -606,6 +608,7 @@ const externalQueueEnabled = shell?.dataset.externalQueue === "1";
 const pageTabs = document.getElementById("pageTabs");
 const pagePanels = document.getElementById("pagePanels");
 const pageTabsCount = document.getElementById("pageTabsCount");
+const faqList = document.getElementById("faqList");
 const crawlTitle = document.getElementById("crawlTitle");
 const crawlText = document.getElementById("crawlText");
 const crawlBar = document.getElementById("crawlBar");
@@ -770,6 +773,26 @@ function renderPagePanel(page) {
   </article>`;
 }
 
+function renderFaq(faq = {}) {
+  return `<form method="POST" class="faq">
+    <input type="hidden" name="action" value="save_faq">
+    <input type="hidden" name="faq_id" value="${escapeHtml(faq.id || "")}">
+    <label>Question</label>
+    <input name="question" value="${escapeHtml(faq.question || "")}">
+    <label>Answer</label>
+    <textarea name="answer">${escapeHtml(faq.answer || "")}</textarea>
+    <p class="muted">Source: ${escapeHtml(faq.source || "")}</p>
+    <div class="row"><button type="submit">Save FAQ</button></div>
+  </form>`;
+}
+
+function updateFaqs(faqs = []) {
+  if (!faqList) return;
+  if (faqList.contains(document.activeElement)) return;
+  faqList.innerHTML = faqs.map((faq) => renderFaq(faq)).join("");
+  if (faqMetric) faqMetric.textContent = String(faqs.length);
+}
+
 function updatePages(pages = []) {
   if (!pageTabs || !pagePanels) return;
   const activePanel = document.querySelector(".page-panel.is-active");
@@ -921,7 +944,7 @@ function applyLiveData(data = {}, mode = "scan") {
   updateDiagnostics(data);
   updatePages(data.pages || []);
   if (capturedMetric && data.pages) capturedMetric.textContent = String(data.pages.length);
-  if (faqMetric && data.faqs) faqMetric.textContent = String(data.faqs.length);
+  if (data.faqs) updateFaqs(data.faqs);
 }
 
 async function processScanBatch() {
@@ -948,11 +971,13 @@ async function processSummaryBatches() {
   summaryBusy = true;
   if (summarizeAllBtn) summarizeAllBtn.disabled = true;
   try {
-    let keepGoing = true;
-    while (keepGoing) {
-      const data = await callWorker("summarize_batch");
+    let latest = await callWorker("status");
+    applyLiveData(latest, "summary");
+    const pages = Array.isArray(latest.pages) ? latest.pages : [];
+    for (const page of pages) {
+      if (!page?.id) continue;
+      const data = await callWorker("summarize_page", { page_id: page.id });
       applyLiveData(data, "summary");
-      keepGoing = Boolean(data.remaining) && !data.error;
       await new Promise((resolve) => setTimeout(resolve, 350));
     }
   } catch (error) {
