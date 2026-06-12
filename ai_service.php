@@ -422,6 +422,20 @@ function ai_resume_scan_job(string $jobId, string $customerId): void {
     );
 }
 
+function ai_pause_summary_job(string $jobId, string $customerId): void {
+    supabase('PATCH', 'ai_scan_jobs?id=eq.' . urlencode($jobId) . '&customer_id=eq.' . urlencode($customerId), [
+        'summary_paused' => true,
+        'updated_at' => ai_now(),
+    ]);
+}
+
+function ai_resume_summary_job(string $jobId, string $customerId): void {
+    supabase('PATCH', 'ai_scan_jobs?id=eq.' . urlencode($jobId) . '&customer_id=eq.' . urlencode($customerId), [
+        'summary_paused' => false,
+        'updated_at' => ai_now(),
+    ]);
+}
+
 function ai_extend_scan_job_lock(string $jobId, string $workerId, int $ttlSeconds = 90): void {
     if (!ai_db_supports_worker_columns()) {
         return;
@@ -2716,7 +2730,7 @@ function ai_process_scan_job_batch(string $jobId, string $customerId, int $batch
 
 function ai_summarize_scan_job_batch(string $jobId, string $customerId, int $batchSize = 2): array {
     $scan = ai_get_scan_job_for_customer($jobId, $customerId);
-    if ((string)($scan['status'] ?? '') === 'paused') {
+    if (!empty($scan['summary_paused'])) {
         return [
             'success' => true,
             'summarized' => 0,
@@ -2876,6 +2890,11 @@ function ai_summarize_scanned_page(string $pageId, string $customerId): array {
     $page = ai_get_page_for_customer($pageId, $customerId);
     if (empty($page)) {
         return ['success' => false, 'error' => 'Page was not found.'];
+    }
+
+    $scan = ai_get_scan_job_for_customer((string)($page['scan_job_id'] ?? ''), $customerId);
+    if (!empty($scan['summary_paused'])) {
+        return ['success' => false, 'paused' => true, 'error' => 'Summarization is paused.'];
     }
 
     $cleanText = trim((string)($page['clean_text'] ?? ''));

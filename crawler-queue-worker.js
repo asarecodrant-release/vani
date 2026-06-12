@@ -153,6 +153,7 @@ async function processSummaryJob(job) {
       deferred: latest.deferred || 0,
       counts: latest.counts || {},
     });
+    if (latest.paused) break;
     if (!latest.remaining) break;
   }
   return latest || { success: true };

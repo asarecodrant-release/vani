@@ -70,8 +70,6 @@ if ($action === 'queue_test') {
     $pageId = trim((string)($_POST['page_id'] ?? $_GET['page_id'] ?? ''));
     if (!ai_is_configured()) {
         $result = ['success' => false, 'error' => 'AI provider is not configured.'];
-    } elseif ((string)($scan['status'] ?? '') === 'paused') {
-        $result = ['success' => true, 'paused' => true, 'error' => 'Workflow is paused.'];
     } else {
         $result = ai_summarize_scanned_page($pageId, $customerId);
     }
@@ -82,6 +80,15 @@ if ($action === 'queue_test') {
     ai_resume_scan_job($scanId, $customerId);
     if (ai_external_queue_enabled()) {
         ai_enqueue_external_job($scanId, 'scan', 5);
+    }
+    $result = ['success' => true, 'error' => ''];
+} elseif ($action === 'pause_summary') {
+    ai_pause_summary_job($scanId, $customerId);
+    $result = ['success' => true, 'error' => ''];
+} elseif ($action === 'resume_summary') {
+    ai_resume_summary_job($scanId, $customerId);
+    if (ai_external_queue_enabled()) {
+        ai_enqueue_external_job($scanId, 'summary', 10);
     }
     $result = ['success' => true, 'error' => ''];
 } elseif ($action === 'backfill_faqs') {
@@ -137,6 +144,7 @@ ai_worker_json(array_merge($result, [
         'pages_requested' => (int)($freshScan['pages_requested'] ?? $scan['pages_requested'] ?? 0),
         'pages_scanned' => (int)($freshScan['pages_scanned'] ?? 0),
         'pages_failed' => (int)($freshScan['pages_failed'] ?? 0),
+        'summary_paused' => !empty($freshScan['summary_paused']),
         'error_message' => (string)($freshScan['error_message'] ?? ''),
     ],
     'counts' => $counts,

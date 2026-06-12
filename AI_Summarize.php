@@ -262,6 +262,7 @@ body.dark .diag-error{color:#fca5a5}
 .diag-spinner{display:none;width:14px;height:14px;border:2px solid rgba(37,99,235,.24);border-top-color:#2563eb;border-radius:999px;animation:diag-spin .8s linear infinite}
 .diag-live.is-running .diag-spinner{display:inline-block}
 .diag-live-text{display:inline-block;max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-size:12px;font-weight:800}
+.diag-toggle-btn{min-height:32px;padding:0 10px;font-size:12px}
 @keyframes diag-spin{to{transform:rotate(360deg)}}
 @media(max-width:1100px){.page-tab-label{max-width:170px}}
 @media(max-width:980px){.grid,.metrics,.diag-grid{grid-template-columns:1fr}.faq-panel{position:static;max-height:none}.top{display:grid}.page-tab-label{max-width:180px}.shell{padding:26px 14px 56px}.diag-table{display:block;overflow-x:auto;white-space:nowrap}}
@@ -270,14 +271,13 @@ body.dark .diag-error{color:#fca5a5}
 </head>
 <body>
 <?php include 'navbar.php'; ?>
-<main class="shell" data-scan-id="<?php echo ai_h($scanId); ?>" data-scan-status="<?php echo ai_h($scan['status'] ?? ''); ?>" data-worker-csrf="<?php echo ai_h($workerCsrf); ?>" data-external-queue="<?php echo $externalQueueEnabled ? '1' : '0'; ?>">
+<main class="shell" data-scan-id="<?php echo ai_h($scanId); ?>" data-scan-status="<?php echo ai_h($scan['status'] ?? ''); ?>" data-summary-paused="<?php echo !empty($scan['summary_paused']) ? '1' : '0'; ?>" data-worker-csrf="<?php echo ai_h($workerCsrf); ?>" data-external-queue="<?php echo $externalQueueEnabled ? '1' : '0'; ?>">
   <div class="top">
     <div>
       <h1>Review captured website pages</h1>
       <p><?php echo ai_h($scan['website_domain'] ?? ''); ?> pages are captured first. Customer-ready summaries can be reviewed and edited here.</p>
     </div>
     <div class="actions">
-      <button type="button" id="workflowToggleBtn"><?php echo (string)($scan['status'] ?? '') === 'paused' ? 'Start again' : 'Stop'; ?></button>
       <button class="btn" type="button" id="refreshLiveBtn">Refresh</button>
       <a class="btn" href="AI_Chatbot_Setup.php">Scan another website</a>
     </div>
@@ -312,6 +312,7 @@ body.dark .diag-error{color:#fca5a5}
         <i class="diag-spinner" aria-hidden="true"></i>
         <span class="diag-live-text" id="diagLiveText"><?php echo $activeScanUrl !== '' ? 'Scanning: ' . ai_short_url_label($activeScanUrl) : ($workerActive ? 'Crawler working' : 'Crawler idle'); ?></span>
         <span class="diag-pill <?php echo $workerActive ? '' : 'warn'; ?>" id="diagLivePill"><?php echo $activeScanUrl !== '' ? 'Page locked' : ($workerActive ? 'Worker active' : 'No active lock'); ?></span>
+        <button class="btn diag-toggle-btn" type="button" id="scanPauseToggleBtn"><?php echo (string)($scan['status'] ?? '') === 'paused' ? 'Resume' : 'Pause'; ?></button>
       </span>
     </summary>
 
@@ -494,8 +495,9 @@ body.dark .diag-error{color:#fca5a5}
       <span>Page Summarization Diagnostic</span>
       <span class="diag-live" id="summaryDiagLive">
         <i class="diag-spinner" aria-hidden="true"></i>
-        <span class="diag-live-text" id="summaryDiagLiveText"><?php echo $summaryDone >= $summaryTotal && $summaryTotal > 0 ? 'All captured pages summarized' : 'Waiting for captured pages'; ?></span>
-        <span class="diag-pill <?php echo $summaryDone >= $summaryTotal && $summaryTotal > 0 ? '' : 'warn'; ?>" id="summaryDiagLivePill"><?php echo (int)$summaryDone; ?> / <?php echo (int)$summaryTotal; ?></span>
+        <span class="diag-live-text" id="summaryDiagLiveText"><?php echo !empty($scan['summary_paused']) ? 'Summarization paused' : ($summaryDone >= $summaryTotal && $summaryTotal > 0 ? 'All captured pages summarized' : 'Waiting for captured pages'); ?></span>
+        <span class="diag-pill <?php echo $summaryDone >= $summaryTotal && $summaryTotal > 0 && empty($scan['summary_paused']) ? '' : 'warn'; ?>" id="summaryDiagLivePill"><?php echo !empty($scan['summary_paused']) ? 'Paused' : ((int)$summaryDone . ' / ' . (int)$summaryTotal); ?></span>
+        <button class="btn diag-toggle-btn" type="button" id="summaryPauseToggleBtn"><?php echo !empty($scan['summary_paused']) ? 'Resume' : 'Pause'; ?></button>
       </span>
     </summary>
 
@@ -670,6 +672,7 @@ const scanId = shell?.dataset.scanId || "";
 const workerCsrf = shell?.dataset.workerCsrf || "";
 const externalQueueEnabled = shell?.dataset.externalQueue === "1";
 let currentScanStatus = shell?.dataset.scanStatus || "";
+let currentSummaryPaused = shell?.dataset.summaryPaused === "1";
 const pageTabs = document.getElementById("pageTabs");
 const pagePanels = document.getElementById("pagePanels");
 const pageTabsCount = document.getElementById("pageTabsCount");
@@ -691,13 +694,14 @@ const summarizeAllBtn = document.getElementById("summarizeAllBtn");
 const runScanBatchBtn = document.getElementById("runScanBatchBtn");
 const runSummaryBatchBtn = document.getElementById("runSummaryBatchBtn");
 const refreshLiveBtn = document.getElementById("refreshLiveBtn");
+const scanPauseToggleBtn = document.getElementById("scanPauseToggleBtn");
+const summaryPauseToggleBtn = document.getElementById("summaryPauseToggleBtn");
 const diagLive = document.getElementById("diagLive");
 const diagLiveText = document.getElementById("diagLiveText");
 const diagLivePill = document.getElementById("diagLivePill");
 const summaryDiagLive = document.getElementById("summaryDiagLive");
 const summaryDiagLiveText = document.getElementById("summaryDiagLiveText");
 const summaryDiagLivePill = document.getElementById("summaryDiagLivePill");
-const workflowToggleBtn = document.getElementById("workflowToggleBtn");
 let scanBusy = false;
 let summaryBusy = false;
 let liveStatusBusy = false;
@@ -793,6 +797,31 @@ function setSummaryDiagnosticsLive(isRunning, text, pillText) {
   }
 }
 
+function setScanPauseToggleState(status = "") {
+  const value = String(status || "").toLowerCase();
+  currentScanStatus = value;
+  if (!scanPauseToggleBtn) return;
+  if (value === "completed" || value === "failed") {
+    scanPauseToggleBtn.disabled = true;
+    scanPauseToggleBtn.textContent = "Done";
+    return;
+  }
+  scanPauseToggleBtn.disabled = false;
+  scanPauseToggleBtn.textContent = value === "paused" ? "Resume" : "Pause";
+}
+
+function setSummaryPauseToggleState(isPaused = false, isCompleted = false) {
+  currentSummaryPaused = Boolean(isPaused);
+  if (!summaryPauseToggleBtn) return;
+  if (isCompleted) {
+    summaryPauseToggleBtn.disabled = true;
+    summaryPauseToggleBtn.textContent = "Done";
+    return;
+  }
+  summaryPauseToggleBtn.disabled = false;
+  summaryPauseToggleBtn.textContent = currentSummaryPaused ? "Resume" : "Pause";
+}
+
 function setSummaryControlsCompleted(isCompleted) {
   if (isCompleted) {
     summaryControlsFrozen = true;
@@ -818,19 +847,6 @@ function setSummaryControlsCompleted(isCompleted) {
   }
 }
 
-function setWorkflowToggleState(status = "") {
-  const value = String(status || "").toLowerCase();
-  currentScanStatus = value;
-  if (!workflowToggleBtn) return;
-  if (value === "completed" || value === "failed") {
-    workflowToggleBtn.disabled = true;
-    workflowToggleBtn.textContent = "Done";
-    return;
-  }
-  workflowToggleBtn.disabled = false;
-  workflowToggleBtn.textContent = value === "paused" ? "Start again" : "Stop";
-}
-
 function updateWorkerUi(data, mode = "scan") {
   const counts = data?.counts || {};
   const scan = data?.scan || {};
@@ -843,6 +859,7 @@ function updateWorkerUi(data, mode = "scan") {
   const summaryDone = Number(counts.summary_done ?? summarized);
   const summaryPending = Number(counts.summary_pending ?? (captured - summarized));
   const summaryIsComplete = summaryTotal > 0 && summaryPending <= 0 && summaryDone >= summaryTotal;
+  const summaryPaused = Boolean(scan.summary_paused);
   const crawlPct = Number(counts.crawl_percent ?? (crawlTotal > 0 ? Math.min(100, Math.round((crawlDone / crawlTotal) * 100)) : 0));
   const summaryPct = Number(counts.summary_percent ?? (summaryTotal > 0 ? Math.min(100, Math.round((summaryDone / summaryTotal) * 100)) : 0));
   if (crawlBar) crawlBar.style.width = `${crawlPct}%`;
@@ -852,17 +869,22 @@ function updateWorkerUi(data, mode = "scan") {
   if (capturedMetric) capturedMetric.textContent = String(captured);
   if (summarizedMetric) summarizedMetric.textContent = String(summarized);
   if (scanStatusMetric) scanStatusMetric.textContent = scan.status || "";
-  setWorkflowToggleState(scan.status || "");
+  setScanPauseToggleState(scan.status || "");
+  setSummaryPauseToggleState(summaryPaused, summaryIsComplete);
   if (crawlTitle) crawlTitle.textContent = `Crawling ${scan.status || "pending"}`;
   if (crawlText) crawlText.textContent = `${crawlDone} of ${crawlTotal} queued page(s) crawled. ${failed} failed, ${Number(counts.pending || 0)} still queued.`;
-  if (summaryTitle) summaryTitle.textContent = summaryIsComplete ? "Summarization completed" : (mode === "summary" ? "Summarization running" : "Summarizing");
+  if (summaryTitle) summaryTitle.textContent = summaryPaused ? "Summarization paused" : (summaryIsComplete ? "Summarization completed" : (mode === "summary" ? "Summarization running" : "Summarizing"));
   if (summaryText) summaryText.textContent = `${summaryDone} of ${summaryTotal} captured page(s) summarized. ${summaryPending} waiting.`;
   setSummaryControlsCompleted(summaryIsComplete);
-  setSummaryDiagnosticsLive(
-    mode === "summary" && summaryPending > 0,
-    summaryDone >= summaryTotal && summaryTotal > 0 ? "All captured pages summarized" : `${Number(counts.summary_pending ?? (captured - summarized))} page(s) waiting for summary`,
-    `${summaryDone} / ${summaryTotal}`
-  );
+  if (summaryPaused) {
+    setSummaryDiagnosticsLive(false, "Summarization paused", "Paused");
+  } else {
+    setSummaryDiagnosticsLive(
+      mode === "summary" && summaryPending > 0,
+      summaryDone >= summaryTotal && summaryTotal > 0 ? "All captured pages summarized" : `${Number(counts.summary_pending ?? (captured - summarized))} page(s) waiting for summary`,
+      `${summaryDone} / ${summaryTotal}`
+    );
+  }
   if (mode === "scan") {
     const activeUrl = data?.active_url || "";
     const processed = Number(data?.processed || 0);
@@ -1167,7 +1189,7 @@ function applyLiveData(data = {}, mode = "scan") {
 }
 
 async function processScanBatch() {
-  if (!scanId || scanBusy) return;
+  if (!scanId || scanBusy || currentScanStatus === "paused") return;
   scanBusy = true;
   setDiagnosticsLive(true, "Scanning batch...", "Working");
   try {
@@ -1215,7 +1237,7 @@ function summaryComplete(data = {}) {
 async function summarizeNextFetchedPage(data = {}) {
   const page = nextFetchedPage(data);
   const scan = data.scan || data.diagnostics?.scan || {};
-  if (!page?.id || summaryBusy || String(scan.status || "").toLowerCase() === "paused") return data;
+  if (!page?.id || summaryBusy || Boolean(scan.summary_paused) || currentSummaryPaused) return data;
 
   summaryBusy = true;
   summarizingPages.add(String(page.id));
@@ -1279,10 +1301,6 @@ async function liveWorkflowLoop(force = false) {
       const counts = latest.counts || latest.diagnostics?.counts || {};
       if (String(scan.status || "").toLowerCase() === "paused") {
         setDiagnosticsLive(false, "Crawler paused", "Paused");
-        setSummaryDiagnosticsLive(false, "Summarization paused", "Paused");
-        await wait(1000);
-        latest = await refreshWorkflowStatus("scan");
-        continue;
       }
       if ((scan.status === "failed" || scan.status === "completed") && Number(counts.total || 0) === 0) {
         autoWorkflowDone = true;
@@ -1291,7 +1309,12 @@ async function liveWorkflowLoop(force = false) {
         break;
       }
 
-      const waitingSummary = nextFetchedPage(latest);
+      const summaryPaused = Boolean(scan.summary_paused);
+      if (summaryPaused) {
+        setSummaryDiagnosticsLive(false, "Summarization paused", "Paused");
+      }
+
+      const waitingSummary = summaryPaused ? null : nextFetchedPage(latest);
       if (waitingSummary && !summaryBusy) {
         summarizeNextFetchedPage(latest).catch(() => {});
       }
@@ -1304,6 +1327,12 @@ async function liveWorkflowLoop(force = false) {
         break;
       }
 
+      if (String(scan.status || "").toLowerCase() === "paused") {
+        await wait(1000);
+        latest = await refreshWorkflowStatus("scan");
+        continue;
+      }
+
       if (!crawlComplete(latest)) {
         scanBusy = true;
         setDiagnosticsLive(true, externalQueueEnabled ? "Scanning next pages with browser fallback..." : "Scanning next pages...", "Working");
@@ -1313,7 +1342,7 @@ async function liveWorkflowLoop(force = false) {
         } finally {
           scanBusy = false;
         }
-        if (!summaryBusy && nextFetchedPage(latest)) {
+        if (!summaryBusy && !Boolean(latest.scan?.summary_paused) && nextFetchedPage(latest)) {
           summarizeNextFetchedPage(latest).catch(() => {});
         }
         idleRounds = Number(latest.processed || 0) === 0 ? idleRounds + 1 : 0;
@@ -1341,11 +1370,12 @@ async function liveWorkflowLoop(force = false) {
 }
 
 summarizeAllBtn?.addEventListener("click", processSummaryBatches);
-workflowToggleBtn?.addEventListener("click", async () => {
-  if (!scanId || scanBusy || summaryBusy) return;
+scanPauseToggleBtn?.addEventListener("click", async (event) => {
+  event.stopPropagation();
+  if (!scanId || scanBusy) return;
   const wasPaused = currentScanStatus === "paused";
   const action = wasPaused ? "resume_scan" : "pause_scan";
-  workflowToggleBtn.disabled = true;
+  scanPauseToggleBtn.disabled = true;
   try {
     const data = await callWorker(action);
     applyLiveData(data, "scan");
@@ -1357,11 +1387,33 @@ workflowToggleBtn?.addEventListener("click", async () => {
     }
   } finally {
     if (currentScanStatus !== "completed" && currentScanStatus !== "failed") {
-      workflowToggleBtn.disabled = false;
+      scanPauseToggleBtn.disabled = false;
+    }
+  }
+});
+summaryPauseToggleBtn?.addEventListener("click", async (event) => {
+  event.stopPropagation();
+  if (!scanId || summaryBusy) return;
+  const wasPaused = currentSummaryPaused;
+  const action = wasPaused ? "resume_summary" : "pause_summary";
+  summaryPauseToggleBtn.disabled = true;
+  try {
+    const data = await callWorker(action);
+    applyLiveData(data, "summary");
+    if (wasPaused) {
+      autoWorkflowDone = false;
+      if (!autoWorkflowBusy) {
+        liveWorkflowLoop(true);
+      }
+    }
+  } finally {
+    if (!summaryControlsFrozen) {
+      summaryPauseToggleBtn.disabled = false;
     }
   }
 });
 runScanBatchBtn?.addEventListener("click", async () => {
+  if (currentScanStatus === "paused") return;
   runScanBatchBtn.disabled = true;
   setDiagnosticsLive(true, "Scanning batch...", "Working");
   try {
@@ -1372,6 +1424,7 @@ runScanBatchBtn?.addEventListener("click", async () => {
   }
 });
 runSummaryBatchBtn?.addEventListener("click", async () => {
+  if (currentSummaryPaused) return;
   runSummaryBatchBtn.disabled = true;
   try {
     const data = await callWorker("summarize_batch");
@@ -1387,7 +1440,7 @@ document.addEventListener("submit", async (event) => {
   const form = event.target.closest(".js-summarize-page-form");
   if (!form) return;
   event.preventDefault();
-  if (summaryBusy) return;
+  if (summaryBusy || currentSummaryPaused) return;
   const button = form.querySelector("button");
   const pageId = form.querySelector("input[name='page_id']")?.value || "";
   if (button) {

@@ -1259,7 +1259,8 @@ create table if not exists public.ai_scan_jobs (
   email text not null,
   website_url text not null,
   website_domain text not null,
-  status text not null default 'pending' check (status in ('pending', 'running', 'completed', 'failed')),
+  status text not null default 'pending' check (status in ('pending', 'running', 'completed', 'failed', 'paused')),
+  summary_paused boolean not null default false,
   provider text,
   model text,
   pages_requested integer not null default 0,
@@ -1285,6 +1286,9 @@ alter table public.ai_scan_jobs
 
 alter table public.ai_scan_jobs
   add column if not exists locked_until timestamptz;
+
+alter table public.ai_scan_jobs
+  add column if not exists summary_paused boolean not null default false;
 
 create index if not exists ai_scan_jobs_worker_idx
 on public.ai_scan_jobs(status, locked_until);
