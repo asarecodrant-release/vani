@@ -1753,7 +1753,7 @@ function ai_dedupe_faqs(array $faqs): array {
         if ($question === '' || $answer === '') {
             continue;
         }
-        $key = strtolower($question);
+        $key = ai_faq_signature($question);
         if (isset($seen[$key])) {
             continue;
         }
@@ -1765,6 +1765,37 @@ function ai_dedupe_faqs(array $faqs): array {
         ];
     }
     return $clean;
+}
+
+function ai_faq_signature(string $question): string {
+    $value = strtolower(trim($question));
+    $value = html_entity_decode($value, ENT_QUOTES, 'UTF-8');
+    $value = preg_replace('/[^\pL\pN]+/u', ' ', $value) ?: $value;
+    $value = preg_replace('/\s+/', ' ', $value) ?: $value;
+    return trim($value);
+}
+
+function ai_faq_existing_signatures(string $customerId): array {
+    static $cache = [];
+    if ($customerId === '') {
+        return [];
+    }
+    if (isset($cache[$customerId])) {
+        return $cache[$customerId];
+    }
+    $rows = ai_safe_rows(supabase(
+        'GET',
+        'ai_website_faqs?select=question&customer_id=eq.' . urlencode($customerId) . '&limit=2000'
+    ));
+    $seen = [];
+    foreach ($rows as $row) {
+        $signature = ai_faq_signature((string)($row['question'] ?? ''));
+        if ($signature !== '') {
+            $seen[$signature] = true;
+        }
+    }
+    $cache[$customerId] = $seen;
+    return $seen;
 }
 
 function ai_page_looks_like_faq(string $url, string $title, string $cleanText): bool {
@@ -1860,7 +1891,13 @@ function ai_generate_faqs_from_summary_data(array $summary, string $url, string 
 
 function ai_save_page_faqs(string $jobId, string $customerId, string $pageUrl, array $faqs): void {
     $rows = [];
+    $existingSignatures = ai_faq_existing_signatures($customerId);
     foreach (ai_dedupe_faqs($faqs) as $faq) {
+        $signature = ai_faq_signature((string)$faq['question']);
+        if ($signature === '' || isset($existingSignatures[$signature])) {
+            continue;
+        }
+        $existingSignatures[$signature] = true;
         $rows[] = [
             'scan_job_id' => $jobId,
             'customer_id' => $customerId,
@@ -2476,6 +2513,7 @@ function ai_process_scan_job_batch(string $jobId, string $customerId, int $batch
     $fetches = ai_fetch_pages_parallel($urls, max(1, min((int)ai_env('AI_CRAWL_CONCURRENCY', '4'), $batchSize)));
     $websiteDomain = (string)$scan['website_domain'];
     $processed = 0;
+    $queuedLinksTotal = 0;
     $countsBeforeLoop = ai_scan_job_counts($jobId, $customerId);
     $knownTotal = (int)$countsBeforeLoop['total'];
 
@@ -2570,6 +2608,7 @@ function ai_process_scan_job_batch(string $jobId, string $customerId, int $batch
             $linksPerPage = max(1, (int)ai_env('AI_CRAWL_MAX_LINKS_PER_PAGE', '8'));
             $queuedLinks = ai_enqueue_scan_urls($jobId, $customerId, array_slice($links, 0, min($remainingSlots, $linksPerPage)), $remainingSlots, true);
             $knownTotal += $queuedLinks;
+            $queuedLinksTotal += $queuedLinks;
         }
 
         $cleanText = (string)$parsed['clean_text'];
@@ -2607,7 +2646,7 @@ function ai_process_scan_job_batch(string $jobId, string $customerId, int $batch
 
     usleep(ai_crawl_delay_ms((string)($scan['website_url'] ?? '')) * 1000);
     $counts = ai_scan_job_counts($jobId, $customerId);
-    $complete = $counts['pending'] === 0 || $counts['total'] >= $maxPages && $counts['pending'] === 0;
+    $complete = $counts['pending'] === 0 && $queuedLinksTotal === 0;
     ai_patch_scan_job($jobId, [
         'status' => $complete ? 'completed' : 'running',
         'pages_scanned' => $counts['scanned'],
@@ -2627,6 +2666,7 @@ function ai_process_scan_job_batch(string $jobId, string $customerId, int $batch
         'status' => $complete ? 'completed' : 'running',
         'counts' => $counts,
         'processed' => $processed,
+        'queued_links' => $queuedLinksTotal,
         'active_url' => (string)($activeUrls[0] ?? ''),
         'active_urls' => $activeUrls,
         'error' => ''
@@ -2874,6 +2914,18 @@ function ai_update_faq(string $faqId, string $customerId, string $question, stri
     ));
     if (empty($rows[0])) {
         return ['success' => false, 'error' => 'FAQ was not found.'];
+    }
+    $signature = ai_faq_signature($question);
+    if ($signature !== '') {
+        $existing = ai_safe_rows(supabase(
+            'GET',
+            'ai_website_faqs?select=id,question&customer_id=eq.' . urlencode($customerId) . '&limit=2000'
+        ));
+        foreach ($existing as $row) {
+            if ((string)($row['id'] ?? '') !== $faqId && ai_faq_signature((string)($row['question'] ?? '')) === $signature) {
+                return ['success' => false, 'error' => 'That FAQ question already exists.'];
+            }
+        }
     }
     supabase('PATCH', 'ai_website_faqs?id=eq.' . urlencode($faqId), [
         'question' => ai_clean_customer_text($question, 800),

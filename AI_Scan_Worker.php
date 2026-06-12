@@ -94,6 +94,16 @@ if ($action === 'queue_test') {
     if ($question === '' || $answer === '') {
         $result = ['success' => false, 'error' => 'Question and answer are required.'];
     } else {
+        $signature = ai_faq_signature($question);
+        $existing = ai_safe_rows(supabase(
+            'GET',
+            'ai_website_faqs?select=id,question&customer_id=eq.' . urlencode($customerId) . '&limit=2000'
+        ));
+        foreach ($existing as $row) {
+            if (ai_faq_signature((string)($row['question'] ?? '')) === $signature) {
+                ai_worker_json(['success' => false, 'error' => 'That FAQ question already exists.']);
+            }
+        }
         supabase('POST', 'ai_website_faqs', [[
             'scan_job_id' => $scanId,
             'customer_id' => $customerId,

@@ -189,6 +189,10 @@ button{background:#2563eb;color:#fff}
 .pages-panel{min-width:0}
 .faq-panel{position:sticky;top:18px;max-height:calc(100vh - 36px);overflow:auto}
 .faq-panel h2{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:12px}
+.faq-add-form{display:grid;gap:8px;padding:12px;border:1px solid var(--line);border-radius:8px;background:var(--soft);margin-bottom:12px}
+.faq-add-form label{display:block;font-size:11px;font-weight:900;text-transform:uppercase;color:var(--muted)}
+.faq-add-form input,.faq-add-form textarea{width:100%}
+.faq-add-form textarea{min-height:92px;resize:vertical}
 .faq-list{display:grid;gap:10px}
 .faq-item{border:1px solid var(--line);border-radius:8px;background:var(--soft);padding:12px}
 .faq-item strong{display:block;font-size:14px;line-height:1.35}
@@ -618,6 +622,19 @@ body.dark .diag-error{color:#fca5a5}
         <span>Captured FAQ</span>
         <span class="diag-pill" id="faqCountPill"><?php echo count($faqs); ?></span>
       </h2>
+      <form method="POST" class="faq-add-form js-live-worker-form">
+        <input type="hidden" name="action" value="add_faq">
+        <input type="hidden" name="page_url" value="<?php echo ai_h($scan['website_url'] ?? ''); ?>">
+        <div>
+          <label for="faqQuestion">Question</label>
+          <input id="faqQuestion" name="question" placeholder="Enter a new FAQ question">
+        </div>
+        <div>
+          <label for="faqAnswer">Answer</label>
+          <textarea id="faqAnswer" name="answer" placeholder="Enter the answer"></textarea>
+        </div>
+        <button type="submit">Add FAQ</button>
+      </form>
       <div class="faq-list" id="faqList">
         <?php if (empty($faqs)): ?>
           <div class="faq-empty" id="faqEmpty">No FAQ pairs captured yet. The crawler will add them here when it finds FAQ markup or FAQ-like pages.</div>
@@ -1151,8 +1168,8 @@ function crawlComplete(data = {}) {
   const scan = data.scan || data.diagnostics?.scan || {};
   const total = Number(counts.total || counts.crawl_total || 0);
   const pending = Number(counts.pending || 0);
-  const done = Number(counts.crawl_done || 0);
-  return total > 0 && pending <= 0 && (scan.status === "completed" || done >= total);
+  const queuedLinks = Number(data.queued_links || 0);
+  return total > 0 && pending <= 0 && queuedLinks <= 0 && scan.status === "completed";
 }
 
 async function refreshWorkflowStatus(mode = "scan") {
