@@ -1728,7 +1728,8 @@ function ai_enqueue_scan_urls(string $jobId, string $customerId, array $urls, in
 function ai_seed_scan_job(string $jobId, string $customerId, string $websiteUrl, string $websiteDomain, int $maxPages = 120): array {
     $maxPages = max(1, min(500, $maxPages));
     $urls = [$websiteUrl];
-    foreach (ai_discover_sitemap_urls($websiteUrl, $websiteDomain, $maxPages * 4, $jobId, $customerId) as $sitemapPage) {
+    $setupSitemapLimit = max(0, min($maxPages * 4, (int)ai_env('AI_SETUP_SITEMAP_SEED_LIMIT', '40')));
+    foreach (ai_discover_sitemap_urls($websiteUrl, $websiteDomain, $setupSitemapLimit, $jobId, $customerId) as $sitemapPage) {
         $urls[] = $sitemapPage;
     }
     $wwwVariant = ai_add_www_variant($websiteUrl);
@@ -2914,7 +2915,7 @@ function ai_summarize_page(string $url, string $title, string $cleanText): array
     }
 
     $systemPrompt = 'You extract chatbot-ready business knowledge from website pages. The output will be used as context for a customer support chatbot, so preserve answerable facts, service details, rules, prices, eligibility, locations, timings, contact details, processes, and limitations. Return exactly one valid JSON object. Do not use markdown fences, comments, prose, or trailing commas.';
-    $userPrompt = "Analyze this website page and return exactly this JSON object shape. Capture enough detail for a chatbot to answer visitor questions accurately. Keep each string concise but do not omit important facts. Maximum 12 items per array, maximum 8 FAQ candidates, and no value longer than 900 characters.\n"
+    $userPrompt = "Analyze this website page and return exactly this JSON object shape. Capture enough detail for a chatbot to answer visitor questions accurately. Keep each string concise but do not omit important facts. Maximum 12 items per array, maximum 20 FAQ candidates, and no value longer than 900 characters.\n"
         . "{\n"
         . "  \"url\": \"string\",\n"
         . "  \"page_title\": \"string\",\n"

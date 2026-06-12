@@ -405,6 +405,61 @@ body.bright .scan-summary strong{
   color:#202124;
 }
 
+.scan-overlay{
+  position:fixed;
+  inset:0;
+  z-index:1000;
+  display:none;
+  align-items:center;
+  justify-content:center;
+  padding:20px;
+  background:rgba(1,6,18,.72);
+  backdrop-filter:blur(10px);
+}
+
+.scan-overlay.is-visible{
+  display:flex;
+}
+
+.scan-window{
+  width:min(460px,100%);
+  border-radius:14px;
+  border:1px solid rgba(56,189,248,.28);
+  background:linear-gradient(145deg,rgba(2,12,28,.96),rgba(5,28,48,.94));
+  box-shadow:0 28px 90px rgba(0,0,0,.42);
+  padding:26px;
+  text-align:center;
+}
+
+.scan-loader{
+  width:48px;
+  height:48px;
+  margin:0 auto 18px;
+  border-radius:999px;
+  border:4px solid rgba(56,189,248,.22);
+  border-top-color:#38bdf8;
+  animation:scan-spin .8s linear infinite;
+}
+
+.scan-window h3{
+  margin:0 0 8px;
+  font-size:22px;
+}
+
+.scan-window p{
+  margin:0;
+  color:#cbd5e1;
+  line-height:1.6;
+  font-size:14px;
+}
+
+.primary-btn.is-loading{
+  opacity:.84;
+  cursor:wait;
+}
+
+@keyframes scan-spin{to{transform:rotate(360deg)}}
+
 @media(max-width:860px){
   .setup-grid{
     grid-template-columns:1fr;
@@ -486,7 +541,7 @@ body.bright .scan-summary strong{
         </div>
       <?php endif; ?>
 
-      <form method="POST" novalidate>
+      <form method="POST" id="websiteSetupForm" novalidate>
         <label for="websiteUrl">Customer website URL</label>
         <input
           type="url"
@@ -502,7 +557,7 @@ body.bright .scan-summary strong{
         <div class="hint">Example: https://yourcompany.com</div>
 
         <div class="form-actions">
-          <button class="primary-btn" type="submit">Submit website</button>
+          <button class="primary-btn" type="submit" id="submitWebsiteBtn">Submit website</button>
           <button class="ghost-btn" type="button" data-theme-toggle>Bright Mode</button>
           <a class="ghost-btn" href="index.php">Back</a>
         </div>
@@ -514,6 +569,28 @@ body.bright .scan-summary strong{
     </div>
   </section>
 </main>
+
+<div class="scan-overlay" id="scanOverlay" role="status" aria-live="polite" aria-label="Scanning website">
+  <div class="scan-window">
+    <div class="scan-loader" aria-hidden="true"></div>
+    <h3>Scanning your website</h3>
+    <p>Preparing the crawl queue and opening the live review page. This usually takes a moment.</p>
+  </div>
+</div>
+
+<script>
+const websiteSetupForm = document.getElementById("websiteSetupForm");
+const submitWebsiteBtn = document.getElementById("submitWebsiteBtn");
+const scanOverlay = document.getElementById("scanOverlay");
+websiteSetupForm?.addEventListener("submit", () => {
+  if (submitWebsiteBtn) {
+    submitWebsiteBtn.classList.add("is-loading");
+    submitWebsiteBtn.disabled = true;
+    submitWebsiteBtn.textContent = "Scanning...";
+  }
+  scanOverlay?.classList.add("is-visible");
+});
+</script>
 
 </body>
 </html>

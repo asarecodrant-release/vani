@@ -501,6 +501,65 @@ body.dark .diag-error{color:#fca5a5}
     </div>
   </details>
 
+  <details class="panel diagnostics summary-diagnostics" open>
+    <summary>
+      <span>Page Summarization Diagnostic</span>
+      <span class="diag-live" id="summaryDiagLive">
+        <i class="diag-spinner" aria-hidden="true"></i>
+        <span class="diag-live-text" id="summaryDiagLiveText"><?php echo $summaryDone >= $summaryTotal && $summaryTotal > 0 ? 'All captured pages summarized' : 'Waiting for captured pages'; ?></span>
+        <span class="diag-pill <?php echo $summaryDone >= $summaryTotal && $summaryTotal > 0 ? '' : 'warn'; ?>" id="summaryDiagLivePill"><?php echo (int)$summaryDone; ?> / <?php echo (int)$summaryTotal; ?></span>
+      </span>
+    </summary>
+
+    <div class="diag-grid">
+      <div class="diag-card"><span>Captured For Summary</span><strong id="summaryDiagTotal"><?php echo (int)$summaryTotal; ?></strong></div>
+      <div class="diag-card"><span>Summarized</span><strong id="summaryDiagDone"><?php echo (int)$summaryDone; ?></strong></div>
+      <div class="diag-card"><span>Waiting</span><strong id="summaryDiagPending"><?php echo (int)($diagCounts['summary_pending'] ?? 0); ?></strong></div>
+      <div class="diag-card"><span>Progress</span><strong id="summaryDiagPercent"><?php echo (int)$summaryPercent; ?>%</strong></div>
+      <div class="diag-card"><span>Captured FAQs</span><strong id="summaryDiagFaqs"><?php echo count($faqs); ?></strong></div>
+      <div class="diag-card"><span>Summary Batch</span><strong><?php echo (int)$diagnostics['settings']['summary_batch_size']; ?></strong></div>
+    </div>
+
+    <div class="diag-section">
+      <h3>Pages Waiting For Summary</h3>
+      <table class="diag-table">
+        <thead><tr><th>URL</th><th>Status</th><th>Attempts</th><th>Next Retry</th><th>Error</th></tr></thead>
+        <tbody id="summaryPendingRows">
+        <?php foreach ($pages as $row): ?>
+          <?php if ((string)($row['page_status'] ?? '') !== 'fetched') { continue; } ?>
+          <tr>
+            <td class="diag-url" title="<?php echo ai_h($row['url'] ?? ''); ?>"><?php echo ai_h(ai_short_url_label((string)($row['url'] ?? ''))); ?></td>
+            <td><span class="diag-pill warn">waiting</span></td>
+            <td><?php echo ai_h($row['summary_attempts'] ?? '0'); ?></td>
+            <td><?php echo ai_h(ai_time_label($row['summary_next_retry_at'] ?? '')); ?></td>
+            <td class="diag-error"><?php echo ai_h($row['ai_error'] ?? ''); ?></td>
+          </tr>
+        <?php endforeach; ?>
+        <?php if ((int)($diagCounts['summary_pending'] ?? 0) === 0): ?><tr><td colspan="5" class="muted">No captured pages are waiting for summary.</td></tr><?php endif; ?>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="diag-section">
+      <h3>Recently Summarized Pages</h3>
+      <table class="diag-table">
+        <thead><tr><th>URL</th><th>Status</th><th>Attempts</th><th>Summarized</th><th>Error</th></tr></thead>
+        <tbody id="summaryRecentRows">
+        <?php foreach ($diagnostics['recent_summarized'] as $row): ?>
+          <tr>
+            <td class="diag-url" title="<?php echo ai_h($row['url'] ?? ''); ?>"><?php echo ai_h(ai_short_url_label((string)($row['url'] ?? ''))); ?></td>
+            <td><span class="diag-pill"><?php echo ai_h($row['page_status'] ?? 'summarized'); ?></span></td>
+            <td><?php echo ai_h($row['summary_attempts'] ?? '0'); ?></td>
+            <td><?php echo ai_h(ai_time_label($row['summarized_at'] ?? $row['updated_at'] ?? '')); ?></td>
+            <td class="diag-error"><?php echo ai_h($row['ai_error'] ?? ''); ?></td>
+          </tr>
+        <?php endforeach; ?>
+        <?php if (empty($diagnostics['recent_summarized'])): ?><tr><td colspan="5" class="muted">No pages summarized yet.</td></tr><?php endif; ?>
+        </tbody>
+      </table>
+    </div>
+  </details>
+
   <div class="metrics">
     <div class="metric"><span>Captured Pages</span><strong id="capturedMetric"><?php echo count($pages); ?></strong></div>
     <div class="metric"><span>Summarized</span><strong id="summarizedMetric"><?php echo $summarizedCount; ?></strong></div>
@@ -531,7 +590,7 @@ body.dark .diag-error{color:#fca5a5}
         </div>
       </div>
       <div id="page-panel-add" class="add-page-panel page-panel <?php echo empty($pages) ? 'is-active' : ''; ?>">
-        <form method="POST" class="manual-page">
+        <form method="POST" class="manual-page js-live-worker-form">
           <input type="hidden" name="action" value="add_page">
           <label>Add missed page URL</label>
           <input name="page_url" placeholder="https://example.com/missed-page">
@@ -555,7 +614,7 @@ body.dark .diag-error{color:#fca5a5}
           <label>Editable summary</label>
           <textarea form="save-summary-<?php echo ai_h($page['id']); ?>" name="summary_text" placeholder="Summarize this page to generate editable summary."><?php echo ai_h($summaryText); ?></textarea>
           <div class="summary-actions">
-            <form id="save-summary-<?php echo ai_h($page['id']); ?>" method="POST">
+            <form id="save-summary-<?php echo ai_h($page['id']); ?>" method="POST" class="js-live-worker-form">
               <input type="hidden" name="action" value="save_summary">
               <input type="hidden" name="page_id" value="<?php echo ai_h($page['id']); ?>">
               <button type="submit">Save summary</button>
@@ -575,7 +634,7 @@ body.dark .diag-error{color:#fca5a5}
     <aside class="panel faq-panel">
       <h2>Captured FAQs</h2>
       <p class="muted">FAQs detected from FAQ schema, HTML accordions, and AI extraction after summarizing FAQ-like pages.</p>
-      <form method="POST" class="faq">
+      <form method="POST" class="faq js-live-worker-form">
         <input type="hidden" name="action" value="add_faq">
         <input type="hidden" name="page_url" value="<?php echo ai_h($scan['website_url'] ?? ''); ?>">
         <label>Add FAQ</label>
@@ -585,7 +644,7 @@ body.dark .diag-error{color:#fca5a5}
       </form>
       <div id="faqList">
         <?php foreach ($faqs as $faq): ?>
-          <form method="POST" class="faq">
+          <form method="POST" class="faq js-live-worker-form">
             <input type="hidden" name="action" value="save_faq">
             <input type="hidden" name="faq_id" value="<?php echo ai_h($faq['id']); ?>">
             <label>Question</label>
@@ -628,9 +687,16 @@ const refreshLiveBtn = document.getElementById("refreshLiveBtn");
 const diagLive = document.getElementById("diagLive");
 const diagLiveText = document.getElementById("diagLiveText");
 const diagLivePill = document.getElementById("diagLivePill");
+const summaryDiagLive = document.getElementById("summaryDiagLive");
+const summaryDiagLiveText = document.getElementById("summaryDiagLiveText");
+const summaryDiagLivePill = document.getElementById("summaryDiagLivePill");
 let scanBusy = false;
 let summaryBusy = false;
 let liveStatusBusy = false;
+let autoWorkflowBusy = false;
+let autoWorkflowDone = false;
+const summarizingPages = new Set();
+const skippedSummaryPages = new Set();
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -697,6 +763,15 @@ function setDiagnosticsLive(isRunning, text, pillText) {
   }
 }
 
+function setSummaryDiagnosticsLive(isRunning, text, pillText) {
+  summaryDiagLive?.classList.toggle("is-running", Boolean(isRunning));
+  if (summaryDiagLiveText) summaryDiagLiveText.textContent = text || (isRunning ? "Summarizing captured page" : "Summarizer idle");
+  if (summaryDiagLivePill) {
+    summaryDiagLivePill.textContent = pillText || (isRunning ? "Working" : "Idle");
+    summaryDiagLivePill.classList.toggle("warn", !isRunning);
+  }
+}
+
 function updateWorkerUi(data, mode = "scan") {
   const counts = data?.counts || {};
   const scan = data?.scan || {};
@@ -720,6 +795,11 @@ function updateWorkerUi(data, mode = "scan") {
   if (crawlText) crawlText.textContent = `${crawlDone} of ${crawlTotal} queued page(s) crawled. ${failed} failed, ${Number(counts.pending || 0)} still queued.`;
   if (summaryTitle) summaryTitle.textContent = mode === "summary" ? "Summarization running" : "Summarizing";
   if (summaryText) summaryText.textContent = `${summaryDone} of ${summaryTotal} captured page(s) summarized. ${Number(counts.summary_pending ?? (captured - summarized))} waiting.`;
+  setSummaryDiagnosticsLive(
+    mode === "summary" && Number(counts.summary_pending ?? (captured - summarized)) > 0,
+    summaryDone >= summaryTotal && summaryTotal > 0 ? "All captured pages summarized" : `${Number(counts.summary_pending ?? (captured - summarized))} page(s) waiting for summary`,
+    `${summaryDone} / ${summaryTotal}`
+  );
   if (mode === "scan") {
     const activeUrl = data?.active_url || "";
     const processed = Number(data?.processed || 0);
@@ -762,7 +842,7 @@ function renderPagePanel(page) {
     <label>Editable summary</label>
     <textarea form="save-summary-${escapeHtml(page.id)}" name="summary_text" placeholder="Summarize this page to generate editable summary.">${escapeHtml(summary)}</textarea>
     <div class="summary-actions">
-      <form id="save-summary-${escapeHtml(page.id)}" method="POST">
+      <form id="save-summary-${escapeHtml(page.id)}" method="POST" class="js-live-worker-form">
         <input type="hidden" name="action" value="save_summary">
         <input type="hidden" name="page_id" value="${escapeHtml(page.id)}">
         <button type="submit">Save summary</button>
@@ -778,7 +858,7 @@ function renderPagePanel(page) {
 }
 
 function renderFaq(faq = {}) {
-  return `<form method="POST" class="faq">
+  return `<form method="POST" class="faq js-live-worker-form">
     <input type="hidden" name="action" value="save_faq">
     <input type="hidden" name="faq_id" value="${escapeHtml(faq.id || "")}">
     <label>Question</label>
@@ -943,9 +1023,41 @@ function updateDiagnostics(data = {}) {
   ], "No crawler signals yet.");
 }
 
+function updateSummaryDiagnostics(data = {}) {
+  const diagnostics = data.diagnostics || {};
+  const counts = diagnostics.counts || data.counts || {};
+  const pages = Array.isArray(data.pages) ? data.pages : [];
+  const pendingPages = pages.filter((page) => page.page_status === "fetched");
+  const setText = (id, value) => { const node = document.getElementById(id); if (node) node.textContent = value; };
+  setText("summaryDiagTotal", counts.summary_total ?? pendingPages.length);
+  setText("summaryDiagDone", counts.summary_done ?? counts.summarized ?? 0);
+  setText("summaryDiagPending", counts.summary_pending ?? pendingPages.length);
+  setText("summaryDiagPercent", `${Number(counts.summary_percent || 0)}%`);
+  setText("summaryDiagFaqs", Array.isArray(data.faqs) ? data.faqs.length : (faqMetric?.textContent || 0));
+
+  const pendingRows = document.getElementById("summaryPendingRows");
+  if (pendingRows) pendingRows.innerHTML = tableRows(pendingPages, [
+    { render: (r) => escapeHtml(shortUrlLabel(r.url || "")), title: (r) => r.url || "", className: "diag-url" },
+    { render: () => '<span class="diag-pill warn">waiting</span>' },
+    { render: (r) => escapeHtml(r.summary_attempts ?? "0") },
+    { render: (r) => escapeHtml(timeLabel(r.summary_next_retry_at || "")) },
+    { render: (r) => escapeHtml(r.ai_error || ""), className: "diag-error" }
+  ], "No captured pages are waiting for summary.");
+
+  const recentRows = document.getElementById("summaryRecentRows");
+  if (recentRows) recentRows.innerHTML = tableRows(diagnostics.recent_summarized || [], [
+    { render: (r) => escapeHtml(shortUrlLabel(r.url || "")), title: (r) => r.url || "", className: "diag-url" },
+    { render: (r) => `<span class="diag-pill">${escapeHtml(r.page_status || "summarized")}</span>` },
+    { render: (r) => escapeHtml(r.summary_attempts ?? "0") },
+    { render: (r) => escapeHtml(timeLabel(r.summarized_at || r.updated_at || "")) },
+    { render: (r) => escapeHtml(r.ai_error || ""), className: "diag-error" }
+  ], "No pages summarized yet.");
+}
+
 function applyLiveData(data = {}, mode = "scan") {
   updateWorkerUi(data, mode);
   updateDiagnostics(data);
+  updateSummaryDiagnostics(data);
   updatePages(data.pages || []);
   if (capturedMetric && data.pages) capturedMetric.textContent = String(data.pages.length);
   if (data.faqs) updateFaqs(data.faqs);
@@ -958,10 +1070,7 @@ async function processScanBatch() {
   try {
     const data = await callWorker("scan_batch");
     applyLiveData(data, "scan");
-    const scan = data.scan || {};
-    if (scan.status === "pending" || scan.status === "running") {
-      setTimeout(processScanBatch, 900);
-    }
+    await summarizeNextFetchedPage(data);
   } catch (error) {
     if (crawlText) crawlText.textContent = "Worker could not update scan progress. Refresh to retry.";
     setDiagnosticsLive(false, "Worker update failed", "Error");
@@ -983,6 +1092,42 @@ async function refreshWorkflowStatus(mode = "scan") {
   const data = await callWorker("status");
   applyLiveData(data, mode);
   return data;
+}
+
+function nextFetchedPage(data = {}) {
+  const pages = Array.isArray(data.pages) ? data.pages : [];
+  return pages.find((page) => page?.id && page.page_status === "fetched" && !summarizingPages.has(String(page.id)) && !skippedSummaryPages.has(String(page.id)));
+}
+
+function summaryComplete(data = {}) {
+  const counts = data.counts || data.diagnostics?.counts || {};
+  const total = Number(counts.summary_total ?? counts.scanned ?? 0);
+  const pending = Number(counts.summary_pending ?? 0);
+  const done = Number(counts.summary_done ?? counts.summarized ?? 0);
+  return total > 0 && pending <= 0 && done >= total;
+}
+
+async function summarizeNextFetchedPage(data = {}) {
+  const page = nextFetchedPage(data);
+  if (!page?.id || summaryBusy) return data;
+
+  summaryBusy = true;
+  summarizingPages.add(String(page.id));
+  if (summarizeAllBtn) summarizeAllBtn.disabled = true;
+  setSummaryDiagnosticsLive(true, `Summarizing: ${shortUrlLabel(page.url || "")}`, "Working");
+  try {
+    const latest = await callWorker("summarize_page", { page_id: page.id });
+    if (!latest.success) skippedSummaryPages.add(String(page.id));
+    applyLiveData(latest, "summary");
+    return latest;
+  } catch (error) {
+    if (summaryText) summaryText.textContent = "Summarization worker failed. Retrying live workflow.";
+    return data;
+  } finally {
+    summarizingPages.delete(String(page.id));
+    summaryBusy = false;
+    if (summarizeAllBtn) summarizeAllBtn.disabled = false;
+  }
 }
 
 async function scanAllPagesFirst() {
@@ -1014,24 +1159,72 @@ async function scanAllPagesFirst() {
 }
 
 async function processSummaryBatches() {
-  if (!scanId || summaryBusy) return;
-  summaryBusy = true;
-  if (summarizeAllBtn) summarizeAllBtn.disabled = true;
+  await liveWorkflowLoop(true);
+}
+
+async function liveWorkflowLoop(force = false) {
+  if (!scanId || autoWorkflowBusy || (autoWorkflowDone && !force)) return;
+  autoWorkflowBusy = true;
   try {
-    let latest = await scanAllPagesFirst();
-    applyLiveData(latest, "summary");
-    const pages = Array.isArray(latest.pages) ? latest.pages : [];
-    for (const page of pages) {
-      if (!page?.id) continue;
-      const data = await callWorker("summarize_page", { page_id: page.id });
-      applyLiveData(data, "summary");
-      await wait(350);
+    let latest = await refreshWorkflowStatus("scan");
+    let idleRounds = 0;
+    while (true) {
+      const scan = latest.scan || latest.diagnostics?.scan || {};
+      const counts = latest.counts || latest.diagnostics?.counts || {};
+      if ((scan.status === "failed" || scan.status === "completed") && Number(counts.total || 0) === 0) {
+        autoWorkflowDone = true;
+        setDiagnosticsLive(false, scan.status === "failed" ? "Crawler failed" : "Crawler complete", scan.status || "Done");
+        setSummaryDiagnosticsLive(false, "No captured pages to summarize", "Idle");
+        break;
+      }
+
+      const waitingSummary = nextFetchedPage(latest);
+      if (waitingSummary) {
+        latest = await summarizeNextFetchedPage(latest);
+        await wait(250);
+        continue;
+      }
+
+      const pages = Array.isArray(latest.pages) ? latest.pages : [];
+      const blockedSummaryCount = pages.filter((page) => page?.id && page.page_status === "fetched" && skippedSummaryPages.has(String(page.id))).length;
+      if (crawlComplete(latest) && blockedSummaryCount > 0 && blockedSummaryCount === pages.filter((page) => page.page_status === "fetched").length) {
+        autoWorkflowDone = true;
+        setSummaryDiagnosticsLive(false, "Some pages need summary retry", "Retry needed");
+        break;
+      }
+
+      if (!crawlComplete(latest) && !externalQueueEnabled) {
+        scanBusy = true;
+        setDiagnosticsLive(true, "Scanning next pages...", "Working");
+        try {
+          latest = await callWorker("scan_batch");
+          applyLiveData(latest, "scan");
+        } finally {
+          scanBusy = false;
+        }
+        idleRounds = Number(latest.processed || 0) === 0 ? idleRounds + 1 : 0;
+        await wait(idleRounds > 2 ? 1600 : 650);
+        continue;
+      }
+
+      if (externalQueueEnabled && (!crawlComplete(latest) || !summaryComplete(latest))) {
+        await wait(1400);
+        latest = await refreshWorkflowStatus("scan");
+        continue;
+      }
+
+      if (crawlComplete(latest) && summaryComplete(latest)) {
+        autoWorkflowDone = true;
+        setDiagnosticsLive(false, "Crawler complete", "Completed");
+        setSummaryDiagnosticsLive(false, "All captured pages summarized", "Completed");
+        break;
+      }
+
+      await wait(900);
+      latest = await refreshWorkflowStatus("scan");
     }
-  } catch (error) {
-    if (summaryText) summaryText.textContent = "Summarization worker failed. Try again.";
   } finally {
-    summaryBusy = false;
-    if (summarizeAllBtn) summarizeAllBtn.disabled = false;
+    autoWorkflowBusy = false;
   }
 }
 
@@ -1056,9 +1249,7 @@ runSummaryBatchBtn?.addEventListener("click", async () => {
   }
 });
 refreshLiveBtn?.addEventListener("click", refreshLiveStatus);
-if (shell?.dataset.scanStatus === "pending" || shell?.dataset.scanStatus === "running") {
-  processScanBatch();
-}
+liveWorkflowLoop();
 
 document.addEventListener("submit", async (event) => {
   const form = event.target.closest(".js-summarize-page-form");
@@ -1069,15 +1260,50 @@ document.addEventListener("submit", async (event) => {
   const pageId = form.querySelector("input[name='page_id']")?.value || "";
   if (button) {
     button.disabled = true;
-    button.textContent = "Scanning...";
+    button.textContent = "Summarizing...";
   }
   try {
-    await processSummaryBatches();
+    const data = await callWorker("summarize_page", { page_id: pageId });
+    if (data.success) skippedSummaryPages.delete(String(pageId));
+    applyLiveData(data, "summary");
     selectPageTab(`page-panel-${pageId}`, pageId);
   } finally {
     if (button) {
       button.disabled = false;
       button.textContent = "Summarize this page";
+    }
+  }
+});
+
+document.addEventListener("submit", async (event) => {
+  const form = event.target.closest(".js-live-worker-form");
+  if (!form) return;
+  event.preventDefault();
+  const action = form.querySelector("input[name='action']")?.value || "";
+  if (!action) return;
+  const button = form.querySelector("button[type='submit']");
+  const originalText = button?.textContent || "";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Saving...";
+  }
+  const extra = {};
+  new FormData(form).forEach((value, key) => {
+    if (key !== "action") extra[key] = value;
+  });
+  try {
+    const data = await callWorker(action, extra);
+    applyLiveData(data, action === "add_page" ? "scan" : "summary");
+    if (data.success && (action === "add_faq" || action === "add_page")) {
+      form.reset();
+    }
+    if (action === "add_page") {
+      await liveWorkflowLoop(true);
+    }
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = originalText;
     }
   }
 });
