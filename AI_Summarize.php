@@ -139,6 +139,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $pages = ai_scan_review_pages($scanId, $customerId);
+$faqs = ai_scan_review_faqs($scanId, $customerId);
 
 $summarizedCount = 0;
 foreach ($pages as $page) {
@@ -183,10 +184,21 @@ body{margin:0;background:var(--bg);color:var(--ink)}
 button,.btn{min-height:42px;border:0;border-radius:8px;padding:0 14px;font-weight:800;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}
 button{background:#2563eb;color:#fff}
 .btn{background:#e2e8f0;color:#0f172a}
-.grid{display:grid;grid-template-columns:minmax(0,1fr);gap:18px;align-items:start}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,390px);gap:18px;align-items:start}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:18px;box-shadow:0 12px 34px rgba(15,23,42,.06)}
 .pages-panel{min-width:0}
-.metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:18px}
+.faq-panel{position:sticky;top:18px;max-height:calc(100vh - 36px);overflow:auto}
+.faq-panel h2{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:12px}
+.faq-list{display:grid;gap:10px}
+.faq-item{border:1px solid var(--line);border-radius:8px;background:var(--soft);padding:12px}
+.faq-item strong{display:block;font-size:14px;line-height:1.35}
+.faq-item p{margin:8px 0 0;color:var(--muted);font-size:13px;line-height:1.45;white-space:pre-wrap}
+.faq-meta{display:flex;justify-content:space-between;gap:8px;margin-top:10px;color:var(--muted);font-size:11px;font-weight:800}
+.faq-source{display:inline-flex;align-items:center;min-height:22px;border-radius:999px;background:#dcfce7;color:#166534;padding:0 8px}
+.faq-edit-form{display:grid;gap:8px;margin-top:8px}
+.faq-edit-form textarea{min-height:86px}
+.faq-empty{border:1px dashed var(--line);border-radius:8px;padding:14px;color:var(--muted);font-size:13px;line-height:1.5}
+.metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:18px}
 .metric{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px}
 .metric span{display:block;color:var(--muted);font-size:12px;font-weight:800}
 .metric strong{display:block;margin-top:6px;font-size:22px}
@@ -246,7 +258,7 @@ body.dark .diag-error{color:#fca5a5}
 .diag-live-text{display:inline-block;max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-size:12px;font-weight:800}
 @keyframes diag-spin{to{transform:rotate(360deg)}}
 @media(max-width:1100px){.page-tab-label{max-width:170px}}
-@media(max-width:860px){.grid,.metrics,.diag-grid{grid-template-columns:1fr}.top{display:grid}.page-tab-label{max-width:180px}.shell{padding:26px 14px 56px}.diag-table{display:block;overflow-x:auto;white-space:nowrap}}
+@media(max-width:980px){.grid,.metrics,.diag-grid{grid-template-columns:1fr}.faq-panel{position:static;max-height:none}.top{display:grid}.page-tab-label{max-width:180px}.shell{padding:26px 14px 56px}.diag-table{display:block;overflow-x:auto;white-space:nowrap}}
 @media(max-width:560px){.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.panel{padding:14px}.top h1{font-size:26px}.page-tabs-meta{display:grid}.page-tab-label{max-width:150px}.summary-actions button,.summary-actions form{width:100%}.summary-actions button{width:100%}}
 </style>
 </head>
@@ -472,7 +484,7 @@ body.dark .diag-error{color:#fca5a5}
     </div>
   </details>
 
-  <details class="panel diagnostics summary-diagnostics" open>
+  <details class="panel diagnostics summary-diagnostics">
     <summary>
       <span>Page Summarization Diagnostic</span>
       <span class="diag-live" id="summaryDiagLive">
@@ -532,6 +544,7 @@ body.dark .diag-error{color:#fca5a5}
 
   <div class="metrics">
     <div class="metric"><span>Captured Pages</span><strong id="capturedMetric"><?php echo count($pages); ?></strong></div>
+    <div class="metric"><span>Captured FAQ</span><strong id="faqMetric"><?php echo count($faqs); ?></strong></div>
     <div class="metric"><span>Summarized</span><strong id="summarizedMetric"><?php echo $summarizedCount; ?></strong></div>
     <div class="metric"><span>Scan Status</span><strong id="scanStatusMetric"><?php echo ai_h($scan['status'] ?? ''); ?></strong></div>
   </div>
@@ -600,6 +613,35 @@ body.dark .diag-error{color:#fca5a5}
       </div>
     </section>
 
+    <aside class="panel faq-panel">
+      <h2>
+        <span>Captured FAQ</span>
+        <span class="diag-pill" id="faqCountPill"><?php echo count($faqs); ?></span>
+      </h2>
+      <div class="faq-list" id="faqList">
+        <?php if (empty($faqs)): ?>
+          <div class="faq-empty" id="faqEmpty">No FAQ pairs captured yet. The crawler will add them here when it finds FAQ markup or FAQ-like pages.</div>
+        <?php endif; ?>
+        <?php foreach ($faqs as $faq): ?>
+          <article class="faq-item" data-faq-id="<?php echo ai_h($faq['id'] ?? ''); ?>">
+            <strong><?php echo ai_h($faq['question'] ?? ''); ?></strong>
+            <p><?php echo nl2br(ai_h($faq['answer'] ?? '')); ?></p>
+            <div class="faq-meta">
+              <span class="faq-source"><?php echo ai_h($faq['source'] ?? 'crawl'); ?></span>
+              <span title="<?php echo ai_h($faq['page_url'] ?? ''); ?>"><?php echo ai_h(ai_short_url_label((string)($faq['page_url'] ?? ''))); ?></span>
+            </div>
+            <form method="POST" class="faq-edit-form js-live-worker-form">
+              <input type="hidden" name="action" value="save_faq">
+              <input type="hidden" name="faq_id" value="<?php echo ai_h($faq['id'] ?? ''); ?>">
+              <input name="question" value="<?php echo ai_h($faq['question'] ?? ''); ?>">
+              <textarea name="answer"><?php echo ai_h($faq['answer'] ?? ''); ?></textarea>
+              <button type="submit">Save FAQ</button>
+            </form>
+          </article>
+        <?php endforeach; ?>
+      </div>
+    </aside>
+
   </div>
 </main>
 <script>
@@ -619,6 +661,9 @@ const summaryText = document.getElementById("summaryText");
 const summaryBar = document.getElementById("summaryBar");
 const summaryPercent = document.getElementById("summaryPercent");
 const capturedMetric = document.getElementById("capturedMetric");
+const faqMetric = document.getElementById("faqMetric");
+const faqCountPill = document.getElementById("faqCountPill");
+const faqList = document.getElementById("faqList");
 const summarizedMetric = document.getElementById("summarizedMetric");
 const scanStatusMetric = document.getElementById("scanStatusMetric");
 const summarizeAllBtn = document.getElementById("summarizeAllBtn");
@@ -839,6 +884,68 @@ function renderPagePanel(page) {
   </article>`;
 }
 
+function renderFaqItem(faq = {}) {
+  const id = escapeHtml(faq.id || "");
+  return `<article class="faq-item" data-faq-id="${id}">
+    <strong>${escapeHtml(faq.question || "")}</strong>
+    <p>${escapeHtml(faq.answer || "").replace(/\n/g, "<br>")}</p>
+    <div class="faq-meta">
+      <span class="faq-source">${escapeHtml(faq.source || "crawl")}</span>
+      <span title="${escapeHtml(faq.page_url || "")}">${escapeHtml(shortUrlLabel(faq.page_url || ""))}</span>
+    </div>
+    <form method="POST" class="faq-edit-form js-live-worker-form">
+      <input type="hidden" name="action" value="save_faq">
+      <input type="hidden" name="faq_id" value="${id}">
+      <input name="question" value="${escapeHtml(faq.question || "")}">
+      <textarea name="answer">${escapeHtml(faq.answer || "")}</textarea>
+      <button type="submit">Save FAQ</button>
+    </form>
+  </article>`;
+}
+
+function updateFaqs(faqs = []) {
+  if (!faqList) return;
+  if (faqMetric) faqMetric.textContent = String(faqs.length);
+  if (faqCountPill) faqCountPill.textContent = String(faqs.length);
+  if (!Array.isArray(faqs) || faqs.length === 0) {
+    faqList.innerHTML = '<div class="faq-empty" id="faqEmpty">No FAQ pairs captured yet. The crawler will add them here when it finds FAQ markup or FAQ-like pages.</div>';
+    return;
+  }
+
+  const active = document.activeElement;
+  const activeFaq = active?.closest?.(".faq-item")?.dataset?.faqId || "";
+  const activeName = active?.getAttribute?.("name") || "";
+  faqs.forEach((faq) => {
+    if (!faq?.id) return;
+    let item = faqList.querySelector(`.faq-item[data-faq-id="${cssEscape(faq.id)}"]`);
+    if (!item) {
+      const wrapper = document.createElement("div");
+      wrapper.innerHTML = renderFaqItem(faq).trim();
+      item = wrapper.firstElementChild;
+      faqList.appendChild(item);
+      return;
+    }
+    item.querySelector("strong").textContent = faq.question || "";
+    item.querySelector("p").textContent = faq.answer || "";
+    const source = item.querySelector(".faq-source");
+    if (source) source.textContent = faq.source || "crawl";
+    const url = item.querySelector(".faq-meta span:last-child");
+    if (url) {
+      url.textContent = shortUrlLabel(faq.page_url || "");
+      url.title = faq.page_url || "";
+    }
+    if (activeFaq !== String(faq.id) || activeName !== "question") {
+      const questionInput = item.querySelector('input[name="question"]');
+      if (questionInput) questionInput.value = faq.question || "";
+    }
+    if (activeFaq !== String(faq.id) || activeName !== "answer") {
+      const answerInput = item.querySelector('textarea[name="answer"]');
+      if (answerInput) answerInput.value = faq.answer || "";
+    }
+  });
+  faqList.querySelector("#faqEmpty")?.remove();
+}
+
 function updatePages(pages = []) {
   if (!pageTabs || !pagePanels) return;
   const activePanel = document.querySelector(".page-panel.is-active");
@@ -1019,6 +1126,7 @@ function applyLiveData(data = {}, mode = "scan") {
   updateDiagnostics(data);
   updateSummaryDiagnostics(data);
   updatePages(data.pages || []);
+  updateFaqs(data.faqs || []);
   if (capturedMetric && data.pages) capturedMetric.textContent = String(data.pages.length);
 }
 
