@@ -902,6 +902,15 @@ function ai_clean_customer_text(string $value, int $limit = 3000): string {
     return $limit > 0 ? substr($value, 0, $limit) : $value;
 }
 
+function ai_clean_summary_text(string $value): string {
+    $value = ai_clean_customer_text($value, 0);
+    $value = preg_replace('/\b(?:the\s+)?h[1-6]\s+(?:heading|tag|section)\s+(?:says|states|mentions|contains|is|are)\s*:?\s*/i', '', $value) ?: $value;
+    $value = preg_replace('/(^|[\n.]\s*)h[1-6]\s*[:\-]\s*/i', '$1', $value) ?: $value;
+    $value = preg_replace('/\b(?:h[1-6]|heading\s+level\s+[1-6])\b/i', 'heading', $value) ?: $value;
+    $value = preg_replace('/[ \t\r\f\v]+/', ' ', $value) ?: $value;
+    return ai_clean_customer_text(trim($value), 2200);
+}
+
 function ai_clean_summary_data($value, string $key = '') {
     if (is_array($value)) {
         $clean = [];
@@ -916,7 +925,7 @@ function ai_clean_summary_data($value, string $key = '') {
     }
 
     if (is_string($value)) {
-        return ai_clean_customer_text($value, $key === 'summary' ? 2200 : 900);
+        return $key === 'summary' ? ai_clean_summary_text($value) : ai_clean_customer_text($value, 900);
     }
 
     return $value;
@@ -1821,7 +1830,6 @@ function ai_capture_single_page(string $jobId, string $customerId, string $websi
 
     $parsed = ai_parse_html_page((string)$fetch['html'], $finalUrl, $websiteDomain);
     $cleanText = (string)$parsed['clean_text'];
-    ai_save_page_faqs($jobId, $customerId, $finalUrl, $parsed['detected_faqs']);
     ai_save_scanned_page($jobId, $customerId, [
         'url' => $finalUrl,
         'normalized_url' => $normalized,
@@ -2434,7 +2442,6 @@ function ai_process_scan_job_batch(string $jobId, string $customerId, int $batch
         }
 
         $cleanText = (string)$parsed['clean_text'];
-        ai_save_page_faqs($jobId, $customerId, $finalUrl, $parsed['detected_faqs']);
         ai_save_scanned_page($jobId, $customerId, [
             'url' => $finalUrl,
             'normalized_url' => $finalNormalized,
@@ -2559,40 +2566,7 @@ function ai_summarize_scan_job_batch(string $jobId, string $customerId, int $bat
 }
 
 function ai_backfill_scan_faqs_from_summaries(string $jobId, string $customerId, int $limit = 80): array {
-    $pages = ai_safe_rows(supabase(
-        'GET',
-        'ai_website_pages?select=id,url,page_title,summary_json,page_status&scan_job_id=eq.' . urlencode($jobId)
-            . '&customer_id=eq.' . urlencode($customerId)
-            . '&page_status=eq.summarized'
-            . '&order=summarized_at.desc&limit=' . max(1, min(250, $limit))
-    ));
-
-    $processed = 0;
-    foreach ($pages as $page) {
-        $summary = $page['summary_json'] ?? [];
-        if (is_string($summary)) {
-            $decoded = json_decode($summary, true);
-            $summary = is_array($decoded) ? $decoded : [];
-        }
-        if (empty($summary)) {
-            continue;
-        }
-        $faqs = [];
-        if (!empty($summary['faq_candidates']) && is_array($summary['faq_candidates'])) {
-            foreach ($summary['faq_candidates'] as $faq) {
-                $faqs[] = [
-                    'question' => (string)($faq['question'] ?? ''),
-                    'answer' => (string)($faq['answer'] ?? ''),
-                    'source' => 'ai_summary'
-                ];
-            }
-        }
-        $faqs = array_merge($faqs, ai_generate_faqs_from_summary_data($summary, (string)($page['url'] ?? ''), (string)($page['page_title'] ?? '')));
-        ai_save_page_faqs($jobId, $customerId, (string)($page['url'] ?? ''), $faqs);
-        $processed++;
-    }
-
-    return ['success' => true, 'processed' => $processed, 'error' => ''];
+    return ['success' => true, 'processed' => 0, 'error' => 'FAQ capture is disabled for the summarization workflow.'];
 }
 
 function ai_chunk_text(string $text, int $chunkSize = 1800, int $overlap = 220): array {
@@ -2707,22 +2681,6 @@ function ai_summarize_scanned_page(string $pageId, string $customerId): array {
     if (empty($embedding['success'])) {
         $aiErrors[] = (string)($embedding['error'] ?? 'Embedding failed.');
     }
-
-    $pageFaqs = [];
-    if (!empty($summary['data']['faq_candidates']) && is_array($summary['data']['faq_candidates'])) {
-        foreach ($summary['data']['faq_candidates'] as $faq) {
-            $pageFaqs[] = [
-                'question' => (string)($faq['question'] ?? ''),
-                'answer' => (string)($faq['answer'] ?? ''),
-                'source' => 'ai_summary'
-            ];
-        }
-    }
-    $pageFaqs = array_merge($pageFaqs, ai_generate_faqs_from_summary_data((array)$summary['data'], $url, $title));
-    if (ai_page_looks_like_faq($url, $title, $cleanText)) {
-        $pageFaqs = array_merge($pageFaqs, ai_extract_page_faqs($url, $title, $cleanText));
-    }
-    ai_save_page_faqs((string)$page['scan_job_id'], $customerId, $url, $pageFaqs);
 
     supabase('PATCH', 'ai_website_pages?id=eq.' . urlencode($pageId), [
         'page_status' => 'summarized',
@@ -2865,9 +2823,6 @@ function ai_process_scan_job(string $jobId, string $customerId, string $websiteU
         }
 
         $cleanText = (string)$parsed['clean_text'];
-
-        $pageFaqs = $parsed['detected_faqs'];
-        ai_save_page_faqs($jobId, $customerId, $finalUrl, $pageFaqs);
 
         ai_save_scanned_page($jobId, $customerId, [
             'url' => $finalUrl,
@@ -3132,7 +3087,6 @@ function ai_fallback_page_summary(string $url, string $title, string $cleanText,
                 'phones' => [],
                 'addresses' => []
             ],
-            'faq_candidates' => [],
             'target_audience' => [],
             'entities' => [],
             'fallback_used' => true,
@@ -3154,8 +3108,8 @@ function ai_summarize_page(string $url, string $title, string $cleanText): array
         ];
     }
 
-    $systemPrompt = 'You extract customer-friendly business knowledge from website pages. The output will be reviewed by a business owner and used as chatbot context, so preserve every answerable fact, service detail, rule, price, eligibility point, location, timing, contact detail, process, and limitation. Write plain text only. Return exactly one valid JSON object. Do not use HTML, markdown fences, comments, prose outside JSON, or trailing commas.';
-    $userPrompt = "Analyze this website page and return exactly this JSON object shape. Capture enough detail for a chatbot to answer visitor questions accurately. The summary must be customer friendly, understandable, and cover the important details from the scanned page without raw HTML. Keep each array item focused but do not omit important facts. Maximum 20 items per array, maximum 35 FAQ candidates, and no value longer than 900 characters except summary. faq_candidates is required: create useful natural customer question-answer pairs for every answerable service, pricing, contact, policy, timing, location, eligibility, requirement, and process detail found on the page. Do not invent facts; if the page has no answerable facts, return an empty faq_candidates array.\n"
+    $systemPrompt = 'You extract customer-friendly business knowledge from website pages. The output will be reviewed by a business owner and used as chatbot context, so preserve every answerable fact, service detail, rule, price, eligibility point, location, timing, contact detail, process, and limitation. Write plain text only. Return exactly one valid JSON object. Do not create FAQs. Do not mention page heading levels such as H1, H2, H3, title tag, meta description, schema, or HTML structure in the summary. Do not use HTML, markdown fences, comments, prose outside JSON, or trailing commas.';
+    $userPrompt = "Analyze this website page and return exactly this JSON object shape. Capture enough detail for a chatbot to answer visitor questions accurately. The summary must be customer friendly, understandable, and cover the important details from the scanned page without raw HTML or references to heading tags such as H1, H2, or H3. Write the summary as natural prose a customer can read easily, combining related facts instead of listing the page structure. Keep each array item focused but do not omit important facts. Maximum 20 items per array, and no value longer than 900 characters except summary. Do not invent facts; if a field has no facts from the page, return an empty array for that field.\n"
         . "{\n"
         . "  \"url\": \"string\",\n"
         . "  \"page_title\": \"string\",\n"
@@ -3170,7 +3124,6 @@ function ai_summarize_page(string $url, string $title, string $cleanText): array
         . "  \"steps_or_processes\": [\"string\"],\n"
         . "  \"requirements_or_eligibility\": [\"string\"],\n"
         . "  \"contact_info\": {\"emails\": [\"string\"], \"phones\": [\"string\"], \"addresses\": [\"string\"]},\n"
-        . "  \"faq_candidates\": [{\"question\": \"string\", \"answer\": \"string\"}],\n"
         . "  \"target_audience\": [\"string\"],\n"
         . "  \"entities\": [\"string\"],\n"
         . "  \"answer_boundaries\": [\"things the chatbot should not claim beyond this page\"]\n"

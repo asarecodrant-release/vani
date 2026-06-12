@@ -135,36 +135,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $result = ai_update_page_summary($pageId, $customerId, (string)($_POST['summary_text'] ?? ''));
         $message = !empty($result['success']) ? 'Summary saved.' : '';
         $error = empty($result['success']) ? (string)$result['error'] : '';
-    } elseif ($action === 'save_faq') {
-        $result = ai_update_faq(
-            trim((string)($_POST['faq_id'] ?? '')),
-            $customerId,
-            (string)($_POST['question'] ?? ''),
-            (string)($_POST['answer'] ?? '')
-        );
-        $message = !empty($result['success']) ? 'FAQ saved.' : '';
-        $error = empty($result['success']) ? (string)$result['error'] : '';
-    } elseif ($action === 'add_faq') {
-        $question = ai_clean_customer_text((string)($_POST['question'] ?? ''), 800);
-        $answer = ai_clean_customer_text((string)($_POST['answer'] ?? ''), 3000);
-        if ($question === '' || $answer === '') {
-            $error = 'Question and answer are required.';
-        } else {
-            supabase('POST', 'ai_website_faqs', [[
-                'scan_job_id' => $scanId,
-                'customer_id' => $customerId,
-                'page_url' => (string)($_POST['page_url'] ?? $scan['website_url'] ?? ''),
-                'question' => $question,
-                'answer' => $answer,
-                'source' => 'manual'
-            ]]);
-            $message = 'FAQ added.';
-        }
     }
 }
 
 $pages = ai_scan_review_pages($scanId, $customerId);
-$faqs = ai_scan_review_faqs($scanId, $customerId);
 
 $summarizedCount = 0;
 foreach ($pages as $page) {
@@ -209,11 +183,10 @@ body{margin:0;background:var(--bg);color:var(--ink)}
 button,.btn{min-height:42px;border:0;border-radius:8px;padding:0 14px;font-weight:800;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}
 button{background:#2563eb;color:#fff}
 .btn{background:#e2e8f0;color:#0f172a}
-.grid{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(340px,.75fr);gap:18px;align-items:start}
+.grid{display:grid;grid-template-columns:minmax(0,1fr);gap:18px;align-items:start}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:18px;box-shadow:0 12px 34px rgba(15,23,42,.06)}
 .pages-panel{min-width:0}
-.faq-panel{position:sticky;top:18px;max-height:calc(100vh - 36px);overflow:auto}
-.metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:18px}
+.metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:18px}
 .metric{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px}
 .metric span{display:block;color:var(--muted);font-size:12px;font-weight:800}
 .metric strong{display:block;margin-top:6px;font-size:22px}
@@ -239,9 +212,7 @@ textarea{min-height:120px;resize:vertical;line-height:1.5}
 .row{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
 .summary-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;align-items:center}
 .summary-actions form{margin:0}
-.faq,.manual-page{border-top:1px solid var(--line);padding:14px 0}
-.faq textarea{min-height:96px}
-.faq:first-child{border-top:0}
+.manual-page{border-top:1px solid var(--line);padding:14px 0}
 .muted{color:var(--muted);font-size:13px;line-height:1.5}
 .progress-strip{display:grid;gap:8px;border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:12px 14px;margin-bottom:16px}
 .progress-row{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
@@ -274,8 +245,8 @@ body.dark .diag-error{color:#fca5a5}
 .diag-live.is-running .diag-spinner{display:inline-block}
 .diag-live-text{display:inline-block;max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-size:12px;font-weight:800}
 @keyframes diag-spin{to{transform:rotate(360deg)}}
-@media(max-width:1100px){.grid{grid-template-columns:minmax(0,1fr) minmax(300px,.72fr)}.page-tab-label{max-width:170px}}
-@media(max-width:860px){.grid,.metrics,.diag-grid{grid-template-columns:1fr}.top{display:grid}.faq-panel{position:static;max-height:none}.page-tab-label{max-width:180px}.shell{padding:26px 14px 56px}.diag-table{display:block;overflow-x:auto;white-space:nowrap}}
+@media(max-width:1100px){.page-tab-label{max-width:170px}}
+@media(max-width:860px){.grid,.metrics,.diag-grid{grid-template-columns:1fr}.top{display:grid}.page-tab-label{max-width:180px}.shell{padding:26px 14px 56px}.diag-table{display:block;overflow-x:auto;white-space:nowrap}}
 @media(max-width:560px){.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.panel{padding:14px}.top h1{font-size:26px}.page-tabs-meta{display:grid}.page-tab-label{max-width:150px}.summary-actions button,.summary-actions form{width:100%}.summary-actions button{width:100%}}
 </style>
 </head>
@@ -285,7 +256,7 @@ body.dark .diag-error{color:#fca5a5}
   <div class="top">
     <div>
       <h1>Review captured website pages</h1>
-      <p><?php echo ai_h($scan['website_domain'] ?? ''); ?> pages are captured first. Summaries and FAQs can be reviewed and edited here.</p>
+      <p><?php echo ai_h($scan['website_domain'] ?? ''); ?> pages are captured first. Customer-ready summaries can be reviewed and edited here.</p>
     </div>
     <div class="actions">
       <button type="button" id="summarizeAllBtn">Summarize all pages</button>
@@ -516,7 +487,6 @@ body.dark .diag-error{color:#fca5a5}
       <div class="diag-card"><span>Summarized</span><strong id="summaryDiagDone"><?php echo (int)$summaryDone; ?></strong></div>
       <div class="diag-card"><span>Waiting</span><strong id="summaryDiagPending"><?php echo (int)($diagCounts['summary_pending'] ?? 0); ?></strong></div>
       <div class="diag-card"><span>Progress</span><strong id="summaryDiagPercent"><?php echo (int)$summaryPercent; ?>%</strong></div>
-      <div class="diag-card"><span>Captured FAQs</span><strong id="summaryDiagFaqs"><?php echo count($faqs); ?></strong></div>
       <div class="diag-card"><span>Summary Batch</span><strong><?php echo (int)$diagnostics['settings']['summary_batch_size']; ?></strong></div>
     </div>
 
@@ -563,7 +533,6 @@ body.dark .diag-error{color:#fca5a5}
   <div class="metrics">
     <div class="metric"><span>Captured Pages</span><strong id="capturedMetric"><?php echo count($pages); ?></strong></div>
     <div class="metric"><span>Summarized</span><strong id="summarizedMetric"><?php echo $summarizedCount; ?></strong></div>
-    <div class="metric"><span>Captured FAQs</span><strong id="faqMetric"><?php echo count($faqs); ?></strong></div>
     <div class="metric"><span>Scan Status</span><strong id="scanStatusMetric"><?php echo ai_h($scan['status'] ?? ''); ?></strong></div>
   </div>
 
@@ -631,35 +600,6 @@ body.dark .diag-error{color:#fca5a5}
       </div>
     </section>
 
-    <aside class="panel faq-panel">
-      <h2>Captured FAQs</h2>
-      <p class="muted">FAQs detected from FAQ schema, HTML accordions, and AI extraction after summarizing FAQ-like pages.</p>
-      <form method="POST" class="faq js-live-worker-form">
-        <input type="hidden" name="action" value="add_faq">
-        <input type="hidden" name="page_url" value="<?php echo ai_h($scan['website_url'] ?? ''); ?>">
-        <label>Add FAQ</label>
-        <input name="question" placeholder="Question">
-        <textarea name="answer" placeholder="Answer"></textarea>
-        <div class="row"><button type="submit">Add FAQ</button></div>
-      </form>
-      <div id="faqList">
-        <?php foreach ($faqs as $faq): ?>
-          <form method="POST" class="faq js-live-worker-form">
-            <input type="hidden" name="action" value="save_faq">
-            <input type="hidden" name="faq_id" value="<?php echo ai_h($faq['id']); ?>">
-            <label>Question</label>
-            <input name="question" value="<?php echo ai_h($faq['question']); ?>">
-            <label>Answer</label>
-            <textarea name="answer"><?php echo ai_h($faq['answer']); ?></textarea>
-            <p class="muted">Source: <?php echo ai_h($faq['source']); ?></p>
-            <div class="row"><button type="submit">Save FAQ</button></div>
-          </form>
-        <?php endforeach; ?>
-        <?php if (empty($faqs)): ?>
-          <p class="muted" id="faqEmptyState">No FAQs captured yet. They will appear here after each page is summarized.</p>
-        <?php endif; ?>
-      </div>
-    </aside>
   </div>
 </main>
 <script>
@@ -670,7 +610,6 @@ const externalQueueEnabled = shell?.dataset.externalQueue === "1";
 const pageTabs = document.getElementById("pageTabs");
 const pagePanels = document.getElementById("pagePanels");
 const pageTabsCount = document.getElementById("pageTabsCount");
-const faqList = document.getElementById("faqList");
 const crawlTitle = document.getElementById("crawlTitle");
 const crawlText = document.getElementById("crawlText");
 const crawlBar = document.getElementById("crawlBar");
@@ -681,7 +620,6 @@ const summaryBar = document.getElementById("summaryBar");
 const summaryPercent = document.getElementById("summaryPercent");
 const capturedMetric = document.getElementById("capturedMetric");
 const summarizedMetric = document.getElementById("summarizedMetric");
-const faqMetric = document.getElementById("faqMetric");
 const scanStatusMetric = document.getElementById("scanStatusMetric");
 const summarizeAllBtn = document.getElementById("summarizeAllBtn");
 const runScanBatchBtn = document.getElementById("runScanBatchBtn");
@@ -698,8 +636,6 @@ let summaryBusy = false;
 let liveStatusBusy = false;
 let autoWorkflowBusy = false;
 let autoWorkflowDone = false;
-let faqBackfillBusy = false;
-let faqBackfillAttempted = false;
 let summaryControlsFrozen = false;
 const summarizingPages = new Set();
 const skippedSummaryPages = new Set();
@@ -903,28 +839,6 @@ function renderPagePanel(page) {
   </article>`;
 }
 
-function renderFaq(faq = {}) {
-  return `<form method="POST" class="faq js-live-worker-form">
-    <input type="hidden" name="action" value="save_faq">
-    <input type="hidden" name="faq_id" value="${escapeHtml(faq.id || "")}">
-    <label>Question</label>
-    <input name="question" value="${escapeHtml(cleanDisplayText(faq.question || ""))}">
-    <label>Answer</label>
-    <textarea name="answer">${escapeHtml(cleanDisplayText(faq.answer || ""))}</textarea>
-    <p class="muted">Source: ${escapeHtml(faq.source || "")}</p>
-    <div class="row"><button type="submit">Save FAQ</button></div>
-  </form>`;
-}
-
-function updateFaqs(faqs = []) {
-  if (!faqList) return;
-  if (faqList.contains(document.activeElement)) return;
-  faqList.innerHTML = faqs.length
-    ? faqs.map((faq) => renderFaq(faq)).join("")
-    : '<p class="muted" id="faqEmptyState">No FAQs captured yet. They will appear here after each page is summarized.</p>';
-  if (faqMetric) faqMetric.textContent = String(faqs.length);
-}
-
 function updatePages(pages = []) {
   if (!pageTabs || !pagePanels) return;
   const activePanel = document.querySelector(".page-panel.is-active");
@@ -1081,8 +995,6 @@ function updateSummaryDiagnostics(data = {}) {
   setText("summaryDiagDone", counts.summary_done ?? counts.summarized ?? 0);
   setText("summaryDiagPending", counts.summary_pending ?? pendingPages.length);
   setText("summaryDiagPercent", `${Number(counts.summary_percent || 0)}%`);
-  setText("summaryDiagFaqs", Array.isArray(data.faqs) ? data.faqs.length : (faqMetric?.textContent || 0));
-
   const pendingRows = document.getElementById("summaryPendingRows");
   if (pendingRows) pendingRows.innerHTML = tableRows(pendingPages, [
     { render: (r) => escapeHtml(shortUrlLabel(r.url || "")), title: (r) => r.url || "", className: "diag-url" },
@@ -1108,25 +1020,6 @@ function applyLiveData(data = {}, mode = "scan") {
   updateSummaryDiagnostics(data);
   updatePages(data.pages || []);
   if (capturedMetric && data.pages) capturedMetric.textContent = String(data.pages.length);
-  if (data.faqs) updateFaqs(data.faqs);
-  maybeBackfillFaqs(data);
-}
-
-async function maybeBackfillFaqs(data = {}) {
-  const counts = data.counts || data.diagnostics?.counts || {};
-  const faqCount = Array.isArray(data.faqs) ? data.faqs.length : Number(faqMetric?.textContent || 0);
-  if (faqBackfillBusy || faqBackfillAttempted || faqCount > 0 || Number(counts.summarized || 0) <= 0) return;
-  faqBackfillBusy = true;
-  faqBackfillAttempted = true;
-  try {
-    const latest = await callWorker("backfill_faqs");
-    updateFaqs(latest.faqs || []);
-    updateSummaryDiagnostics(latest);
-  } catch (error) {
-    console.warn("FAQ backfill failed", error);
-  } finally {
-    faqBackfillBusy = false;
-  }
 }
 
 async function processScanBatch() {
@@ -1355,7 +1248,7 @@ document.addEventListener("submit", async (event) => {
   try {
     const data = await callWorker(action, extra);
     applyLiveData(data, action === "add_page" ? "scan" : "summary");
-    if (data.success && (action === "add_faq" || action === "add_page")) {
+    if (data.success && action === "add_page") {
       form.reset();
     }
     if (action === "add_page") {
