@@ -1793,7 +1793,7 @@ function ai_scan_job_counts(string $jobId, string $customerId): array {
     return $counts;
 }
 
-function ai_scan_review_pages(string $jobId, string $customerId, int $limit = 100): array {
+function ai_scan_review_pages(string $jobId, string $customerId, int $limit = 250): array {
     return ai_safe_rows(supabase(
         'GET',
         'ai_website_pages?select=*&scan_job_id=eq.' . urlencode($jobId)

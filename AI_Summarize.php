@@ -632,6 +632,10 @@ let scanBusy = false;
 let summaryBusy = false;
 let liveStatusBusy = false;
 
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function escapeHtml(value = "") {
   return String(value ?? "").replace(/[&<>"']/g, (char) => ({
     "&": "&amp;",
@@ -966,19 +970,62 @@ async function processScanBatch() {
   }
 }
 
+function crawlComplete(data = {}) {
+  const counts = data.counts || data.diagnostics?.counts || {};
+  const scan = data.scan || data.diagnostics?.scan || {};
+  const total = Number(counts.total || counts.crawl_total || 0);
+  const pending = Number(counts.pending || 0);
+  const done = Number(counts.crawl_done || 0);
+  return total > 0 && pending <= 0 && (scan.status === "completed" || done >= total);
+}
+
+async function refreshWorkflowStatus(mode = "scan") {
+  const data = await callWorker("status");
+  applyLiveData(data, mode);
+  return data;
+}
+
+async function scanAllPagesFirst() {
+  let data = await refreshWorkflowStatus("scan");
+  let idleRounds = 0;
+  while (!crawlComplete(data)) {
+    if (scanBusy) {
+      await wait(500);
+      data = await refreshWorkflowStatus("scan");
+      continue;
+    }
+
+    scanBusy = true;
+    setDiagnosticsLive(true, "Scanning all pages...", "Working");
+    try {
+      data = await callWorker("scan_batch");
+      applyLiveData(data, "scan");
+    } finally {
+      scanBusy = false;
+    }
+
+    const processed = Number(data.processed || 0);
+    const pending = Number(data.counts?.pending || data.diagnostics?.counts?.pending || 0);
+    idleRounds = processed === 0 && pending > 0 ? idleRounds + 1 : 0;
+    await wait(idleRounds > 2 ? 1800 : 700);
+    data = await refreshWorkflowStatus("scan");
+  }
+  return data;
+}
+
 async function processSummaryBatches() {
   if (!scanId || summaryBusy) return;
   summaryBusy = true;
   if (summarizeAllBtn) summarizeAllBtn.disabled = true;
   try {
-    let latest = await callWorker("status");
+    let latest = await scanAllPagesFirst();
     applyLiveData(latest, "summary");
     const pages = Array.isArray(latest.pages) ? latest.pages : [];
     for (const page of pages) {
       if (!page?.id) continue;
       const data = await callWorker("summarize_page", { page_id: page.id });
       applyLiveData(data, "summary");
-      await new Promise((resolve) => setTimeout(resolve, 350));
+      await wait(350);
     }
   } catch (error) {
     if (summaryText) summaryText.textContent = "Summarization worker failed. Try again.";
@@ -1017,15 +1064,15 @@ document.addEventListener("submit", async (event) => {
   const form = event.target.closest(".js-summarize-page-form");
   if (!form) return;
   event.preventDefault();
+  if (summaryBusy) return;
   const button = form.querySelector("button");
   const pageId = form.querySelector("input[name='page_id']")?.value || "";
   if (button) {
     button.disabled = true;
-    button.textContent = "Summarizing...";
+    button.textContent = "Scanning...";
   }
   try {
-    const data = await callWorker("summarize_page", { page_id: pageId });
-    applyLiveData(data, "summary");
+    await processSummaryBatches();
     selectPageTab(`page-panel-${pageId}`, pageId);
   } finally {
     if (button) {
@@ -1040,7 +1087,7 @@ async function refreshLiveStatus() {
   liveStatusBusy = true;
   try {
     const data = await callWorker("status");
-    applyLiveData(data, "scan");
+    applyLiveData(data, summaryBusy ? "summary" : "scan");
   } finally {
     liveStatusBusy = false;
   }
