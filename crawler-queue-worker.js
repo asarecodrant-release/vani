@@ -77,7 +77,7 @@ async function enqueueScan(scanId, priority = 5) {
   return queue.add(
     "scan",
     { scanId },
-    { jobId: `scan:${scanId}`, priority, delay: Number(process.env.AI_QUEUE_SCAN_DELAY_MS || 0) }
+    { jobId: `scan-${scanId}`, priority, delay: Number(process.env.AI_QUEUE_SCAN_DELAY_MS || 0) }
   );
 }
 
@@ -85,7 +85,7 @@ async function enqueueSummary(scanId, priority = 10) {
   return queue.add(
     "summary",
     { scanId },
-    { jobId: `summary:${scanId}`, priority, delay: Number(process.env.AI_QUEUE_SUMMARY_DELAY_MS || 0) }
+    { jobId: `summary-${scanId}`, priority, delay: Number(process.env.AI_QUEUE_SUMMARY_DELAY_MS || 0) }
   );
 }
 
