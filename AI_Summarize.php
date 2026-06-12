@@ -181,24 +181,29 @@ body{margin:0;background:var(--bg);color:var(--ink)}
 .top h1{margin:0;font-size:32px;line-height:1.15}
 .top p{margin:8px 0 0;color:var(--muted);line-height:1.6}
 .actions{display:flex;gap:10px;flex-wrap:wrap}
-button,.btn{min-height:42px;border:0;border-radius:8px;padding:0 14px;font-weight:800;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}
+button,.btn,.icon-btn{min-height:42px;border:0;border-radius:8px;padding:0 14px;font-weight:800;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}
 button{background:#2563eb;color:#fff}
 .btn{background:#e2e8f0;color:#0f172a}
+.icon-btn{background:#e2e8f0;color:#0f172a}
 .grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,390px);gap:18px;align-items:start}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:18px;box-shadow:0 12px 34px rgba(15,23,42,.06)}
 .pages-panel{min-width:0}
-.faq-panel{position:sticky;top:18px;max-height:calc(100vh - 36px);overflow:auto}
-.faq-panel h2{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:12px}
+.faq-panel{position:sticky;top:18px;max-height:calc(100vh - 36px);overflow:auto;min-width:0}
+.faq-panel h2{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:12px;min-width:0}
+.faq-panel h2>span:first-child{min-width:0;overflow-wrap:anywhere}
+.faq-panel-tools{display:flex;align-items:center;gap:8px;flex:0 0 auto}
 .faq-add-form{display:grid;gap:8px;padding:12px;border:1px solid var(--line);border-radius:8px;background:var(--soft);margin-bottom:12px}
 .faq-add-form label{display:block;font-size:11px;font-weight:900;text-transform:uppercase;color:var(--muted)}
 .faq-add-form input,.faq-add-form textarea{width:100%}
 .faq-add-form textarea{min-height:92px;resize:vertical}
 .faq-list{display:grid;gap:10px}
-.faq-item{border:1px solid var(--line);border-radius:8px;background:var(--soft);padding:12px}
-.faq-item strong{display:block;font-size:14px;line-height:1.35}
-.faq-item p{margin:8px 0 0;color:var(--muted);font-size:13px;line-height:1.45;white-space:pre-wrap}
-.faq-meta{display:flex;justify-content:space-between;gap:8px;margin-top:10px;color:var(--muted);font-size:11px;font-weight:800}
-.faq-source{display:inline-flex;align-items:center;min-height:22px;border-radius:999px;background:#dcfce7;color:#166534;padding:0 8px}
+.faq-list,.faq-item,.faq-add-form,.faq-edit-form{min-width:0}
+.faq-item{border:1px solid var(--line);border-radius:8px;background:var(--soft);padding:12px;overflow:hidden}
+.faq-item strong{display:block;font-size:14px;line-height:1.35;overflow-wrap:anywhere;word-break:break-word}
+.faq-item p{margin:8px 0 0;color:var(--muted);font-size:13px;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word}
+.faq-meta{display:flex;justify-content:space-between;gap:8px;margin-top:10px;color:var(--muted);font-size:11px;font-weight:800;min-width:0}
+.faq-meta span:last-child{min-width:0;overflow:hidden;text-overflow:ellipsis;overflow-wrap:anywhere;word-break:break-all}
+.faq-source{display:inline-flex;align-items:center;min-height:22px;border-radius:999px;background:#dcfce7;color:#166534;padding:0 8px;flex:0 0 auto}
 .faq-edit-form{display:grid;gap:8px;margin-top:8px}
 .faq-edit-form textarea{min-height:86px}
 .faq-empty{border:1px dashed var(--line);border-radius:8px;padding:14px;color:var(--muted);font-size:13px;line-height:1.5}
@@ -208,6 +213,10 @@ button{background:#2563eb;color:#fff}
 .metric strong{display:block;margin-top:6px;font-size:22px}
 .message{margin-bottom:14px;padding:12px 14px;border-radius:8px;font-weight:800}
 .success{background:#dcfce7;color:#166534}.error{background:#fee2e2;color:#991b1b}
+.refresh-toast{position:fixed;left:50%;top:86px;z-index:80;display:none;align-items:center;gap:10px;min-height:44px;max-width:calc(100vw - 28px);transform:translateX(-50%);border:1px solid var(--line);border-radius:8px;background:var(--panel);box-shadow:0 16px 40px rgba(15,23,42,.16);padding:0 14px;color:var(--ink);font-size:13px;font-weight:900}
+.refresh-toast.is-visible{display:flex}
+.refresh-toast i{width:16px;height:16px;border:2px solid rgba(37,99,235,.24);border-top-color:#2563eb;border-radius:999px;animation:diag-spin .8s linear infinite}
+.refresh-toast.is-done i{border-color:#16a34a;background:#16a34a;animation:none}
 .page-tabs-wrap{position:relative;margin-bottom:16px}
 .page-tabs-meta{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:8px;color:var(--muted);font-size:12px;font-weight:800}
 .page-tabs{display:flex;gap:8px;overflow-x:auto;overflow-y:hidden;max-width:100%;padding:4px 0 12px;border-bottom:1px solid var(--line);scroll-snap-type:x proximity;scrollbar-width:thin}
@@ -260,23 +269,27 @@ body.dark .diag-error{color:#fca5a5}
 .diag-spinner{display:none;width:14px;height:14px;border:2px solid rgba(37,99,235,.24);border-top-color:#2563eb;border-radius:999px;animation:diag-spin .8s linear infinite}
 .diag-live.is-running .diag-spinner{display:inline-block}
 .diag-live-text{display:inline-block;max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-size:12px;font-weight:800}
+.diag-toggle-btn{min-height:32px;padding:0 10px;font-size:12px}
 @keyframes diag-spin{to{transform:rotate(360deg)}}
 @media(max-width:1100px){.page-tab-label{max-width:170px}}
 @media(max-width:980px){.grid,.metrics,.diag-grid{grid-template-columns:1fr}.faq-panel{position:static;max-height:none}.top{display:grid}.page-tab-label{max-width:180px}.shell{padding:26px 14px 56px}.diag-table{display:block;overflow-x:auto;white-space:nowrap}}
-@media(max-width:560px){.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.panel{padding:14px}.top h1{font-size:26px}.page-tabs-meta{display:grid}.page-tab-label{max-width:150px}.summary-actions button,.summary-actions form{width:100%}.summary-actions button{width:100%}}
+@media(max-width:560px){.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.panel{padding:14px}.top h1{font-size:26px}.page-tabs-meta{display:grid}.page-tab-label{max-width:150px}.summary-actions button,.summary-actions form{width:100%}.summary-actions button{width:100%}.faq-meta{display:grid;justify-content:start}.faq-add-form button,.faq-edit-form button{width:100%}.refresh-toast{top:74px;width:calc(100vw - 28px);justify-content:center}}
 </style>
 </head>
 <body>
 <?php include 'navbar.php'; ?>
-<main class="shell" data-scan-id="<?php echo ai_h($scanId); ?>" data-scan-status="<?php echo ai_h($scan['status'] ?? ''); ?>" data-worker-csrf="<?php echo ai_h($workerCsrf); ?>" data-external-queue="<?php echo $externalQueueEnabled ? '1' : '0'; ?>">
+<div class="refresh-toast" id="refreshToast" role="status" aria-live="polite">
+  <i aria-hidden="true"></i>
+  <span id="refreshToastText">Refreshing...</span>
+</div>
+<main class="shell" data-scan-id="<?php echo ai_h($scanId); ?>" data-scan-status="<?php echo ai_h($scan['status'] ?? ''); ?>" data-summary-paused="<?php echo !empty($scan['summary_paused']) ? '1' : '0'; ?>" data-worker-csrf="<?php echo ai_h($workerCsrf); ?>" data-external-queue="<?php echo $externalQueueEnabled ? '1' : '0'; ?>">
   <div class="top">
     <div>
       <h1>Review captured website pages</h1>
       <p><?php echo ai_h($scan['website_domain'] ?? ''); ?> pages are captured first. Customer-ready summaries can be reviewed and edited here.</p>
     </div>
     <div class="actions">
-      <button type="button" id="summarizeAllBtn">Summarize all pages</button>
-      <button class="btn" type="button" data-theme-toggle>Bright Mode</button>
+      <button class="btn" type="button" id="refreshLiveBtn">Refresh</button>
       <a class="btn" href="AI_Chatbot_Setup.php">Scan another website</a>
     </div>
   </div>
@@ -310,6 +323,7 @@ body.dark .diag-error{color:#fca5a5}
         <i class="diag-spinner" aria-hidden="true"></i>
         <span class="diag-live-text" id="diagLiveText"><?php echo $activeScanUrl !== '' ? 'Scanning: ' . ai_short_url_label($activeScanUrl) : ($workerActive ? 'Crawler working' : 'Crawler idle'); ?></span>
         <span class="diag-pill <?php echo $workerActive ? '' : 'warn'; ?>" id="diagLivePill"><?php echo $activeScanUrl !== '' ? 'Page locked' : ($workerActive ? 'Worker active' : 'No active lock'); ?></span>
+        <button class="btn diag-toggle-btn" type="button" id="scanPauseToggleBtn"><?php echo (string)($scan['status'] ?? '') === 'paused' ? 'Resume' : 'Pause'; ?></button>
       </span>
     </summary>
 
@@ -332,7 +346,6 @@ body.dark .diag-error{color:#fca5a5}
     <div class="diag-actions">
       <button type="button" id="runScanBatchBtn">Run scan batch</button>
       <button type="button" id="runSummaryBatchBtn">Run summary batch</button>
-      <button class="btn" type="button" id="refreshLiveBtn">Refresh live data</button>
     </div>
 
     <div class="diag-section">
@@ -493,8 +506,9 @@ body.dark .diag-error{color:#fca5a5}
       <span>Page Summarization Diagnostic</span>
       <span class="diag-live" id="summaryDiagLive">
         <i class="diag-spinner" aria-hidden="true"></i>
-        <span class="diag-live-text" id="summaryDiagLiveText"><?php echo $summaryDone >= $summaryTotal && $summaryTotal > 0 ? 'All captured pages summarized' : 'Waiting for captured pages'; ?></span>
-        <span class="diag-pill <?php echo $summaryDone >= $summaryTotal && $summaryTotal > 0 ? '' : 'warn'; ?>" id="summaryDiagLivePill"><?php echo (int)$summaryDone; ?> / <?php echo (int)$summaryTotal; ?></span>
+        <span class="diag-live-text" id="summaryDiagLiveText"><?php echo !empty($scan['summary_paused']) ? 'Summarization paused' : ($summaryDone >= $summaryTotal && $summaryTotal > 0 ? 'All captured pages summarized' : 'Waiting for captured pages'); ?></span>
+        <span class="diag-pill <?php echo $summaryDone >= $summaryTotal && $summaryTotal > 0 && empty($scan['summary_paused']) ? '' : 'warn'; ?>" id="summaryDiagLivePill"><?php echo !empty($scan['summary_paused']) ? 'Paused' : ((int)$summaryDone . ' / ' . (int)$summaryTotal); ?></span>
+        <button class="btn diag-toggle-btn" type="button" id="summaryPauseToggleBtn"><?php echo !empty($scan['summary_paused']) ? 'Resume' : 'Pause'; ?></button>
       </span>
     </summary>
 
@@ -620,7 +634,9 @@ body.dark .diag-error{color:#fca5a5}
     <aside class="panel faq-panel">
       <h2>
         <span>Captured FAQ</span>
-        <span class="diag-pill" id="faqCountPill"><?php echo count($faqs); ?></span>
+        <span class="faq-panel-tools">
+          <span class="diag-pill" id="faqCountPill"><?php echo count($faqs); ?></span>
+        </span>
       </h2>
       <form method="POST" class="faq-add-form js-live-worker-form">
         <input type="hidden" name="action" value="add_faq">
@@ -666,6 +682,8 @@ const shell = document.querySelector(".shell");
 const scanId = shell?.dataset.scanId || "";
 const workerCsrf = shell?.dataset.workerCsrf || "";
 const externalQueueEnabled = shell?.dataset.externalQueue === "1";
+let currentScanStatus = shell?.dataset.scanStatus || "";
+let currentSummaryPaused = shell?.dataset.summaryPaused === "1";
 const pageTabs = document.getElementById("pageTabs");
 const pagePanels = document.getElementById("pagePanels");
 const pageTabsCount = document.getElementById("pageTabsCount");
@@ -687,6 +705,10 @@ const summarizeAllBtn = document.getElementById("summarizeAllBtn");
 const runScanBatchBtn = document.getElementById("runScanBatchBtn");
 const runSummaryBatchBtn = document.getElementById("runSummaryBatchBtn");
 const refreshLiveBtn = document.getElementById("refreshLiveBtn");
+const refreshToast = document.getElementById("refreshToast");
+const refreshToastText = document.getElementById("refreshToastText");
+const scanPauseToggleBtn = document.getElementById("scanPauseToggleBtn");
+const summaryPauseToggleBtn = document.getElementById("summaryPauseToggleBtn");
 const diagLive = document.getElementById("diagLive");
 const diagLiveText = document.getElementById("diagLiveText");
 const diagLivePill = document.getElementById("diagLivePill");
@@ -696,14 +718,31 @@ const summaryDiagLivePill = document.getElementById("summaryDiagLivePill");
 let scanBusy = false;
 let summaryBusy = false;
 let liveStatusBusy = false;
+let liveStatusPromise = null;
 let autoWorkflowBusy = false;
 let autoWorkflowDone = false;
+let scanPauseRequestBusy = false;
 let summaryControlsFrozen = false;
 const summarizingPages = new Set();
 const skippedSummaryPages = new Set();
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+let refreshToastTimer = 0;
+
+function showRefreshToast(message = "Refreshing...", isDone = false, visibleMs = 1000) {
+  if (!refreshToast || !refreshToastText) return;
+  window.clearTimeout(refreshToastTimer);
+  refreshToastText.textContent = message;
+  refreshToast.classList.toggle("is-done", Boolean(isDone));
+  refreshToast.classList.add("is-visible");
+  if (visibleMs > 0) {
+    refreshToastTimer = window.setTimeout(() => {
+      refreshToast.classList.remove("is-visible", "is-done");
+    }, visibleMs);
+  }
 }
 
 function escapeHtml(value = "") {
@@ -788,6 +827,31 @@ function setSummaryDiagnosticsLive(isRunning, text, pillText) {
   }
 }
 
+function setScanPauseToggleState(status = "") {
+  const value = String(status || "").toLowerCase();
+  currentScanStatus = value;
+  if (!scanPauseToggleBtn) return;
+  if (value === "completed" || value === "failed") {
+    scanPauseToggleBtn.disabled = true;
+    scanPauseToggleBtn.textContent = "Done";
+    return;
+  }
+  scanPauseToggleBtn.disabled = false;
+  scanPauseToggleBtn.textContent = value === "paused" ? "Resume" : "Pause";
+}
+
+function setSummaryPauseToggleState(isPaused = false, isCompleted = false) {
+  currentSummaryPaused = Boolean(isPaused);
+  if (!summaryPauseToggleBtn) return;
+  if (isCompleted) {
+    summaryPauseToggleBtn.disabled = true;
+    summaryPauseToggleBtn.textContent = "Done";
+    return;
+  }
+  summaryPauseToggleBtn.disabled = false;
+  summaryPauseToggleBtn.textContent = currentSummaryPaused ? "Resume" : "Pause";
+}
+
 function setSummaryControlsCompleted(isCompleted) {
   if (isCompleted) {
     summaryControlsFrozen = true;
@@ -816,6 +880,10 @@ function setSummaryControlsCompleted(isCompleted) {
 function updateWorkerUi(data, mode = "scan") {
   const counts = data?.counts || {};
   const scan = data?.scan || {};
+  const rawScanStatus = String(scan.status || "");
+  const displayScanStatus = scanPauseRequestBusy && currentScanStatus === "paused" && rawScanStatus.toLowerCase() !== "paused"
+    ? "paused"
+    : rawScanStatus;
   const captured = Number(counts.scanned || 0);
   const summarized = Number(counts.summarized || 0);
   const failed = Number(counts.failed || 0);
@@ -825,6 +893,7 @@ function updateWorkerUi(data, mode = "scan") {
   const summaryDone = Number(counts.summary_done ?? summarized);
   const summaryPending = Number(counts.summary_pending ?? (captured - summarized));
   const summaryIsComplete = summaryTotal > 0 && summaryPending <= 0 && summaryDone >= summaryTotal;
+  const summaryPaused = Boolean(scan.summary_paused);
   const crawlPct = Number(counts.crawl_percent ?? (crawlTotal > 0 ? Math.min(100, Math.round((crawlDone / crawlTotal) * 100)) : 0));
   const summaryPct = Number(counts.summary_percent ?? (summaryTotal > 0 ? Math.min(100, Math.round((summaryDone / summaryTotal) * 100)) : 0));
   if (crawlBar) crawlBar.style.width = `${crawlPct}%`;
@@ -833,26 +902,32 @@ function updateWorkerUi(data, mode = "scan") {
   if (summaryPercent) summaryPercent.textContent = `${summaryPct}%`;
   if (capturedMetric) capturedMetric.textContent = String(captured);
   if (summarizedMetric) summarizedMetric.textContent = String(summarized);
-  if (scanStatusMetric) scanStatusMetric.textContent = scan.status || "";
-  if (crawlTitle) crawlTitle.textContent = `Crawling ${scan.status || "pending"}`;
+  if (scanStatusMetric) scanStatusMetric.textContent = displayScanStatus;
+  setScanPauseToggleState(displayScanStatus);
+  setSummaryPauseToggleState(summaryPaused, summaryIsComplete);
+  if (crawlTitle) crawlTitle.textContent = `Crawling ${displayScanStatus || "pending"}`;
   if (crawlText) crawlText.textContent = `${crawlDone} of ${crawlTotal} queued page(s) crawled. ${failed} failed, ${Number(counts.pending || 0)} still queued.`;
-  if (summaryTitle) summaryTitle.textContent = summaryIsComplete ? "Summarization completed" : (mode === "summary" ? "Summarization running" : "Summarizing");
+  if (summaryTitle) summaryTitle.textContent = summaryPaused ? "Summarization paused" : (summaryIsComplete ? "Summarization completed" : (mode === "summary" ? "Summarization running" : "Summarizing"));
   if (summaryText) summaryText.textContent = `${summaryDone} of ${summaryTotal} captured page(s) summarized. ${summaryPending} waiting.`;
   setSummaryControlsCompleted(summaryIsComplete);
-  setSummaryDiagnosticsLive(
-    mode === "summary" && summaryPending > 0,
-    summaryDone >= summaryTotal && summaryTotal > 0 ? "All captured pages summarized" : `${Number(counts.summary_pending ?? (captured - summarized))} page(s) waiting for summary`,
-    `${summaryDone} / ${summaryTotal}`
-  );
+  if (summaryPaused) {
+    setSummaryDiagnosticsLive(false, "Summarization paused", "Paused");
+  } else {
+    setSummaryDiagnosticsLive(
+      mode === "summary" && summaryPending > 0,
+      summaryDone >= summaryTotal && summaryTotal > 0 ? "All captured pages summarized" : `${Number(counts.summary_pending ?? (captured - summarized))} page(s) waiting for summary`,
+      `${summaryDone} / ${summaryTotal}`
+    );
+  }
   if (mode === "scan") {
     const activeUrl = data?.active_url || "";
     const processed = Number(data?.processed || 0);
     if (activeUrl) {
-      setDiagnosticsLive(scan.status === "pending" || scan.status === "running", `Scanning: ${shortUrlLabel(activeUrl)}`, `${processed} processed`);
+      setDiagnosticsLive(displayScanStatus === "pending" || displayScanStatus === "running", `Scanning: ${shortUrlLabel(activeUrl)}`, `${processed} processed`);
     } else if (data?.waiting_for_retry) {
       setDiagnosticsLive(false, "Waiting for retry window", "Retry wait");
     } else {
-      setDiagnosticsLive(scan.status === "pending" || scan.status === "running", scan.status === "completed" ? "Crawler complete" : "Crawler working", scan.status || "");
+      setDiagnosticsLive(displayScanStatus === "pending" || displayScanStatus === "running", displayScanStatus === "completed" ? "Crawler complete" : "Crawler working", displayScanStatus || "");
     }
   }
 }
@@ -1148,13 +1223,15 @@ function applyLiveData(data = {}, mode = "scan") {
 }
 
 async function processScanBatch() {
-  if (!scanId || scanBusy) return;
+  if (!scanId || scanBusy || currentScanStatus === "paused") return;
   scanBusy = true;
   setDiagnosticsLive(true, "Scanning batch...", "Working");
   try {
     const data = await callWorker("scan_batch");
     applyLiveData(data, "scan");
-    await summarizeNextFetchedPage(data);
+    if (!summaryBusy && nextFetchedPage(data)) {
+      summarizeNextFetchedPage(data).catch(() => {});
+    }
   } catch (error) {
     if (crawlText) crawlText.textContent = "Worker could not update scan progress. Refresh to retry.";
     setDiagnosticsLive(false, "Worker update failed", "Error");
@@ -1193,7 +1270,8 @@ function summaryComplete(data = {}) {
 
 async function summarizeNextFetchedPage(data = {}) {
   const page = nextFetchedPage(data);
-  if (!page?.id || summaryBusy) return data;
+  const scan = data.scan || data.diagnostics?.scan || {};
+  if (!page?.id || summaryBusy || Boolean(scan.summary_paused) || currentSummaryPaused) return data;
 
   summaryBusy = true;
   summarizingPages.add(String(page.id));
@@ -1255,6 +1333,9 @@ async function liveWorkflowLoop(force = false) {
     while (true) {
       const scan = latest.scan || latest.diagnostics?.scan || {};
       const counts = latest.counts || latest.diagnostics?.counts || {};
+      if (String(scan.status || "").toLowerCase() === "paused") {
+        setDiagnosticsLive(false, "Crawler paused", "Paused");
+      }
       if ((scan.status === "failed" || scan.status === "completed") && Number(counts.total || 0) === 0) {
         autoWorkflowDone = true;
         setDiagnosticsLive(false, scan.status === "failed" ? "Crawler failed" : "Crawler complete", scan.status || "Done");
@@ -1262,11 +1343,14 @@ async function liveWorkflowLoop(force = false) {
         break;
       }
 
-      const waitingSummary = nextFetchedPage(latest);
-      if (waitingSummary) {
-        latest = await summarizeNextFetchedPage(latest);
-        await wait(250);
-        continue;
+      const summaryPaused = Boolean(scan.summary_paused);
+      if (summaryPaused) {
+        setSummaryDiagnosticsLive(false, "Summarization paused", "Paused");
+      }
+
+      const waitingSummary = summaryPaused ? null : nextFetchedPage(latest);
+      if (waitingSummary && !summaryBusy) {
+        summarizeNextFetchedPage(latest).catch(() => {});
       }
 
       const pages = Array.isArray(latest.pages) ? latest.pages : [];
@@ -1277,6 +1361,12 @@ async function liveWorkflowLoop(force = false) {
         break;
       }
 
+      if (String(scan.status || "").toLowerCase() === "paused") {
+        await wait(1000);
+        latest = await refreshWorkflowStatus("scan");
+        continue;
+      }
+
       if (!crawlComplete(latest)) {
         scanBusy = true;
         setDiagnosticsLive(true, externalQueueEnabled ? "Scanning next pages with browser fallback..." : "Scanning next pages...", "Working");
@@ -1285,6 +1375,9 @@ async function liveWorkflowLoop(force = false) {
           applyLiveData(latest, "scan");
         } finally {
           scanBusy = false;
+        }
+        if (!summaryBusy && !Boolean(latest.scan?.summary_paused) && nextFetchedPage(latest)) {
+          summarizeNextFetchedPage(latest).catch(() => {});
         }
         idleRounds = Number(latest.processed || 0) === 0 ? idleRounds + 1 : 0;
         await wait(idleRounds > 2 ? 1600 : 650);
@@ -1299,6 +1392,9 @@ async function liveWorkflowLoop(force = false) {
         break;
       }
 
+      if (crawlComplete(latest) && waitingSummary && !summaryBusy) {
+        summarizeNextFetchedPage(latest).catch(() => {});
+      }
       await wait(900);
       latest = await refreshWorkflowStatus("scan");
     }
@@ -1308,7 +1404,60 @@ async function liveWorkflowLoop(force = false) {
 }
 
 summarizeAllBtn?.addEventListener("click", processSummaryBatches);
+scanPauseToggleBtn?.addEventListener("click", async (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  if (!scanId || scanPauseRequestBusy) return;
+  const wasPaused = currentScanStatus === "paused";
+  const action = wasPaused ? "resume_scan" : "pause_scan";
+  scanPauseRequestBusy = true;
+  currentScanStatus = wasPaused ? "running" : "paused";
+  setScanPauseToggleState(currentScanStatus);
+  setDiagnosticsLive(!wasPaused, wasPaused ? "Crawler resuming" : "Crawler paused", wasPaused ? "Working" : "Paused");
+  scanPauseToggleBtn.disabled = true;
+  try {
+    const data = await callWorker(action);
+    applyLiveData(data, "scan");
+    if (wasPaused) {
+      autoWorkflowDone = false;
+      if (!autoWorkflowBusy) {
+        liveWorkflowLoop(true);
+      }
+    }
+  } finally {
+    scanPauseRequestBusy = false;
+    if (currentScanStatus !== "completed" && currentScanStatus !== "failed") {
+      scanPauseToggleBtn.disabled = false;
+    }
+  }
+});
+summaryPauseToggleBtn?.addEventListener("click", async (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  if (!scanId) return;
+  const wasPaused = currentSummaryPaused;
+  const action = wasPaused ? "resume_summary" : "pause_summary";
+  currentSummaryPaused = !wasPaused;
+  setSummaryPauseToggleState(currentSummaryPaused, false);
+  setSummaryDiagnosticsLive(false, wasPaused ? "Summarization resuming" : "Summarization paused", wasPaused ? "Working" : "Paused");
+  summaryPauseToggleBtn.disabled = true;
+  try {
+    const data = await callWorker(action);
+    applyLiveData(data, "summary");
+    if (wasPaused) {
+      autoWorkflowDone = false;
+      if (!autoWorkflowBusy) {
+        liveWorkflowLoop(true);
+      }
+    }
+  } finally {
+    if (!summaryControlsFrozen) {
+      summaryPauseToggleBtn.disabled = false;
+    }
+  }
+});
 runScanBatchBtn?.addEventListener("click", async () => {
+  if (currentScanStatus === "paused") return;
   runScanBatchBtn.disabled = true;
   setDiagnosticsLive(true, "Scanning batch...", "Working");
   try {
@@ -1319,6 +1468,7 @@ runScanBatchBtn?.addEventListener("click", async () => {
   }
 });
 runSummaryBatchBtn?.addEventListener("click", async () => {
+  if (currentSummaryPaused) return;
   runSummaryBatchBtn.disabled = true;
   try {
     const data = await callWorker("summarize_batch");
@@ -1327,14 +1477,29 @@ runSummaryBatchBtn?.addEventListener("click", async () => {
     if (!summaryControlsFrozen) runSummaryBatchBtn.disabled = false;
   }
 });
-refreshLiveBtn?.addEventListener("click", refreshLiveStatus);
+refreshLiveBtn?.addEventListener("click", async () => {
+  if (!scanId) return;
+  const originalText = refreshLiveBtn.textContent;
+  refreshLiveBtn.disabled = true;
+  refreshLiveBtn.textContent = "Refreshing...";
+  showRefreshToast("Refreshing...", false, 0);
+  try {
+    await refreshLiveStatus({ force: true });
+    showRefreshToast("Refresh done", true, 1000);
+  } catch (error) {
+    showRefreshToast("Refresh failed", true, 1400);
+  } finally {
+    refreshLiveBtn.disabled = false;
+    refreshLiveBtn.textContent = originalText;
+  }
+});
 liveWorkflowLoop();
 
 document.addEventListener("submit", async (event) => {
   const form = event.target.closest(".js-summarize-page-form");
   if (!form) return;
   event.preventDefault();
-  if (summaryBusy) return;
+  if (summaryBusy || currentSummaryPaused) return;
   const button = form.querySelector("button");
   const pageId = form.querySelector("input[name='page_id']")?.value || "";
   if (button) {
@@ -1387,18 +1552,37 @@ document.addEventListener("submit", async (event) => {
   }
 });
 
-async function refreshLiveStatus() {
-  if (!scanId || liveStatusBusy) return;
+async function refreshLiveStatus(options = {}) {
+  const force = Boolean(options.force);
+  if (!scanId) return null;
+  if (liveStatusPromise) {
+    if (!force) return liveStatusPromise;
+    await liveStatusPromise.catch(() => null);
+  }
   liveStatusBusy = true;
-  try {
+  liveStatusPromise = (async () => {
     const data = await callWorker("status");
+    if (!data || data.success === false) {
+      throw new Error(data?.error || "Status refresh failed.");
+    }
     applyLiveData(data, summaryBusy ? "summary" : "scan");
+    if ((data?.scan?.status || "").toLowerCase() === "running" && currentScanStatus !== "paused" && !autoWorkflowBusy) {
+      autoWorkflowDone = false;
+      liveWorkflowLoop(true);
+    }
+    return data;
+  })();
+  try {
+    return await liveStatusPromise;
   } finally {
     liveStatusBusy = false;
+    liveStatusPromise = null;
   }
 }
 
-setInterval(refreshLiveStatus, 2500);
+setInterval(() => {
+  refreshLiveStatus().catch(() => {});
+}, 2500);
 </script>
 </body>
 </html>

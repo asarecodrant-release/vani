@@ -52,6 +52,9 @@ if ($tokenAuthenticated) {
 if (empty($scan) || $customerId === '') {
     ai_worker_json(['success' => false, 'error' => 'Scan job was not found.'], 404);
 }
+if (!$tokenAuthenticated && session_status() === PHP_SESSION_ACTIVE) {
+    session_write_close();
+}
 
 $action = (string)($_POST['action'] ?? $_GET['action'] ?? 'status');
 $result = ['success' => true];
@@ -73,6 +76,24 @@ if ($action === 'queue_test') {
     } else {
         $result = ai_summarize_scanned_page($pageId, $customerId);
     }
+} elseif ($action === 'pause_scan') {
+    ai_pause_scan_job($scanId, $customerId);
+    $result = ['success' => true, 'error' => ''];
+} elseif ($action === 'resume_scan') {
+    ai_resume_scan_job($scanId, $customerId);
+    if (ai_external_queue_enabled()) {
+        ai_enqueue_external_job($scanId, 'scan', 5);
+    }
+    $result = ['success' => true, 'error' => ''];
+} elseif ($action === 'pause_summary') {
+    ai_pause_summary_job($scanId, $customerId);
+    $result = ['success' => true, 'error' => ''];
+} elseif ($action === 'resume_summary') {
+    ai_resume_summary_job($scanId, $customerId);
+    if (ai_external_queue_enabled()) {
+        ai_enqueue_external_job($scanId, 'summary', 10);
+    }
+    $result = ['success' => true, 'error' => ''];
 } elseif ($action === 'backfill_faqs') {
     $result = ['success' => true, 'error' => 'FAQ capture is disabled for the summarization workflow.'];
 } elseif ($action === 'add_page') {
@@ -126,6 +147,7 @@ ai_worker_json(array_merge($result, [
         'pages_requested' => (int)($freshScan['pages_requested'] ?? $scan['pages_requested'] ?? 0),
         'pages_scanned' => (int)($freshScan['pages_scanned'] ?? 0),
         'pages_failed' => (int)($freshScan['pages_failed'] ?? 0),
+        'summary_paused' => !empty($freshScan['summary_paused']),
         'error_message' => (string)($freshScan['error_message'] ?? ''),
     ],
     'counts' => $counts,
