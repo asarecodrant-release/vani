@@ -14,6 +14,17 @@ if ($scanId === '' || $customerId === '') {
     die('Invalid request.');
 }
 
+function ai_summary_text_from_page(array $page): string {
+    $summaryJson = $page['summary_json'] ?? '';
+    $summary = [];
+    if (is_array($summaryJson)) {
+        $summary = $summaryJson;
+    } elseif (is_string($summaryJson) && $summaryJson !== '') {
+        $summary = json_decode($summaryJson, true) ?: [];
+    }
+    return (string)($summary['summary'] ?? '');
+}
+
 $scan = ai_get_scan_job_for_customer($scanId, $customerId);
 if (empty($scan)) {
     die('Scan job not found.');
@@ -21,7 +32,6 @@ if (empty($scan)) {
 
 $pages = ai_scan_review_pages($scanId, $customerId, 1000);
 $faqs = ai_scan_review_faqs($scanId, $customerId, 2000);
-
 if ($format === 'excel') {
     header('Content-Type: text/csv; charset=utf-8');
     header('Content-Disposition: attachment; filename=vani-ai-export-' . date('Ymd') . '.csv');
