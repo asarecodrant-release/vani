@@ -2080,9 +2080,27 @@ function ai_capture_single_page(string $jobId, string $customerId, string $websi
         ];
     }
 
+    $pageStartTime = time();
     $parsed = ai_parse_html_page((string)$fetch['html'], $finalUrl, $websiteDomain);
     $cleanText = (string)$parsed['clean_text'];
-    $capturedFaqs = ai_collect_page_faqs($finalUrl, (string)$parsed['title'], $cleanText, (array)($parsed['detected_faqs'] ?? []));
+
+    // Check for 2-minute processing limit before intensive FAQ extraction
+    $timeoutReached = (time() - $pageStartTime > 115);
+    $capturedFaqs = [];
+    if (!$timeoutReached) {
+        $capturedFaqs = ai_collect_page_faqs($finalUrl, (string)$parsed['title'], $cleanText, (array)($parsed['detected_faqs'] ?? []));
+    }
+
+    if (!$timeoutReached && (time() - $pageStartTime > 120)) {
+        $timeoutReached = true;
+    }
+
+    $aiError = '';
+    if ($timeoutReached) {
+        $aiError = 'There is so much information to scan. We captured what we could in 2 minutes. Please add the remaining summary manually for this page.';
+        ai_crawl_log($jobId, $customerId, 'scan_timeout', $aiError, ['url' => $finalUrl], 'warning', $finalUrl);
+    }
+
     ai_save_scanned_page($jobId, $customerId, [
         'url' => $finalUrl,
         'normalized_url' => $normalized,
@@ -2093,7 +2111,7 @@ function ai_capture_single_page(string $jobId, string $customerId, string $websi
         'clean_text' => $cleanText,
         'summary_json' => null,
         'embedding' => null,
-        'ai_error' => '',
+        'ai_error' => $aiError,
         'content_type' => (string)($fetch['content_type'] ?? ''),
         'content_length' => (int)($fetch['content_length'] ?? strlen($cleanText)),
         'discovered_links_count' => count($parsed['links']),
@@ -2639,6 +2657,7 @@ function ai_process_scan_job_batch(string $jobId, string $customerId, int $batch
     $pausedDuringBatch = false;
 
     foreach ($pendingPages as $page) {
+        $pageStartTime = time();
         $freshScan = ai_get_scan_job_for_customer($jobId, $customerId);
         if ((string)($freshScan['status'] ?? '') === 'paused') {
             ai_release_page_claim((string)($page['id'] ?? ''), $workerId);
@@ -2715,7 +2734,10 @@ function ai_process_scan_job_batch(string $jobId, string $customerId, int $batch
             $processed++;
             continue;
         }
+
         $parsed = ai_parse_html_page((string)$fetch['html'], $finalUrl, $websiteDomain);
+        $cleanText = (string)$parsed['clean_text'];
+
         $links = $parsed['links'];
         usort($links, function ($a, $b) {
             return ai_url_priority((string)$a) <=> ai_url_priority((string)$b);
@@ -2738,8 +2760,26 @@ function ai_process_scan_job_batch(string $jobId, string $customerId, int $batch
             $queuedLinksTotal += $queuedLinks;
         }
 
-        $cleanText = (string)$parsed['clean_text'];
-        $capturedFaqs = ai_collect_page_faqs($finalUrl, (string)$parsed['title'], $cleanText, (array)($parsed['detected_faqs'] ?? []));
+        // Check for 2-minute processing limit
+        $timeoutReached = (time() - $pageStartTime > 115);
+        $capturedFaqs = [];
+        if (!$timeoutReached) {
+            $capturedFaqs = ai_collect_page_faqs($finalUrl, (string)$parsed['title'], $cleanText, (array)($parsed['detected_faqs'] ?? []));
+        }
+        
+        if (!$timeoutReached && (time() - $pageStartTime > 120)) {
+            $timeoutReached = true;
+        }
+
+        $aiError = '';
+        if ($timeoutReached) {
+            $aiError = 'There is so much information to scan. We captured what we could in 2 minutes. Please add the remaining summary manually for this page.';
+            ai_crawl_log($jobId, $customerId, 'scan_timeout', $aiError, [
+                'time_spent' => time() - $pageStartTime,
+                'url' => $finalUrl
+            ], 'warning', $finalUrl, (string)($page['id'] ?? ''));
+        }
+
         ai_save_scanned_page($jobId, $customerId, [
             'url' => $finalUrl,
             'normalized_url' => $finalNormalized,
@@ -2750,7 +2790,7 @@ function ai_process_scan_job_batch(string $jobId, string $customerId, int $batch
             'clean_text' => $cleanText,
             'summary_json' => null,
             'embedding' => null,
-            'ai_error' => '',
+            'ai_error' => $aiError,
             'content_type' => (string)($fetch['content_type'] ?? ''),
             'content_length' => (int)($fetch['content_length'] ?? strlen($cleanText)),
             'discovered_links_count' => count($links),
@@ -2917,7 +2957,33 @@ function ai_summarize_scan_job_batch(string $jobId, string $customerId, int $bat
 }
 
 function ai_backfill_scan_faqs_from_summaries(string $jobId, string $customerId, int $limit = 80): array {
-    return ['success' => true, 'processed' => 0, 'error' => 'FAQ capture is disabled for the summarization workflow.'];
+    $pages = ai_scan_review_pages($jobId, $customerId, $limit);
+    $processed = 0;
+    $totalFaqs = 0;
+
+    foreach ($pages as $page) {
+        if ((string)($page['page_status'] ?? '') !== 'summarized') {
+            continue;
+        }
+        
+        $summaryData = $page['summary_json'] ?? null;
+        if (is_string($summaryData)) {
+            $summaryData = json_decode($summaryData, true);
+        }
+        
+        if (!is_array($summaryData) || empty($summaryData)) {
+            continue;
+        }
+
+        $generated = ai_generate_faqs_from_summary_data($summaryData, (string)$page['url'], (string)$page['page_title']);
+        if (!empty($generated)) {
+            ai_save_page_faqs($jobId, $customerId, (string)$page['url'], $generated);
+            $totalFaqs += count($generated);
+        }
+        $processed++;
+    }
+
+    return ['success' => true, 'processed' => $processed, 'created' => $totalFaqs];
 }
 
 function ai_chunk_text(string $text, int $chunkSize = 1800, int $overlap = 220): array {

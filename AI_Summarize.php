@@ -199,16 +199,17 @@ button,.btn,.icon-btn{min-height:42px;border:0;border-radius:8px;padding:0 14px;
 button{background:#2563eb;color:#fff}
 .btn{background:#e2e8f0;color:#0f172a}
 .icon-btn{background:#e2e8f0;color:#0f172a}
-.grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,390px);gap:18px;align-items:start}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,390px);gap:18px;align-items:start;grid-auto-flow:dense}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:18px;box-shadow:0 12px 34px rgba(15,23,42,.06)}
-.main-content{display:flex;flex-direction:column;gap:18px;min-width:0}
+.tools-panel h3{margin:18px 0 10px;font-size:14px;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted)}
+.export-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
 .search-box { position: relative; flex: 1; }
 .search-results-list { position: absolute; top: 100%; left: 0; right: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; z-index: 100; max-height: 200px; overflow-y: auto; box-shadow: 0 4px 12px rgba(0,0,0,0.1); margin-top: 4px; display: none; }
 .search-suggestion { padding: 10px 12px; cursor: pointer; font-size: 13px; border-bottom: 1px solid var(--line); }
 .search-suggestion:last-child { border-bottom: 0; }
 .search-suggestion:hover { background: var(--soft); }
 .pages-panel{min-width:0}
-.faq-panel{position:sticky;top:18px;max-height:calc(100vh - 36px);overflow:auto;min-width:0}
+.faq-panel{position:static;max-height:none;min-width:0}
 .faq-panel h2{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:12px;min-width:0}
 .faq-panel h2>span:first-child{min-width:0;overflow-wrap:anywhere}
 .faq-panel-tools{display:flex;align-items:center;gap:8px;flex:0 0 auto}
@@ -246,9 +247,9 @@ button{background:#2563eb;color:#fff}
 .page-tab-label.is-selected .tab-number{background:rgba(255,255,255,.22);color:#fff}
 .tab-title{overflow:hidden;text-overflow:ellipsis}
 .add-tab{min-width:42px;justify-content:center;font-size:20px}
-.page-nav-tools{display:flex;gap:10px;margin-bottom:16px;align-items:center}
-.page-nav-tools .search-box{flex:1}
-.page-select-menu{flex:2;min-height:42px;background:var(--field);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:0 10px;font-weight:800}
+.page-nav-tools{display:flex;gap:10px;margin-bottom:16px;align-items:center;flex-wrap:wrap}
+.page-nav-tools .search-box{flex:1;min-width:200px}
+.page-select-menu{flex:2;min-height:42px;background:var(--field);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:0 10px;font-weight:800;min-width:200px}
 .page-panel{display:none}
 .page-panel.is-active{display:block}
 .page-panel.is-filtered{display:none !important}
@@ -300,8 +301,9 @@ body.dark .diag-error{color:#fca5a5}
 .diag-toggle-btn{min-height:32px;padding:0 10px;font-size:12px}
 @keyframes diag-spin{to{transform:rotate(360deg)}}
 @media(max-width:1100px){.page-tab-label{max-width:170px}}
-@media(max-width:980px){.grid,.metrics,.diag-grid{grid-template-columns:1fr}.faq-panel{position:static;max-height:none}.top{display:grid}.page-tab-label{max-width:180px}.shell{padding:26px 14px 56px}.diag-table{display:block;overflow-x:auto;white-space:nowrap}}
-@media(max-width:560px){.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.panel{padding:14px}.top h1{font-size:26px}.page-tabs-meta{display:grid}.page-tab-label{max-width:150px}.summary-actions button,.summary-actions form{width:100%}.summary-actions button{width:100%}.faq-meta{display:grid;justify-content:start}.faq-add-form button,.faq-edit-form button{width:100%}.refresh-toast{top:74px;width:calc(100vw - 28px);justify-content:center}}
+@media(max-width:980px){.grid,.metrics,.diag-grid{grid-template-columns:1fr}.faq-panel{position:static;max-height:none}.top{flex-direction:column;align-items:stretch}.page-tab-label{max-width:180px}.shell{padding:26px 14px 56px}.diag-table{display:block;overflow-x:auto;white-space:nowrap}}
+@media(max-width:640px){.page-nav-tools{flex-direction:column;align-items:stretch}.page-nav-tools .search-box,.page-select-menu{flex:none;width:100%}}
+@media(max-width:560px){.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.panel{padding:14px}.top h1{font-size:26px}.page-tabs-meta{flex-direction:column;align-items:flex-start;gap:6px}.page-tab-label{max-width:150px}.summary-actions button,.summary-actions form{width:100%}.summary-actions button{width:100%}.faq-meta{flex-direction:column;align-items:flex-start;gap:4px}.faq-add-form button,.faq-edit-form button{width:100%}.refresh-toast{top:74px;width:calc(100vw - 28px);justify-content:center}}
 </style>
 </head>
 <body>
@@ -600,69 +602,57 @@ body.dark .diag-error{color:#fca5a5}
   </div>
 
   <div class="grid">
-    <div class="main-content">
-      <section class="panel pages-panel">
-        <h2>Pages</h2>
-        <?php if (empty($pages)): ?>
-          <p class="muted" id="noPagesMsg">No pages were captured. Check scan diagnostics or try a sitemap/manual content source.</p>
-        <?php endif; ?>
-        <div class="page-tabs-wrap" id="pageNavWrap">
-          <div class="page-tabs-meta">
-            <span id="pageTabsCount"><?php echo count($pages); ?> page<?php echo count($pages) === 1 ? '' : 's'; ?> captured</span>
-            <span>Search or select a page to review</span>
-          </div>
-          <div class="page-nav-tools">
-            <div class="search-box">
-              <input type="text" id="pageSearch" placeholder="Search pages...">
-              <div id="pageSearchResults" class="search-results-list"></div>
-            </div>
-            <select id="pageSelect" class="page-select-menu" aria-label="Select page to review">
-            </select>
-          </div>
+    <section class="panel pages-panel">
+      <h2>Pages</h2>
+      <?php if (empty($pages)): ?>
+        <p class="muted" id="noPagesMsg">No pages were captured. Check scan diagnostics or try a sitemap/manual content source.</p>
+      <?php endif; ?>
+      <div class="page-tabs-wrap" id="pageNavWrap">
+        <div class="page-tabs-meta">
+          <span id="pageTabsCount"><?php echo count($pages); ?> page<?php echo count($pages) === 1 ? '' : 's'; ?> captured</span>
+          <span>Search or select a page to review</span>
         </div>
-        <div id="pagePanels">
-        <?php foreach ($pages as $index => $page): ?>
-          <?php $summaryText = ai_summary_text_from_page($page); ?>
-          <article id="page-panel-<?php echo ai_h($page['id']); ?>" class="page-item page-panel <?php echo $index === 0 ? 'is-active' : ''; ?>" data-page-id="<?php echo ai_h($page['id']); ?>">
-            <strong class="page-title"><?php echo ai_h($page['page_title'] ?: parse_url((string)$page['url'], PHP_URL_PATH) ?: 'Untitled page'); ?></strong>
-            <div class="url"><?php echo ai_h($page['url']); ?></div>
-            <span class="status"><?php echo ai_h($page['page_status']); ?></span>
-            <p class="muted">
-              HTTP <?php echo ai_h($page['http_status'] ?? ''); ?>,
-              <?php echo ai_h($page['content_length'] ?? 0); ?> bytes,
-              <?php echo ai_h($page['discovered_links_count'] ?? 0); ?> links found
-            </p>
-
-            <label>Editable summary</label>
-            <textarea form="save-summary-<?php echo ai_h($page['id']); ?>" name="summary_text" placeholder="Summarize this page to generate editable summary."><?php echo ai_h($summaryText); ?></textarea>
-            <div class="summary-actions">
-              <form id="save-summary-<?php echo ai_h($page['id']); ?>" method="POST" class="js-live-worker-form">
-                <input type="hidden" name="action" value="save_summary">
-                <input type="hidden" name="page_id" value="<?php echo ai_h($page['id']); ?>">
-                <button type="submit">Save summary</button>
-              </form>
-              <form method="POST" class="js-summarize-page-form">
-                <input type="hidden" name="action" value="summarize_page">
-                <input type="hidden" name="page_id" value="<?php echo ai_h($page['id']); ?>">
-                <button type="submit">Summarize this page</button>
-              </form>
-            </div>
-            <?php if (!empty($page['ai_error'])): ?><p class="muted"><?php echo ai_h($page['ai_error']); ?></p><?php endif; ?>
-          </article>
-        <?php endforeach; ?>
+        <div class="page-nav-tools">
+          <div class="search-box">
+            <input type="text" id="pageSearch" placeholder="Search pages...">
+            <div id="pageSearchResults" class="search-results-list"></div>
+          </div>
+          <select id="pageSelect" class="page-select-menu" aria-label="Select page to review">
+          </select>
         </div>
-      </section>
+      </div>
+      <div id="pagePanels">
+      <?php foreach ($pages as $index => $page): ?>
+        <?php $summaryText = ai_summary_text_from_page($page); ?>
+        <article id="page-panel-<?php echo ai_h($page['id']); ?>" class="page-item page-panel <?php echo $index === 0 ? 'is-active' : ''; ?>" data-page-id="<?php echo ai_h($page['id']); ?>">
+          <strong class="page-title"><?php echo ai_h($page['page_title'] ?: parse_url((string)$page['url'], PHP_URL_PATH) ?: 'Untitled page'); ?></strong>
+          <div class="url"><?php echo ai_h($page['url']); ?></div>
+          <span class="status"><?php echo ai_h($page['page_status']); ?></span>
+          <p class="muted">
+            HTTP <?php echo ai_h($page['http_status'] ?? ''); ?>,
+            <?php echo ai_h($page['content_length'] ?? 0); ?> bytes,
+            <?php echo ai_h($page['discovered_links_count'] ?? 0); ?> links found
+          </p>
 
-      <section class="panel add-missed-section">
-        <h2>Add missed page URL</h2>
-        <form method="POST" class="manual-page js-live-worker-form">
-          <input type="hidden" name="action" value="add_page">
-          <input name="page_url" placeholder="https://example.com/missed-page">
-          <p class="muted">We will try to crawl this page. If readable text is not captured, you can still add the summary manually below.</p>
-          <div class="row"><button type="submit">Add page</button></div>
-        </form>
-      </section>
-    </div>
+          <label>Editable summary</label>
+          <textarea form="save-summary-<?php echo ai_h($page['id']); ?>" name="summary_text" placeholder="Summarize this page to generate editable summary."><?php echo ai_h($summaryText); ?></textarea>
+          <div class="summary-actions">
+            <form id="save-summary-<?php echo ai_h($page['id']); ?>" method="POST" class="js-live-worker-form">
+              <input type="hidden" name="action" value="save_summary">
+              <input type="hidden" name="page_id" value="<?php echo ai_h($page['id']); ?>">
+              <button type="submit">Save summary</button>
+            </form>
+            <form method="POST" class="js-summarize-page-form">
+              <input type="hidden" name="action" value="summarize_page">
+              <input type="hidden" name="page_id" value="<?php echo ai_h($page['id']); ?>">
+              <button type="submit">Summarize this page</button>
+            </form>
+          </div>
+          <?php if (!empty($page['ai_error'])): ?><p class="muted"><?php echo ai_h($page['ai_error']); ?></p><?php endif; ?>
+        </article>
+      <?php endforeach; ?>
+      </div>
+    </section>
 
     <aside class="panel faq-panel">
       <h2>
@@ -684,7 +674,7 @@ body.dark .diag-error{color:#fca5a5}
         </div>
         <button type="submit">Add FAQ</button>
       </form>
-      <div class="faq-list" id="faqList">
+      <div class="faq-list" id="faqList" style="max-height: 500px; overflow-y: auto; padding-right: 8px;">
         <?php if (empty($faqs)): ?>
           <div class="faq-empty" id="faqEmpty">No FAQ pairs captured yet. The crawler will add them here when it finds FAQ markup or FAQ-like pages.</div>
         <?php endif; ?>
@@ -709,6 +699,36 @@ body.dark .diag-error{color:#fca5a5}
       </div>
     </aside>
 
+    <section class="panel add-missed-section">
+      <h2>Add missed page URL</h2>
+      <form method="POST" class="manual-page js-live-worker-form">
+        <input type="hidden" name="action" value="add_page">
+        <input name="page_url" placeholder="https://example.com/missed-page">
+        <p class="muted">We will try to crawl this page. If readable text is not captured, you can still add the summary manually below.</p>
+        <div class="row"><button type="submit">Add page</button></div>
+      </form>
+    </section>
+
+    <section class="panel tools-panel">
+      <h2>Tools & Export</h2>
+      <p class="muted" style="margin-bottom: 20px;">Generate additional content or export your captured data.</p>
+      <div style="display: grid; gap: 20px;">
+        <div>
+          <button type="button" id="backfillFaqsBtn" class="btn" style="width:100%; justify-content:center; margin-bottom:10px;">
+            Generate FAQs from Summaries
+          </button>
+          <p class="muted" style="font-size:12px;">Uses AI to create FAQ pairs from your page summaries.</p>
+        </div>
+        <hr style="border:0; border-top:1px solid var(--line); margin: 5px 0;">
+        <div>
+          <h3 style="margin-top: 0; font-size: 14px; font-weight: 800; text-transform: uppercase; color: var(--muted); letter-spacing: 0.05em;">Export Data</h3>
+          <div class="export-actions" style="margin-top: 12px; display: flex; gap: 10px;">
+            <a href="AI_Export.php?scan=<?php echo urlencode($scanId); ?>&format=excel" class="btn" style="flex:1; text-align:center;">Excel (CSV)</a>
+            <a href="AI_Export.php?scan=<?php echo urlencode($scanId); ?>&format=pdf" target="_blank" class="btn" style="flex:1; text-align:center;">PDF Report</a>
+          </div>
+        </div>
+      </div>
+    </section>
   </div>
 </main>
 <script>
@@ -739,6 +759,7 @@ const summarizedMetric = document.getElementById("summarizedMetric");
 const scanStatusMetric = document.getElementById("scanStatusMetric");
 const summarizeAllBtn = document.getElementById("summarizeAllBtn");
 const runScanBatchBtn = document.getElementById("runScanBatchBtn");
+const backfillFaqsBtn = document.getElementById("backfillFaqsBtn");
 const refreshLiveBtn = document.getElementById("refreshLiveBtn");
 const refreshToast = document.getElementById("refreshToast");
 const refreshToastText = document.getElementById("refreshToastText");
@@ -1638,6 +1659,27 @@ document.addEventListener("click", async (event) => {
       deleteBtn.disabled = false;
       deleteBtn.textContent = originalText;
     }
+  }
+});
+
+backfillFaqsBtn?.addEventListener("click", async () => {
+  if (!scanId || scanBusy || summaryBusy) return;
+  
+  const originalText = backfillFaqsBtn.textContent;
+  backfillFaqsBtn.disabled = true;
+  backfillFaqsBtn.textContent = "Generating FAQs...";
+  
+  try {
+    const data = await callWorker("backfill_faqs");
+    if (data.success) {
+      alert(`Success! Generated ${data.created || 0} new FAQ pairs from ${data.processed || 0} summarized pages.`);
+      applyLiveData(data, "summary");
+    } else {
+      alert(data.error || "Failed to generate FAQs.");
+    }
+  } finally {
+    backfillFaqsBtn.disabled = false;
+    backfillFaqsBtn.textContent = originalText;
   }
 });
 
