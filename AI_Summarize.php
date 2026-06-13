@@ -18,10 +18,12 @@ function ai_h($value): string {
 }
 
 function ai_summary_text_from_page(array $page): string {
-    $summary = $page['summary_json'] ?? [];
-    if (is_string($summary)) {
-        $decoded = json_decode($summary, true);
-        $summary = is_array($decoded) ? $decoded : [];
+    $summaryJson = $page['summary_json'] ?? '';
+    $summary = [];
+    if (is_array($summaryJson)) {
+        $summary = $summaryJson;
+    } elseif (is_string($summaryJson) && $summaryJson !== '') {
+        $summary = json_decode($summaryJson, true) ?: [];
     }
     return ai_clean_customer_text((string)($summary['summary'] ?? ''), 2200);
 }
@@ -136,7 +138,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $message = !empty($result['success']) ? 'Summary saved.' : '';
         $error = empty($result['success']) ? (string)$result['error'] : '';
     }
+
+    // Implementation of PRG pattern to prevent form resubmission
+    if ($message !== '' || $error !== '') {
+        $_SESSION['ai_flash_message'] = $message;
+        $_SESSION['ai_flash_error'] = $error;
+        header('Location: AI_Summarize.php' . ($scanId ? '?scan=' . urlencode($scanId) : ''));
+        exit;
+    }
 }
+
+$message = $_SESSION['ai_flash_message'] ?? '';
+$error = $_SESSION['ai_flash_error'] ?? '';
+unset($_SESSION['ai_flash_message'], $_SESSION['ai_flash_error']);
 
 $pages = ai_scan_review_pages($scanId, $customerId);
 $faqs = ai_scan_review_faqs($scanId, $customerId);
@@ -187,6 +201,12 @@ button{background:#2563eb;color:#fff}
 .icon-btn{background:#e2e8f0;color:#0f172a}
 .grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,390px);gap:18px;align-items:start}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:18px;box-shadow:0 12px 34px rgba(15,23,42,.06)}
+.main-content{display:flex;flex-direction:column;gap:18px;min-width:0}
+.search-box { position: relative; flex: 1; }
+.search-results-list { position: absolute; top: 100%; left: 0; right: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; z-index: 100; max-height: 200px; overflow-y: auto; box-shadow: 0 4px 12px rgba(0,0,0,0.1); margin-top: 4px; display: none; }
+.search-suggestion { padding: 10px 12px; cursor: pointer; font-size: 13px; border-bottom: 1px solid var(--line); }
+.search-suggestion:last-child { border-bottom: 0; }
+.search-suggestion:hover { background: var(--soft); }
 .pages-panel{min-width:0}
 .faq-panel{position:sticky;top:18px;max-height:calc(100vh - 36px);overflow:auto;min-width:0}
 .faq-panel h2{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:12px;min-width:0}
@@ -226,8 +246,12 @@ button{background:#2563eb;color:#fff}
 .page-tab-label.is-selected .tab-number{background:rgba(255,255,255,.22);color:#fff}
 .tab-title{overflow:hidden;text-overflow:ellipsis}
 .add-tab{min-width:42px;justify-content:center;font-size:20px}
+.page-nav-tools{display:flex;gap:10px;margin-bottom:16px;align-items:center}
+.page-nav-tools .search-box{flex:1}
+.page-select-menu{flex:2;min-height:42px;background:var(--field);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:0 10px;font-weight:800}
 .page-panel{display:none}
 .page-panel.is-active{display:block}
+.page-panel.is-filtered{display:none !important}
 .page-item{padding:6px 0}
 .page-title{display:block;color:var(--ink);font-size:18px;line-height:1.35;margin-bottom:4px}
 .url{color:var(--link);word-break:break-all;font-size:13px}
@@ -255,6 +279,10 @@ textarea{min-height:120px;resize:vertical;line-height:1.5}
 .diag-card strong{display:block;margin-top:5px;font-size:16px;word-break:break-word}
 .diag-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
 .diag-section{margin-top:16px}
+.diag-error-summary{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.err-cat-pill{padding:6px 12px;border-radius:6px;background:var(--soft);border:1px solid var(--line);font-size:11px;font-weight:900;text-transform:uppercase;display:flex;gap:8px;align-items:center}
+.err-cat-pill b{color:#991b1b;font-size:13px}
+body.dark .err-cat-pill b{color:#fca5a5}
 .diag-section h3{margin:0 0 8px;font-size:15px}
 .diag-table{width:100%;border-collapse:collapse;font-size:12px}
 .diag-table th,.diag-table td{border-top:1px solid var(--line);padding:8px 6px;text-align:left;vertical-align:top}
@@ -344,8 +372,12 @@ body.dark .diag-error{color:#fca5a5}
     </div>
 
     <div class="diag-actions">
-      <button type="button" id="runScanBatchBtn">Run scan batch</button>
-      <button type="button" id="runSummaryBatchBtn">Run summary batch</button>
+      <button type="button" id="runScanBatchBtn" disabled>Re-scan</button>
+    </div>
+
+    <div class="diag-section">
+      <h3>Active Error Summary</h3>
+      <div id="diagErrorSummary" class="diag-error-summary"></div>
     </div>
 
     <div class="diag-section">
@@ -568,68 +600,69 @@ body.dark .diag-error{color:#fca5a5}
   </div>
 
   <div class="grid">
-    <section class="panel pages-panel">
-      <h2>Pages</h2>
-      <?php if (empty($pages)): ?>
-        <p class="muted">No pages were captured. Check scan diagnostics or try a sitemap/manual content source.</p>
-      <?php endif; ?>
-      <div class="page-tabs-wrap">
-        <div class="page-tabs-meta">
-          <span id="pageTabsCount"><?php echo count($pages); ?> page<?php echo count($pages) === 1 ? '' : 's'; ?> captured</span>
-          <span>Scroll tabs sideways to review all pages</span>
+    <div class="main-content">
+      <section class="panel pages-panel">
+        <h2>Pages</h2>
+        <?php if (empty($pages)): ?>
+          <p class="muted" id="noPagesMsg">No pages were captured. Check scan diagnostics or try a sitemap/manual content source.</p>
+        <?php endif; ?>
+        <div class="page-tabs-wrap" id="pageNavWrap">
+          <div class="page-tabs-meta">
+            <span id="pageTabsCount"><?php echo count($pages); ?> page<?php echo count($pages) === 1 ? '' : 's'; ?> captured</span>
+            <span>Search or select a page to review</span>
+          </div>
+          <div class="page-nav-tools">
+            <div class="search-box">
+              <input type="text" id="pageSearch" placeholder="Search pages...">
+              <div id="pageSearchResults" class="search-results-list"></div>
+            </div>
+            <select id="pageSelect" class="page-select-menu" aria-label="Select page to review">
+            </select>
+          </div>
         </div>
-        <div class="page-tabs" id="pageTabs" role="tablist" aria-label="Captured pages">
-          <?php foreach ($pages as $index => $page): ?>
-            <?php $tabTitle = trim((string)($page['page_title'] ?? '')) ?: (parse_url((string)$page['url'], PHP_URL_PATH) ?: 'Untitled'); ?>
-            <button class="page-tab-label js-page-tab <?php echo $index === 0 ? 'is-selected' : ''; ?>" type="button" data-page-id="<?php echo ai_h($page['id']); ?>" data-tab-target="page-panel-<?php echo ai_h($page['id']); ?>" title="<?php echo ai_h(($index + 1) . '. ' . $tabTitle); ?>">
-              <span class="tab-number"><?php echo (int)($index + 1); ?></span>
-              <span class="tab-title"><?php echo ai_h($tabTitle); ?></span>
-            </button>
-          <?php endforeach; ?>
-          <button class="page-tab-label add-tab js-page-tab <?php echo empty($pages) ? 'is-selected' : ''; ?>" type="button" data-tab-target="page-panel-add" title="Add missed page">+</button>
+        <div id="pagePanels">
+        <?php foreach ($pages as $index => $page): ?>
+          <?php $summaryText = ai_summary_text_from_page($page); ?>
+          <article id="page-panel-<?php echo ai_h($page['id']); ?>" class="page-item page-panel <?php echo $index === 0 ? 'is-active' : ''; ?>" data-page-id="<?php echo ai_h($page['id']); ?>">
+            <strong class="page-title"><?php echo ai_h($page['page_title'] ?: parse_url((string)$page['url'], PHP_URL_PATH) ?: 'Untitled page'); ?></strong>
+            <div class="url"><?php echo ai_h($page['url']); ?></div>
+            <span class="status"><?php echo ai_h($page['page_status']); ?></span>
+            <p class="muted">
+              HTTP <?php echo ai_h($page['http_status'] ?? ''); ?>,
+              <?php echo ai_h($page['content_length'] ?? 0); ?> bytes,
+              <?php echo ai_h($page['discovered_links_count'] ?? 0); ?> links found
+            </p>
+
+            <label>Editable summary</label>
+            <textarea form="save-summary-<?php echo ai_h($page['id']); ?>" name="summary_text" placeholder="Summarize this page to generate editable summary."><?php echo ai_h($summaryText); ?></textarea>
+            <div class="summary-actions">
+              <form id="save-summary-<?php echo ai_h($page['id']); ?>" method="POST" class="js-live-worker-form">
+                <input type="hidden" name="action" value="save_summary">
+                <input type="hidden" name="page_id" value="<?php echo ai_h($page['id']); ?>">
+                <button type="submit">Save summary</button>
+              </form>
+              <form method="POST" class="js-summarize-page-form">
+                <input type="hidden" name="action" value="summarize_page">
+                <input type="hidden" name="page_id" value="<?php echo ai_h($page['id']); ?>">
+                <button type="submit">Summarize this page</button>
+              </form>
+            </div>
+            <?php if (!empty($page['ai_error'])): ?><p class="muted"><?php echo ai_h($page['ai_error']); ?></p><?php endif; ?>
+          </article>
+        <?php endforeach; ?>
         </div>
-      </div>
-      <div id="page-panel-add" class="add-page-panel page-panel <?php echo empty($pages) ? 'is-active' : ''; ?>">
+      </section>
+
+      <section class="panel add-missed-section">
+        <h2>Add missed page URL</h2>
         <form method="POST" class="manual-page js-live-worker-form">
           <input type="hidden" name="action" value="add_page">
-          <label>Add missed page URL</label>
           <input name="page_url" placeholder="https://example.com/missed-page">
           <p class="muted">We will try to crawl this page. If readable text is not captured, you can still add the summary manually below.</p>
           <div class="row"><button type="submit">Add page</button></div>
         </form>
-      </div>
-      <div id="pagePanels">
-      <?php foreach ($pages as $index => $page): ?>
-        <?php $summaryText = ai_summary_text_from_page($page); ?>
-        <article id="page-panel-<?php echo ai_h($page['id']); ?>" class="page-item page-panel <?php echo $index === 0 ? 'is-active' : ''; ?>" data-page-id="<?php echo ai_h($page['id']); ?>">
-          <strong class="page-title"><?php echo ai_h($page['page_title'] ?: parse_url((string)$page['url'], PHP_URL_PATH) ?: 'Untitled page'); ?></strong>
-          <div class="url"><?php echo ai_h($page['url']); ?></div>
-          <span class="status"><?php echo ai_h($page['page_status']); ?></span>
-          <p class="muted">
-            HTTP <?php echo ai_h($page['http_status'] ?? ''); ?>,
-            <?php echo ai_h($page['content_length'] ?? 0); ?> bytes,
-            <?php echo ai_h($page['discovered_links_count'] ?? 0); ?> links found
-          </p>
-
-          <label>Editable summary</label>
-          <textarea form="save-summary-<?php echo ai_h($page['id']); ?>" name="summary_text" placeholder="Summarize this page to generate editable summary."><?php echo ai_h($summaryText); ?></textarea>
-          <div class="summary-actions">
-            <form id="save-summary-<?php echo ai_h($page['id']); ?>" method="POST" class="js-live-worker-form">
-              <input type="hidden" name="action" value="save_summary">
-              <input type="hidden" name="page_id" value="<?php echo ai_h($page['id']); ?>">
-              <button type="submit">Save summary</button>
-            </form>
-            <form method="POST" class="js-summarize-page-form">
-              <input type="hidden" name="action" value="summarize_page">
-              <input type="hidden" name="page_id" value="<?php echo ai_h($page['id']); ?>">
-              <button type="submit">Summarize this page</button>
-            </form>
-          </div>
-          <?php if (!empty($page['ai_error'])): ?><p class="muted"><?php echo ai_h($page['ai_error']); ?></p><?php endif; ?>
-        </article>
-      <?php endforeach; ?>
-      </div>
-    </section>
+      </section>
+    </div>
 
     <aside class="panel faq-panel">
       <h2>
@@ -669,6 +702,7 @@ body.dark .diag-error{color:#fca5a5}
               <input name="question" value="<?php echo ai_h($faq['question'] ?? ''); ?>">
               <textarea name="answer"><?php echo ai_h($faq['answer'] ?? ''); ?></textarea>
               <button type="submit">Save FAQ</button>
+              <button type="button" class="danger-btn js-delete-faq" data-faq-id="<?php echo ai_h($faq['id'] ?? ''); ?>" style="margin-top:8px; width:100%;">Delete FAQ</button>
             </form>
           </article>
         <?php endforeach; ?>
@@ -687,6 +721,8 @@ let currentSummaryPaused = shell?.dataset.summaryPaused === "1";
 const pageTabs = document.getElementById("pageTabs");
 const pagePanels = document.getElementById("pagePanels");
 const pageTabsCount = document.getElementById("pageTabsCount");
+const pageSelect = document.getElementById("pageSelect");
+const pageSearch = document.getElementById("pageSearch");
 const crawlTitle = document.getElementById("crawlTitle");
 const crawlText = document.getElementById("crawlText");
 const crawlBar = document.getElementById("crawlBar");
@@ -703,7 +739,6 @@ const summarizedMetric = document.getElementById("summarizedMetric");
 const scanStatusMetric = document.getElementById("scanStatusMetric");
 const summarizeAllBtn = document.getElementById("summarizeAllBtn");
 const runScanBatchBtn = document.getElementById("runScanBatchBtn");
-const runSummaryBatchBtn = document.getElementById("runSummaryBatchBtn");
 const refreshLiveBtn = document.getElementById("refreshLiveBtn");
 const refreshToast = document.getElementById("refreshToast");
 const refreshToastText = document.getElementById("refreshToastText");
@@ -723,6 +758,7 @@ let autoWorkflowBusy = false;
 let autoWorkflowDone = false;
 let scanPauseRequestBusy = false;
 let summaryControlsFrozen = false;
+let latestPagesList = <?php echo json_encode($pages); ?>;
 const summarizingPages = new Set();
 const skippedSummaryPages = new Set();
 
@@ -796,14 +832,56 @@ function pageTitle(page = {}) {
 }
 
 function selectPageTab(target, pageId = "") {
-  document.querySelectorAll(".js-page-tab").forEach((item) => item.classList.remove("is-selected"));
   document.querySelectorAll(".page-panel").forEach((panel) => panel.classList.remove("is-active"));
-  const tab = pageId ? document.querySelector(`.js-page-tab[data-page-id="${cssEscape(pageId)}"]`) : document.querySelector(`.js-page-tab[data-tab-target="${cssEscape(target)}"]`);
-  tab?.classList.add("is-selected");
   document.getElementById(target)?.classList.add("is-active");
+  if (pageId && pageSelect) pageSelect.value = pageId;
 }
 
-pageTabs?.addEventListener("click", (event) => {
+pageSelect?.addEventListener("change", (e) => {
+  const pageId = e.target.value;
+  if (pageId) selectPageTab(`page-panel-${pageId}`, pageId);
+});
+
+pageSearch?.addEventListener("input", (e) => {
+    const q = (e.target.value || "").toLowerCase();
+    const resultsNode = document.getElementById("pageSearchResults");
+    if (!resultsNode) return;
+
+    if (!q) {
+      resultsNode.innerHTML = "";
+      resultsNode.style.display = "none";
+      return;
+    }
+
+    const matches = latestPagesList.filter(p => 
+      (p.page_title || "").toLowerCase().includes(q) || 
+      (p.url || "").toLowerCase().includes(q)
+    );
+
+    resultsNode.innerHTML = "";
+    if (matches.length > 0) {
+      resultsNode.style.display = "block";
+      matches.forEach(p => {
+        const item = document.createElement("div");
+        item.className = "search-suggestion";
+        item.textContent = pageTitle(p);
+        item.onclick = () => {
+          selectPageTab(`page-panel-${p.id}`, p.id);
+          pageSearch.value = "";
+          resultsNode.style.display = "none";
+        };
+        resultsNode.appendChild(item);
+      });
+    } else {
+      resultsNode.style.display = "none";
+    }
+});
+
+document.addEventListener("click", (event) => {
+  if (!event.target.closest(".search-box")) {
+    const resultsNode = document.getElementById("pageSearchResults");
+    if (resultsNode) resultsNode.style.display = "none";
+  }
   const tab = event.target.closest(".js-page-tab");
   if (!tab) return;
   selectPageTab(tab.dataset.tabTarget || "", tab.dataset.pageId || "");
@@ -859,10 +937,6 @@ function setSummaryControlsCompleted(isCompleted) {
       summarizeAllBtn.disabled = true;
       summarizeAllBtn.textContent = "Summarization completed";
     }
-    if (runSummaryBatchBtn) {
-      runSummaryBatchBtn.disabled = true;
-      runSummaryBatchBtn.textContent = "Summarization completed";
-    }
     return;
   }
 
@@ -870,10 +944,6 @@ function setSummaryControlsCompleted(isCompleted) {
   if (summarizeAllBtn && !summaryBusy) {
     summarizeAllBtn.disabled = false;
     summarizeAllBtn.textContent = "Summarize all pages";
-  }
-  if (runSummaryBatchBtn && !summaryBusy) {
-    runSummaryBatchBtn.disabled = false;
-    runSummaryBatchBtn.textContent = "Run summary batch";
   }
 }
 
@@ -930,6 +1000,9 @@ function updateWorkerUi(data, mode = "scan") {
       setDiagnosticsLive(displayScanStatus === "pending" || displayScanStatus === "running", displayScanStatus === "completed" ? "Crawler complete" : "Crawler working", displayScanStatus || "");
     }
   }
+  if (runScanBatchBtn) {
+    runScanBatchBtn.disabled = (displayScanStatus.toLowerCase() !== "completed");
+  }
 }
 
 async function callWorker(action, extra = {}) {
@@ -940,14 +1013,6 @@ async function callWorker(action, extra = {}) {
   Object.entries(extra).forEach(([key, value]) => form.append(key, value));
   const res = await fetch("AI_Scan_Worker.php", { method: "POST", body: form });
   return res.json();
-}
-
-function renderPageTab(page, index) {
-  const title = pageTitle(page);
-  return `<button class="page-tab-label js-page-tab" type="button" data-page-id="${escapeHtml(page.id)}" data-tab-target="page-panel-${escapeHtml(page.id)}" title="${escapeHtml(`${index + 1}. ${title}`)}">
-    <span class="tab-number">${index + 1}</span>
-    <span class="tab-title">${escapeHtml(title)}</span>
-  </button>`;
 }
 
 function renderPagePanel(page) {
@@ -991,6 +1056,7 @@ function renderFaqItem(faq = {}) {
       <input name="question" value="${escapeHtml(faq.question || "")}">
       <textarea name="answer">${escapeHtml(faq.answer || "")}</textarea>
       <button type="submit">Save FAQ</button>
+      <button type="button" class="danger-btn js-delete-faq" data-faq-id="${id}" style="margin-top:8px; width:100%;">Delete FAQ</button>
     </form>
   </article>`;
 }
@@ -1039,21 +1105,25 @@ function updateFaqs(faqs = []) {
 }
 
 function updatePages(pages = []) {
-  if (!pageTabs || !pagePanels) return;
+  if (!pageSelect || !pagePanels) return;
   const activePanel = document.querySelector(".page-panel.is-active");
   const activePageId = activePanel?.dataset.pageId || "";
-  const addTab = pageTabs.querySelector(".add-tab");
+  const q = pageSearch?.value.toLowerCase() || "";
+  
+  // Keep options in sync
+  const currentSelectVal = pageSelect.value;
+  pageSelect.innerHTML = "";
+  
   pages.forEach((page, index) => {
-    let tab = pageTabs.querySelector(`.js-page-tab[data-page-id="${cssEscape(page.id)}"]`);
-    if (!tab) {
-      const wrapper = document.createElement("div");
-      wrapper.innerHTML = renderPageTab(page, index).trim();
-      tab = wrapper.firstElementChild;
-      pageTabs.insertBefore(tab, addTab);
+    const title = pageTitle(page);
+    const opt = document.createElement("option");
+    opt.value = page.id;
+    opt.text = `${index + 1}. ${title}`;
+    opt.title = page.url || "";
+    if (q && !opt.text.toLowerCase().includes(q) && !opt.title.toLowerCase().includes(q)) {
+      opt.hidden = true;
     }
-    tab.querySelector(".tab-number").textContent = String(index + 1);
-    tab.querySelector(".tab-title").textContent = pageTitle(page);
-    tab.title = `${index + 1}. ${pageTitle(page)}`;
+    pageSelect.appendChild(opt);
 
     let panel = document.getElementById(`page-panel-${page.id}`);
     if (!panel) {
@@ -1074,7 +1144,9 @@ function updatePages(pages = []) {
     }
   });
   if (pageTabsCount) pageTabsCount.textContent = `${pages.length} page${pages.length === 1 ? "" : "s"} captured`;
-  if (pages.length > 0 && (!document.querySelector(".page-panel.is-active") || activePanel?.id === "page-panel-add")) {
+  if (currentSelectVal) pageSelect.value = currentSelectVal;
+
+  if (pages.length > 0 && !document.querySelector(".page-panel.is-active")) {
     selectPageTab(`page-panel-${pages[0].id}`, pages[0].id);
   } else if (activePageId) {
     selectPageTab(`page-panel-${activePageId}`, activePageId);
@@ -1182,6 +1254,32 @@ function updateDiagnostics(data = {}) {
     { render: (r) => escapeHtml(r.message || ""), className: "diag-error" },
     { render: (r) => escapeHtml(timeLabel(r.created_at || "")) }
   ], "No crawler signals yet.");
+
+  // Categorize errors
+  const errorMap = new Map();
+  const allErrors = [...(diagnostics.failed || []), ...(diagnostics.waiting_retry || []), ...(diagnostics.waiting_summary_retry || []), ...(diagnostics.logs || [])];
+  allErrors.forEach(err => {
+    const msg = String(err.ai_error || err.message || err.http_status || "").toLowerCase();
+    if (!msg || msg === "0" || msg === "200") return;
+    let cat = "Other Issues";
+    if (msg.includes("404") || msg.includes("not found")) cat = "404 Not Found";
+    else if (msg.includes("timeout") || msg.includes("timed out")) cat = "Connectivity/Timeouts";
+    else if (msg.includes("ai provider") || msg.includes("ai config")) cat = "AI Service Config";
+    else if (msg.includes("token limit") || msg.includes("max tokens")) cat = "AI Token Limits";
+    else if (msg.includes("403") || msg.includes("forbidden") || msg.includes("access denied")) cat = "Access Denied (403)";
+    else if (msg.includes("500") || msg.includes("server error")) cat = "Remote Server Errors";
+    errorMap.set(cat, (errorMap.get(cat) || 0) + 1);
+  });
+  const summaryNode = document.getElementById("diagErrorSummary");
+  if (summaryNode) {
+    if (errorMap.size === 0) {
+      summaryNode.innerHTML = '<div class="muted">No active issues detected.</div>';
+    } else {
+      summaryNode.innerHTML = Array.from(errorMap.entries()).map(([cat, count]) => 
+        `<div class="err-cat-pill"><span>${escapeHtml(cat)}</span> <b>${count}</b></div>`
+      ).join("");
+    }
+  }
 }
 
 function updateSummaryDiagnostics(data = {}) {
@@ -1217,6 +1315,7 @@ function applyLiveData(data = {}, mode = "scan") {
   updateWorkerUi(data, mode);
   updateDiagnostics(data);
   updateSummaryDiagnostics(data);
+  if (data.pages) latestPagesList = data.pages;
   updatePages(data.pages || []);
   updateFaqs(data.faqs || []);
   if (capturedMetric && data.pages) capturedMetric.textContent = String(data.pages.length);
@@ -1457,24 +1556,24 @@ summaryPauseToggleBtn?.addEventListener("click", async (event) => {
   }
 });
 runScanBatchBtn?.addEventListener("click", async () => {
-  if (currentScanStatus === "paused") return;
+  if (currentScanStatus !== "completed") return;
+  if (!confirm("This will delete all currently captured pages and restart the scan from the beginning. Captured FAQs will be preserved. Are you sure?")) {
+    return;
+  }
   runScanBatchBtn.disabled = true;
-  setDiagnosticsLive(true, "Scanning batch...", "Working");
+  setDiagnosticsLive(true, "Resetting and restarting scan...", "Working");
+  
+  summarizingPages.clear();
+  skippedSummaryPages.clear();
+  autoWorkflowDone = false;
+
   try {
-    const data = await callWorker("scan_batch");
+    const data = await callWorker("restart_scan");
+    if (pagePanels) pagePanels.innerHTML = "";
     applyLiveData(data, "scan");
+    liveWorkflowLoop(true);
   } finally {
     runScanBatchBtn.disabled = false;
-  }
-});
-runSummaryBatchBtn?.addEventListener("click", async () => {
-  if (currentSummaryPaused) return;
-  runSummaryBatchBtn.disabled = true;
-  try {
-    const data = await callWorker("summarize_batch");
-    applyLiveData(data, "summary");
-  } finally {
-    if (!summaryControlsFrozen) runSummaryBatchBtn.disabled = false;
   }
 });
 refreshLiveBtn?.addEventListener("click", async () => {
@@ -1519,6 +1618,29 @@ document.addEventListener("submit", async (event) => {
   }
 });
 
+document.addEventListener("click", async (event) => {
+  const deleteBtn = event.target.closest(".js-delete-faq");
+  if (!deleteBtn) return;
+  
+  const faqId = deleteBtn.dataset.faqId;
+  if (!faqId || !confirm("Are you sure you want to delete this FAQ?")) return;
+
+  const originalText = deleteBtn.textContent;
+  deleteBtn.disabled = true;
+  deleteBtn.textContent = "Deleting...";
+
+  try {
+    const data = await callWorker("delete_faq", { faq_id: faqId });
+    applyLiveData(data, "summary");
+  } finally {
+    // If it wasn't removed from DOM, reset button
+    if (document.contains(deleteBtn)) {
+      deleteBtn.disabled = false;
+      deleteBtn.textContent = originalText;
+    }
+  }
+});
+
 document.addEventListener("submit", async (event) => {
   const form = event.target.closest(".js-live-worker-form");
   if (!form) return;
@@ -1537,11 +1659,19 @@ document.addEventListener("submit", async (event) => {
   });
   try {
     const data = await callWorker(action, extra);
-    applyLiveData(data, action === "add_page" ? "scan" : "summary");
-    if (data.success && action === "add_page") {
-      form.reset();
-    }
+    const isAddPage = (action === "add_page");
+    applyLiveData(data, isAddPage ? "scan" : "summary");
+
     if (action === "add_page") {
+      if (data.success) {
+        form.reset();
+      } else if (data.error) {
+        alert(data.error);
+      }
+      if (data.page_id) {
+        selectPageTab(`page-panel-${data.page_id}`, data.page_id);
+        document.getElementById(`page-panel-${data.page_id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
       await liveWorkflowLoop(true);
     }
   } finally {
@@ -1566,7 +1696,7 @@ async function refreshLiveStatus(options = {}) {
       throw new Error(data?.error || "Status refresh failed.");
     }
     applyLiveData(data, summaryBusy ? "summary" : "scan");
-    if ((data?.scan?.status || "").toLowerCase() === "running" && currentScanStatus !== "paused" && !autoWorkflowBusy) {
+    if ((data?.scan?.status || "").toLowerCase() === "running" && currentScanStatus !== "paused" && !autoWorkflowBusy && !scanPauseRequestBusy) {
       autoWorkflowDone = false;
       liveWorkflowLoop(true);
     }

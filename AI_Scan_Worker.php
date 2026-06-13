@@ -78,22 +78,22 @@ if ($action === 'queue_test') {
     }
 } elseif ($action === 'pause_scan') {
     ai_pause_scan_job($scanId, $customerId);
-    $result = ['success' => true, 'error' => ''];
+    $result = ['success' => true, 'error' => '', 'status' => 'paused'];
 } elseif ($action === 'resume_scan') {
     ai_resume_scan_job($scanId, $customerId);
     if (ai_external_queue_enabled()) {
         ai_enqueue_external_job($scanId, 'scan', 5);
     }
-    $result = ['success' => true, 'error' => ''];
+    $result = ['success' => true, 'error' => '', 'status' => 'running'];
 } elseif ($action === 'pause_summary') {
     ai_pause_summary_job($scanId, $customerId);
-    $result = ['success' => true, 'error' => ''];
+    $result = ['success' => true, 'error' => '', 'summary_paused' => true];
 } elseif ($action === 'resume_summary') {
     ai_resume_summary_job($scanId, $customerId);
     if (ai_external_queue_enabled()) {
         ai_enqueue_external_job($scanId, 'summary', 10);
     }
-    $result = ['success' => true, 'error' => ''];
+    $result = ['success' => true, 'error' => '', 'summary_paused' => false];
 } elseif ($action === 'backfill_faqs') {
     $result = ['success' => true, 'error' => 'FAQ capture is disabled for the summarization workflow.'];
 } elseif ($action === 'add_page') {
@@ -109,6 +109,10 @@ if ($action === 'queue_test') {
         (string)($_POST['question'] ?? ''),
         (string)($_POST['answer'] ?? '')
     );
+} elseif ($action === 'delete_faq') {
+    $faqId = trim((string)($_POST['faq_id'] ?? $_GET['faq_id'] ?? ''));
+    supabase('DELETE', 'ai_website_faqs?id=eq.' . urlencode($faqId) . '&customer_id=eq.' . urlencode($customerId));
+    $result = ['success' => true];
 } elseif ($action === 'add_faq') {
     $question = ai_clean_customer_text((string)($_POST['question'] ?? ''), 800);
     $answer = ai_clean_customer_text((string)($_POST['answer'] ?? ''), 3000);
@@ -135,6 +139,36 @@ if ($action === 'queue_test') {
         ]]);
         $result = ['success' => true, 'error' => ''];
     }
+} elseif ($action === 'restart_scan') {
+    // Clean up all data associated with this job
+    supabase('DELETE', 'ai_website_pages?scan_job_id=eq.' . urlencode($scanId) . '&customer_id=eq.' . urlencode($customerId));
+    if (ai_db_supports_crawl_logs()) {
+        supabase('DELETE', 'ai_crawl_logs?scan_job_id=eq.' . urlencode($scanId) . '&customer_id=eq.' . urlencode($customerId));
+    }
+    if (ai_db_supports_chunks()) {
+        supabase('DELETE', 'ai_website_chunks?scan_job_id=eq.' . urlencode($scanId) . '&customer_id=eq.' . urlencode($customerId));
+    }
+
+    // Reset job status and metadata
+    ai_patch_scan_job($scanId, [
+        'status' => 'pending',
+        'pages_scanned' => 0,
+        'pages_failed' => 0,
+        'started_at' => null,
+        'completed_at' => null,
+        'error_message' => null,
+        'worker_id' => null,
+        'locked_until' => null,
+    ]);
+
+    // Re-seed from the base URL
+    $result = ai_seed_scan_job(
+        $scanId,
+        $customerId,
+        (string)($scan['website_url'] ?? ''),
+        (string)($scan['website_domain'] ?? ''),
+        (int)($scan['pages_requested'] ?? 120)
+    );
 }
 
 $freshScan = ai_get_scan_job_for_customer($scanId, $customerId);
@@ -143,11 +177,11 @@ $counts = ai_scan_job_counts($scanId, $customerId);
 ai_worker_json(array_merge($result, [
     'scan' => [
         'id' => $scanId,
-        'status' => (string)($freshScan['status'] ?? $scan['status'] ?? ''),
+        'status' => (string)($result['status'] ?? $freshScan['status'] ?? $scan['status'] ?? ''),
         'pages_requested' => (int)($freshScan['pages_requested'] ?? $scan['pages_requested'] ?? 0),
         'pages_scanned' => (int)($freshScan['pages_scanned'] ?? 0),
         'pages_failed' => (int)($freshScan['pages_failed'] ?? 0),
-        'summary_paused' => !empty($freshScan['summary_paused']),
+        'summary_paused' => isset($result['summary_paused']) ? (bool)$result['summary_paused'] : !empty($freshScan['summary_paused']),
         'error_message' => (string)($freshScan['error_message'] ?? ''),
     ],
     'counts' => $counts,

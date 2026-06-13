@@ -2066,7 +2066,18 @@ function ai_capture_single_page(string $jobId, string $customerId, string $websi
             'html_preview' => '',
             'fetched_at' => ai_now()
         ]);
-        return ['success' => false, 'page_id' => '', 'error' => (string)($fetch['error'] ?? 'Could not capture page.')];
+
+        $rows = ai_safe_rows(supabase(
+            'GET',
+            'ai_website_pages?select=id&customer_id=eq.' . urlencode($customerId)
+                . '&normalized_url=eq.' . urlencode($normalized)
+                . '&limit=1'
+        ));
+        return [
+            'success' => false,
+            'page_id' => (string)($rows[0]['id'] ?? ''),
+            'error' => (string)($fetch['error'] ?? 'Could not capture page.')
+        ];
     }
 
     $parsed = ai_parse_html_page((string)$fetch['html'], $finalUrl, $websiteDomain);
@@ -2150,12 +2161,19 @@ function ai_enqueue_scan_urls(string $jobId, string $customerId, array $urls, in
                     . '&normalized_url=eq.' . urlencode($normalized)
                     . '&limit=1'
             ));
-            $status = (string)($existing[0]['page_status'] ?? '');
-            if ($status !== '' && $status !== 'pending') {
-                ai_crawl_log($jobId, $customerId, 'duplicate_skipped', 'Duplicate or already processed URL skipped.', [
+            $existingRow = $existing[0] ?? [];
+            $status = (string)($existingRow['page_status'] ?? '');
+            $existingJobId = (string)($existingRow['scan_job_id'] ?? '');
+
+            // Only skip if the page is already associated with the CURRENT scan job.
+            // If it belongs to a previous job, we allow it to be re-queued to refresh the content.
+            if ($existingJobId === $jobId) {
+                if ($status !== '' && $status !== 'pending') {
+                    ai_crawl_log($jobId, $customerId, 'duplicate_skipped', 'URL already processed in this job.', [
                     'normalized_url' => $normalized,
-                    'existing_status' => $status,
+                        'existing_status' => $status
                 ], 'info', (string)($rows[$normalized]['url'] ?? ''));
+                }
                 unset($rows[$normalized]);
             }
         }
@@ -2249,7 +2267,7 @@ function ai_scan_review_pages(string $jobId, string $customerId, int $limit = 25
         'GET',
         'ai_website_pages?select=*&scan_job_id=eq.' . urlencode($jobId)
             . '&customer_id=eq.' . urlencode($customerId)
-            . '&page_status=in.(fetched,summarized)'
+            . '&page_status=in.(fetched,summarized,failed)'
             . '&order=created_at.asc&limit=' . max(1, min(250, $limit))
     ));
 }
@@ -2257,8 +2275,7 @@ function ai_scan_review_pages(string $jobId, string $customerId, int $limit = 25
 function ai_scan_review_faqs(string $jobId, string $customerId, int $limit = 500): array {
     return ai_safe_rows(supabase(
         'GET',
-        'ai_website_faqs?select=*&scan_job_id=eq.' . urlencode($jobId)
-            . '&customer_id=eq.' . urlencode($customerId)
+        'ai_website_faqs?select=*&customer_id=eq.' . urlencode($customerId)
             . '&order=created_at.asc&limit=' . max(1, min(1000, $limit))
     ));
 }
@@ -2543,6 +2560,7 @@ function ai_process_scan_job_batch(string $jobId, string $customerId, int $batch
     if ((string)($scan['status'] ?? '') === 'pending') {
         if (!ai_patch_active_scan_job($jobId, $customerId, [
             'status' => 'running',
+            'locked_until' => ai_seconds_from_now(120),
             'started_at' => $scan['started_at'] ?: ai_now(),
             'error_message' => null,
             'updated_at' => ai_now()
@@ -2780,6 +2798,7 @@ function ai_process_scan_job_batch(string $jobId, string $customerId, int $batch
     $complete = $counts['pending'] === 0 && $queuedLinksTotal === 0;
     if (!ai_patch_active_scan_job($jobId, $customerId, [
         'status' => $complete ? 'completed' : 'running',
+        'locked_until' => $complete ? null : ai_seconds_from_now(120),
         'pages_scanned' => $counts['scanned'],
         'pages_failed' => $counts['failed'],
         'completed_at' => $complete ? ai_now() : null,
