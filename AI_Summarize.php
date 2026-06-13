@@ -1659,11 +1659,19 @@ document.addEventListener("submit", async (event) => {
   });
   try {
     const data = await callWorker(action, extra);
-    applyLiveData(data, action === "add_page" ? "scan" : "summary");
-    if (data.success && action === "add_page") {
-      form.reset();
-    }
+    const isAddPage = (action === "add_page");
+    applyLiveData(data, isAddPage ? "scan" : "summary");
+
     if (action === "add_page") {
+      if (data.success) {
+        form.reset();
+      } else if (data.error) {
+        alert(data.error);
+      }
+      if (data.page_id) {
+        selectPageTab(`page-panel-${data.page_id}`, data.page_id);
+        document.getElementById(`page-panel-${data.page_id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
       await liveWorkflowLoop(true);
     }
   } finally {

@@ -2066,7 +2066,18 @@ function ai_capture_single_page(string $jobId, string $customerId, string $websi
             'html_preview' => '',
             'fetched_at' => ai_now()
         ]);
-        return ['success' => false, 'page_id' => '', 'error' => (string)($fetch['error'] ?? 'Could not capture page.')];
+
+        $rows = ai_safe_rows(supabase(
+            'GET',
+            'ai_website_pages?select=id&customer_id=eq.' . urlencode($customerId)
+                . '&normalized_url=eq.' . urlencode($normalized)
+                . '&limit=1'
+        ));
+        return [
+            'success' => false,
+            'page_id' => (string)($rows[0]['id'] ?? ''),
+            'error' => (string)($fetch['error'] ?? 'Could not capture page.')
+        ];
     }
 
     $parsed = ai_parse_html_page((string)$fetch['html'], $finalUrl, $websiteDomain);
@@ -2256,7 +2267,7 @@ function ai_scan_review_pages(string $jobId, string $customerId, int $limit = 25
         'GET',
         'ai_website_pages?select=*&scan_job_id=eq.' . urlencode($jobId)
             . '&customer_id=eq.' . urlencode($customerId)
-            . '&page_status=in.(fetched,summarized)'
+            . '&page_status=in.(fetched,summarized,failed)'
             . '&order=created_at.asc&limit=' . max(1, min(250, $limit))
     ));
 }
