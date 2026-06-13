@@ -205,7 +205,7 @@ if ($format === 'pdf'):
     <p>Generating your PDF report. Please wait...</p>
     <script>
         window.onload = function() {
-            const reportHtml = `<?php echo addslashes($reportHtml); ?>`; // Escape HTML for JavaScript string
+            const reportHtml = <?php echo json_encode($reportHtml); ?>; // Safely pass HTML string
             const filename = `vani-ai-export-<?php echo date('Ymd'); ?>.pdf`;
 
             html2pdf().set({

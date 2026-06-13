@@ -201,9 +201,6 @@ button{background:#2563eb;color:#fff}
 .icon-btn{background:#e2e8f0;color:#0f172a}
 .grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,390px);gap:18px;align-items:start}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:18px;box-shadow:0 12px 34px rgba(15,23,42,.06)}
-.main-content{display:flex;flex-direction:column;gap:18px;min-width:0}
-.sidebar-content{display:flex;flex-direction:column;gap:18px;min-width:0;position:sticky;top:18px;max-height:calc(100vh - 36px);overflow-y:auto;padding-right:4px}
-.sidebar-content::-webkit-scrollbar{width:4px}.sidebar-content::-webkit-scrollbar-thumb{background:var(--line);border-radius:10px}
 .tools-panel h3{margin:18px 0 10px;font-size:14px;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted)}
 .export-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
 .search-box { position: relative; flex: 1; }
@@ -604,137 +601,133 @@ body.dark .diag-error{color:#fca5a5}
   </div>
 
   <div class="grid">
-    <div class="main-content">
-      <section class="panel pages-panel">
-        <h2>Pages</h2>
-        <?php if (empty($pages)): ?>
-          <p class="muted" id="noPagesMsg">No pages were captured. Check scan diagnostics or try a sitemap/manual content source.</p>
-        <?php endif; ?>
-        <div class="page-tabs-wrap" id="pageNavWrap">
-          <div class="page-tabs-meta">
-            <span id="pageTabsCount"><?php echo count($pages); ?> page<?php echo count($pages) === 1 ? '' : 's'; ?> captured</span>
-            <span>Search or select a page to review</span>
-          </div>
-          <div class="page-nav-tools">
-            <div class="search-box">
-              <input type="text" id="pageSearch" placeholder="Search pages...">
-              <div id="pageSearchResults" class="search-results-list"></div>
-            </div>
-            <select id="pageSelect" class="page-select-menu" aria-label="Select page to review">
-            </select>
-          </div>
+    <section class="panel pages-panel">
+      <h2>Pages</h2>
+      <?php if (empty($pages)): ?>
+        <p class="muted" id="noPagesMsg">No pages were captured. Check scan diagnostics or try a sitemap/manual content source.</p>
+      <?php endif; ?>
+      <div class="page-tabs-wrap" id="pageNavWrap">
+        <div class="page-tabs-meta">
+          <span id="pageTabsCount"><?php echo count($pages); ?> page<?php echo count($pages) === 1 ? '' : 's'; ?> captured</span>
+          <span>Search or select a page to review</span>
         </div>
-        <div id="pagePanels">
-        <?php foreach ($pages as $index => $page): ?>
-          <?php $summaryText = ai_summary_text_from_page($page); ?>
-          <article id="page-panel-<?php echo ai_h($page['id']); ?>" class="page-item page-panel <?php echo $index === 0 ? 'is-active' : ''; ?>" data-page-id="<?php echo ai_h($page['id']); ?>">
-            <strong class="page-title"><?php echo ai_h($page['page_title'] ?: parse_url((string)$page['url'], PHP_URL_PATH) ?: 'Untitled page'); ?></strong>
-            <div class="url"><?php echo ai_h($page['url']); ?></div>
-            <span class="status"><?php echo ai_h($page['page_status']); ?></span>
-            <p class="muted">
-              HTTP <?php echo ai_h($page['http_status'] ?? ''); ?>,
-              <?php echo ai_h($page['content_length'] ?? 0); ?> bytes,
-              <?php echo ai_h($page['discovered_links_count'] ?? 0); ?> links found
-            </p>
+        <div class="page-nav-tools">
+          <div class="search-box">
+            <input type="text" id="pageSearch" placeholder="Search pages...">
+            <div id="pageSearchResults" class="search-results-list"></div>
+          </div>
+          <select id="pageSelect" class="page-select-menu" aria-label="Select page to review">
+          </select>
+        </div>
+      </div>
+      <div id="pagePanels">
+      <?php foreach ($pages as $index => $page): ?>
+        <?php $summaryText = ai_summary_text_from_page($page); ?>
+        <article id="page-panel-<?php echo ai_h($page['id']); ?>" class="page-item page-panel <?php echo $index === 0 ? 'is-active' : ''; ?>" data-page-id="<?php echo ai_h($page['id']); ?>">
+          <strong class="page-title"><?php echo ai_h($page['page_title'] ?: parse_url((string)$page['url'], PHP_URL_PATH) ?: 'Untitled page'); ?></strong>
+          <div class="url"><?php echo ai_h($page['url']); ?></div>
+          <span class="status"><?php echo ai_h($page['page_status']); ?></span>
+          <p class="muted">
+            HTTP <?php echo ai_h($page['http_status'] ?? ''); ?>,
+            <?php echo ai_h($page['content_length'] ?? 0); ?> bytes,
+            <?php echo ai_h($page['discovered_links_count'] ?? 0); ?> links found
+          </p>
 
-            <label>Editable summary</label>
-            <textarea form="save-summary-<?php echo ai_h($page['id']); ?>" name="summary_text" placeholder="Summarize this page to generate editable summary."><?php echo ai_h($summaryText); ?></textarea>
-            <div class="summary-actions">
-              <form id="save-summary-<?php echo ai_h($page['id']); ?>" method="POST" class="js-live-worker-form">
-                <input type="hidden" name="action" value="save_summary">
-                <input type="hidden" name="page_id" value="<?php echo ai_h($page['id']); ?>">
-                <button type="submit">Save summary</button>
-              </form>
-              <form method="POST" class="js-summarize-page-form">
-                <input type="hidden" name="action" value="summarize_page">
-                <input type="hidden" name="page_id" value="<?php echo ai_h($page['id']); ?>">
-                <button type="submit">Summarize this page</button>
-              </form>
+          <label>Editable summary</label>
+          <textarea form="save-summary-<?php echo ai_h($page['id']); ?>" name="summary_text" placeholder="Summarize this page to generate editable summary."><?php echo ai_h($summaryText); ?></textarea>
+          <div class="summary-actions">
+            <form id="save-summary-<?php echo ai_h($page['id']); ?>" method="POST" class="js-live-worker-form">
+              <input type="hidden" name="action" value="save_summary">
+              <input type="hidden" name="page_id" value="<?php echo ai_h($page['id']); ?>">
+              <button type="submit">Save summary</button>
+            </form>
+            <form method="POST" class="js-summarize-page-form">
+              <input type="hidden" name="action" value="summarize_page">
+              <input type="hidden" name="page_id" value="<?php echo ai_h($page['id']); ?>">
+              <button type="submit">Summarize this page</button>
+            </form>
+          </div>
+          <?php if (!empty($page['ai_error'])): ?><p class="muted"><?php echo ai_h($page['ai_error']); ?></p><?php endif; ?>
+        </article>
+      <?php endforeach; ?>
+      </div>
+    </section>
+
+    <aside class="panel faq-panel">
+      <h2>
+        <span>Captured FAQ</span>
+        <span class="faq-panel-tools">
+          <span class="diag-pill" id="faqCountPill"><?php echo count($faqs); ?></span>
+        </span>
+      </h2>
+      <form method="POST" class="faq-add-form js-live-worker-form">
+        <input type="hidden" name="action" value="add_faq">
+        <input type="hidden" name="page_url" value="<?php echo ai_h($scan['website_url'] ?? ''); ?>">
+        <div>
+          <label for="faqQuestion">Question</label>
+          <input id="faqQuestion" name="question" placeholder="Enter a new FAQ question">
+        </div>
+        <div>
+          <label for="faqAnswer">Answer</label>
+          <textarea id="faqAnswer" name="answer" placeholder="Enter the answer"></textarea>
+        </div>
+        <button type="submit">Add FAQ</button>
+      </form>
+      <div class="faq-list" id="faqList" style="max-height: 500px; overflow-y: auto; padding-right: 8px;">
+        <?php if (empty($faqs)): ?>
+          <div class="faq-empty" id="faqEmpty">No FAQ pairs captured yet. The crawler will add them here when it finds FAQ markup or FAQ-like pages.</div>
+        <?php endif; ?>
+        <?php foreach ($faqs as $faq): ?>
+          <article class="faq-item" data-faq-id="<?php echo ai_h($faq['id'] ?? ''); ?>">
+            <strong><?php echo ai_h($faq['question'] ?? ''); ?></strong>
+            <p><?php echo nl2br(ai_h($faq['answer'] ?? '')); ?></p>
+            <div class="faq-meta">
+              <span class="faq-source"><?php echo ai_h($faq['source'] ?? 'crawl'); ?></span>
+              <span title="<?php echo ai_h($faq['page_url'] ?? ''); ?>"><?php echo ai_h(ai_short_url_label((string)($faq['page_url'] ?? ''))); ?></span>
             </div>
-            <?php if (!empty($page['ai_error'])): ?><p class="muted"><?php echo ai_h($page['ai_error']); ?></p><?php endif; ?>
+            <form method="POST" class="faq-edit-form js-live-worker-form">
+              <input type="hidden" name="action" value="save_faq">
+              <input type="hidden" name="faq_id" value="<?php echo ai_h($faq['id'] ?? ''); ?>">
+              <input name="question" value="<?php echo ai_h($faq['question'] ?? ''); ?>">
+              <textarea name="answer"><?php echo ai_h($faq['answer'] ?? ''); ?></textarea>
+              <button type="submit">Save FAQ</button>
+              <button type="button" class="danger-btn js-delete-faq" data-faq-id="<?php echo ai_h($faq['id'] ?? ''); ?>" style="margin-top:8px; width:100%;">Delete FAQ</button>
+            </form>
           </article>
         <?php endforeach; ?>
+      </div>
+    </aside>
+
+    <section class="panel add-missed-section">
+      <h2>Add missed page URL</h2>
+      <form method="POST" class="manual-page js-live-worker-form">
+        <input type="hidden" name="action" value="add_page">
+        <input name="page_url" placeholder="https://example.com/missed-page">
+        <p class="muted">We will try to crawl this page. If readable text is not captured, you can still add the summary manually below.</p>
+        <div class="row"><button type="submit">Add page</button></div>
+      </form>
+    </section>
+
+    <section class="panel tools-panel">
+      <h2>Tools & Export</h2>
+      <p class="muted" style="margin-bottom: 20px;">Generate additional content or export your captured data.</p>
+      <div style="display: grid; gap: 20px;">
+        <div>
+          <button type="button" id="backfillFaqsBtn" class="btn" style="width:100%; justify-content:center; margin-bottom:10px;">
+            Generate FAQs from Summaries
+          </button>
+          <p class="muted" style="font-size:12px;">Uses AI to create FAQ pairs from your page summaries.</p>
         </div>
-      </section>
-
-      <section class="panel add-missed-section">
-        <h2>Add missed page URL</h2>
-        <form method="POST" class="manual-page js-live-worker-form">
-          <input type="hidden" name="action" value="add_page">
-          <input name="page_url" placeholder="https://example.com/missed-page">
-          <p class="muted">We will try to crawl this page. If readable text is not captured, you can still add the summary manually below.</p>
-          <div class="row"><button type="submit">Add page</button></div>
-        </form>
-      </section>
-    </div>
-
-    <div class="sidebar-content">
-      <aside class="panel faq-panel">
-        <h2>
-          <span>Captured FAQ</span>
-          <span class="faq-panel-tools">
-            <span class="diag-pill" id="faqCountPill"><?php echo count($faqs); ?></span>
-          </span>
-        </h2>
-        <form method="POST" class="faq-add-form js-live-worker-form">
-          <input type="hidden" name="action" value="add_faq">
-          <input type="hidden" name="page_url" value="<?php echo ai_h($scan['website_url'] ?? ''); ?>">
-          <div>
-            <label for="faqQuestion">Question</label>
-            <input id="faqQuestion" name="question" placeholder="Enter a new FAQ question">
-          </div>
-          <div>
-            <label for="faqAnswer">Answer</label>
-            <textarea id="faqAnswer" name="answer" placeholder="Enter the answer"></textarea>
-          </div>
-          <button type="submit">Add FAQ</button>
-        </form>
-        <div class="faq-list" id="faqList">
-          <?php if (empty($faqs)): ?>
-            <div class="faq-empty" id="faqEmpty">No FAQ pairs captured yet. The crawler will add them here when it finds FAQ markup or FAQ-like pages.</div>
-          <?php endif; ?>
-          <?php foreach ($faqs as $faq): ?>
-            <article class="faq-item" data-faq-id="<?php echo ai_h($faq['id'] ?? ''); ?>">
-              <strong><?php echo ai_h($faq['question'] ?? ''); ?></strong>
-              <p><?php echo nl2br(ai_h($faq['answer'] ?? '')); ?></p>
-              <div class="faq-meta">
-                <span class="faq-source"><?php echo ai_h($faq['source'] ?? 'crawl'); ?></span>
-                <span title="<?php echo ai_h($faq['page_url'] ?? ''); ?>"><?php echo ai_h(ai_short_url_label((string)($faq['page_url'] ?? ''))); ?></span>
-              </div>
-              <form method="POST" class="faq-edit-form js-live-worker-form">
-                <input type="hidden" name="action" value="save_faq">
-                <input type="hidden" name="faq_id" value="<?php echo ai_h($faq['id'] ?? ''); ?>">
-                <input name="question" value="<?php echo ai_h($faq['question'] ?? ''); ?>">
-                <textarea name="answer"><?php echo ai_h($faq['answer'] ?? ''); ?></textarea>
-                <button type="submit">Save FAQ</button>
-                <button type="button" class="danger-btn js-delete-faq" data-faq-id="<?php echo ai_h($faq['id'] ?? ''); ?>" style="margin-top:8px; width:100%;">Delete FAQ</button>
-              </form>
-            </article>
-          <?php endforeach; ?>
-        </div>
-      </aside>
-
-      <section class="panel tools-panel" style="margin-top: 18px;">
-        <h2>Tools & Export</h2>
-        <p class="muted" style="margin-bottom: 20px;">Generate additional content or export your captured data.</p>
-        <div style="display: grid; gap: 20px;">
-          <div>
-            <button type="button" id="backfillFaqsBtn" class="btn" style="width:100%; justify-content:center; margin-bottom:10px;">
-              Generate FAQs from Summaries
-            </button>
-            <p class="muted" style="font-size:12px;">Uses AI to create FAQ pairs from your page summaries.</p>
-          </div>
-          <hr style="border:0; border-top:1px solid var(--line); margin: 5px 0;">
-          <div>
-            <h3 style="margin-top: 0; font-size: 14px; font-weight: 800; text-transform: uppercase; color: var(--muted); letter-spacing: 0.05em;">Export Data</h3>
-            <div class="export-actions" style="margin-top: 12px; display: flex; gap: 10px;">
-              <a href="AI_Export.php?scan=<?php echo urlencode($scanId); ?>&format=excel" class="btn" style="flex:1; text-align:center;">Excel (CSV)</a>
-              <a href="AI_Export.php?scan=<?php echo urlencode($scanId); ?>&format=pdf" target="_blank" class="btn" style="flex:1; text-align:center;">PDF Report</a>
-            </div>
+        <hr style="border:0; border-top:1px solid var(--line); margin: 5px 0;">
+        <div>
+          <h3 style="margin-top: 0; font-size: 14px; font-weight: 800; text-transform: uppercase; color: var(--muted); letter-spacing: 0.05em;">Export Data</h3>
+          <div class="export-actions" style="margin-top: 12px; display: flex; gap: 10px;">
+            <a href="AI_Export.php?scan=<?php echo urlencode($scanId); ?>&format=excel" class="btn" style="flex:1; text-align:center;">Excel (CSV)</a>
+            <a href="AI_Export.php?scan=<?php echo urlencode($scanId); ?>&format=pdf" target="_blank" class="btn" style="flex:1; text-align:center;">PDF Report</a>
           </div>
         </div>
-      </section>
-    </div>
+      </div>
+    </section>
   </div>
 </main>
 <script>
