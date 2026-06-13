@@ -201,6 +201,11 @@ button{background:#2563eb;color:#fff}
 .icon-btn{background:#e2e8f0;color:#0f172a}
 .grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,390px);gap:18px;align-items:start}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:18px;box-shadow:0 12px 34px rgba(15,23,42,.06)}
+.search-box { position: relative; flex: 1; }
+.search-results-list { position: absolute; top: 100%; left: 0; right: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; z-index: 100; max-height: 200px; overflow-y: auto; box-shadow: 0 4px 12px rgba(0,0,0,0.1); margin-top: 4px; display: none; }
+.search-suggestion { padding: 10px 12px; cursor: pointer; font-size: 13px; border-bottom: 1px solid var(--line); }
+.search-suggestion:last-child { border-bottom: 0; }
+.search-suggestion:hover { background: var(--soft); }
 .pages-panel{min-width:0}
 .faq-panel{position:sticky;top:18px;max-height:calc(100vh - 36px);overflow:auto;min-width:0}
 .faq-panel h2{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:12px;min-width:0}
@@ -607,20 +612,11 @@ body.dark .diag-error{color:#fca5a5}
         <div class="page-nav-tools">
           <div class="search-box">
             <input type="text" id="pageSearch" placeholder="Search pages...">
+            <div id="pageSearchResults" class="search-results-list"></div>
           </div>
           <select id="pageSelect" class="page-select-menu" aria-label="Select page to review">
           </select>
-          <button class="btn js-page-tab" type="button" data-tab-target="page-panel-add" title="Add missed page">Add Page</button>
         </div>
-      </div>
-      <div id="page-panel-add" class="add-page-panel page-panel <?php echo empty($pages) ? 'is-active' : ''; ?>">
-        <form method="POST" class="manual-page js-live-worker-form">
-          <input type="hidden" name="action" value="add_page">
-          <label>Add missed page URL</label>
-          <input name="page_url" placeholder="https://example.com/missed-page">
-          <p class="muted">We will try to crawl this page. If readable text is not captured, you can still add the summary manually below.</p>
-          <div class="row"><button type="submit">Add page</button></div>
-        </form>
       </div>
       <div id="pagePanels">
       <?php foreach ($pages as $index => $page): ?>
@@ -653,6 +649,16 @@ body.dark .diag-error{color:#fca5a5}
         </article>
       <?php endforeach; ?>
       </div>
+    </section>
+
+    <section class="panel add-missed-section">
+      <h2>Add missed page URL</h2>
+      <form method="POST" class="manual-page js-live-worker-form">
+        <input type="hidden" name="action" value="add_page">
+        <input name="page_url" placeholder="https://example.com/missed-page">
+        <p class="muted">We will try to crawl this page. If readable text is not captured, you can still add the summary manually below.</p>
+        <div class="row"><button type="submit">Add page</button></div>
+      </form>
     </section>
 
     <aside class="panel faq-panel">
@@ -748,6 +754,7 @@ let autoWorkflowBusy = false;
 let autoWorkflowDone = false;
 let scanPauseRequestBusy = false;
 let summaryControlsFrozen = false;
+let latestPagesList = <?php echo json_encode($pages); ?>;
 const summarizingPages = new Set();
 const skippedSummaryPages = new Set();
 
@@ -832,15 +839,45 @@ pageSelect?.addEventListener("change", (e) => {
 });
 
 pageSearch?.addEventListener("input", (e) => {
-  const q = e.target.value.toLowerCase();
-  if (!pageSelect) return;
-  Array.from(pageSelect.options).forEach(opt => {
-        const match = opt.text.toLowerCase().includes(q) || (opt.title || "").toLowerCase().includes(q);
-    opt.hidden = !match;
-  });
+    const q = (e.target.value || "").toLowerCase();
+    const resultsNode = document.getElementById("pageSearchResults");
+    if (!resultsNode) return;
+
+    if (!q) {
+      resultsNode.innerHTML = "";
+      resultsNode.style.display = "none";
+      return;
+    }
+
+    const matches = latestPagesList.filter(p => 
+      (p.page_title || "").toLowerCase().includes(q) || 
+      (p.url || "").toLowerCase().includes(q)
+    );
+
+    resultsNode.innerHTML = "";
+    if (matches.length > 0) {
+      resultsNode.style.display = "block";
+      matches.forEach(p => {
+        const item = document.createElement("div");
+        item.className = "search-suggestion";
+        item.textContent = pageTitle(p);
+        item.onclick = () => {
+          selectPageTab(`page-panel-${p.id}`, p.id);
+          pageSearch.value = "";
+          resultsNode.style.display = "none";
+        };
+        resultsNode.appendChild(item);
+      });
+    } else {
+      resultsNode.style.display = "none";
+    }
 });
 
 document.addEventListener("click", (event) => {
+  if (!event.target.closest(".search-box")) {
+    const resultsNode = document.getElementById("pageSearchResults");
+    if (resultsNode) resultsNode.style.display = "none";
+  }
   const tab = event.target.closest(".js-page-tab");
   if (!tab) return;
   selectPageTab(tab.dataset.tabTarget || "", tab.dataset.pageId || "");
@@ -1273,6 +1310,7 @@ function applyLiveData(data = {}, mode = "scan") {
   updateWorkerUi(data, mode);
   updateDiagnostics(data);
   updateSummaryDiagnostics(data);
+  if (data.pages) latestPagesList = data.pages;
   updatePages(data.pages || []);
   updateFaqs(data.faqs || []);
   if (capturedMetric && data.pages) capturedMetric.textContent = String(data.pages.length);
