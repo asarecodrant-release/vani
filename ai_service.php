@@ -2264,8 +2264,7 @@ function ai_scan_review_pages(string $jobId, string $customerId, int $limit = 25
 function ai_scan_review_faqs(string $jobId, string $customerId, int $limit = 500): array {
     return ai_safe_rows(supabase(
         'GET',
-        'ai_website_faqs?select=*&scan_job_id=eq.' . urlencode($jobId)
-            . '&customer_id=eq.' . urlencode($customerId)
+        'ai_website_faqs?select=*&customer_id=eq.' . urlencode($customerId)
             . '&order=created_at.asc&limit=' . max(1, min(1000, $limit))
     ));
 }

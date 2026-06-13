@@ -109,6 +109,10 @@ if ($action === 'queue_test') {
         (string)($_POST['question'] ?? ''),
         (string)($_POST['answer'] ?? '')
     );
+} elseif ($action === 'delete_faq') {
+    $faqId = trim((string)($_POST['faq_id'] ?? $_GET['faq_id'] ?? ''));
+    supabase('DELETE', 'ai_website_faqs?id=eq.' . urlencode($faqId) . '&customer_id=eq.' . urlencode($customerId));
+    $result = ['success' => true];
 } elseif ($action === 'add_faq') {
     $question = ai_clean_customer_text((string)($_POST['question'] ?? ''), 800);
     $answer = ai_clean_customer_text((string)($_POST['answer'] ?? ''), 3000);
@@ -138,7 +142,6 @@ if ($action === 'queue_test') {
 } elseif ($action === 'restart_scan') {
     // Clean up all data associated with this job
     supabase('DELETE', 'ai_website_pages?scan_job_id=eq.' . urlencode($scanId) . '&customer_id=eq.' . urlencode($customerId));
-    supabase('DELETE', 'ai_website_faqs?scan_job_id=eq.' . urlencode($scanId) . '&customer_id=eq.' . urlencode($customerId));
     if (ai_db_supports_crawl_logs()) {
         supabase('DELETE', 'ai_crawl_logs?scan_job_id=eq.' . urlencode($scanId) . '&customer_id=eq.' . urlencode($customerId));
     }

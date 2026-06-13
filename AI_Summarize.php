@@ -201,6 +201,7 @@ button{background:#2563eb;color:#fff}
 .icon-btn{background:#e2e8f0;color:#0f172a}
 .grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,390px);gap:18px;align-items:start}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:18px;box-shadow:0 12px 34px rgba(15,23,42,.06)}
+.main-content{display:flex;flex-direction:column;gap:18px;min-width:0}
 .search-box { position: relative; flex: 1; }
 .search-results-list { position: absolute; top: 100%; left: 0; right: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; z-index: 100; max-height: 200px; overflow-y: auto; box-shadow: 0 4px 12px rgba(0,0,0,0.1); margin-top: 4px; display: none; }
 .search-suggestion { padding: 10px 12px; cursor: pointer; font-size: 13px; border-bottom: 1px solid var(--line); }
@@ -599,67 +600,69 @@ body.dark .diag-error{color:#fca5a5}
   </div>
 
   <div class="grid">
-    <section class="panel pages-panel">
-      <h2>Pages</h2>
-      <?php if (empty($pages)): ?>
-        <p class="muted" id="noPagesMsg">No pages were captured. Check scan diagnostics or try a sitemap/manual content source.</p>
-      <?php endif; ?>
-      <div class="page-tabs-wrap" id="pageNavWrap">
-        <div class="page-tabs-meta">
-          <span id="pageTabsCount"><?php echo count($pages); ?> page<?php echo count($pages) === 1 ? '' : 's'; ?> captured</span>
-          <span>Search or select a page to review</span>
-        </div>
-        <div class="page-nav-tools">
-          <div class="search-box">
-            <input type="text" id="pageSearch" placeholder="Search pages...">
-            <div id="pageSearchResults" class="search-results-list"></div>
+    <div class="main-content">
+      <section class="panel pages-panel">
+        <h2>Pages</h2>
+        <?php if (empty($pages)): ?>
+          <p class="muted" id="noPagesMsg">No pages were captured. Check scan diagnostics or try a sitemap/manual content source.</p>
+        <?php endif; ?>
+        <div class="page-tabs-wrap" id="pageNavWrap">
+          <div class="page-tabs-meta">
+            <span id="pageTabsCount"><?php echo count($pages); ?> page<?php echo count($pages) === 1 ? '' : 's'; ?> captured</span>
+            <span>Search or select a page to review</span>
           </div>
-          <select id="pageSelect" class="page-select-menu" aria-label="Select page to review">
-          </select>
-        </div>
-      </div>
-      <div id="pagePanels">
-      <?php foreach ($pages as $index => $page): ?>
-        <?php $summaryText = ai_summary_text_from_page($page); ?>
-        <article id="page-panel-<?php echo ai_h($page['id']); ?>" class="page-item page-panel <?php echo $index === 0 ? 'is-active' : ''; ?>" data-page-id="<?php echo ai_h($page['id']); ?>">
-          <strong class="page-title"><?php echo ai_h($page['page_title'] ?: parse_url((string)$page['url'], PHP_URL_PATH) ?: 'Untitled page'); ?></strong>
-          <div class="url"><?php echo ai_h($page['url']); ?></div>
-          <span class="status"><?php echo ai_h($page['page_status']); ?></span>
-          <p class="muted">
-            HTTP <?php echo ai_h($page['http_status'] ?? ''); ?>,
-            <?php echo ai_h($page['content_length'] ?? 0); ?> bytes,
-            <?php echo ai_h($page['discovered_links_count'] ?? 0); ?> links found
-          </p>
-
-          <label>Editable summary</label>
-          <textarea form="save-summary-<?php echo ai_h($page['id']); ?>" name="summary_text" placeholder="Summarize this page to generate editable summary."><?php echo ai_h($summaryText); ?></textarea>
-          <div class="summary-actions">
-            <form id="save-summary-<?php echo ai_h($page['id']); ?>" method="POST" class="js-live-worker-form">
-              <input type="hidden" name="action" value="save_summary">
-              <input type="hidden" name="page_id" value="<?php echo ai_h($page['id']); ?>">
-              <button type="submit">Save summary</button>
-            </form>
-            <form method="POST" class="js-summarize-page-form">
-              <input type="hidden" name="action" value="summarize_page">
-              <input type="hidden" name="page_id" value="<?php echo ai_h($page['id']); ?>">
-              <button type="submit">Summarize this page</button>
-            </form>
+          <div class="page-nav-tools">
+            <div class="search-box">
+              <input type="text" id="pageSearch" placeholder="Search pages...">
+              <div id="pageSearchResults" class="search-results-list"></div>
+            </div>
+            <select id="pageSelect" class="page-select-menu" aria-label="Select page to review">
+            </select>
           </div>
-          <?php if (!empty($page['ai_error'])): ?><p class="muted"><?php echo ai_h($page['ai_error']); ?></p><?php endif; ?>
-        </article>
-      <?php endforeach; ?>
-      </div>
-    </section>
+        </div>
+        <div id="pagePanels">
+        <?php foreach ($pages as $index => $page): ?>
+          <?php $summaryText = ai_summary_text_from_page($page); ?>
+          <article id="page-panel-<?php echo ai_h($page['id']); ?>" class="page-item page-panel <?php echo $index === 0 ? 'is-active' : ''; ?>" data-page-id="<?php echo ai_h($page['id']); ?>">
+            <strong class="page-title"><?php echo ai_h($page['page_title'] ?: parse_url((string)$page['url'], PHP_URL_PATH) ?: 'Untitled page'); ?></strong>
+            <div class="url"><?php echo ai_h($page['url']); ?></div>
+            <span class="status"><?php echo ai_h($page['page_status']); ?></span>
+            <p class="muted">
+              HTTP <?php echo ai_h($page['http_status'] ?? ''); ?>,
+              <?php echo ai_h($page['content_length'] ?? 0); ?> bytes,
+              <?php echo ai_h($page['discovered_links_count'] ?? 0); ?> links found
+            </p>
 
-    <section class="panel add-missed-section">
-      <h2>Add missed page URL</h2>
-      <form method="POST" class="manual-page js-live-worker-form">
-        <input type="hidden" name="action" value="add_page">
-        <input name="page_url" placeholder="https://example.com/missed-page">
-        <p class="muted">We will try to crawl this page. If readable text is not captured, you can still add the summary manually below.</p>
-        <div class="row"><button type="submit">Add page</button></div>
-      </form>
-    </section>
+            <label>Editable summary</label>
+            <textarea form="save-summary-<?php echo ai_h($page['id']); ?>" name="summary_text" placeholder="Summarize this page to generate editable summary."><?php echo ai_h($summaryText); ?></textarea>
+            <div class="summary-actions">
+              <form id="save-summary-<?php echo ai_h($page['id']); ?>" method="POST" class="js-live-worker-form">
+                <input type="hidden" name="action" value="save_summary">
+                <input type="hidden" name="page_id" value="<?php echo ai_h($page['id']); ?>">
+                <button type="submit">Save summary</button>
+              </form>
+              <form method="POST" class="js-summarize-page-form">
+                <input type="hidden" name="action" value="summarize_page">
+                <input type="hidden" name="page_id" value="<?php echo ai_h($page['id']); ?>">
+                <button type="submit">Summarize this page</button>
+              </form>
+            </div>
+            <?php if (!empty($page['ai_error'])): ?><p class="muted"><?php echo ai_h($page['ai_error']); ?></p><?php endif; ?>
+          </article>
+        <?php endforeach; ?>
+        </div>
+      </section>
+
+      <section class="panel add-missed-section">
+        <h2>Add missed page URL</h2>
+        <form method="POST" class="manual-page js-live-worker-form">
+          <input type="hidden" name="action" value="add_page">
+          <input name="page_url" placeholder="https://example.com/missed-page">
+          <p class="muted">We will try to crawl this page. If readable text is not captured, you can still add the summary manually below.</p>
+          <div class="row"><button type="submit">Add page</button></div>
+        </form>
+      </section>
+    </div>
 
     <aside class="panel faq-panel">
       <h2>
@@ -699,6 +702,7 @@ body.dark .diag-error{color:#fca5a5}
               <input name="question" value="<?php echo ai_h($faq['question'] ?? ''); ?>">
               <textarea name="answer"><?php echo ai_h($faq['answer'] ?? ''); ?></textarea>
               <button type="submit">Save FAQ</button>
+              <button type="button" class="danger-btn js-delete-faq" data-faq-id="<?php echo ai_h($faq['id'] ?? ''); ?>" style="margin-top:8px; width:100%;">Delete FAQ</button>
             </form>
           </article>
         <?php endforeach; ?>
@@ -1052,6 +1056,7 @@ function renderFaqItem(faq = {}) {
       <input name="question" value="${escapeHtml(faq.question || "")}">
       <textarea name="answer">${escapeHtml(faq.answer || "")}</textarea>
       <button type="submit">Save FAQ</button>
+      <button type="button" class="danger-btn js-delete-faq" data-faq-id="${id}" style="margin-top:8px; width:100%;">Delete FAQ</button>
     </form>
   </article>`;
 }
@@ -1552,7 +1557,7 @@ summaryPauseToggleBtn?.addEventListener("click", async (event) => {
 });
 runScanBatchBtn?.addEventListener("click", async () => {
   if (currentScanStatus !== "completed") return;
-  if (!confirm("This will delete all currently captured pages and FAQs and restart the scan from the beginning. Are you sure?")) {
+  if (!confirm("This will delete all currently captured pages and restart the scan from the beginning. Captured FAQs will be preserved. Are you sure?")) {
     return;
   }
   runScanBatchBtn.disabled = true;
@@ -1565,7 +1570,6 @@ runScanBatchBtn?.addEventListener("click", async () => {
   try {
     const data = await callWorker("restart_scan");
     if (pagePanels) pagePanels.innerHTML = "";
-    if (faqList) faqList.innerHTML = "";
     applyLiveData(data, "scan");
     liveWorkflowLoop(true);
   } finally {
@@ -1610,6 +1614,29 @@ document.addEventListener("submit", async (event) => {
     if (button) {
       button.disabled = false;
       button.textContent = "Summarize this page";
+    }
+  }
+});
+
+document.addEventListener("click", async (event) => {
+  const deleteBtn = event.target.closest(".js-delete-faq");
+  if (!deleteBtn) return;
+  
+  const faqId = deleteBtn.dataset.faqId;
+  if (!faqId || !confirm("Are you sure you want to delete this FAQ?")) return;
+
+  const originalText = deleteBtn.textContent;
+  deleteBtn.disabled = true;
+  deleteBtn.textContent = "Deleting...";
+
+  try {
+    const data = await callWorker("delete_faq", { faq_id: faqId });
+    applyLiveData(data, "summary");
+  } finally {
+    // If it wasn't removed from DOM, reset button
+    if (document.contains(deleteBtn)) {
+      deleteBtn.disabled = false;
+      deleteBtn.textContent = originalText;
     }
   }
 });
