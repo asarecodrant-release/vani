@@ -3531,15 +3531,45 @@ function ai_create_embedding(string $text): array {
         ], $config['timeout']);
 
         $embedding = $response['data']['embedding']['values'] ?? [];
-    } else {
-        $response = ai_http_json($config['base_url'] . '/embeddings', [
+     } 
+    //else {
+    //     $response = ai_http_json($config['base_url'] . '/embeddings', [
+    //         'Authorization: Bearer ' . $config['api_key'],
+    //     ], [
+    //         'model' => $config['embedding_model'],
+    //         'input' => $text,
+    //     ], $config['timeout']);
+
+    //     $embedding = $response['data']['data'][0]['embedding'] ?? [];
+    // }
+
+    // if (!$response['ok']) {
+    //     return [
+    //         'success' => false,
+    //         'embedding' => [],
+    //         'error' => ai_response_error($response),
+    //         'raw' => $response,
+    //     ];
+    // }
+
+    // return [
+    //     'success' => is_array($embedding) && !empty($embedding),
+    //     'embedding' => is_array($embedding) ? $embedding : [],
+    //     'error' => is_array($embedding) && !empty($embedding) ? '' : 'AI provider did not return an embedding.',
+    //     'raw' => $response,
+    // ];
+        else {
+        $url = rtrim($config['base_url'], '/') . '/embeddings';
+
+        $response = ai_http_json($url, [
             'Authorization: Bearer ' . $config['api_key'],
+            'Content-Type: application/json'
         ], [
             'model' => $config['embedding_model'],
             'input' => $text,
         ], $config['timeout']);
 
-        $embedding = $response['data']['data'][0]['embedding'] ?? [];
+        $embedding = $response['data'][0]['embedding'] ?? [];
     }
 
     if (!$response['ok']) {
@@ -3553,8 +3583,8 @@ function ai_create_embedding(string $text): array {
 
     return [
         'success' => is_array($embedding) && !empty($embedding),
-        'embedding' => is_array($embedding) ? $embedding : [],
-        'error' => is_array($embedding) && !empty($embedding) ? '' : 'AI provider did not return an embedding.',
+        'embedding' => $embedding,
+        'error' => '',
         'raw' => $response,
     ];
 }
