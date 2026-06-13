@@ -199,7 +199,7 @@ button,.btn,.icon-btn{min-height:42px;border:0;border-radius:8px;padding:0 14px;
 button{background:#2563eb;color:#fff}
 .btn{background:#e2e8f0;color:#0f172a}
 .icon-btn{background:#e2e8f0;color:#0f172a}
-.grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,390px);gap:18px;align-items:start}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,390px);gap:18px;align-items:start;grid-auto-flow:dense}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:18px;box-shadow:0 12px 34px rgba(15,23,42,.06)}
 .tools-panel h3{margin:18px 0 10px;font-size:14px;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted)}
 .export-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
@@ -247,9 +247,9 @@ button{background:#2563eb;color:#fff}
 .page-tab-label.is-selected .tab-number{background:rgba(255,255,255,.22);color:#fff}
 .tab-title{overflow:hidden;text-overflow:ellipsis}
 .add-tab{min-width:42px;justify-content:center;font-size:20px}
-.page-nav-tools{display:flex;gap:10px;margin-bottom:16px;align-items:center}
-.page-nav-tools .search-box{flex:1}
-.page-select-menu{flex:2;min-height:42px;background:var(--field);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:0 10px;font-weight:800}
+.page-nav-tools{display:flex;gap:10px;margin-bottom:16px;align-items:center;flex-wrap:wrap}
+.page-nav-tools .search-box{flex:1;min-width:200px}
+.page-select-menu{flex:2;min-height:42px;background:var(--field);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:0 10px;font-weight:800;min-width:200px}
 .page-panel{display:none}
 .page-panel.is-active{display:block}
 .page-panel.is-filtered{display:none !important}
@@ -301,8 +301,9 @@ body.dark .diag-error{color:#fca5a5}
 .diag-toggle-btn{min-height:32px;padding:0 10px;font-size:12px}
 @keyframes diag-spin{to{transform:rotate(360deg)}}
 @media(max-width:1100px){.page-tab-label{max-width:170px}}
-@media(max-width:980px){.grid,.metrics,.diag-grid{grid-template-columns:1fr}.faq-panel{position:static;max-height:none}.top{display:grid}.page-tab-label{max-width:180px}.shell{padding:26px 14px 56px}.diag-table{display:block;overflow-x:auto;white-space:nowrap}}
-@media(max-width:560px){.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.panel{padding:14px}.top h1{font-size:26px}.page-tabs-meta{display:grid}.page-tab-label{max-width:150px}.summary-actions button,.summary-actions form{width:100%}.summary-actions button{width:100%}.faq-meta{display:grid;justify-content:start}.faq-add-form button,.faq-edit-form button{width:100%}.refresh-toast{top:74px;width:calc(100vw - 28px);justify-content:center}}
+@media(max-width:980px){.grid,.metrics,.diag-grid{grid-template-columns:1fr}.faq-panel{position:static;max-height:none}.top{flex-direction:column;align-items:stretch}.page-tab-label{max-width:180px}.shell{padding:26px 14px 56px}.diag-table{display:block;overflow-x:auto;white-space:nowrap}}
+@media(max-width:640px){.page-nav-tools{flex-direction:column;align-items:stretch}.page-nav-tools .search-box,.page-select-menu{flex:none;width:100%}}
+@media(max-width:560px){.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.panel{padding:14px}.top h1{font-size:26px}.page-tabs-meta{flex-direction:column;align-items:flex-start;gap:6px}.page-tab-label{max-width:150px}.summary-actions button,.summary-actions form{width:100%}.summary-actions button{width:100%}.faq-meta{flex-direction:column;align-items:flex-start;gap:4px}.faq-add-form button,.faq-edit-form button{width:100%}.refresh-toast{top:74px;width:calc(100vw - 28px);justify-content:center}}
 </style>
 </head>
 <body>
