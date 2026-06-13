@@ -2957,7 +2957,33 @@ function ai_summarize_scan_job_batch(string $jobId, string $customerId, int $bat
 }
 
 function ai_backfill_scan_faqs_from_summaries(string $jobId, string $customerId, int $limit = 80): array {
-    return ['success' => true, 'processed' => 0, 'error' => 'FAQ capture is disabled for the summarization workflow.'];
+    $pages = ai_scan_review_pages($jobId, $customerId, $limit);
+    $processed = 0;
+    $totalFaqs = 0;
+
+    foreach ($pages as $page) {
+        if ((string)($page['page_status'] ?? '') !== 'summarized') {
+            continue;
+        }
+        
+        $summaryData = $page['summary_json'] ?? null;
+        if (is_string($summaryData)) {
+            $summaryData = json_decode($summaryData, true);
+        }
+        
+        if (!is_array($summaryData) || empty($summaryData)) {
+            continue;
+        }
+
+        $generated = ai_generate_faqs_from_summary_data($summaryData, (string)$page['url'], (string)$page['page_title']);
+        if (!empty($generated)) {
+            ai_save_page_faqs($jobId, $customerId, (string)$page['url'], $generated);
+            $totalFaqs += count($generated);
+        }
+        $processed++;
+    }
+
+    return ['success' => true, 'processed' => $processed, 'created' => $totalFaqs];
 }
 
 function ai_chunk_text(string $text, int $chunkSize = 1800, int $overlap = 220): array {

@@ -202,13 +202,17 @@ button{background:#2563eb;color:#fff}
 .grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,390px);gap:18px;align-items:start}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:18px;box-shadow:0 12px 34px rgba(15,23,42,.06)}
 .main-content{display:flex;flex-direction:column;gap:18px;min-width:0}
+.sidebar-content{display:flex;flex-direction:column;gap:18px;min-width:0;position:sticky;top:18px;max-height:calc(100vh - 36px);overflow-y:auto;padding-right:4px}
+.sidebar-content::-webkit-scrollbar{width:4px}.sidebar-content::-webkit-scrollbar-thumb{background:var(--line);border-radius:10px}
+.tools-panel h3{margin:18px 0 10px;font-size:14px;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted)}
+.export-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
 .search-box { position: relative; flex: 1; }
 .search-results-list { position: absolute; top: 100%; left: 0; right: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; z-index: 100; max-height: 200px; overflow-y: auto; box-shadow: 0 4px 12px rgba(0,0,0,0.1); margin-top: 4px; display: none; }
 .search-suggestion { padding: 10px 12px; cursor: pointer; font-size: 13px; border-bottom: 1px solid var(--line); }
 .search-suggestion:last-child { border-bottom: 0; }
 .search-suggestion:hover { background: var(--soft); }
 .pages-panel{min-width:0}
-.faq-panel{position:sticky;top:18px;max-height:calc(100vh - 36px);overflow:auto;min-width:0}
+.faq-panel{position:static;max-height:none;min-width:0}
 .faq-panel h2{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:12px;min-width:0}
 .faq-panel h2>span:first-child{min-width:0;overflow-wrap:anywhere}
 .faq-panel-tools{display:flex;align-items:center;gap:8px;flex:0 0 auto}
@@ -664,50 +668,72 @@ body.dark .diag-error{color:#fca5a5}
       </section>
     </div>
 
-    <aside class="panel faq-panel">
-      <h2>
-        <span>Captured FAQ</span>
-        <span class="faq-panel-tools">
-          <span class="diag-pill" id="faqCountPill"><?php echo count($faqs); ?></span>
-        </span>
-      </h2>
-      <form method="POST" class="faq-add-form js-live-worker-form">
-        <input type="hidden" name="action" value="add_faq">
-        <input type="hidden" name="page_url" value="<?php echo ai_h($scan['website_url'] ?? ''); ?>">
-        <div>
-          <label for="faqQuestion">Question</label>
-          <input id="faqQuestion" name="question" placeholder="Enter a new FAQ question">
+    <div class="sidebar-content">
+      <aside class="panel faq-panel">
+        <h2>
+          <span>Captured FAQ</span>
+          <span class="faq-panel-tools">
+            <span class="diag-pill" id="faqCountPill"><?php echo count($faqs); ?></span>
+          </span>
+        </h2>
+        <form method="POST" class="faq-add-form js-live-worker-form">
+          <input type="hidden" name="action" value="add_faq">
+          <input type="hidden" name="page_url" value="<?php echo ai_h($scan['website_url'] ?? ''); ?>">
+          <div>
+            <label for="faqQuestion">Question</label>
+            <input id="faqQuestion" name="question" placeholder="Enter a new FAQ question">
+          </div>
+          <div>
+            <label for="faqAnswer">Answer</label>
+            <textarea id="faqAnswer" name="answer" placeholder="Enter the answer"></textarea>
+          </div>
+          <button type="submit">Add FAQ</button>
+        </form>
+        <div class="faq-list" id="faqList">
+          <?php if (empty($faqs)): ?>
+            <div class="faq-empty" id="faqEmpty">No FAQ pairs captured yet. The crawler will add them here when it finds FAQ markup or FAQ-like pages.</div>
+          <?php endif; ?>
+          <?php foreach ($faqs as $faq): ?>
+            <article class="faq-item" data-faq-id="<?php echo ai_h($faq['id'] ?? ''); ?>">
+              <strong><?php echo ai_h($faq['question'] ?? ''); ?></strong>
+              <p><?php echo nl2br(ai_h($faq['answer'] ?? '')); ?></p>
+              <div class="faq-meta">
+                <span class="faq-source"><?php echo ai_h($faq['source'] ?? 'crawl'); ?></span>
+                <span title="<?php echo ai_h($faq['page_url'] ?? ''); ?>"><?php echo ai_h(ai_short_url_label((string)($faq['page_url'] ?? ''))); ?></span>
+              </div>
+              <form method="POST" class="faq-edit-form js-live-worker-form">
+                <input type="hidden" name="action" value="save_faq">
+                <input type="hidden" name="faq_id" value="<?php echo ai_h($faq['id'] ?? ''); ?>">
+                <input name="question" value="<?php echo ai_h($faq['question'] ?? ''); ?>">
+                <textarea name="answer"><?php echo ai_h($faq['answer'] ?? ''); ?></textarea>
+                <button type="submit">Save FAQ</button>
+                <button type="button" class="danger-btn js-delete-faq" data-faq-id="<?php echo ai_h($faq['id'] ?? ''); ?>" style="margin-top:8px; width:100%;">Delete FAQ</button>
+              </form>
+            </article>
+          <?php endforeach; ?>
         </div>
-        <div>
-          <label for="faqAnswer">Answer</label>
-          <textarea id="faqAnswer" name="answer" placeholder="Enter the answer"></textarea>
+      </aside>
+
+      <section class="panel tools-panel">
+        <h2>Tools & Export</h2>
+        <p class="muted">Generate additional content or export your captured data.</p>
+        
+        <div style="margin-top: 15px;">
+          <button type="button" id="backfillFaqsBtn" class="btn" style="width:100%; justify-content:center; margin-bottom:10px;">
+            Generate FAQs from Summaries
+          </button>
+          <p class="muted" style="font-size:11px;">Uses AI to create FAQ pairs from your page summaries. Great if the crawler missed structural FAQs.</p>
         </div>
-        <button type="submit">Add FAQ</button>
-      </form>
-      <div class="faq-list" id="faqList">
-        <?php if (empty($faqs)): ?>
-          <div class="faq-empty" id="faqEmpty">No FAQ pairs captured yet. The crawler will add them here when it finds FAQ markup or FAQ-like pages.</div>
-        <?php endif; ?>
-        <?php foreach ($faqs as $faq): ?>
-          <article class="faq-item" data-faq-id="<?php echo ai_h($faq['id'] ?? ''); ?>">
-            <strong><?php echo ai_h($faq['question'] ?? ''); ?></strong>
-            <p><?php echo nl2br(ai_h($faq['answer'] ?? '')); ?></p>
-            <div class="faq-meta">
-              <span class="faq-source"><?php echo ai_h($faq['source'] ?? 'crawl'); ?></span>
-              <span title="<?php echo ai_h($faq['page_url'] ?? ''); ?>"><?php echo ai_h(ai_short_url_label((string)($faq['page_url'] ?? ''))); ?></span>
-            </div>
-            <form method="POST" class="faq-edit-form js-live-worker-form">
-              <input type="hidden" name="action" value="save_faq">
-              <input type="hidden" name="faq_id" value="<?php echo ai_h($faq['id'] ?? ''); ?>">
-              <input name="question" value="<?php echo ai_h($faq['question'] ?? ''); ?>">
-              <textarea name="answer"><?php echo ai_h($faq['answer'] ?? ''); ?></textarea>
-              <button type="submit">Save FAQ</button>
-              <button type="button" class="danger-btn js-delete-faq" data-faq-id="<?php echo ai_h($faq['id'] ?? ''); ?>" style="margin-top:8px; width:100%;">Delete FAQ</button>
-            </form>
-          </article>
-        <?php endforeach; ?>
-      </div>
-    </aside>
+
+        <hr style="border:0; border-top:1px solid var(--line); margin: 18px 0;">
+
+        <h3>Export Data</h3>
+        <div class="export-actions">
+          <a href="AI_Export.php?scan=<?php echo urlencode($scanId); ?>&format=excel" class="btn" style="flex:1; text-align:center;">Excel (CSV)</a>
+          <a href="AI_Export.php?scan=<?php echo urlencode($scanId); ?>&format=pdf" target="_blank" class="btn" style="flex:1; text-align:center;">PDF (Print)</a>
+        </div>
+      </section>
+    </div>
 
   </div>
 </main>
@@ -739,6 +765,7 @@ const summarizedMetric = document.getElementById("summarizedMetric");
 const scanStatusMetric = document.getElementById("scanStatusMetric");
 const summarizeAllBtn = document.getElementById("summarizeAllBtn");
 const runScanBatchBtn = document.getElementById("runScanBatchBtn");
+const backfillFaqsBtn = document.getElementById("backfillFaqsBtn");
 const refreshLiveBtn = document.getElementById("refreshLiveBtn");
 const refreshToast = document.getElementById("refreshToast");
 const refreshToastText = document.getElementById("refreshToastText");
@@ -1638,6 +1665,27 @@ document.addEventListener("click", async (event) => {
       deleteBtn.disabled = false;
       deleteBtn.textContent = originalText;
     }
+  }
+});
+
+backfillFaqsBtn?.addEventListener("click", async () => {
+  if (!scanId || scanBusy || summaryBusy) return;
+  
+  const originalText = backfillFaqsBtn.textContent;
+  backfillFaqsBtn.disabled = true;
+  backfillFaqsBtn.textContent = "Generating FAQs...";
+  
+  try {
+    const data = await callWorker("backfill_faqs");
+    if (data.success) {
+      alert(`Success! Generated ${data.created || 0} new FAQ pairs from ${data.processed || 0} summarized pages.`);
+      applyLiveData(data, "summary");
+    } else {
+      alert(data.error || "Failed to generate FAQs.");
+    }
+  } finally {
+    backfillFaqsBtn.disabled = false;
+    backfillFaqsBtn.textContent = originalText;
   }
 });
 
