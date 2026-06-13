@@ -78,22 +78,22 @@ if ($action === 'queue_test') {
     }
 } elseif ($action === 'pause_scan') {
     ai_pause_scan_job($scanId, $customerId);
-    $result = ['success' => true, 'error' => ''];
+    $result = ['success' => true, 'error' => '', 'status' => 'paused'];
 } elseif ($action === 'resume_scan') {
     ai_resume_scan_job($scanId, $customerId);
     if (ai_external_queue_enabled()) {
         ai_enqueue_external_job($scanId, 'scan', 5);
     }
-    $result = ['success' => true, 'error' => ''];
+    $result = ['success' => true, 'error' => '', 'status' => 'running'];
 } elseif ($action === 'pause_summary') {
     ai_pause_summary_job($scanId, $customerId);
-    $result = ['success' => true, 'error' => ''];
+    $result = ['success' => true, 'error' => '', 'summary_paused' => true];
 } elseif ($action === 'resume_summary') {
     ai_resume_summary_job($scanId, $customerId);
     if (ai_external_queue_enabled()) {
         ai_enqueue_external_job($scanId, 'summary', 10);
     }
-    $result = ['success' => true, 'error' => ''];
+    $result = ['success' => true, 'error' => '', 'summary_paused' => false];
 } elseif ($action === 'backfill_faqs') {
     $result = ['success' => true, 'error' => 'FAQ capture is disabled for the summarization workflow.'];
 } elseif ($action === 'add_page') {
@@ -174,11 +174,11 @@ $counts = ai_scan_job_counts($scanId, $customerId);
 ai_worker_json(array_merge($result, [
     'scan' => [
         'id' => $scanId,
-        'status' => (string)($freshScan['status'] ?? $scan['status'] ?? ''),
+        'status' => (string)($result['status'] ?? $freshScan['status'] ?? $scan['status'] ?? ''),
         'pages_requested' => (int)($freshScan['pages_requested'] ?? $scan['pages_requested'] ?? 0),
         'pages_scanned' => (int)($freshScan['pages_scanned'] ?? 0),
         'pages_failed' => (int)($freshScan['pages_failed'] ?? 0),
-        'summary_paused' => !empty($freshScan['summary_paused']),
+        'summary_paused' => isset($result['summary_paused']) ? (bool)$result['summary_paused'] : !empty($freshScan['summary_paused']),
         'error_message' => (string)($freshScan['error_message'] ?? ''),
     ],
     'counts' => $counts,

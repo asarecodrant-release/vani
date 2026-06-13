@@ -835,7 +835,7 @@ pageSearch?.addEventListener("input", (e) => {
   const q = e.target.value.toLowerCase();
   if (!pageSelect) return;
   Array.from(pageSelect.options).forEach(opt => {
-    const match = opt.text.toLowerCase().includes(q);
+        const match = opt.text.toLowerCase().includes(q) || (opt.title || "").toLowerCase().includes(q);
     opt.hidden = !match;
   });
 });
@@ -1066,6 +1066,7 @@ function updatePages(pages = []) {
   if (!pageSelect || !pagePanels) return;
   const activePanel = document.querySelector(".page-panel.is-active");
   const activePageId = activePanel?.dataset.pageId || "";
+  const q = pageSearch?.value.toLowerCase() || "";
   
   // Keep options in sync
   const currentSelectVal = pageSelect.value;
@@ -1076,6 +1077,10 @@ function updatePages(pages = []) {
     const opt = document.createElement("option");
     opt.value = page.id;
     opt.text = `${index + 1}. ${title}`;
+    opt.title = page.url || "";
+    if (q && !opt.text.toLowerCase().includes(q) && !opt.title.toLowerCase().includes(q)) {
+      opt.hidden = true;
+    }
     pageSelect.appendChild(opt);
 
     let panel = document.getElementById(`page-panel-${page.id}`);
@@ -1099,7 +1104,7 @@ function updatePages(pages = []) {
   if (pageTabsCount) pageTabsCount.textContent = `${pages.length} page${pages.length === 1 ? "" : "s"} captured`;
   if (currentSelectVal) pageSelect.value = currentSelectVal;
 
-  if (pages.length > 0 && (!document.querySelector(".page-panel.is-active") || activePanel?.id === "page-panel-add")) {
+  if (pages.length > 0 && !document.querySelector(".page-panel.is-active")) {
     selectPageTab(`page-panel-${pages[0].id}`, pages[0].id);
   } else if (activePageId) {
     selectPageTab(`page-panel-${activePageId}`, activePageId);
@@ -1618,7 +1623,7 @@ async function refreshLiveStatus(options = {}) {
       throw new Error(data?.error || "Status refresh failed.");
     }
     applyLiveData(data, summaryBusy ? "summary" : "scan");
-    if ((data?.scan?.status || "").toLowerCase() === "running" && currentScanStatus !== "paused" && !autoWorkflowBusy) {
+    if ((data?.scan?.status || "").toLowerCase() === "running" && currentScanStatus !== "paused" && !autoWorkflowBusy && !scanPauseRequestBusy) {
       autoWorkflowDone = false;
       liveWorkflowLoop(true);
     }
