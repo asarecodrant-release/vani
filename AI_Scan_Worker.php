@@ -135,6 +135,37 @@ if ($action === 'queue_test') {
         ]]);
         $result = ['success' => true, 'error' => ''];
     }
+} elseif ($action === 'restart_scan') {
+    // Clean up all data associated with this job
+    supabase('DELETE', 'ai_website_pages?scan_job_id=eq.' . urlencode($scanId) . '&customer_id=eq.' . urlencode($customerId));
+    supabase('DELETE', 'ai_website_faqs?scan_job_id=eq.' . urlencode($scanId) . '&customer_id=eq.' . urlencode($customerId));
+    if (ai_db_supports_crawl_logs()) {
+        supabase('DELETE', 'ai_crawl_logs?scan_job_id=eq.' . urlencode($scanId) . '&customer_id=eq.' . urlencode($customerId));
+    }
+    if (ai_db_supports_chunks()) {
+        supabase('DELETE', 'ai_website_chunks?scan_job_id=eq.' . urlencode($scanId) . '&customer_id=eq.' . urlencode($customerId));
+    }
+
+    // Reset job status and metadata
+    ai_patch_scan_job($scanId, [
+        'status' => 'pending',
+        'pages_scanned' => 0,
+        'pages_failed' => 0,
+        'started_at' => null,
+        'completed_at' => null,
+        'error_message' => null,
+        'worker_id' => null,
+        'locked_until' => null,
+    ]);
+
+    // Re-seed from the base URL
+    $result = ai_seed_scan_job(
+        $scanId,
+        $customerId,
+        (string)($scan['website_url'] ?? ''),
+        (string)($scan['website_domain'] ?? ''),
+        (int)($scan['pages_requested'] ?? 120)
+    );
 }
 
 $freshScan = ai_get_scan_job_for_customer($scanId, $customerId);
