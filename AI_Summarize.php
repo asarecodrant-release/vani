@@ -713,29 +713,29 @@ body.dark .diag-error{color:#fca5a5}
           <?php endforeach; ?>
         </div>
       </aside>
+
+      <section class="panel tools-panel" style="margin-top: 18px;">
+        <h2>Tools & Export</h2>
+        <p class="muted" style="margin-bottom: 20px;">Generate additional content or export your captured data.</p>
+        <div style="display: grid; gap: 20px;">
+          <div>
+            <button type="button" id="backfillFaqsBtn" class="btn" style="width:100%; justify-content:center; margin-bottom:10px;">
+              Generate FAQs from Summaries
+            </button>
+            <p class="muted" style="font-size:12px;">Uses AI to create FAQ pairs from your page summaries.</p>
+          </div>
+          <hr style="border:0; border-top:1px solid var(--line); margin: 5px 0;">
+          <div>
+            <h3 style="margin-top: 0; font-size: 14px; font-weight: 800; text-transform: uppercase; color: var(--muted); letter-spacing: 0.05em;">Export Data</h3>
+            <div class="export-actions" style="margin-top: 12px; display: flex; gap: 10px;">
+              <a href="AI_Export.php?scan=<?php echo urlencode($scanId); ?>&format=excel" class="btn" style="flex:1; text-align:center;">Excel (CSV)</a>
+              <a href="AI_Export.php?scan=<?php echo urlencode($scanId); ?>&format=pdf" target="_blank" class="btn" style="flex:1; text-align:center;">PDF Report</a>
+            </div>
+          </div>
+        </div>
+      </section>
     </div>
   </div>
-
-  <section class="panel tools-panel" style="margin-top: 18px;">
-    <h2>Tools & Export</h2>
-    <p class="muted" style="margin-bottom: 20px;">Generate additional content or export your captured data.</p>
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 30px;">
-      <div>
-        <button type="button" id="backfillFaqsBtn" class="btn" style="width:100%; justify-content:center; margin-bottom:10px;">
-          Generate FAQs from Summaries
-        </button>
-        <p class="muted" style="font-size:12px;">Uses AI to create FAQ pairs from your page summaries. Great if the crawler missed structural FAQs.</p>
-      </div>
-      <div>
-        <h3 style="margin-top: 0; font-size: 16px; font-weight: 800;">Export Data</h3>
-        <div class="export-actions" style="margin-top: 12px; display: flex; gap: 10px;">
-          <a href="AI_Export.php?scan=<?php echo urlencode($scanId); ?>&format=excel" class="btn" style="flex:1; text-align:center;">Excel (CSV)</a>
-          <a href="AI_Export.php?scan=<?php echo urlencode($scanId); ?>&format=pdf" target="_blank" class="btn" style="flex:1; text-align:center;">PDF (Print)</a>
-        </div>
-      </div>
-    </div>
-  </section>
-
 </main>
 <script>
 const shell = document.querySelector(".shell");
