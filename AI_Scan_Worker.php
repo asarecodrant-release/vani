@@ -105,13 +105,14 @@ if ($action === 'queue_test') {
 } elseif ($action === 'save_faq') {
     $result = ai_update_faq(
         trim((string)($_POST['faq_id'] ?? '')),
+        $scanId,
         $customerId,
         (string)($_POST['question'] ?? ''),
         (string)($_POST['answer'] ?? '')
     );
 } elseif ($action === 'delete_faq') {
     $faqId = trim((string)($_POST['faq_id'] ?? $_GET['faq_id'] ?? ''));
-    supabase('DELETE', 'ai_website_faqs?id=eq.' . urlencode($faqId) . '&customer_id=eq.' . urlencode($customerId));
+    supabase('DELETE', 'ai_website_faqs?id=eq.' . urlencode($faqId) . '&scan_job_id=eq.' . urlencode($scanId) . '&customer_id=eq.' . urlencode($customerId));
     $result = ['success' => true];
 } elseif ($action === 'add_faq') {
     $question = ai_clean_customer_text((string)($_POST['question'] ?? ''), 800);
@@ -122,7 +123,7 @@ if ($action === 'queue_test') {
         $signature = ai_faq_signature($question);
         $existing = ai_safe_rows(supabase(
             'GET',
-            'ai_website_faqs?select=id,question&customer_id=eq.' . urlencode($customerId) . '&limit=2000'
+            'ai_website_faqs?select=id,question&scan_job_id=eq.' . urlencode($scanId) . '&customer_id=eq.' . urlencode($customerId) . '&limit=2000'
         ));
         foreach ($existing as $row) {
             if (ai_faq_signature((string)($row['question'] ?? '')) === $signature) {
@@ -142,12 +143,14 @@ if ($action === 'queue_test') {
 } elseif ($action === 'restart_scan') {
     // Clean up all data associated with this job
     supabase('DELETE', 'ai_website_pages?scan_job_id=eq.' . urlencode($scanId) . '&customer_id=eq.' . urlencode($customerId));
+    supabase('DELETE', 'ai_website_faqs?scan_job_id=eq.' . urlencode($scanId) . '&customer_id=eq.' . urlencode($customerId));
     if (ai_db_supports_crawl_logs()) {
         supabase('DELETE', 'ai_crawl_logs?scan_job_id=eq.' . urlencode($scanId) . '&customer_id=eq.' . urlencode($customerId));
     }
     if (ai_db_supports_chunks()) {
         supabase('DELETE', 'ai_website_chunks?scan_job_id=eq.' . urlencode($scanId) . '&customer_id=eq.' . urlencode($customerId));
     }
+    supabase('DELETE', 'ai_sitemap_diagnostics?scan_job_id=eq.' . urlencode($scanId) . '&customer_id=eq.' . urlencode($customerId));
 
     // Reset job status and metadata
     ai_patch_scan_job($scanId, [
@@ -157,6 +160,7 @@ if ($action === 'queue_test') {
         'started_at' => null,
         'completed_at' => null,
         'error_message' => null,
+        'summary_paused' => false,
         'worker_id' => null,
         'locked_until' => null,
     ]);

@@ -129,7 +129,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!empty($result['success'])) {
             $message = 'Page captured. You can summarize it now.';
         } elseif (!empty($result['page_id'])) {
-            $message = 'Page added, but crawler could not capture readable text. Add the summary manually.';
+            $message = 'Page added. The crawler captured what it could for summarization.';
         } else {
             $error = (string)$result['error'];
         }
@@ -319,7 +319,7 @@ body.dark .diag-error{color:#fca5a5}
       <p><?php echo ai_h($scan['website_domain'] ?? ''); ?> pages are captured first. Customer-ready summaries can be reviewed and edited here.</p>
     </div>
     <div class="actions">
-      <button class="btn" type="button" id="refreshLiveBtn">Refresh</button>
+      <!-- <button class="btn" type="button" id="refreshLiveBtn">Refresh</button> -->
       <a class="btn" href="AI_Chatbot_Setup.php">Scan another website</a>
     </div>
   </div>
@@ -704,7 +704,7 @@ body.dark .diag-error{color:#fca5a5}
       <form method="POST" class="manual-page js-live-worker-form">
         <input type="hidden" name="action" value="add_page">
         <input name="page_url" placeholder="https://example.com/missed-page">
-        <p class="muted">We will try to crawl this page. If readable text is not captured, you can still add the summary manually below.</p>
+        <p class="muted">We will try to crawl this page. If the crawler hits a loop or cannot extract readable text, it still saves whatever it captures for summarization, and you can add the summary manually below.</p>
         <div class="row"><button type="submit">Add page</button></div>
       </form>
     </section>
@@ -715,22 +715,23 @@ body.dark .diag-error{color:#fca5a5}
       <div style="display: grid; gap: 20px;">
         <div>
           <button type="button" id="backfillFaqsBtn" class="btn" style="width:100%; justify-content:center; margin-bottom:10px;">
-            Generate FAQs from Summaries
+            Generate Customer FAQs from Summaries
           </button>
-          <p class="muted" style="font-size:12px;">Uses AI to create FAQ pairs from your page summaries.</p>
+          <p class="muted" style="font-size:12px;">Uses AI to create short, customer-friendly FAQ pairs from your page summaries.</p>
         </div>
         <hr style="border:0; border-top:1px solid var(--line); margin: 5px 0;">
         <div>
           <h3 style="margin-top: 0; font-size: 14px; font-weight: 800; text-transform: uppercase; color: var(--muted); letter-spacing: 0.05em;">Export Data</h3>
           <div class="export-actions" style="margin-top: 12px; display: flex; gap: 10px;">
             <a href="AI_Export.php?scan=<?php echo urlencode($scanId); ?>&format=excel" class="btn" style="flex:1; text-align:center;">Excel (CSV)</a>
-            <a href="AI_Export.php?scan=<?php echo urlencode($scanId); ?>&format=pdf" target="_blank" class="btn" style="flex:1; text-align:center;">PDF Report</a>
+            <button type="button" id="exportPdfBtn" class="btn" style="flex:1; text-align:center;">PDF Report</button>
           </div>
         </div>
       </div>
     </section>
   </div>
 </main>
+<script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
 <script>
 const shell = document.querySelector(".shell");
 const scanId = shell?.dataset.scanId || "";
@@ -738,6 +739,7 @@ const workerCsrf = shell?.dataset.workerCsrf || "";
 const externalQueueEnabled = shell?.dataset.externalQueue === "1";
 let currentScanStatus = shell?.dataset.scanStatus || "";
 let currentSummaryPaused = shell?.dataset.summaryPaused === "1";
+let scanPauseOverride = currentScanStatus === "paused";
 const pageTabs = document.getElementById("pageTabs");
 const pagePanels = document.getElementById("pagePanels");
 const pageTabsCount = document.getElementById("pageTabsCount");
@@ -780,6 +782,8 @@ let autoWorkflowDone = false;
 let scanPauseRequestBusy = false;
 let summaryControlsFrozen = false;
 let latestPagesList = <?php echo json_encode($pages); ?>;
+let latestFaqsList = <?php echo json_encode($faqs); ?>;
+const websiteDomain = <?php echo json_encode($scan['website_domain'] ?? ''); ?>;
 const summarizingPages = new Set();
 const skippedSummaryPages = new Set();
 
@@ -968,13 +972,22 @@ function setSummaryControlsCompleted(isCompleted) {
   }
 }
 
+function isScanPaused() {
+  return scanPauseOverride || String(currentScanStatus || "").toLowerCase() === "paused";
+}
+
 function updateWorkerUi(data, mode = "scan") {
   const counts = data?.counts || {};
   const scan = data?.scan || {};
   const rawScanStatus = String(scan.status || "");
+  if (rawScanStatus.toLowerCase() === "completed" || rawScanStatus.toLowerCase() === "failed") {
+    scanPauseOverride = false;
+  } else if (rawScanStatus.toLowerCase() === "paused") {
+    scanPauseOverride = true;
+  }
   const displayScanStatus = scanPauseRequestBusy && currentScanStatus === "paused" && rawScanStatus.toLowerCase() !== "paused"
     ? "paused"
-    : rawScanStatus;
+    : (scanPauseOverride && rawScanStatus.toLowerCase() !== "paused" ? "paused" : rawScanStatus);
   const captured = Number(counts.scanned || 0);
   const summarized = Number(counts.summarized || 0);
   const failed = Number(counts.failed || 0);
@@ -1337,13 +1350,14 @@ function applyLiveData(data = {}, mode = "scan") {
   updateDiagnostics(data);
   updateSummaryDiagnostics(data);
   if (data.pages) latestPagesList = data.pages;
+  if (data.faqs) latestFaqsList = data.faqs;
   updatePages(data.pages || []);
   updateFaqs(data.faqs || []);
   if (capturedMetric && data.pages) capturedMetric.textContent = String(data.pages.length);
 }
 
 async function processScanBatch() {
-  if (!scanId || scanBusy || currentScanStatus === "paused") return;
+  if (!scanId || scanBusy || isScanPaused()) return;
   scanBusy = true;
   setDiagnosticsLive(true, "Scanning batch...", "Working");
   try {
@@ -1454,6 +1468,7 @@ async function liveWorkflowLoop(force = false) {
       const scan = latest.scan || latest.diagnostics?.scan || {};
       const counts = latest.counts || latest.diagnostics?.counts || {};
       if (String(scan.status || "").toLowerCase() === "paused") {
+        scanPauseOverride = true;
         setDiagnosticsLive(false, "Crawler paused", "Paused");
       }
       if ((scan.status === "failed" || scan.status === "completed") && Number(counts.total || 0) === 0) {
@@ -1481,7 +1496,7 @@ async function liveWorkflowLoop(force = false) {
         break;
       }
 
-      if (String(scan.status || "").toLowerCase() === "paused") {
+      if (isScanPaused()) {
         await wait(1000);
         latest = await refreshWorkflowStatus("scan");
         continue;
@@ -1538,6 +1553,7 @@ scanPauseToggleBtn?.addEventListener("click", async (event) => {
   try {
     const data = await callWorker(action);
     applyLiveData(data, "scan");
+    scanPauseOverride = String(data?.scan?.status || "").toLowerCase() === "paused";
     if (wasPaused) {
       autoWorkflowDone = false;
       if (!autoWorkflowBusy) {
@@ -1564,6 +1580,7 @@ summaryPauseToggleBtn?.addEventListener("click", async (event) => {
   try {
     const data = await callWorker(action);
     applyLiveData(data, "summary");
+    scanPauseOverride = String(data?.scan?.status || "").toLowerCase() === "paused";
     if (wasPaused) {
       autoWorkflowDone = false;
       if (!autoWorkflowBusy) {
@@ -1592,6 +1609,7 @@ runScanBatchBtn?.addEventListener("click", async () => {
     const data = await callWorker("restart_scan");
     if (pagePanels) pagePanels.innerHTML = "";
     applyLiveData(data, "scan");
+    scanPauseOverride = String(data?.scan?.status || "").toLowerCase() === "paused";
     liveWorkflowLoop(true);
   } finally {
     runScanBatchBtn.disabled = false;
@@ -1738,7 +1756,7 @@ async function refreshLiveStatus(options = {}) {
       throw new Error(data?.error || "Status refresh failed.");
     }
     applyLiveData(data, summaryBusy ? "summary" : "scan");
-    if ((data?.scan?.status || "").toLowerCase() === "running" && currentScanStatus !== "paused" && !autoWorkflowBusy && !scanPauseRequestBusy) {
+    if ((data?.scan?.status || "").toLowerCase() === "running" && !isScanPaused() && !autoWorkflowBusy && !scanPauseRequestBusy) {
       autoWorkflowDone = false;
       liveWorkflowLoop(true);
     }
@@ -1755,6 +1773,341 @@ async function refreshLiveStatus(options = {}) {
 setInterval(() => {
   refreshLiveStatus().catch(() => {});
 }, 2500);
+
+/**
+ * Professional PDF Export Logic
+ */
+function aiSummaryReportHtml() {
+  const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+  const date = new Date().toLocaleString();
+  const pageCount = latestPagesList.length;
+  const faqCount = latestFaqsList.length;
+  const summarizedCount = latestPagesList.filter((page) => page?.page_status === "summarized").length;
+  const fetchedCount = latestPagesList.filter((page) => page?.page_status === "fetched").length;
+  const website = esc(websiteDomain || "Unknown website");
+
+  let pagesHtml = "";
+  latestPagesList.forEach((page, i) => {
+    const summary = summaryTextFromPage(page);
+    if (page.page_status === 'pending') return;
+    
+    pagesHtml += `
+      <article class="pdf-page-item">
+        <div class="pdf-page-head">
+           <span class="pdf-badge">Page ${i + 1}</span>
+           <span class="pdf-status">${esc(page.page_status || "captured")}</span>
+        </div>
+        <h3 class="pdf-page-title">${esc(pageTitle(page))}</h3>
+        <div class="pdf-page-url">${esc(page.url || "")}</div>
+        <div class="pdf-page-summary">${esc(summary || "No summary available yet.")}</div>
+        <div class="pdf-page-meta">
+          <span>Captured ${esc(page.fetched_at || page.updated_at || "n/a")}</span>
+          <span>HTTP ${esc(page.http_status || "n/a")}</span>
+          <span>${esc(page.content_length || 0)} chars</span>
+        </div>
+      </article>
+    `;
+  });
+
+  let faqsHtml = "";
+  if (latestFaqsList.length > 0) {
+    latestFaqsList.forEach((faq) => {
+      faqsHtml += `
+        <article class="pdf-faq-item">
+          <div class="pdf-faq-q">Q. ${esc(faq.question)}</div>
+          <div class="pdf-faq-a">A. ${esc(faq.answer)}</div>
+        </article>
+      `;
+    });
+  } else {
+    faqsHtml = '<p class="pdf-empty">No FAQ pairs captured for this website yet.</p>';
+  }
+
+  return `
+    <style>
+      @page { size: A4; margin: 10mm; }
+      .pdf-report, .pdf-report * { box-sizing: border-box; }
+      .pdf-report {
+        width: 100%;
+        max-width: 170mm;
+        margin: 0 auto;
+        padding: 0 2mm;
+        font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
+        color: #111827;
+        background: #f8fafd;
+        line-height: 1.55;
+        overflow-x: hidden;
+      }
+      .pdf-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 14px 15px;
+        margin-bottom: 14px;
+        background: linear-gradient(135deg, #ffffff 0%, #f4f8ff 100%);
+        border: 1px solid #dbe5f1;
+        border-radius: 18px;
+        box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+        width: 100%;
+        min-width: 0;
+        margin-left: auto;
+        margin-right: auto;
+      }
+      .pdf-brand { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1 1 auto; }
+      .pdf-brand-copy { display: grid; gap: 2px; }
+      .pdf-brand-name-wrap { display: grid; gap: 2px; min-width: 0; }
+      .pdf-brand-name { font-size: 18px; font-weight: 900; letter-spacing: -0.03em; color: #0f4c81; line-height: 1; }
+      .pdf-brand-tag { font-size: 10px; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.10em; }
+      .pdf-header-meta { text-align: right; display: grid; gap: 6px; min-width: 0; flex: 0 1 48%; }
+      .pdf-pill {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 28px;
+        padding: 0 11px;
+        border-radius: 999px;
+        background: #e8f0fe;
+        color: #1a73e8;
+        border: 1px solid #cfe0ff;
+        font-size: 10px;
+        font-weight: 900;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .pdf-title { margin: 0; font-size: 20px; line-height: 1.1; letter-spacing: -0.03em; color: #0f172a; word-break: break-word; }
+      .pdf-subtitle { margin: 4px 0 0; color: #475569; font-size: 11px; max-width: 145mm; overflow-wrap: anywhere; }
+      .pdf-meta-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; justify-content: flex-end; }
+      .pdf-meta-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 24px;
+        padding: 0 9px;
+        border-radius: 999px;
+        background: #ffffff;
+        border: 1px solid #dbe5f1;
+        color: #334155;
+        font-size: 9px;
+        font-weight: 700;
+        max-width: 100%;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+      }
+      .pdf-section { margin: 12px auto 0; width: 100%; min-width: 0; break-inside: avoid-page; page-break-inside: avoid; }
+      .pdf-section-title {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 14px;
+        padding: 10px 14px;
+        margin-bottom: 10px;
+        background: linear-gradient(135deg, #0f4c81, #1a73e8);
+        color: #fff;
+        border-radius: 14px;
+        font-size: 13px;
+        font-weight: 900;
+        letter-spacing: 0.02em;
+      }
+      .pdf-summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; width: 100%; }
+      .pdf-summary-card {
+        background: #fff;
+        border: 1px solid #dbe5f1;
+        border-radius: 12px;
+        padding: 10px;
+        box-shadow: 0 8px 22px rgba(15, 23, 42, 0.04);
+        break-inside: avoid;
+        page-break-inside: avoid;
+        width: 100%;
+        min-width: 0;
+      }
+      .pdf-summary-card span {
+        display: block;
+        font-size: 9px;
+        font-weight: 900;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin-bottom: 6px;
+      }
+      .pdf-summary-card strong { display: block; font-size: 20px; line-height: 1; color: #0f4c81; }
+      .pdf-page-item,
+      .pdf-faq-item {
+        background: #fff;
+        border: 1px solid #dbe5f1;
+        border-radius: 14px;
+        padding: 11px 13px;
+        margin-bottom: 10px;
+        box-shadow: 0 8px 22px rgba(15, 23, 42, 0.04);
+        break-inside: avoid;
+        page-break-inside: avoid;
+        page-break-before: auto;
+        page-break-after: auto;
+        width: 100%;
+        min-width: 0;
+        margin-left: auto;
+        margin-right: auto;
+      }
+      .pdf-page-head { display: flex; justify-content: space-between; gap: 8px; align-items: center; margin-bottom: 6px; flex-wrap: wrap; }
+      .pdf-badge,
+      .pdf-status {
+        display: inline-flex;
+        min-height: 22px;
+        align-items: center;
+        padding: 0 8px;
+        border-radius: 999px;
+        font-size: 9px;
+        font-weight: 900;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .pdf-badge { background: #e8f0fe; color: #1a73e8; }
+      .pdf-status { background: #eefbf4; color: #15803d; }
+      .pdf-page-title { margin: 0 0 5px; font-size: 14px; line-height: 1.22; color: #0f172a; }
+      .pdf-page-url { color: #1a73e8; font-size: 9px; font-weight: 700; word-break: break-word; overflow-wrap: anywhere; margin-bottom: 8px; }
+      .pdf-page-summary {
+        background: #f8fbff;
+        border: 1px solid #d9e7fb;
+        border-left: 4px solid #1a73e8;
+        border-radius: 10px;
+        padding: 10px 12px;
+        color: #334155;
+        font-size: 10.8px;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+        white-space: pre-wrap;
+        width: 100%;
+      }
+      .pdf-page-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; color: #64748b; font-size: 9px; font-weight: 700; width: 100%; }
+      .pdf-page-meta span { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 999px; padding: 3px 7px; }
+      .pdf-faq-q { font-size: 11px; font-weight: 900; color: #0f172a; margin-bottom: 6px; word-break: break-word; overflow-wrap: anywhere; }
+      .pdf-faq-a { font-size: 10.8px; color: #334155; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; width: 100%; }
+      .pdf-empty { margin: 0; padding: 14px; text-align: center; color: #64748b; font-style: italic; background: #fff; border: 1px dashed #cbd5e1; border-radius: 12px; }
+      .pdf-footer {
+        margin-top: 14px;
+        padding-top: 8px;
+        border-top: 1px solid #dbe5f1;
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        align-items: center;
+        color: #64748b;
+        font-size: 9px;
+      }
+      .pdf-footer strong { color: #0f172a; }
+    </style>
+    <div class="pdf-report">
+      <header class="pdf-header">
+        <div class="pdf-brand">
+          <div class="pdf-brand-copy">
+            <div class="pdf-brand-name">Vani AI</div>
+            <div class="pdf-brand-tag">Knowledge Intelligence Report</div>
+          </div>
+        </div>
+        <div class="pdf-header-meta">
+          <span class="pdf-pill">PDF export</span>
+          <div class="pdf-title">Website Intelligence Report</div>
+          <div class="pdf-subtitle">Bright-mode customer report for ${website}</div>
+          <div class="pdf-meta-row">
+            <span class="pdf-meta-chip">Generated ${esc(date)}</span>
+            <span class="pdf-meta-chip">Website ${website}</span>
+          </div>
+        </div>
+      </header>
+
+      <section class="pdf-section">
+        <div class="pdf-section-title">
+          <span>Report Overview</span>
+          <span>${pageCount} page(s) captured</span>
+        </div>
+        <div class="pdf-summary-grid">
+          <div class="pdf-summary-card"><span>Captured Pages</span><strong>${pageCount}</strong></div>
+          <div class="pdf-summary-card"><span>Summarized</span><strong>${summarizedCount}</strong></div>
+          <div class="pdf-summary-card"><span>Captured FAQs</span><strong>${faqCount}</strong></div>
+          <div class="pdf-summary-card"><span>Fetched</span><strong>${fetchedCount}</strong></div>
+        </div>
+      </section>
+
+      <section class="pdf-section">
+        <div class="pdf-section-title">
+          <span>Captured Pages & Summaries</span>
+          <span>${pageCount} item(s)</span>
+        </div>
+        ${pagesHtml || '<p class="pdf-empty">No summarized content available for this report.</p>'}
+      </section>
+
+      <section class="pdf-section">
+        <div class="pdf-section-title">
+          <span>Captured FAQ Items</span>
+          <span>${faqCount} pair(s)</span>
+        </div>
+        ${faqsHtml}
+      </section>
+
+      <footer class="pdf-footer">
+        <div><strong>Vani AI</strong> customer-ready export</div>
+        <div>Prepared for review, sharing, and printing</div>
+      </footer>
+    </div>
+  `;
+}
+
+async function generateProfessionalPdf() {
+  if (typeof html2pdf === 'undefined') {
+    alert("PDF generator is still loading. Please wait a moment.");
+    return;
+  }
+
+  const exportBtn = document.getElementById("exportPdfBtn");
+  const originalLabel = exportBtn.innerHTML;
+  exportBtn.disabled = true;
+  exportBtn.innerHTML = "Generating PDF...";
+  showRefreshToast("Generating report...", false, 0);
+
+  let container = null;
+  try {
+    container = document.createElement("div");
+    container.style.position = "fixed";
+    container.style.left = "-10000px";
+    container.style.top = "0";
+    container.style.width = "1280px";
+    container.style.visibility = "hidden";
+    container.innerHTML = aiSummaryReportHtml();
+    document.body.appendChild(container);
+    const reportRoot = container.querySelector(".pdf-report") || container;
+    const images = Array.from(container.querySelectorAll("img"));
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    if (document.fonts?.ready) {
+      await document.fonts.ready;
+    }
+    await Promise.all(images.map((img) => img.complete ? Promise.resolve() : new Promise((resolve) => {
+      img.addEventListener("load", resolve, { once: true });
+      img.addEventListener("error", resolve, { once: true });
+    })));
+    
+    const options = {
+      margin: [8, 8, 8, 8],
+      filename: `Vani-AI-Content-Report-${websiteDomain.replace(/\./g, '-')}.pdf`,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 1.2, useCORS: true, letterRendering: true, backgroundColor: '#f8fafd', scrollY: 0, windowWidth: 1280, logging: false },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      pagebreak: { mode: ['css', 'legacy'], avoid: ['.pdf-summary-card', '.pdf-page-item', '.pdf-faq-item', '.pdf-header', '.pdf-footer', '.pdf-section', '.pdf-section-title'] }
+    };
+
+    await html2pdf().set(options).from(reportRoot).save();
+    showRefreshToast("Report generated!", true, 2000);
+  } catch (err) {
+    console.error("PDF generation failed:", err);
+    showRefreshToast("Export failed.", false, 3000);
+  } finally {
+    if (container.parentNode) container.parentNode.removeChild(container);
+    exportBtn.disabled = false;
+    exportBtn.innerHTML = originalLabel;
+  }
+}
+
+document.getElementById("exportPdfBtn")?.addEventListener("click", generateProfessionalPdf);
 </script>
 </body>
 </html>

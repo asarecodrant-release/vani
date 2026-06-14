@@ -598,6 +598,52 @@ function ai_default_allow_url_patterns(): array {
     ];
 }
 
+function ai_internal_app_url_patterns(): array {
+    return [
+        '/\/AI_Chatbot_Setup\.php\b/i',
+        '/\/AI_Summarize\.php\b/i',
+        '/\/AI_Export\.php\b/i',
+        '/\/login\.php\b/i',
+        '/\/logout\.php\b/i',
+        '/\/signup\.php\b/i',
+        '/\/forgot-password\.php\b/i',
+        '/\/dashboard\.php\b/i',
+        '/\/complete-setup(?:\.php)?\b/i',
+        '/\/navbar\.php\b/i',
+    ];
+}
+
+function ai_is_internal_app_url(string $url): bool {
+    return $url !== '' && ai_url_matches_any_pattern($url, ai_internal_app_url_patterns());
+}
+
+function ai_detect_loop_page(string $url, string $html, string $title = '', string $contentType = ''): string {
+    if ($url !== '' && ai_is_internal_app_url($url)) {
+        return 'internal app route';
+    }
+
+    $title = strtolower(trim(preg_replace('/\s+/', ' ', $title) ?: ''));
+    $body = strtolower(trim(preg_replace('/\s+/', ' ', strip_tags($html)) ?: ''));
+    $merged = trim($title . ' ' . $body);
+    if ($merged === '') {
+        return '';
+    }
+
+    if (preg_match('/(this ai setup page is protected|customers must login|invalid request|authentication required|scan job not found|please login|create an account|sign in to continue)/i', $merged)) {
+        return 'auth or setup page';
+    }
+    if (preg_match('/(<meta[^>]+http-equiv=["\']refresh["\']|window\.location|location\.href|document\.location)/i', $html)) {
+        return 'redirect loop';
+    }
+    if (preg_match('/(AI_Chatbot_Setup\.php|AI_Summarize\.php|login\.php|signup\.php|forgot-password\.php|dashboard\.php)/i', $merged)) {
+        return 'internal app route';
+    }
+    if ($contentType !== '' && stripos($contentType, 'html') === false && stripos($contentType, 'text/plain') === false) {
+        return 'non-html response';
+    }
+    return '';
+}
+
 function ai_domain_block_url_patterns(string $websiteDomain): array {
     $domain = strtolower($websiteDomain);
     if (strpos($domain, 'airbnb.') !== false || $domain === 'airbnb.com') {
@@ -618,6 +664,9 @@ function ai_domain_block_url_patterns(string $websiteDomain): array {
 
 function ai_should_scan_url(string $url, string $websiteDomain): bool {
     if ($url === '' || ai_host_from_value($url) !== $websiteDomain) {
+        return false;
+    }
+    if (ai_is_internal_app_url($url)) {
         return false;
     }
     if (strlen($url) > (int)ai_env('AI_CRAWL_MAX_URL_LENGTH', '220')) {
@@ -982,6 +1031,8 @@ function ai_clean_summary_text(string $value): string {
     $value = preg_replace('/\b(?:the\s+)?h[1-6]\s+(?:heading|tag|section)\s+(?:says|states|mentions|contains|is|are)\s*:?\s*/i', '', $value) ?: $value;
     $value = preg_replace('/(^|[\n.]\s*)h[1-6]\s*[:\-]\s*/i', '$1', $value) ?: $value;
     $value = preg_replace('/\b(?:h[1-6]|heading\s+level\s+[1-6])\b/i', 'heading', $value) ?: $value;
+    $value = preg_replace('/(^|[\n.]\s*)(?:page\s+title|page\s+heading|title|heading|section|subheading|summary|overview)\s*[:\-]\s*/i', '$1', $value) ?: $value;
+    $value = preg_replace('/\b(?:page\s+title|page\s+heading|title\s+label|heading\s+label|summary\s+label|overview\s+label)\s*[:\-]\s*/i', '', $value) ?: $value;
     $value = preg_replace('/[ \t\r\f\v]+/', ' ', $value) ?: $value;
     return ai_clean_customer_text(trim($value), 2200);
 }
@@ -1056,7 +1107,7 @@ function ai_collect_page_faqs(string $url, string $title, string $cleanText, arr
     return ai_dedupe_faqs(array_merge($faqs, ai_extract_page_faqs($url, $title, $cleanText)));
 }
 
-function ai_fetch_pages_parallel(array $urls, int $concurrency = 4): array {
+function ai_fetch_pages_parallel(array $urls, int $concurrency = 4, ?callable $shouldContinue = null): array {
     $urls = array_values(array_unique(array_filter(array_map('strval', $urls))));
     if (empty($urls)) {
         return [];
@@ -1064,12 +1115,15 @@ function ai_fetch_pages_parallel(array $urls, int $concurrency = 4): array {
     if (!function_exists('curl_multi_init') || count($urls) === 1) {
         $results = [];
         foreach ($urls as $url) {
+            if ($shouldContinue !== null && !$shouldContinue()) {
+                break;
+            }
             $results[$url] = ai_fetch_page($url);
         }
         return $results;
     }
 
-    $concurrency = max(1, min(8, $concurrency));
+    $concurrency = max(1, min(10, $concurrency));
     $headers = [
         'User-Agent: VaniAI-Scanner/1.0',
         'Accept: text/html,application/xhtml+xml',
@@ -1081,11 +1135,22 @@ function ai_fetch_pages_parallel(array $urls, int $concurrency = 4): array {
     $multi = curl_multi_init();
 
     do {
+        if ($shouldContinue !== null && !$shouldContinue()) {
+            foreach ($active as $entry) {
+                curl_multi_remove_handle($multi, $entry['handle']);
+                curl_close($entry['handle']);
+            }
+            break;
+        }
         while (count($active) < $concurrency && !empty($pending)) {
+            if ($shouldContinue !== null && !$shouldContinue()) {
+                $pending = [];
+                break;
+            }
             $url = array_shift($pending);
             $ch = curl_init($url);
-            $connectTimeout = max(2, (int)ai_env('AI_HTTP_CONNECT_TIMEOUT', '6'));
-            $pageTimeout = max(5, (int)ai_env('AI_HTTP_PAGE_TIMEOUT', '14'));
+            $connectTimeout = max(2, (int)ai_env('AI_HTTP_CONNECT_TIMEOUT', '5'));
+            $pageTimeout = max(4, (int)ai_env('AI_HTTP_PAGE_TIMEOUT', '12'));
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_FOLLOWLOCATION => true,
@@ -1850,17 +1915,18 @@ function ai_faq_signature(string $question): string {
     return trim($value);
 }
 
-function ai_faq_existing_signatures(string $customerId): array {
+function ai_faq_existing_signatures(string $jobId, string $customerId): array {
     static $cache = [];
-    if ($customerId === '') {
+    if ($jobId === '' || $customerId === '') {
         return [];
     }
-    if (isset($cache[$customerId])) {
-        return $cache[$customerId];
+    $cacheKey = $jobId . '|' . $customerId;
+    if (isset($cache[$cacheKey])) {
+        return $cache[$cacheKey];
     }
     $rows = ai_safe_rows(supabase(
         'GET',
-        'ai_website_faqs?select=question&customer_id=eq.' . urlencode($customerId) . '&limit=2000'
+        'ai_website_faqs?select=question&scan_job_id=eq.' . urlencode($jobId) . '&customer_id=eq.' . urlencode($customerId) . '&limit=2000'
     ));
     $seen = [];
     foreach ($rows as $row) {
@@ -1869,7 +1935,7 @@ function ai_faq_existing_signatures(string $customerId): array {
             $seen[$signature] = true;
         }
     }
-    $cache[$customerId] = $seen;
+    $cache[$cacheKey] = $seen;
     return $seen;
 }
 
@@ -1924,31 +1990,207 @@ function ai_summary_array_values(array $summary, string $key): array {
     return array_values(array_unique($items));
 }
 
+function ai_summary_sentence_snippets(string $text, int $maxSnippets = 3, int $limit = 220): array {
+    $text = ai_clean_customer_text($text, max(300, $limit * 4));
+    if ($text === '') {
+        return [];
+    }
+    $sentences = preg_split('/(?<=[.!?])\s+/', $text) ?: [$text];
+    $snippets = [];
+    foreach ($sentences as $sentence) {
+        $sentence = ai_clean_customer_text((string)$sentence, $limit);
+        if ($sentence === '') {
+            continue;
+        }
+        $snippets[] = $sentence;
+        if (count($snippets) >= max(1, $maxSnippets)) {
+            break;
+        }
+    }
+    if (empty($snippets)) {
+        $snippets[] = ai_clean_customer_text(substr($text, 0, $limit), $limit);
+    }
+    return $snippets;
+}
+
+function ai_summary_compact_answer(array $answers, int $maxItems = 2, int $limit = 240): string {
+    $items = [];
+    foreach ($answers as $answer) {
+        $answer = ai_clean_customer_text((string)$answer, $limit);
+        if ($answer === '') {
+            continue;
+        }
+        $items[] = $answer;
+        if (count($items) >= max(1, $maxItems)) {
+            break;
+        }
+    }
+    if (empty($items)) {
+        return '';
+    }
+    $answer = implode(' ', $items);
+    return ai_clean_customer_text($answer, $limit);
+}
+
 function ai_add_summary_faq(array &$faqs, string $question, array $answers, string $source = 'ai_summary_generated'): void {
     $answers = array_values(array_filter(array_map(function ($answer) {
-        return ai_clean_customer_text((string)$answer, 900);
+        return ai_clean_summary_text((string)$answer);
     }, $answers)));
     if ($question === '' || empty($answers)) {
         return;
     }
+    $answer = ai_summary_compact_answer($answers, 2, 220);
+    if ($answer === '') {
+        return;
+    }
     $faqs[] = [
         'question' => $question,
-        'answer' => substr(implode(' ', array_slice($answers, 0, 6)), 0, 3000),
+        'answer' => $answer,
         'source' => $source
     ];
 }
 
 function ai_generate_faqs_from_summary_data(array $summary, string $url, string $title): array {
     $label = trim($title) !== '' ? trim($title) : (string)(parse_url($url, PHP_URL_HOST) ?: 'this page');
+    $pageType = strtolower(trim((string)($summary['page_type'] ?? 'other')));
     $faqs = [];
-    ai_add_summary_faq($faqs, 'What should visitors know from ' . $label . '?', ai_summary_array_values($summary, 'key_facts'));
-    ai_add_summary_faq($faqs, 'What services are mentioned on ' . $label . '?', ai_summary_array_values($summary, 'services'));
-    ai_add_summary_faq($faqs, 'What pricing information is available on ' . $label . '?', ai_summary_array_values($summary, 'pricing_info'));
-    ai_add_summary_faq($faqs, 'Where is this business or service available?', ai_summary_array_values($summary, 'locations'));
-    ai_add_summary_faq($faqs, 'What timings or hours are mentioned?', ai_summary_array_values($summary, 'timings'));
-    ai_add_summary_faq($faqs, 'What policies are mentioned on ' . $label . '?', ai_summary_array_values($summary, 'policies'));
-    ai_add_summary_faq($faqs, 'What steps or process should visitors follow?', ai_summary_array_values($summary, 'steps_or_processes'));
-    ai_add_summary_faq($faqs, 'What requirements or eligibility details are mentioned?', ai_summary_array_values($summary, 'requirements_or_eligibility'));
+    $summaryText = ai_clean_summary_text((string)($summary['summary'] ?? ''));
+
+    $addTypeQuestion = function (string $question, array $answers, string $source = 'ai_summary_generated') use (&$faqs): void {
+        ai_add_summary_faq($faqs, $question, $answers, $source);
+    };
+
+    switch ($pageType) {
+        case 'services':
+            $services = ai_summary_array_values($summary, 'services');
+            $processes = ai_summary_array_values($summary, 'steps_or_processes');
+            $requirements = ai_summary_array_values($summary, 'requirements_or_eligibility');
+            $pricing = ai_summary_array_values($summary, 'pricing_info');
+            $locations = ai_summary_array_values($summary, 'locations');
+
+            if (!empty($services[0] ?? null)) {
+                $addTypeQuestion('What services are offered on this page?', array_slice($services, 0, 2));
+            }
+            if (!empty($processes[0] ?? null)) {
+                $addTypeQuestion('How do customers get started?', array_slice($processes, 0, 2));
+            }
+            if (!empty($requirements[0] ?? null)) {
+                $addTypeQuestion('What requirements should customers know before booking?', array_slice($requirements, 0, 2));
+            }
+            if (!empty($pricing[0] ?? null)) {
+                $addTypeQuestion('What pricing or fee details are mentioned?', array_slice($pricing, 0, 2));
+            }
+            if (!empty($locations[0] ?? null)) {
+                $addTypeQuestion('Where is this service available?', array_slice($locations, 0, 2));
+            }
+            break;
+
+        case 'pricing':
+            $pricing = ai_summary_array_values($summary, 'pricing_info');
+            $services = ai_summary_array_values($summary, 'services');
+            $policies = ai_summary_array_values($summary, 'policies');
+            $requirements = ai_summary_array_values($summary, 'requirements_or_eligibility');
+
+            if (!empty($pricing[0] ?? null)) {
+                $addTypeQuestion('What pricing details are listed here?', array_slice($pricing, 0, 2));
+            }
+            if (!empty($services[0] ?? null)) {
+                $addTypeQuestion('Which plan or service options are available?', array_slice($services, 0, 2));
+            }
+            if (!empty($policies[0] ?? null)) {
+                $addTypeQuestion('Are there any billing or refund rules to know?', array_slice($policies, 0, 2));
+            }
+            if (!empty($requirements[0] ?? null)) {
+                $addTypeQuestion('Are there any eligibility or signup requirements?', array_slice($requirements, 0, 2));
+            }
+            break;
+
+        case 'contact':
+            $contact = is_array($summary['contact_info'] ?? null) ? $summary['contact_info'] : [];
+            $location = ai_summary_array_values($summary, 'locations');
+            $timings = ai_summary_array_values($summary, 'timings');
+            $contactAnswers = [];
+            foreach (['phones' => 'Phone', 'emails' => 'Email', 'addresses' => 'Address'] as $key => $labelText) {
+                foreach (ai_summary_array_values($contact, $key) as $item) {
+                    $contactAnswers[] = $labelText . ': ' . $item;
+                }
+            }
+
+            if (!empty($contactAnswers)) {
+                $addTypeQuestion('What is the best way to contact the business?', array_slice($contactAnswers, 0, 3));
+            }
+            if (!empty($location[0] ?? null)) {
+                $addTypeQuestion('Where is the business located?', array_slice($location, 0, 2));
+            }
+            if (!empty($timings[0] ?? null)) {
+                $addTypeQuestion('When can customers reach the business?', array_slice($timings, 0, 2));
+            }
+            break;
+
+        case 'faq':
+            $keyFacts = ai_summary_array_values($summary, 'key_facts');
+            $processes = ai_summary_array_values($summary, 'steps_or_processes');
+            if (!empty($keyFacts[0] ?? null)) {
+                $addTypeQuestion('What are the main answers covered on this FAQ page?', array_slice($keyFacts, 0, 2));
+            }
+            if (!empty($processes[0] ?? null)) {
+                $addTypeQuestion('What steps or common answers are explained here?', array_slice($processes, 0, 2));
+            }
+            break;
+
+        case 'home':
+        case 'about':
+        case 'blog':
+        case 'other':
+        default:
+            break;
+    }
+
+    $keyFacts = ai_summary_array_values($summary, 'key_facts');
+    if (!empty($keyFacts[0] ?? null)) {
+        ai_add_summary_faq($faqs, 'What is the main takeaway from ' . $label . '?', [$keyFacts[0]]);
+    }
+    if (!empty($keyFacts[1] ?? null)) {
+        ai_add_summary_faq($faqs, 'What other important detail should visitors know about ' . $label . '?', [$keyFacts[1]]);
+    }
+    if (!empty($keyFacts[2] ?? null)) {
+        ai_add_summary_faq($faqs, 'What additional point is mentioned on ' . $label . '?', [$keyFacts[2]]);
+    }
+
+    $services = ai_summary_array_values($summary, 'services');
+    if (!empty($services[0] ?? null)) {
+        ai_add_summary_faq($faqs, 'What services or offerings are mentioned on ' . $label . '?', array_slice($services, 0, 2));
+    }
+
+    $pricing = ai_summary_array_values($summary, 'pricing_info');
+    if (!empty($pricing[0] ?? null)) {
+        ai_add_summary_faq($faqs, 'What pricing or cost details are available on ' . $label . '?', array_slice($pricing, 0, 2));
+    }
+
+    $locations = ai_summary_array_values($summary, 'locations');
+    if (!empty($locations[0] ?? null)) {
+        ai_add_summary_faq($faqs, 'Where is this business or service available?', array_slice($locations, 0, 2));
+    }
+
+    $timings = ai_summary_array_values($summary, 'timings');
+    if (!empty($timings[0] ?? null)) {
+        ai_add_summary_faq($faqs, 'What timings, hours, or deadlines are mentioned?', array_slice($timings, 0, 2));
+    }
+
+    $policies = ai_summary_array_values($summary, 'policies');
+    if (!empty($policies[0] ?? null)) {
+        ai_add_summary_faq($faqs, 'What policies or rules should visitors know?', array_slice($policies, 0, 2));
+    }
+
+    $processes = ai_summary_array_values($summary, 'steps_or_processes');
+    if (!empty($processes[0] ?? null)) {
+        ai_add_summary_faq($faqs, 'What steps or process should visitors follow?', array_slice($processes, 0, 2));
+    }
+
+    $requirements = ai_summary_array_values($summary, 'requirements_or_eligibility');
+    if (!empty($requirements[0] ?? null)) {
+        ai_add_summary_faq($faqs, 'What requirements or eligibility details are mentioned?', array_slice($requirements, 0, 2));
+    }
 
     $contact = $summary['contact_info'] ?? [];
     if (is_array($contact)) {
@@ -1958,15 +2200,36 @@ function ai_generate_faqs_from_summary_data(array $summary, string $url, string 
                 $contactAnswers[] = $labelText . ': ' . $item;
             }
         }
-        ai_add_summary_faq($faqs, 'How can visitors contact the business?', $contactAnswers);
+        ai_add_summary_faq($faqs, 'How can visitors contact the business?', array_slice($contactAnswers, 0, 3));
     }
 
-    return array_slice(ai_dedupe_faqs($faqs), 0, 12);
+    if (empty($faqs) && $summaryText !== '') {
+        $snippets = ai_summary_sentence_snippets($summaryText, 4, 200);
+        if ($pageType === 'services') {
+            ai_add_summary_faq($faqs, 'What does this service page explain?', [$snippets[0] ?? $summaryText], 'ai_summary_generated');
+            ai_add_summary_faq($faqs, 'How should a customer get started?', [$snippets[1] ?? $summaryText], 'ai_summary_generated');
+            ai_add_summary_faq($faqs, 'What other service detail is mentioned?', [$snippets[2] ?? $summaryText], 'ai_summary_generated');
+        } elseif ($pageType === 'pricing') {
+            ai_add_summary_faq($faqs, 'What pricing information is listed here?', [$snippets[0] ?? $summaryText], 'ai_summary_generated');
+            ai_add_summary_faq($faqs, 'What should customers know about the plan or cost?', [$snippets[1] ?? $summaryText], 'ai_summary_generated');
+            ai_add_summary_faq($faqs, 'Are there any important billing details?', [$snippets[2] ?? $summaryText], 'ai_summary_generated');
+        } elseif ($pageType === 'contact') {
+            ai_add_summary_faq($faqs, 'How can customers contact the business?', [$snippets[0] ?? $summaryText], 'ai_summary_generated');
+            ai_add_summary_faq($faqs, 'Where is the business located?', [$snippets[1] ?? $summaryText], 'ai_summary_generated');
+            ai_add_summary_faq($faqs, 'When is the business available?', [$snippets[2] ?? $summaryText], 'ai_summary_generated');
+        } else {
+            ai_add_summary_faq($faqs, 'What is this page about?', [$snippets[0] ?? $summaryText], 'ai_summary_generated');
+            ai_add_summary_faq($faqs, 'What should visitors know before using this page?', [$snippets[1] ?? $summaryText], 'ai_summary_generated');
+            ai_add_summary_faq($faqs, 'What other helpful detail is mentioned here?', [$snippets[2] ?? $summaryText], 'ai_summary_generated');
+        }
+    }
+
+    return array_slice(ai_dedupe_faqs($faqs), 0, 8);
 }
 
 function ai_save_page_faqs(string $jobId, string $customerId, string $pageUrl, array $faqs): void {
     $rows = [];
-    $existingSignatures = ai_faq_existing_signatures($customerId);
+    $existingSignatures = ai_faq_existing_signatures($jobId, $customerId);
     foreach (ai_dedupe_faqs($faqs) as $faq) {
         $signature = ai_faq_signature((string)$faq['question']);
         if ($signature === '' || isset($existingSignatures[$signature])) {
@@ -1995,7 +2258,7 @@ function ai_save_page_faqs(string $jobId, string $customerId, string $pageUrl, a
     foreach ($rows as $payload) {
         $existing = ai_safe_rows(supabase(
             'GET',
-            'ai_website_faqs?select=id&customer_id=eq.' . urlencode($customerId)
+            'ai_website_faqs?select=id&scan_job_id=eq.' . urlencode($jobId) . '&customer_id=eq.' . urlencode($customerId)
                 . '&page_url=eq.' . urlencode($pageUrl)
                 . '&question=eq.' . urlencode((string)$payload['question'])
                 . '&limit=1'
@@ -2080,21 +2343,60 @@ function ai_capture_single_page(string $jobId, string $customerId, string $websi
         ];
     }
 
-    $pageStartTime = time();
+    $pageStartTime = microtime(true);
     $parsed = ai_parse_html_page((string)$fetch['html'], $finalUrl, $websiteDomain);
     $cleanText = (string)$parsed['clean_text'];
-
-    // Check for 2-minute processing limit before intensive FAQ extraction
-    $timeoutReached = (time() - $pageStartTime > 115);
+    $timeoutReached = ((microtime(true) - $pageStartTime) > 120.0);
     $capturedFaqs = [];
     if (!$timeoutReached) {
         $capturedFaqs = ai_collect_page_faqs($finalUrl, (string)$parsed['title'], $cleanText, (array)($parsed['detected_faqs'] ?? []));
     }
 
-    if (!$timeoutReached && (time() - $pageStartTime > 120)) {
-        $timeoutReached = true;
+    $loopReason = ai_detect_loop_page($finalUrl, (string)$fetch['html'], (string)$parsed['title'], (string)($fetch['content_type'] ?? ''));
+    if ($loopReason !== '') {
+        $aiError = 'Loop detected: ' . $loopReason . '. Captured content was saved for summarization.';
+        if ($timeoutReached) {
+            $aiError .= ' Page scan stopped after 2 minutes. We captured what we could and saved it for summarization.';
+            ai_crawl_log($jobId, $customerId, 'scan_timeout', $aiError, ['url' => $finalUrl], 'warning', $finalUrl);
+        }
+        ai_save_scanned_page($jobId, $customerId, [
+            'url' => $finalUrl,
+            'normalized_url' => $normalized,
+            'page_title' => (string)$parsed['title'],
+            'page_status' => 'fetched',
+            'http_status' => (int)$fetch['status'],
+            'content_hash' => hash('sha256', $cleanText),
+            'clean_text' => $cleanText,
+            'summary_json' => null,
+            'embedding' => null,
+            'ai_error' => $aiError,
+            'content_type' => (string)($fetch['content_type'] ?? ''),
+            'content_length' => (int)($fetch['content_length'] ?? strlen($cleanText)),
+            'discovered_links_count' => count((array)($parsed['links'] ?? [])),
+            'html_preview' => substr(strip_tags((string)$fetch['html']), 0, 1000),
+            'fetched_at' => ai_now(),
+            'summarized_at' => null
+        ]);
+        ai_save_page_faqs($jobId, $customerId, $finalUrl, $capturedFaqs);
+        ai_crawl_log($jobId, $customerId, 'loop_detected', 'Loop detected while scanning this page. Captured content was saved for summarization.', [
+            'url' => $finalUrl,
+            'reason' => $loopReason
+        ], 'warning', $finalUrl, '');
+
+        $rows = ai_safe_rows(supabase(
+            'GET',
+            'ai_website_pages?select=id&customer_id=eq.' . urlencode($customerId)
+                . '&normalized_url=eq.' . urlencode($normalized)
+                . '&limit=1'
+        ));
+        return [
+            'success' => trim($cleanText) !== '',
+            'page_id' => (string)($rows[0]['id'] ?? ''),
+            'error' => trim($cleanText) === '' ? 'Loop detected: ' . $loopReason . '. No readable text was captured.' : ''
+        ];
     }
 
+    // Check for 2-minute processing limit before intensive FAQ extraction
     $aiError = '';
     if ($timeoutReached) {
         $aiError = 'There is so much information to scan. We captured what we could in 2 minutes. Please add the remaining summary manually for this page.';
@@ -2293,7 +2595,7 @@ function ai_scan_review_pages(string $jobId, string $customerId, int $limit = 25
 function ai_scan_review_faqs(string $jobId, string $customerId, int $limit = 500): array {
     return ai_safe_rows(supabase(
         'GET',
-        'ai_website_faqs?select=*&customer_id=eq.' . urlencode($customerId)
+        'ai_website_faqs?select=*&scan_job_id=eq.' . urlencode($jobId) . '&customer_id=eq.' . urlencode($customerId)
             . '&order=created_at.asc&limit=' . max(1, min(1000, $limit))
     ));
 }
@@ -2436,7 +2738,7 @@ function ai_get_scan_job_by_id(string $jobId): array {
 }
 
 function ai_page_retry_payload(string $error, int $attempts): array {
-    $maxAttempts = max(1, (int)ai_env('AI_CRAWL_MAX_ATTEMPTS', '3'));
+    $maxAttempts = 2;
     if ($attempts >= $maxAttempts) {
         return [
             'page_status' => 'failed',
@@ -2594,6 +2896,20 @@ function ai_process_scan_job_batch(string $jobId, string $customerId, int $batch
     $retrySupported = ai_db_supports_retry_columns();
     $batchLimit = max(1, min((int)ai_env('AI_CRAWL_MAX_BATCH_SIZE', '12'), $batchSize));
     $pendingPages = ai_claim_pending_pages($jobId, $customerId, $batchLimit, $workerId, $retrySupported);
+    $fetches = [];
+    $pendingUrls = [];
+    foreach ($pendingPages as $page) {
+        $pageUrl = (string)($page['url'] ?? '');
+        if ($pageUrl !== '') {
+            $pendingUrls[] = $pageUrl;
+        }
+    }
+    if (!empty($pendingUrls)) {
+        $fetchConcurrency = max(1, min((int)ai_env('AI_CRAWL_CONCURRENCY', '4'), count($pendingUrls)));
+        $fetches = ai_fetch_pages_parallel($pendingUrls, $fetchConcurrency, function () use ($jobId, $customerId) {
+            return !ai_scan_job_is_paused($jobId, $customerId);
+        });
+    }
     if (ai_scan_job_is_paused($jobId, $customerId)) {
         foreach ($pendingPages as $page) {
             ai_release_page_claim((string)($page['id'] ?? ''), $workerId);
@@ -2608,7 +2924,6 @@ function ai_process_scan_job_batch(string $jobId, string $customerId, int $batch
         $counts = ai_scan_job_counts($jobId, $customerId);
         if ($counts['pending'] > 0) {
             if (!ai_patch_active_scan_job($jobId, $customerId, [
-                'status' => 'running',
                 'pages_scanned' => $counts['scanned'],
                 'pages_failed' => $counts['failed'],
                 'error_message' => null,
@@ -2622,7 +2937,7 @@ function ai_process_scan_job_batch(string $jobId, string $customerId, int $batch
             if (!$pageLevelClaiming) {
                 ai_release_scan_job($jobId, $workerId);
             }
-            return ['success' => true, 'status' => 'running', 'counts' => $counts, 'processed' => 0, 'waiting_for_retry' => true, 'error' => ''];
+            return ['success' => true, 'status' => (string)($scan['status'] ?? 'running'), 'counts' => $counts, 'processed' => 0, 'waiting_for_retry' => true, 'error' => ''];
         }
         $status = $counts['scanned'] > 0 ? 'completed' : 'failed';
         if (!ai_patch_active_scan_job($jobId, $customerId, [
@@ -2648,7 +2963,22 @@ function ai_process_scan_job_batch(string $jobId, string $customerId, int $batch
         return (string)$page['url'];
     }, $pendingPages);
     $activeUrls = array_slice($urls, 0, 5);
-    $fetches = ai_fetch_pages_parallel($urls, max(1, min((int)ai_env('AI_CRAWL_CONCURRENCY', '4'), $batchSize)));
+    $fetches = ai_fetch_pages_parallel(
+        $urls,
+        max(1, min((int)ai_env('AI_CRAWL_CONCURRENCY', '4'), $batchSize)),
+        function () use ($jobId, $customerId): bool {
+            return !ai_scan_job_is_paused($jobId, $customerId);
+        }
+    );
+    if (ai_scan_job_is_paused($jobId, $customerId)) {
+        foreach ($pendingPages as $page) {
+            ai_release_page_claim((string)($page['id'] ?? ''), $workerId);
+        }
+        if (!$pageLevelClaiming) {
+            ai_release_scan_job($jobId, $workerId);
+        }
+        return ai_scan_paused_batch_response($jobId, $customerId, 0, 0);
+    }
     $websiteDomain = (string)$scan['website_domain'];
     $processed = 0;
     $queuedLinksTotal = 0;
@@ -2657,7 +2987,7 @@ function ai_process_scan_job_batch(string $jobId, string $customerId, int $batch
     $pausedDuringBatch = false;
 
     foreach ($pendingPages as $page) {
-        $pageStartTime = time();
+        $pageStartTime = microtime(true);
         $freshScan = ai_get_scan_job_for_customer($jobId, $customerId);
         if ((string)($freshScan['status'] ?? '') === 'paused') {
             ai_release_page_claim((string)($page['id'] ?? ''), $workerId);
@@ -2670,10 +3000,20 @@ function ai_process_scan_job_batch(string $jobId, string $customerId, int $batch
         $url = (string)$page['url'];
         $normalized = (string)$page['normalized_url'];
         $attempts = (int)($page['crawl_attempts'] ?? 0) + 1;
+        if (ai_scan_job_is_paused($jobId, $customerId)) {
+            ai_release_page_claim((string)($page['id'] ?? ''), $workerId);
+            $pausedDuringBatch = true;
+            break;
+        }
         $fetch = $fetches[$url] ?? ai_fetch_page($url);
         if (empty($fetch['success'])) {
             $variant = ai_add_www_variant($url) ?: ai_remove_www_variant($url);
             if ($variant !== '' && ai_should_scan_url($variant, $websiteDomain)) {
+                if (ai_scan_job_is_paused($jobId, $customerId)) {
+                    ai_release_page_claim((string)($page['id'] ?? ''), $workerId);
+                    $pausedDuringBatch = true;
+                    break;
+                }
                 $variantFetch = ai_fetch_page($variant);
                 if (!empty($variantFetch['success'])) {
                     $fetch = $variantFetch;
@@ -2704,6 +3044,12 @@ function ai_process_scan_job_batch(string $jobId, string $customerId, int $batch
                 $processed++;
                 continue;
             }
+        }
+
+        if (ai_scan_job_is_paused($jobId, $customerId)) {
+            ai_release_page_claim((string)($page['id'] ?? ''), $workerId);
+            $pausedDuringBatch = true;
+            break;
         }
 
         $finalUrl = (string)($fetch['url'] ?? $url);
@@ -2737,6 +3083,45 @@ function ai_process_scan_job_batch(string $jobId, string $customerId, int $batch
 
         $parsed = ai_parse_html_page((string)$fetch['html'], $finalUrl, $websiteDomain);
         $cleanText = (string)$parsed['clean_text'];
+        $timeoutReached = ((microtime(true) - $pageStartTime) > 120.0);
+        $capturedFaqs = [];
+        if (!$timeoutReached) {
+            $capturedFaqs = ai_collect_page_faqs($finalUrl, (string)$parsed['title'], $cleanText, (array)($parsed['detected_faqs'] ?? []));
+        }
+        $loopReason = ai_detect_loop_page($finalUrl, (string)$fetch['html'], (string)$parsed['title'], (string)($fetch['content_type'] ?? ''));
+        if ($loopReason !== '') {
+            $loopMessage = 'Loop detected: ' . $loopReason . '. Captured content was saved for summarization.';
+            if ($timeoutReached) {
+                $loopMessage .= ' Page scan stopped after 2 minutes. We captured what we could and saved it for summarization.';
+                ai_crawl_log($jobId, $customerId, 'scan_timeout', $loopMessage, ['url' => $finalUrl], 'warning', $finalUrl, (string)($page['id'] ?? ''));
+            }
+            ai_save_scanned_page($jobId, $customerId, [
+                'url' => $finalUrl,
+                'normalized_url' => $finalNormalized,
+                'page_title' => (string)$parsed['title'],
+                'page_status' => 'fetched',
+                'http_status' => (int)$fetch['status'],
+                'content_hash' => hash('sha256', $cleanText),
+                'clean_text' => $cleanText,
+                'summary_json' => null,
+                'embedding' => null,
+                'ai_error' => $loopMessage,
+                'content_type' => (string)($fetch['content_type'] ?? ''),
+                'content_length' => (int)($fetch['content_length'] ?? strlen($cleanText)),
+                'discovered_links_count' => count((array)($parsed['links'] ?? [])),
+                'html_preview' => substr(strip_tags((string)$fetch['html']), 0, 1000),
+                'fetched_at' => ai_now(),
+                'summarized_at' => null
+            ]);
+            ai_save_page_faqs($jobId, $customerId, $finalUrl, $capturedFaqs);
+            ai_crawl_log($jobId, $customerId, 'loop_detected', $loopMessage, [
+                'url' => $finalUrl,
+                'reason' => $loopReason
+            ], 'warning', $finalUrl, (string)($page['id'] ?? ''));
+            ai_release_page_claim((string)($page['id'] ?? ''), $workerId);
+            $processed++;
+            continue;
+        }
 
         $links = $parsed['links'];
         usort($links, function ($a, $b) {
@@ -2761,21 +3146,17 @@ function ai_process_scan_job_batch(string $jobId, string $customerId, int $batch
         }
 
         // Check for 2-minute processing limit
-        $timeoutReached = (time() - $pageStartTime > 115);
+        $timeoutReached = ((microtime(true) - $pageStartTime) > 120.0);
         $capturedFaqs = [];
         if (!$timeoutReached) {
             $capturedFaqs = ai_collect_page_faqs($finalUrl, (string)$parsed['title'], $cleanText, (array)($parsed['detected_faqs'] ?? []));
         }
-        
-        if (!$timeoutReached && (time() - $pageStartTime > 120)) {
-            $timeoutReached = true;
-        }
 
         $aiError = '';
         if ($timeoutReached) {
-            $aiError = 'There is so much information to scan. We captured what we could in 2 minutes. Please add the remaining summary manually for this page.';
+            $aiError = 'Page scan stopped after 2 minutes. We captured what we could and saved it for summarization.';
             ai_crawl_log($jobId, $customerId, 'scan_timeout', $aiError, [
-                'time_spent' => time() - $pageStartTime,
+                'time_spent_ms' => (int)round((microtime(true) - $pageStartTime) * 1000),
                 'url' => $finalUrl
             ], 'warning', $finalUrl, (string)($page['id'] ?? ''));
         }
@@ -3155,10 +3536,10 @@ function ai_update_page_summary(string $pageId, string $customerId, string $summ
     return ['success' => true, 'error' => ''];
 }
 
-function ai_update_faq(string $faqId, string $customerId, string $question, string $answer): array {
+function ai_update_faq(string $faqId, string $jobId, string $customerId, string $question, string $answer): array {
     $rows = ai_safe_rows(supabase(
         'GET',
-        'ai_website_faqs?select=id&customer_id=eq.' . urlencode($customerId) . '&id=eq.' . urlencode($faqId) . '&limit=1'
+        'ai_website_faqs?select=id&scan_job_id=eq.' . urlencode($jobId) . '&customer_id=eq.' . urlencode($customerId) . '&id=eq.' . urlencode($faqId) . '&limit=1'
     ));
     if (empty($rows[0])) {
         return ['success' => false, 'error' => 'FAQ was not found.'];
@@ -3167,7 +3548,7 @@ function ai_update_faq(string $faqId, string $customerId, string $question, stri
     if ($signature !== '') {
         $existing = ai_safe_rows(supabase(
             'GET',
-            'ai_website_faqs?select=id,question&customer_id=eq.' . urlencode($customerId) . '&limit=2000'
+            'ai_website_faqs?select=id,question&scan_job_id=eq.' . urlencode($jobId) . '&customer_id=eq.' . urlencode($customerId) . '&limit=2000'
         ));
         foreach ($existing as $row) {
             if ((string)($row['id'] ?? '') !== $faqId && ai_faq_signature((string)($row['question'] ?? '')) === $signature) {
@@ -3193,17 +3574,27 @@ function ai_process_scan_job(string $jobId, string $customerId, string $websiteU
         'error_message' => null
     ]);
 
-    $queue = [$websiteUrl];
+    $queue = [];
+    $queuedNormalized = [];
+    $seedUrls = [$websiteUrl];
     foreach (ai_discover_sitemap_urls($websiteUrl, $websiteDomain, $maxPages * 4) as $sitemapPage) {
-        $queue[] = $sitemapPage;
+        $seedUrls[] = $sitemapPage;
     }
     $wwwVariant = ai_add_www_variant($websiteUrl);
     if ($wwwVariant !== '') {
-        $queue[] = $wwwVariant;
+        $seedUrls[] = $wwwVariant;
     }
     $nonWwwVariant = ai_remove_www_variant($websiteUrl);
     if ($nonWwwVariant !== '') {
-        $queue[] = $nonWwwVariant;
+        $seedUrls[] = $nonWwwVariant;
+    }
+    foreach ($seedUrls as $seedUrl) {
+        $normalizedSeed = ai_normalize_page_url((string)$seedUrl);
+        if ($normalizedSeed === '' || isset($queuedNormalized[$normalizedSeed])) {
+            continue;
+        }
+        $queuedNormalized[$normalizedSeed] = true;
+        $queue[] = $seedUrl;
     }
     $seen = [];
     $attempted = [];
@@ -3213,6 +3604,10 @@ function ai_process_scan_job(string $jobId, string $customerId, string $websiteU
     $aiDisabledReason = '';
 
     while (!empty($queue) && $scanned < $maxPages) {
+        $pageStartTime = microtime(true);
+        if (ai_scan_job_is_paused($jobId, $customerId)) {
+            break;
+        }
         $url = array_shift($queue);
         $normalized = ai_normalize_page_url($url);
         $attemptKey = strtolower($url);
@@ -3222,6 +3617,9 @@ function ai_process_scan_job(string $jobId, string $customerId, string $websiteU
         $attempted[$attemptKey] = true;
 
         $fetch = ai_fetch_page($url);
+        if (ai_scan_job_is_paused($jobId, $customerId)) {
+            break;
+        }
         if (empty($fetch['success'])) {
             $variant = ai_add_www_variant($url) ?: ai_remove_www_variant($url);
             if ($variant !== '' && !isset($attempted[strtolower($variant)]) && empty($failedOnce[$normalized])) {
@@ -3243,20 +3641,67 @@ function ai_process_scan_job(string $jobId, string $customerId, string $websiteU
 
         $finalUrl = (string)($fetch['url'] ?? $url);
         $finalNormalized = ai_normalize_page_url($finalUrl) ?: $normalized;
+        $parsed = ai_parse_html_page((string)$fetch['html'], $finalUrl, $websiteDomain);
+        $cleanText = (string)$parsed['clean_text'];
+        $timeoutReached = ((microtime(true) - $pageStartTime) > 120.0);
+        $capturedFaqs = [];
+        if (!$timeoutReached) {
+            $capturedFaqs = ai_collect_page_faqs($finalUrl, (string)$parsed['title'], $cleanText, (array)($parsed['detected_faqs'] ?? []));
+        }
+        $loopReason = ai_detect_loop_page($finalUrl, (string)$fetch['html'], (string)$parsed['title'], (string)($fetch['content_type'] ?? ''));
+        if ($loopReason !== '') {
+            $loopMessage = 'Loop detected: ' . $loopReason . '. Captured content was saved for summarization.';
+            if ($timeoutReached) {
+                $loopMessage .= ' Page scan stopped after 2 minutes. We captured what we could and saved it for summarization.';
+                ai_crawl_log($jobId, $customerId, 'scan_timeout', $loopMessage, [
+                    'time_spent_ms' => (int)round((microtime(true) - $pageStartTime) * 1000),
+                    'url' => $finalUrl
+                ], 'warning', $finalUrl, '');
+            }
+            ai_save_scanned_page($jobId, $customerId, [
+                'url' => $finalUrl,
+                'normalized_url' => $finalNormalized,
+                'page_title' => (string)$parsed['title'],
+                'page_status' => 'fetched',
+                'http_status' => (int)$fetch['status'],
+                'content_hash' => hash('sha256', $cleanText),
+                'clean_text' => $cleanText,
+                'summary_json' => null,
+                'embedding' => null,
+                'ai_error' => $loopMessage,
+                'content_type' => (string)($fetch['content_type'] ?? ''),
+                'content_length' => (int)($fetch['content_length'] ?? strlen($cleanText)),
+                'discovered_links_count' => count((array)($parsed['links'] ?? [])),
+                'html_preview' => substr(strip_tags((string)$fetch['html']), 0, 1000),
+                'fetched_at' => ai_now(),
+                'summarized_at' => null
+            ]);
+            ai_save_page_faqs($jobId, $customerId, $finalUrl, $capturedFaqs);
+            ai_crawl_log($jobId, $customerId, 'loop_detected', 'Loop detected while scanning this page. Captured content was saved for summarization.', [
+                'url' => $finalUrl,
+                'reason' => $loopReason
+            ], 'warning', $finalUrl, '');
+            $scanned++;
+            continue;
+        }
         $seen[$finalNormalized] = true;
 
-        $parsed = ai_parse_html_page((string)$fetch['html'], $finalUrl, $websiteDomain);
         $links = $parsed['links'];
         usort($links, function ($a, $b) {
             return ai_url_priority((string)$a) <=> ai_url_priority((string)$b);
         });
+        $queuedNormalized = [];
         foreach ($links as $link) {
-            if (!isset($seen[$link]) && count($queue) < $maxPages * 3) {
-                $queue[] = $link;
+            $linkNormalized = ai_normalize_page_url((string)$link);
+            if ($linkNormalized === '' || isset($seen[$linkNormalized]) || isset($queuedNormalized[$linkNormalized])) {
+                continue;
             }
+            if (count($queue) >= $maxPages * 3) {
+                break;
+            }
+            $queuedNormalized[$linkNormalized] = true;
+            $queue[] = $link;
         }
-
-        $cleanText = (string)$parsed['clean_text'];
 
         ai_save_scanned_page($jobId, $customerId, [
             'url' => $finalUrl,
@@ -3276,6 +3721,13 @@ function ai_process_scan_job(string $jobId, string $customerId, string $websiteU
             'fetched_at' => ai_now(),
             'summarized_at' => null
         ]);
+
+        if ($timeoutReached) {
+            ai_crawl_log($jobId, $customerId, 'scan_timeout', 'Page scan stopped after 2 minutes. Captured content was saved for summarization.', [
+                'time_spent_ms' => (int)round((microtime(true) - $pageStartTime) * 1000),
+                'url' => $finalUrl
+            ], 'warning', $finalUrl, '');
+        }
 
         $scanned++;
     }
@@ -3542,8 +3994,8 @@ function ai_summarize_page(string $url, string $title, string $cleanText): array
         ];
     }
 
-    $systemPrompt = 'You extract customer-friendly business knowledge from website pages. The output will be reviewed by a business owner and used as chatbot context, so preserve every answerable fact, service detail, rule, price, eligibility point, location, timing, contact detail, process, and limitation. Write plain text only. Return exactly one valid JSON object. Do not create FAQs. Do not mention page heading levels such as H1, H2, H3, title tag, meta description, schema, or HTML structure in the summary. Do not use HTML, markdown fences, comments, prose outside JSON, or trailing commas.';
-    $userPrompt = "Analyze this website page and return exactly this JSON object shape. Capture enough detail for a chatbot to answer visitor questions accurately. The summary must be customer friendly, understandable, and cover the important details from the scanned page without raw HTML or references to heading tags such as H1, H2, or H3. Write the summary as natural prose a customer can read easily, combining related facts instead of listing the page structure. Keep each array item focused but do not omit important facts. Maximum 20 items per array, and no value longer than 900 characters except summary. Do not invent facts; if a field has no facts from the page, return an empty array for that field.\n"
+    $systemPrompt = 'You extract customer-friendly business knowledge from website pages. The output will be reviewed by a business owner and used as chatbot context, so preserve every answerable fact, service detail, rule, price, eligibility point, location, timing, contact detail, process, and limitation. Write plain text only. Return exactly one valid JSON object. Do not create FAQs. Do not mention page heading levels such as H1, H2, H3, title tag, meta description, schema, or HTML structure in the summary. Do not use label-style wording such as "Page title:", "Heading:", "Title:", or "Summary:" in the summary. Do not use HTML, markdown fences, comments, prose outside JSON, or trailing commas.';
+    $userPrompt = "Analyze this website page and return exactly this JSON object shape. Capture enough detail for a chatbot to answer visitor questions accurately. The summary must be customer friendly, readable, and should sound like a helpful explanation written for a visitor, not internal notes. Do not use label-style wording such as Page title, Heading, Title, Summary, or Overview. Do not reference raw HTML or heading tags such as H1, H2, or H3. Write the summary as natural prose customers can understand easily, combining related facts instead of listing page structure. Use short, direct sentences. Keep each array item focused but do not omit important facts. Maximum 20 items per array, and no value longer than 900 characters except summary. Do not invent facts; if a field has no facts from the page, return an empty array for that field.\n"
         . "{\n"
         . "  \"url\": \"string\",\n"
         . "  \"page_title\": \"string\",\n"
