@@ -319,7 +319,7 @@ body.dark .diag-error{color:#fca5a5}
       <p><?php echo ai_h($scan['website_domain'] ?? ''); ?> pages are captured first. Customer-ready summaries can be reviewed and edited here.</p>
     </div>
     <div class="actions">
-      <button class="btn" type="button" id="refreshLiveBtn">Refresh</button>
+      <!-- <button class="btn" type="button" id="refreshLiveBtn">Refresh</button> -->
       <a class="btn" href="AI_Chatbot_Setup.php">Scan another website</a>
     </div>
   </div>
@@ -738,6 +738,7 @@ const workerCsrf = shell?.dataset.workerCsrf || "";
 const externalQueueEnabled = shell?.dataset.externalQueue === "1";
 let currentScanStatus = shell?.dataset.scanStatus || "";
 let currentSummaryPaused = shell?.dataset.summaryPaused === "1";
+let scanPauseOverride = currentScanStatus === "paused";
 const pageTabs = document.getElementById("pageTabs");
 const pagePanels = document.getElementById("pagePanels");
 const pageTabsCount = document.getElementById("pageTabsCount");
@@ -968,13 +969,22 @@ function setSummaryControlsCompleted(isCompleted) {
   }
 }
 
+function isScanPaused() {
+  return scanPauseOverride || String(currentScanStatus || "").toLowerCase() === "paused";
+}
+
 function updateWorkerUi(data, mode = "scan") {
   const counts = data?.counts || {};
   const scan = data?.scan || {};
   const rawScanStatus = String(scan.status || "");
+  if (rawScanStatus.toLowerCase() === "completed" || rawScanStatus.toLowerCase() === "failed") {
+    scanPauseOverride = false;
+  } else if (rawScanStatus.toLowerCase() === "paused") {
+    scanPauseOverride = true;
+  }
   const displayScanStatus = scanPauseRequestBusy && currentScanStatus === "paused" && rawScanStatus.toLowerCase() !== "paused"
     ? "paused"
-    : rawScanStatus;
+    : (scanPauseOverride && rawScanStatus.toLowerCase() !== "paused" ? "paused" : rawScanStatus);
   const captured = Number(counts.scanned || 0);
   const summarized = Number(counts.summarized || 0);
   const failed = Number(counts.failed || 0);
@@ -1343,7 +1353,7 @@ function applyLiveData(data = {}, mode = "scan") {
 }
 
 async function processScanBatch() {
-  if (!scanId || scanBusy || currentScanStatus === "paused") return;
+  if (!scanId || scanBusy || isScanPaused()) return;
   scanBusy = true;
   setDiagnosticsLive(true, "Scanning batch...", "Working");
   try {
@@ -1454,6 +1464,7 @@ async function liveWorkflowLoop(force = false) {
       const scan = latest.scan || latest.diagnostics?.scan || {};
       const counts = latest.counts || latest.diagnostics?.counts || {};
       if (String(scan.status || "").toLowerCase() === "paused") {
+        scanPauseOverride = true;
         setDiagnosticsLive(false, "Crawler paused", "Paused");
       }
       if ((scan.status === "failed" || scan.status === "completed") && Number(counts.total || 0) === 0) {
@@ -1481,7 +1492,7 @@ async function liveWorkflowLoop(force = false) {
         break;
       }
 
-      if (String(scan.status || "").toLowerCase() === "paused") {
+      if (isScanPaused()) {
         await wait(1000);
         latest = await refreshWorkflowStatus("scan");
         continue;
@@ -1538,6 +1549,7 @@ scanPauseToggleBtn?.addEventListener("click", async (event) => {
   try {
     const data = await callWorker(action);
     applyLiveData(data, "scan");
+    scanPauseOverride = String(data?.scan?.status || "").toLowerCase() === "paused";
     if (wasPaused) {
       autoWorkflowDone = false;
       if (!autoWorkflowBusy) {
@@ -1564,6 +1576,7 @@ summaryPauseToggleBtn?.addEventListener("click", async (event) => {
   try {
     const data = await callWorker(action);
     applyLiveData(data, "summary");
+    scanPauseOverride = String(data?.scan?.status || "").toLowerCase() === "paused";
     if (wasPaused) {
       autoWorkflowDone = false;
       if (!autoWorkflowBusy) {
@@ -1592,6 +1605,7 @@ runScanBatchBtn?.addEventListener("click", async () => {
     const data = await callWorker("restart_scan");
     if (pagePanels) pagePanels.innerHTML = "";
     applyLiveData(data, "scan");
+    scanPauseOverride = String(data?.scan?.status || "").toLowerCase() === "paused";
     liveWorkflowLoop(true);
   } finally {
     runScanBatchBtn.disabled = false;
@@ -1738,7 +1752,7 @@ async function refreshLiveStatus(options = {}) {
       throw new Error(data?.error || "Status refresh failed.");
     }
     applyLiveData(data, summaryBusy ? "summary" : "scan");
-    if ((data?.scan?.status || "").toLowerCase() === "running" && currentScanStatus !== "paused" && !autoWorkflowBusy && !scanPauseRequestBusy) {
+    if ((data?.scan?.status || "").toLowerCase() === "running" && !isScanPaused() && !autoWorkflowBusy && !scanPauseRequestBusy) {
       autoWorkflowDone = false;
       liveWorkflowLoop(true);
     }

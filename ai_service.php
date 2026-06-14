@@ -1850,17 +1850,18 @@ function ai_faq_signature(string $question): string {
     return trim($value);
 }
 
-function ai_faq_existing_signatures(string $customerId): array {
+function ai_faq_existing_signatures(string $jobId, string $customerId): array {
     static $cache = [];
-    if ($customerId === '') {
+    if ($jobId === '' || $customerId === '') {
         return [];
     }
-    if (isset($cache[$customerId])) {
-        return $cache[$customerId];
+    $cacheKey = $jobId . '|' . $customerId;
+    if (isset($cache[$cacheKey])) {
+        return $cache[$cacheKey];
     }
     $rows = ai_safe_rows(supabase(
         'GET',
-        'ai_website_faqs?select=question&customer_id=eq.' . urlencode($customerId) . '&limit=2000'
+        'ai_website_faqs?select=question&scan_job_id=eq.' . urlencode($jobId) . '&customer_id=eq.' . urlencode($customerId) . '&limit=2000'
     ));
     $seen = [];
     foreach ($rows as $row) {
@@ -1869,7 +1870,7 @@ function ai_faq_existing_signatures(string $customerId): array {
             $seen[$signature] = true;
         }
     }
-    $cache[$customerId] = $seen;
+    $cache[$cacheKey] = $seen;
     return $seen;
 }
 
@@ -1966,7 +1967,7 @@ function ai_generate_faqs_from_summary_data(array $summary, string $url, string 
 
 function ai_save_page_faqs(string $jobId, string $customerId, string $pageUrl, array $faqs): void {
     $rows = [];
-    $existingSignatures = ai_faq_existing_signatures($customerId);
+    $existingSignatures = ai_faq_existing_signatures($jobId, $customerId);
     foreach (ai_dedupe_faqs($faqs) as $faq) {
         $signature = ai_faq_signature((string)$faq['question']);
         if ($signature === '' || isset($existingSignatures[$signature])) {
@@ -1995,7 +1996,7 @@ function ai_save_page_faqs(string $jobId, string $customerId, string $pageUrl, a
     foreach ($rows as $payload) {
         $existing = ai_safe_rows(supabase(
             'GET',
-            'ai_website_faqs?select=id&customer_id=eq.' . urlencode($customerId)
+            'ai_website_faqs?select=id&scan_job_id=eq.' . urlencode($jobId) . '&customer_id=eq.' . urlencode($customerId)
                 . '&page_url=eq.' . urlencode($pageUrl)
                 . '&question=eq.' . urlencode((string)$payload['question'])
                 . '&limit=1'
@@ -2080,19 +2081,15 @@ function ai_capture_single_page(string $jobId, string $customerId, string $websi
         ];
     }
 
-    $pageStartTime = time();
+    $pageStartTime = microtime(true);
     $parsed = ai_parse_html_page((string)$fetch['html'], $finalUrl, $websiteDomain);
     $cleanText = (string)$parsed['clean_text'];
 
     // Check for 2-minute processing limit before intensive FAQ extraction
-    $timeoutReached = (time() - $pageStartTime > 115);
+    $timeoutReached = ((microtime(true) - $pageStartTime) > 120.0);
     $capturedFaqs = [];
     if (!$timeoutReached) {
         $capturedFaqs = ai_collect_page_faqs($finalUrl, (string)$parsed['title'], $cleanText, (array)($parsed['detected_faqs'] ?? []));
-    }
-
-    if (!$timeoutReached && (time() - $pageStartTime > 120)) {
-        $timeoutReached = true;
     }
 
     $aiError = '';
@@ -2293,7 +2290,7 @@ function ai_scan_review_pages(string $jobId, string $customerId, int $limit = 25
 function ai_scan_review_faqs(string $jobId, string $customerId, int $limit = 500): array {
     return ai_safe_rows(supabase(
         'GET',
-        'ai_website_faqs?select=*&customer_id=eq.' . urlencode($customerId)
+        'ai_website_faqs?select=*&scan_job_id=eq.' . urlencode($jobId) . '&customer_id=eq.' . urlencode($customerId)
             . '&order=created_at.asc&limit=' . max(1, min(1000, $limit))
     ));
 }
@@ -2608,7 +2605,6 @@ function ai_process_scan_job_batch(string $jobId, string $customerId, int $batch
         $counts = ai_scan_job_counts($jobId, $customerId);
         if ($counts['pending'] > 0) {
             if (!ai_patch_active_scan_job($jobId, $customerId, [
-                'status' => 'running',
                 'pages_scanned' => $counts['scanned'],
                 'pages_failed' => $counts['failed'],
                 'error_message' => null,
@@ -2622,7 +2618,7 @@ function ai_process_scan_job_batch(string $jobId, string $customerId, int $batch
             if (!$pageLevelClaiming) {
                 ai_release_scan_job($jobId, $workerId);
             }
-            return ['success' => true, 'status' => 'running', 'counts' => $counts, 'processed' => 0, 'waiting_for_retry' => true, 'error' => ''];
+            return ['success' => true, 'status' => (string)($scan['status'] ?? 'running'), 'counts' => $counts, 'processed' => 0, 'waiting_for_retry' => true, 'error' => ''];
         }
         $status = $counts['scanned'] > 0 ? 'completed' : 'failed';
         if (!ai_patch_active_scan_job($jobId, $customerId, [
@@ -2657,7 +2653,7 @@ function ai_process_scan_job_batch(string $jobId, string $customerId, int $batch
     $pausedDuringBatch = false;
 
     foreach ($pendingPages as $page) {
-        $pageStartTime = time();
+        $pageStartTime = microtime(true);
         $freshScan = ai_get_scan_job_for_customer($jobId, $customerId);
         if ((string)($freshScan['status'] ?? '') === 'paused') {
             ai_release_page_claim((string)($page['id'] ?? ''), $workerId);
@@ -2761,21 +2757,17 @@ function ai_process_scan_job_batch(string $jobId, string $customerId, int $batch
         }
 
         // Check for 2-minute processing limit
-        $timeoutReached = (time() - $pageStartTime > 115);
+        $timeoutReached = ((microtime(true) - $pageStartTime) > 120.0);
         $capturedFaqs = [];
         if (!$timeoutReached) {
             $capturedFaqs = ai_collect_page_faqs($finalUrl, (string)$parsed['title'], $cleanText, (array)($parsed['detected_faqs'] ?? []));
         }
-        
-        if (!$timeoutReached && (time() - $pageStartTime > 120)) {
-            $timeoutReached = true;
-        }
 
         $aiError = '';
         if ($timeoutReached) {
-            $aiError = 'There is so much information to scan. We captured what we could in 2 minutes. Please add the remaining summary manually for this page.';
+            $aiError = 'Page scan stopped after 2 minutes. We captured what we could and saved it for summarization.';
             ai_crawl_log($jobId, $customerId, 'scan_timeout', $aiError, [
-                'time_spent' => time() - $pageStartTime,
+                'time_spent_ms' => (int)round((microtime(true) - $pageStartTime) * 1000),
                 'url' => $finalUrl
             ], 'warning', $finalUrl, (string)($page['id'] ?? ''));
         }
@@ -3155,10 +3147,10 @@ function ai_update_page_summary(string $pageId, string $customerId, string $summ
     return ['success' => true, 'error' => ''];
 }
 
-function ai_update_faq(string $faqId, string $customerId, string $question, string $answer): array {
+function ai_update_faq(string $faqId, string $jobId, string $customerId, string $question, string $answer): array {
     $rows = ai_safe_rows(supabase(
         'GET',
-        'ai_website_faqs?select=id&customer_id=eq.' . urlencode($customerId) . '&id=eq.' . urlencode($faqId) . '&limit=1'
+        'ai_website_faqs?select=id&scan_job_id=eq.' . urlencode($jobId) . '&customer_id=eq.' . urlencode($customerId) . '&id=eq.' . urlencode($faqId) . '&limit=1'
     ));
     if (empty($rows[0])) {
         return ['success' => false, 'error' => 'FAQ was not found.'];
@@ -3167,7 +3159,7 @@ function ai_update_faq(string $faqId, string $customerId, string $question, stri
     if ($signature !== '') {
         $existing = ai_safe_rows(supabase(
             'GET',
-            'ai_website_faqs?select=id,question&customer_id=eq.' . urlencode($customerId) . '&limit=2000'
+            'ai_website_faqs?select=id,question&scan_job_id=eq.' . urlencode($jobId) . '&customer_id=eq.' . urlencode($customerId) . '&limit=2000'
         ));
         foreach ($existing as $row) {
             if ((string)($row['id'] ?? '') !== $faqId && ai_faq_signature((string)($row['question'] ?? '')) === $signature) {
@@ -3213,6 +3205,7 @@ function ai_process_scan_job(string $jobId, string $customerId, string $websiteU
     $aiDisabledReason = '';
 
     while (!empty($queue) && $scanned < $maxPages) {
+        $pageStartTime = microtime(true);
         $url = array_shift($queue);
         $normalized = ai_normalize_page_url($url);
         $attemptKey = strtolower($url);
@@ -3256,6 +3249,8 @@ function ai_process_scan_job(string $jobId, string $customerId, string $websiteU
             }
         }
 
+        $timeoutReached = ((microtime(true) - $pageStartTime) > 120.0);
+
         $cleanText = (string)$parsed['clean_text'];
 
         ai_save_scanned_page($jobId, $customerId, [
@@ -3276,6 +3271,13 @@ function ai_process_scan_job(string $jobId, string $customerId, string $websiteU
             'fetched_at' => ai_now(),
             'summarized_at' => null
         ]);
+
+        if ($timeoutReached) {
+            ai_crawl_log($jobId, $customerId, 'scan_timeout', 'Page scan stopped after 2 minutes. Captured content was saved for summarization.', [
+                'time_spent_ms' => (int)round((microtime(true) - $pageStartTime) * 1000),
+                'url' => $finalUrl
+            ], 'warning', $finalUrl, '');
+        }
 
         $scanned++;
     }

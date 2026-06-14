@@ -10,7 +10,22 @@ $scanId = trim((string)($_GET['scan'] ?? ''));
 $format = trim((string)($_GET['format'] ?? 'excel'));
 $customerId = (string)($_SESSION['setup_customer_id'] ?? '');
 
-if ($scanId === '' || $customerId === '') {
+if ($customerId === '') {
+    $email = authenticated_email();
+    if ($email !== '') {
+        $botRows = ai_safe_rows(supabase(
+            'GET',
+            'chatbot_signups?select=customer_id&email=eq.' . urlencode($email) . '&order=created_at.desc&limit=1'
+        ));
+        $customerId = (string)($botRows[0]['customer_id'] ?? '');
+    }
+}
+
+if ($scanId === '') {
+    $scanId = trim((string)($_SESSION['ai_scan_job_id'] ?? ''));
+}
+
+if ($customerId === '') {
     die('Invalid request.');
 }
 
@@ -30,6 +45,16 @@ function ai_summary_text_from_page(array $page): string {
 }
 
 $scan = ai_get_scan_job_for_customer($scanId, $customerId);
+if (empty($scan)) {
+    $fallbackRows = ai_safe_rows(supabase(
+        'GET',
+        'ai_scan_jobs?select=*&customer_id=eq.' . urlencode($customerId) . '&order=created_at.desc&limit=1'
+    ));
+    $scan = $fallbackRows[0] ?? [];
+    if (!empty($scan)) {
+        $scanId = (string)$scan['id'];
+    }
+}
 if (empty($scan)) {
     die('Scan job not found.');
 }
@@ -109,6 +134,8 @@ ob_start();
         .faq-a::before { content: 'A:'; font-weight: 800; color: #10b981; margin-left: -28px; margin-right: 10px; }
 
         .footer { margin-top: 60px; padding-top: 20px; border-top: 1px solid var(--border); text-align: center; color: var(--muted); font-size: 12px; }
+        .page-item, .faq-item, .stat-card, .section-header { break-inside: avoid; page-break-inside: avoid; }
+        .section-header { break-after: avoid; }
 
         @media print {
             .no-print { display: none; }
@@ -204,20 +231,46 @@ if ($format === 'pdf'):
     <div class="loader"></div>
     <p>Generating your PDF report. Please wait...</p>
     <script>
-        window.onload = function() {
+        window.onload = async function() {
             const reportHtml = <?php echo json_encode($reportHtml); ?>; // Safely pass HTML string
             const filename = `vani-ai-export-<?php echo date('Ymd'); ?>.pdf`;
+            const frame = document.createElement('iframe');
+            frame.style.position = 'fixed';
+            frame.style.left = '-10000px';
+            frame.style.top = '0';
+            frame.style.width = '1200px';
+            frame.style.height = '2000px';
+            frame.style.opacity = '0';
+            frame.srcdoc = reportHtml;
+            document.body.appendChild(frame);
 
-            html2pdf().set({
-                margin: [10, 10, 10, 10],
-                filename: filename,
-                image: { type: 'jpeg', quality: 0.98 },
-                html2canvas: { scale: 2, useCORS: true, logging: false },
-                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-            }).from(reportHtml).save().then(() => {
-                // Optional: Redirect back or close window after download
-                // window.close(); // Might not work in all browsers
-            });
+            frame.addEventListener('load', async () => {
+                try {
+                    const frameDoc = frame.contentDocument || frame.contentWindow.document;
+                    if (frameDoc?.fonts?.ready) {
+                        await frameDoc.fonts.ready;
+                    }
+                    await html2pdf().set({
+                        margin: [8, 8, 8, 8],
+                        filename: filename,
+                        image: { type: 'jpeg', quality: 1 },
+                        html2canvas: {
+                            scale: 1.5,
+                            useCORS: true,
+                            logging: false,
+                            scrollY: 0,
+                            windowWidth: 1200
+                        },
+                        pagebreak: { mode: ['css', 'legacy'], avoid: ['.page-item', '.faq-item', '.stat-card', '.section-header'] },
+                        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+                    }).from(frameDoc.body).save();
+                } catch (error) {
+                    document.body.innerHTML = '<p style="font-family:sans-serif;padding:24px;color:#b91c1c;">PDF generation failed. Please try again.</p>';
+                    console.error(error);
+                } finally {
+                    frame.remove();
+                }
+            }, { once: true });
         };
     </script>
 </body>
