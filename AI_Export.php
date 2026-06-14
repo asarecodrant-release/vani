@@ -140,7 +140,8 @@ ob_start();
 
         .report {
             width: 100%;
-            max-width: 100%;
+            max-width: 186mm;
+            margin: 0 auto;
         }
 
         .cover-page {
@@ -218,8 +219,9 @@ ob_start();
         .hero {
             display: grid;
             gap: 14px;
-            max-width: 160mm;
-            margin-top: 18mm;
+            max-width: 170mm;
+            margin: 18mm auto 0;
+            text-align: center;
         }
 
         .hero h1 {
@@ -234,16 +236,17 @@ ob_start();
             margin: 0;
             font-size: 13pt;
             color: #334155;
-            max-width: 148mm;
+            max-width: 170mm;
         }
 
         .hero-note {
             display: grid;
             gap: 8px;
-            max-width: 160mm;
-            margin-top: 4mm;
+            max-width: 170mm;
+            margin: 4mm auto 0;
             color: var(--muted);
             font-size: 10.5pt;
+            text-align: center;
         }
 
         .hero-note strong {
@@ -252,9 +255,10 @@ ob_start();
 
         .summary-grid {
             display: grid;
-            grid-template-columns: repeat(4, minmax(0, 1fr));
-            gap: 10px;
-            margin-top: 12mm;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+            margin: 12mm auto 0;
+            max-width: 170mm;
         }
 
         .metric-card {
@@ -289,11 +293,15 @@ ob_start();
             align-items: flex-end;
             color: var(--muted);
             font-size: 10.5pt;
+            max-width: 170mm;
+            margin: 14mm auto 0;
         }
 
         .content-wrap {
             display: grid;
             gap: 18px;
+            max-width: 170mm;
+            margin: 0 auto;
         }
 
         .section-header {
@@ -309,6 +317,8 @@ ob_start();
             font-weight: 900;
             letter-spacing: 0.02em;
             page-break-after: avoid;
+            width: 100%;
+            box-sizing: border-box;
         }
 
         .section-header span:last-child {
@@ -333,6 +343,8 @@ ob_start();
             padding: 16px 18px;
             margin-bottom: 14px;
             box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+            width: 100%;
+            box-sizing: border-box;
         }
 
         .page-title {
@@ -340,6 +352,7 @@ ob_start();
             font-size: 17px;
             line-height: 1.25;
             color: var(--ink);
+            text-align: center;
         }
 
         .page-url {
@@ -348,8 +361,10 @@ ob_start();
             color: var(--brand-2);
             font-size: 11px;
             font-weight: 800;
-            word-break: break-all;
+            word-break: break-word;
+            overflow-wrap: anywhere;
             text-decoration: none;
+            text-align: center;
         }
 
         .page-summary {
@@ -362,6 +377,7 @@ ob_start();
             font-size: 11.5pt;
             white-space: pre-wrap;
             overflow-wrap: anywhere;
+            word-break: break-word;
         }
 
         .faq-list {
@@ -375,6 +391,8 @@ ob_start();
             border-radius: 16px;
             padding: 14px 16px;
             box-shadow: 0 8px 22px rgba(15, 23, 42, 0.04);
+            width: 100%;
+            box-sizing: border-box;
         }
 
         .faq-q {
@@ -382,6 +400,7 @@ ob_start();
             font-size: 12.5pt;
             color: var(--ink);
             margin-bottom: 8px;
+            text-align: center;
         }
 
         .faq-q::before {
@@ -404,6 +423,7 @@ ob_start();
             font-size: 11.2pt;
             white-space: pre-wrap;
             overflow-wrap: anywhere;
+            word-break: break-word;
         }
 
         .faq-a::before {
@@ -599,11 +619,11 @@ if ($format === 'pdf'):
                         filename: filename,
                         image: { type: 'jpeg', quality: 1 },
                         html2canvas: {
-                            scale: 1.35,
+                            scale: 1.2,
                             useCORS: true,
                             logging: false,
                             scrollY: 0,
-                            windowWidth: 1240
+                            windowWidth: 1024
                         },
                         pagebreak: { mode: ['css', 'legacy'], avoid: ['.cover-page', '.page-item', '.faq-item', '.metric-card', '.section-header'] },
                         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
