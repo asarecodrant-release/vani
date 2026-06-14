@@ -129,7 +129,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!empty($result['success'])) {
             $message = 'Page captured. You can summarize it now.';
         } elseif (!empty($result['page_id'])) {
-            $message = 'Page added, but crawler could not capture readable text. Add the summary manually.';
+            $message = 'Page added. The crawler captured what it could for summarization.';
         } else {
             $error = (string)$result['error'];
         }
@@ -704,7 +704,7 @@ body.dark .diag-error{color:#fca5a5}
       <form method="POST" class="manual-page js-live-worker-form">
         <input type="hidden" name="action" value="add_page">
         <input name="page_url" placeholder="https://example.com/missed-page">
-        <p class="muted">We will try to crawl this page. If readable text is not captured, you can still add the summary manually below.</p>
+        <p class="muted">We will try to crawl this page. If the crawler hits a loop or cannot extract readable text, it still saves whatever it captures for summarization, and you can add the summary manually below.</p>
         <div class="row"><button type="submit">Add page</button></div>
       </form>
     </section>

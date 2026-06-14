@@ -2147,27 +2147,39 @@ function ai_capture_single_page(string $jobId, string $customerId, string $websi
     $pageStartTime = microtime(true);
     $parsed = ai_parse_html_page((string)$fetch['html'], $finalUrl, $websiteDomain);
     $cleanText = (string)$parsed['clean_text'];
+    $timeoutReached = ((microtime(true) - $pageStartTime) > 120.0);
+    $capturedFaqs = [];
+    if (!$timeoutReached) {
+        $capturedFaqs = ai_collect_page_faqs($finalUrl, (string)$parsed['title'], $cleanText, (array)($parsed['detected_faqs'] ?? []));
+    }
+
     $loopReason = ai_detect_loop_page($finalUrl, (string)$fetch['html'], (string)$parsed['title'], (string)($fetch['content_type'] ?? ''));
     if ($loopReason !== '') {
+        $aiError = 'Loop detected: ' . $loopReason . '. Captured content was saved for summarization.';
+        if ($timeoutReached) {
+            $aiError .= ' Page scan stopped after 2 minutes. We captured what we could and saved it for summarization.';
+            ai_crawl_log($jobId, $customerId, 'scan_timeout', $aiError, ['url' => $finalUrl], 'warning', $finalUrl);
+        }
         ai_save_scanned_page($jobId, $customerId, [
             'url' => $finalUrl,
             'normalized_url' => $normalized,
             'page_title' => (string)$parsed['title'],
-            'page_status' => 'failed',
+            'page_status' => 'fetched',
             'http_status' => (int)$fetch['status'],
             'content_hash' => hash('sha256', $cleanText),
             'clean_text' => $cleanText,
             'summary_json' => null,
             'embedding' => null,
-            'ai_error' => 'Loop detected: ' . $loopReason . '. Page cannot be scanned.',
+            'ai_error' => $aiError,
             'content_type' => (string)($fetch['content_type'] ?? ''),
             'content_length' => (int)($fetch['content_length'] ?? strlen($cleanText)),
-            'discovered_links_count' => 0,
+            'discovered_links_count' => count((array)($parsed['links'] ?? [])),
             'html_preview' => substr(strip_tags((string)$fetch['html']), 0, 1000),
             'fetched_at' => ai_now(),
             'summarized_at' => null
         ]);
-        ai_crawl_log($jobId, $customerId, 'loop_detected', 'Loop detected while scanning this page. Page cannot be scanned.', [
+        ai_save_page_faqs($jobId, $customerId, $finalUrl, $capturedFaqs);
+        ai_crawl_log($jobId, $customerId, 'loop_detected', 'Loop detected while scanning this page. Captured content was saved for summarization.', [
             'url' => $finalUrl,
             'reason' => $loopReason
         ], 'warning', $finalUrl, '');
@@ -2179,19 +2191,13 @@ function ai_capture_single_page(string $jobId, string $customerId, string $websi
                 . '&limit=1'
         ));
         return [
-            'success' => false,
+            'success' => trim($cleanText) !== '',
             'page_id' => (string)($rows[0]['id'] ?? ''),
-            'error' => 'Loop detected: ' . $loopReason . '. Page cannot be scanned.'
+            'error' => trim($cleanText) === '' ? 'Loop detected: ' . $loopReason . '. No readable text was captured.' : ''
         ];
     }
 
     // Check for 2-minute processing limit before intensive FAQ extraction
-    $timeoutReached = ((microtime(true) - $pageStartTime) > 120.0);
-    $capturedFaqs = [];
-    if (!$timeoutReached) {
-        $capturedFaqs = ai_collect_page_faqs($finalUrl, (string)$parsed['title'], $cleanText, (array)($parsed['detected_faqs'] ?? []));
-    }
-
     $aiError = '';
     if ($timeoutReached) {
         $aiError = 'There is so much information to scan. We captured what we could in 2 minutes. Please add the remaining summary manually for this page.';
@@ -2864,14 +2870,23 @@ function ai_process_scan_job_batch(string $jobId, string $customerId, int $batch
 
         $parsed = ai_parse_html_page((string)$fetch['html'], $finalUrl, $websiteDomain);
         $cleanText = (string)$parsed['clean_text'];
+        $timeoutReached = ((microtime(true) - $pageStartTime) > 120.0);
+        $capturedFaqs = [];
+        if (!$timeoutReached) {
+            $capturedFaqs = ai_collect_page_faqs($finalUrl, (string)$parsed['title'], $cleanText, (array)($parsed['detected_faqs'] ?? []));
+        }
         $loopReason = ai_detect_loop_page($finalUrl, (string)$fetch['html'], (string)$parsed['title'], (string)($fetch['content_type'] ?? ''));
         if ($loopReason !== '') {
-            $loopMessage = 'Loop detected: ' . $loopReason . '. Page cannot be scanned.';
+            $loopMessage = 'Loop detected: ' . $loopReason . '. Captured content was saved for summarization.';
+            if ($timeoutReached) {
+                $loopMessage .= ' Page scan stopped after 2 minutes. We captured what we could and saved it for summarization.';
+                ai_crawl_log($jobId, $customerId, 'scan_timeout', $loopMessage, ['url' => $finalUrl], 'warning', $finalUrl, (string)($page['id'] ?? ''));
+            }
             ai_save_scanned_page($jobId, $customerId, [
                 'url' => $finalUrl,
                 'normalized_url' => $finalNormalized,
                 'page_title' => (string)$parsed['title'],
-                'page_status' => 'failed',
+                'page_status' => 'fetched',
                 'http_status' => (int)$fetch['status'],
                 'content_hash' => hash('sha256', $cleanText),
                 'clean_text' => $cleanText,
@@ -2880,11 +2895,12 @@ function ai_process_scan_job_batch(string $jobId, string $customerId, int $batch
                 'ai_error' => $loopMessage,
                 'content_type' => (string)($fetch['content_type'] ?? ''),
                 'content_length' => (int)($fetch['content_length'] ?? strlen($cleanText)),
-                'discovered_links_count' => 0,
+                'discovered_links_count' => count((array)($parsed['links'] ?? [])),
                 'html_preview' => substr(strip_tags((string)$fetch['html']), 0, 1000),
                 'fetched_at' => ai_now(),
                 'summarized_at' => null
             ]);
+            ai_save_page_faqs($jobId, $customerId, $finalUrl, $capturedFaqs);
             ai_crawl_log($jobId, $customerId, 'loop_detected', $loopMessage, [
                 'url' => $finalUrl,
                 'reason' => $loopReason
@@ -3404,27 +3420,41 @@ function ai_process_scan_job(string $jobId, string $customerId, string $websiteU
         $finalNormalized = ai_normalize_page_url($finalUrl) ?: $normalized;
         $parsed = ai_parse_html_page((string)$fetch['html'], $finalUrl, $websiteDomain);
         $cleanText = (string)$parsed['clean_text'];
+        $timeoutReached = ((microtime(true) - $pageStartTime) > 120.0);
+        $capturedFaqs = [];
+        if (!$timeoutReached) {
+            $capturedFaqs = ai_collect_page_faqs($finalUrl, (string)$parsed['title'], $cleanText, (array)($parsed['detected_faqs'] ?? []));
+        }
         $loopReason = ai_detect_loop_page($finalUrl, (string)$fetch['html'], (string)$parsed['title'], (string)($fetch['content_type'] ?? ''));
         if ($loopReason !== '') {
+            $loopMessage = 'Loop detected: ' . $loopReason . '. Captured content was saved for summarization.';
+            if ($timeoutReached) {
+                $loopMessage .= ' Page scan stopped after 2 minutes. We captured what we could and saved it for summarization.';
+                ai_crawl_log($jobId, $customerId, 'scan_timeout', $loopMessage, [
+                    'time_spent_ms' => (int)round((microtime(true) - $pageStartTime) * 1000),
+                    'url' => $finalUrl
+                ], 'warning', $finalUrl, '');
+            }
             ai_save_scanned_page($jobId, $customerId, [
                 'url' => $finalUrl,
                 'normalized_url' => $finalNormalized,
                 'page_title' => (string)$parsed['title'],
-                'page_status' => 'failed',
+                'page_status' => 'fetched',
                 'http_status' => (int)$fetch['status'],
                 'content_hash' => hash('sha256', $cleanText),
                 'clean_text' => $cleanText,
                 'summary_json' => null,
                 'embedding' => null,
-                'ai_error' => 'Loop detected: ' . $loopReason . '. Page cannot be scanned.',
+                'ai_error' => $loopMessage,
                 'content_type' => (string)($fetch['content_type'] ?? ''),
                 'content_length' => (int)($fetch['content_length'] ?? strlen($cleanText)),
-                'discovered_links_count' => 0,
+                'discovered_links_count' => count((array)($parsed['links'] ?? [])),
                 'html_preview' => substr(strip_tags((string)$fetch['html']), 0, 1000),
                 'fetched_at' => ai_now(),
                 'summarized_at' => null
             ]);
-            ai_crawl_log($jobId, $customerId, 'loop_detected', 'Loop detected while scanning this page. Page cannot be scanned.', [
+            ai_save_page_faqs($jobId, $customerId, $finalUrl, $capturedFaqs);
+            ai_crawl_log($jobId, $customerId, 'loop_detected', 'Loop detected while scanning this page. Captured content was saved for summarization.', [
                 'url' => $finalUrl,
                 'reason' => $loopReason
             ], 'warning', $finalUrl, '');
@@ -3442,8 +3472,6 @@ function ai_process_scan_job(string $jobId, string $customerId, string $websiteU
                 $queue[] = $link;
             }
         }
-
-        $timeoutReached = ((microtime(true) - $pageStartTime) > 120.0);
 
         ai_save_scanned_page($jobId, $customerId, [
             'url' => $finalUrl,
