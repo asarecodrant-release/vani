@@ -1123,7 +1123,7 @@ function ai_fetch_pages_parallel(array $urls, int $concurrency = 4, ?callable $s
         return $results;
     }
 
-    $concurrency = max(1, min(8, $concurrency));
+    $concurrency = max(1, min(10, $concurrency));
     $headers = [
         'User-Agent: VaniAI-Scanner/1.0',
         'Accept: text/html,application/xhtml+xml',
@@ -1149,8 +1149,8 @@ function ai_fetch_pages_parallel(array $urls, int $concurrency = 4, ?callable $s
             }
             $url = array_shift($pending);
             $ch = curl_init($url);
-            $connectTimeout = max(2, (int)ai_env('AI_HTTP_CONNECT_TIMEOUT', '6'));
-            $pageTimeout = max(5, (int)ai_env('AI_HTTP_PAGE_TIMEOUT', '14'));
+            $connectTimeout = max(2, (int)ai_env('AI_HTTP_CONNECT_TIMEOUT', '5'));
+            $pageTimeout = max(4, (int)ai_env('AI_HTTP_PAGE_TIMEOUT', '12'));
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_FOLLOWLOCATION => true,
@@ -2896,6 +2896,20 @@ function ai_process_scan_job_batch(string $jobId, string $customerId, int $batch
     $retrySupported = ai_db_supports_retry_columns();
     $batchLimit = max(1, min((int)ai_env('AI_CRAWL_MAX_BATCH_SIZE', '12'), $batchSize));
     $pendingPages = ai_claim_pending_pages($jobId, $customerId, $batchLimit, $workerId, $retrySupported);
+    $fetches = [];
+    $pendingUrls = [];
+    foreach ($pendingPages as $page) {
+        $pageUrl = (string)($page['url'] ?? '');
+        if ($pageUrl !== '') {
+            $pendingUrls[] = $pageUrl;
+        }
+    }
+    if (!empty($pendingUrls)) {
+        $fetchConcurrency = max(1, min((int)ai_env('AI_CRAWL_CONCURRENCY', '4'), count($pendingUrls)));
+        $fetches = ai_fetch_pages_parallel($pendingUrls, $fetchConcurrency, function () use ($jobId, $customerId) {
+            return !ai_scan_job_is_paused($jobId, $customerId);
+        });
+    }
     if (ai_scan_job_is_paused($jobId, $customerId)) {
         foreach ($pendingPages as $page) {
             ai_release_page_claim((string)($page['id'] ?? ''), $workerId);
@@ -3560,17 +3574,27 @@ function ai_process_scan_job(string $jobId, string $customerId, string $websiteU
         'error_message' => null
     ]);
 
-    $queue = [$websiteUrl];
+    $queue = [];
+    $queuedNormalized = [];
+    $seedUrls = [$websiteUrl];
     foreach (ai_discover_sitemap_urls($websiteUrl, $websiteDomain, $maxPages * 4) as $sitemapPage) {
-        $queue[] = $sitemapPage;
+        $seedUrls[] = $sitemapPage;
     }
     $wwwVariant = ai_add_www_variant($websiteUrl);
     if ($wwwVariant !== '') {
-        $queue[] = $wwwVariant;
+        $seedUrls[] = $wwwVariant;
     }
     $nonWwwVariant = ai_remove_www_variant($websiteUrl);
     if ($nonWwwVariant !== '') {
-        $queue[] = $nonWwwVariant;
+        $seedUrls[] = $nonWwwVariant;
+    }
+    foreach ($seedUrls as $seedUrl) {
+        $normalizedSeed = ai_normalize_page_url((string)$seedUrl);
+        if ($normalizedSeed === '' || isset($queuedNormalized[$normalizedSeed])) {
+            continue;
+        }
+        $queuedNormalized[$normalizedSeed] = true;
+        $queue[] = $seedUrl;
     }
     $seen = [];
     $attempted = [];
@@ -3666,10 +3690,17 @@ function ai_process_scan_job(string $jobId, string $customerId, string $websiteU
         usort($links, function ($a, $b) {
             return ai_url_priority((string)$a) <=> ai_url_priority((string)$b);
         });
+        $queuedNormalized = [];
         foreach ($links as $link) {
-            if (!isset($seen[$link]) && count($queue) < $maxPages * 3) {
-                $queue[] = $link;
+            $linkNormalized = ai_normalize_page_url((string)$link);
+            if ($linkNormalized === '' || isset($seen[$linkNormalized]) || isset($queuedNormalized[$linkNormalized])) {
+                continue;
             }
+            if (count($queue) >= $maxPages * 3) {
+                break;
+            }
+            $queuedNormalized[$linkNormalized] = true;
+            $queue[] = $link;
         }
 
         ai_save_scanned_page($jobId, $customerId, [
