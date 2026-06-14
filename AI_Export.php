@@ -44,23 +44,6 @@ function ai_summary_text_from_page(array $page): string {
     return (string)($summary['summary'] ?? '');
 }
 
-function ai_export_logo_data_uri(): string {
-    $paths = [
-        __DIR__ . '/images/logo.png',
-        __DIR__ . '/images/logo_img.png',
-    ];
-    foreach ($paths as $path) {
-        if (is_readable($path)) {
-            $mime = 'image/png';
-            $data = base64_encode((string)file_get_contents($path));
-            if ($data !== '') {
-                return 'data:' . $mime . ';base64,' . $data;
-            }
-        }
-    }
-    return '';
-}
-
 $scan = ai_get_scan_job_for_customer($scanId, $customerId);
 if (empty($scan)) {
     $fallbackRows = ai_safe_rows(supabase(
@@ -78,7 +61,6 @@ if (empty($scan)) {
 
 $pages = ai_scan_review_pages($scanId, $customerId, 1000);
 $faqs = ai_scan_review_faqs($scanId, $customerId, 2000);
-$logoDataUri = ai_export_logo_data_uri();
 if ($format === 'excel') {
     header('Content-Type: text/csv; charset=utf-8');
     header('Content-Disposition: attachment; filename=vani-ai-export-' . date('Ymd') . '.csv');
@@ -140,12 +122,13 @@ ob_start();
 
         .report {
             width: 100%;
-            max-width: 186mm;
+            max-width: 176mm;
             margin: 0 auto;
+            overflow-x: hidden;
         }
 
         .cover-page {
-            min-height: 228mm;
+            min-height: 224mm;
             box-sizing: border-box;
             border-radius: 24px;
             overflow: hidden;
@@ -153,7 +136,7 @@ ob_start();
                 radial-gradient(circle at top left, rgba(30, 115, 190, 0.18), transparent 28%),
                 radial-gradient(circle at 85% 12%, rgba(14, 165, 233, 0.16), transparent 26%),
                 linear-gradient(145deg, #f8fbff 0%, #e9f3ff 100%);
-            padding: 14mm 14mm 10mm;
+            padding: 12mm 12mm 8mm;
             display: flex;
             flex-direction: column;
             justify-content: space-between;
@@ -164,20 +147,13 @@ ob_start();
             display: flex;
             align-items: center;
             justify-content: space-between;
-            gap: 16px;
+            gap: 12px;
         }
 
         .brand-lockup {
             display: flex;
             align-items: center;
             gap: 14px;
-        }
-
-        .brand-lockup img {
-            width: 58px;
-            height: 58px;
-            object-fit: contain;
-            flex: 0 0 auto;
         }
 
         .brand-copy {
@@ -219,14 +195,14 @@ ob_start();
         .hero {
             display: grid;
             gap: 14px;
-            max-width: 170mm;
-            margin: 18mm auto 0;
+            max-width: 160mm;
+            margin: 14mm auto 0;
             text-align: center;
         }
 
         .hero h1 {
             margin: 0;
-            font-size: 28pt;
+            font-size: 26pt;
             line-height: 1.05;
             letter-spacing: -0.03em;
             color: var(--ink);
@@ -234,18 +210,18 @@ ob_start();
 
         .hero p {
             margin: 0;
-            font-size: 13pt;
+            font-size: 12pt;
             color: #334155;
-            max-width: 170mm;
+            max-width: 160mm;
         }
 
         .hero-note {
             display: grid;
             gap: 8px;
-            max-width: 170mm;
-            margin: 4mm auto 0;
+            max-width: 160mm;
+            margin: 3mm auto 0;
             color: var(--muted);
-            font-size: 10.5pt;
+            font-size: 10pt;
             text-align: center;
         }
 
@@ -256,32 +232,32 @@ ob_start();
         .summary-grid {
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 12px;
-            margin: 12mm auto 0;
-            max-width: 170mm;
+            gap: 10px;
+            margin: 10mm auto 0;
+            max-width: 160mm;
         }
 
         .metric-card {
             background: rgba(255, 255, 255, 0.88);
             border: 1px solid var(--border);
             border-radius: 16px;
-            padding: 16px;
+            padding: 14px;
             box-shadow: 0 10px 26px rgba(15, 23, 42, 0.05);
         }
 
         .metric-card span {
             display: block;
-            font-size: 10px;
+            font-size: 9px;
             font-weight: 900;
             color: var(--muted);
             text-transform: uppercase;
             letter-spacing: 0.09em;
-            margin-bottom: 8px;
+            margin-bottom: 6px;
         }
 
         .metric-card strong {
             display: block;
-            font-size: 24px;
+            font-size: 22px;
             line-height: 1;
             color: var(--brand);
         }
@@ -292,15 +268,15 @@ ob_start();
             gap: 16px;
             align-items: flex-end;
             color: var(--muted);
-            font-size: 10.5pt;
-            max-width: 170mm;
-            margin: 14mm auto 0;
+            font-size: 10pt;
+            max-width: 160mm;
+            margin: 10mm auto 0;
         }
 
         .content-wrap {
             display: grid;
-            gap: 18px;
-            max-width: 170mm;
+            gap: 14px;
+            max-width: 160mm;
             margin: 0 auto;
         }
 
@@ -309,11 +285,11 @@ ob_start();
             justify-content: space-between;
             align-items: center;
             gap: 16px;
-            padding: 14px 18px;
-            border-radius: 16px;
+            padding: 11px 14px;
+            border-radius: 14px;
             background: linear-gradient(135deg, var(--ink), #173554);
             color: #fff;
-            font-size: 14px;
+            font-size: 13px;
             font-weight: 900;
             letter-spacing: 0.02em;
             page-break-after: avoid;
@@ -339,9 +315,9 @@ ob_start();
         .page-item {
             background: var(--surface);
             border: 1px solid var(--border);
-            border-radius: 18px;
-            padding: 16px 18px;
-            margin-bottom: 14px;
+            border-radius: 16px;
+            padding: 13px 14px;
+            margin-bottom: 12px;
             box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
             width: 100%;
             box-sizing: border-box;
@@ -349,7 +325,7 @@ ob_start();
 
         .page-title {
             margin: 0 0 6px;
-            font-size: 17px;
+            font-size: 16px;
             line-height: 1.25;
             color: var(--ink);
             text-align: center;
@@ -357,9 +333,9 @@ ob_start();
 
         .page-url {
             display: block;
-            margin-bottom: 10px;
+            margin-bottom: 8px;
             color: var(--brand-2);
-            font-size: 11px;
+            font-size: 10px;
             font-weight: 800;
             word-break: break-word;
             overflow-wrap: anywhere;
@@ -371,10 +347,10 @@ ob_start();
             background: linear-gradient(180deg, #f8fbff, #eef5ff);
             border: 1px solid #d9e7fb;
             border-left: 4px solid var(--brand-2);
-            border-radius: 12px;
-            padding: 12px 14px;
+            border-radius: 10px;
+            padding: 10px 12px;
             color: #334155;
-            font-size: 11.5pt;
+            font-size: 10.8pt;
             white-space: pre-wrap;
             overflow-wrap: anywhere;
             word-break: break-word;
@@ -388,8 +364,8 @@ ob_start();
         .faq-item {
             background: var(--surface);
             border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 14px 16px;
+            border-radius: 14px;
+            padding: 12px 14px;
             box-shadow: 0 8px 22px rgba(15, 23, 42, 0.04);
             width: 100%;
             box-sizing: border-box;
@@ -397,9 +373,9 @@ ob_start();
 
         .faq-q {
             font-weight: 900;
-            font-size: 12.5pt;
+            font-size: 11.5pt;
             color: var(--ink);
-            margin-bottom: 8px;
+            margin-bottom: 6px;
             text-align: center;
         }
 
@@ -420,7 +396,7 @@ ob_start();
 
         .faq-a {
             color: #334155;
-            font-size: 11.2pt;
+            font-size: 10.6pt;
             white-space: pre-wrap;
             overflow-wrap: anywhere;
             word-break: break-word;
@@ -443,12 +419,12 @@ ob_start();
         }
 
         .footer {
-            margin-top: 12mm;
-            padding-top: 10mm;
+            margin-top: 10mm;
+            padding-top: 8mm;
             border-top: 1px solid var(--border);
             text-align: center;
             color: var(--muted);
-            font-size: 10px;
+            font-size: 9px;
         }
 
         @media print {
@@ -467,9 +443,6 @@ ob_start();
             <div>
                 <div class="brand-row">
                     <div class="brand-lockup">
-                        <?php if ($logoDataUri !== ''): ?>
-                            <img src="<?php echo h($logoDataUri); ?>" alt="Vani AI">
-                        <?php endif; ?>
                         <div class="brand-copy">
                             <div class="brand-name">Vani AI</div>
                             <div class="brand-tag">Knowledge Intelligence Report</div>
@@ -619,14 +592,14 @@ if ($format === 'pdf'):
                         filename: filename,
                         image: { type: 'jpeg', quality: 1 },
                         html2canvas: {
-                            scale: 1.25,
+                            scale: 1.1,
                             useCORS: true,
                             logging: false,
                             scrollY: 0,
                             windowWidth: 1280,
                             backgroundColor: '#f8fafd'
                         },
-                        pagebreak: { mode: ['css'], avoid: ['.page-item', '.faq-item', '.metric-card', '.section-header'] },
+                        pagebreak: { mode: ['css', 'legacy'], avoid: ['.cover-page', '.page-item', '.faq-item', '.metric-card', '.section-header'] },
                         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
                     }).from(reportRoot).save();
                 } catch (error) {

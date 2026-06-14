@@ -61,22 +61,6 @@ function ai_text_length_from_page(array $page): int {
     return strlen(trim((string)($page['clean_text'] ?? '')));
 }
 
-function ai_pdf_logo_data_uri(): string {
-    $paths = [
-        __DIR__ . '/images/logo.png',
-        __DIR__ . '/images/logo_img.png',
-    ];
-    foreach ($paths as $path) {
-        if (is_readable($path)) {
-            $data = base64_encode((string)file_get_contents($path));
-            if ($data !== '') {
-                return 'data:image/png;base64,' . $data;
-            }
-        }
-    }
-    return '';
-}
-
 $email = authenticated_email();
 $customerId = (string)($_SESSION['setup_customer_id'] ?? '');
 if ($customerId === '') {
@@ -191,7 +175,6 @@ $crawlTotal = (int)($diagCounts['crawl_total'] ?? 0);
 $summaryDone = (int)($diagCounts['summary_done'] ?? 0);
 $summaryTotal = (int)($diagCounts['summary_total'] ?? 0);
 $externalQueueEnabled = ai_external_queue_enabled();
-$pdfLogoDataUri = ai_pdf_logo_data_uri();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -732,9 +715,9 @@ body.dark .diag-error{color:#fca5a5}
       <div style="display: grid; gap: 20px;">
         <div>
           <button type="button" id="backfillFaqsBtn" class="btn" style="width:100%; justify-content:center; margin-bottom:10px;">
-            Generate FAQs from Summaries
+            Generate Customer FAQs from Summaries
           </button>
-          <p class="muted" style="font-size:12px;">Uses AI to create FAQ pairs from your page summaries.</p>
+          <p class="muted" style="font-size:12px;">Uses AI to create short, customer-friendly FAQ pairs from your page summaries.</p>
         </div>
         <hr style="border:0; border-top:1px solid var(--line); margin: 5px 0;">
         <div>
@@ -801,7 +784,6 @@ let summaryControlsFrozen = false;
 let latestPagesList = <?php echo json_encode($pages); ?>;
 let latestFaqsList = <?php echo json_encode($faqs); ?>;
 const websiteDomain = <?php echo json_encode($scan['website_domain'] ?? ''); ?>;
-const reportLogoSrc = <?php echo json_encode($pdfLogoDataUri); ?>;
 const summarizingPages = new Set();
 const skippedSummaryPages = new Set();
 
@@ -1798,7 +1780,6 @@ setInterval(() => {
 function aiSummaryReportHtml() {
   const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
   const date = new Date().toLocaleString();
-  const logoSrc = reportLogoSrc || "";
   const pageCount = latestPagesList.length;
   const faqCount = latestFaqsList.length;
   const summarizedCount = latestPagesList.filter((page) => page?.page_status === "summarized").length;
@@ -1845,25 +1826,37 @@ function aiSummaryReportHtml() {
   return `
     <style>
       @page { size: A4; margin: 10mm; }
-      .pdf-report { font-family: 'Inter', 'Segoe UI', Arial, sans-serif; color: #111827; background: #f8fafd; line-height: 1.55; }
+      .pdf-report, .pdf-report * { box-sizing: border-box; }
+      .pdf-report {
+        width: 100%;
+        max-width: 176mm;
+        margin: 0 auto;
+        font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
+        color: #111827;
+        background: #f8fafd;
+        line-height: 1.55;
+        overflow-x: hidden;
+      }
       .pdf-header {
         display: flex;
         justify-content: space-between;
         align-items: flex-start;
-        gap: 16px;
-        padding: 16px 18px;
+        gap: 12px;
+        padding: 14px 15px;
         margin-bottom: 14px;
         background: linear-gradient(135deg, #ffffff 0%, #f4f8ff 100%);
         border: 1px solid #dbe5f1;
         border-radius: 18px;
         box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+        width: 100%;
+        min-width: 0;
       }
-      .pdf-brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
-      .pdf-brand img { width: 48px; height: 48px; object-fit: contain; flex: 0 0 auto; }
+      .pdf-brand { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1 1 auto; }
       .pdf-brand-copy { display: grid; gap: 2px; }
-      .pdf-brand-name { font-size: 20px; font-weight: 900; letter-spacing: -0.03em; color: #0f4c81; line-height: 1; }
-      .pdf-brand-tag { font-size: 11px; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.10em; }
-      .pdf-header-meta { text-align: right; display: grid; gap: 6px; }
+      .pdf-brand-name-wrap { display: grid; gap: 2px; min-width: 0; }
+      .pdf-brand-name { font-size: 18px; font-weight: 900; letter-spacing: -0.03em; color: #0f4c81; line-height: 1; }
+      .pdf-brand-tag { font-size: 10px; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.10em; }
+      .pdf-header-meta { text-align: right; display: grid; gap: 6px; min-width: 0; flex: 0 1 48%; }
       .pdf-pill {
         display: inline-flex;
         align-items: center;
@@ -1879,29 +1872,33 @@ function aiSummaryReportHtml() {
         letter-spacing: 0.08em;
         text-transform: uppercase;
       }
-      .pdf-title { margin: 0; font-size: 22px; line-height: 1.1; letter-spacing: -0.03em; color: #0f172a; }
-      .pdf-subtitle { margin: 4px 0 0; color: #475569; font-size: 12px; max-width: 155mm; }
-      .pdf-meta-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+      .pdf-title { margin: 0; font-size: 20px; line-height: 1.1; letter-spacing: -0.03em; color: #0f172a; word-break: break-word; }
+      .pdf-subtitle { margin: 4px 0 0; color: #475569; font-size: 11px; max-width: 145mm; overflow-wrap: anywhere; }
+      .pdf-meta-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; justify-content: flex-end; }
       .pdf-meta-chip {
         display: inline-flex;
         align-items: center;
         gap: 6px;
-        min-height: 28px;
-        padding: 0 10px;
+        min-height: 24px;
+        padding: 0 9px;
         border-radius: 999px;
         background: #ffffff;
         border: 1px solid #dbe5f1;
         color: #334155;
-        font-size: 10px;
+        font-size: 9px;
         font-weight: 700;
+        max-width: 100%;
+        overflow-wrap: anywhere;
+        word-break: break-word;
       }
-      .pdf-section { margin-top: 14px; }
+      .pdf-section { margin-top: 12px; width: 100%; min-width: 0; break-inside: avoid-page; page-break-inside: avoid; }
       .pdf-section-title {
         display: flex;
         justify-content: space-between;
         align-items: center;
+        flex-wrap: wrap;
         gap: 14px;
-        padding: 12px 16px;
+        padding: 10px 14px;
         margin-bottom: 10px;
         background: linear-gradient(135deg, #0f4c81, #1a73e8);
         color: #fff;
@@ -1910,88 +1907,94 @@ function aiSummaryReportHtml() {
         font-weight: 900;
         letter-spacing: 0.02em;
       }
-      .pdf-summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+      .pdf-summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
       .pdf-summary-card {
         background: #fff;
         border: 1px solid #dbe5f1;
-        border-radius: 14px;
-        padding: 12px;
+        border-radius: 12px;
+        padding: 10px;
         box-shadow: 0 8px 22px rgba(15, 23, 42, 0.04);
         break-inside: avoid;
         page-break-inside: avoid;
+        width: 100%;
+        min-width: 0;
       }
       .pdf-summary-card span {
         display: block;
-        font-size: 10px;
+        font-size: 9px;
         font-weight: 900;
         color: #64748b;
         text-transform: uppercase;
         letter-spacing: 0.08em;
         margin-bottom: 6px;
       }
-      .pdf-summary-card strong { display: block; font-size: 22px; line-height: 1; color: #0f4c81; }
+      .pdf-summary-card strong { display: block; font-size: 20px; line-height: 1; color: #0f4c81; }
       .pdf-page-item,
       .pdf-faq-item {
         background: #fff;
         border: 1px solid #dbe5f1;
-        border-radius: 16px;
-        padding: 14px 16px;
-        margin-bottom: 12px;
+        border-radius: 14px;
+        padding: 11px 13px;
+        margin-bottom: 10px;
         box-shadow: 0 8px 22px rgba(15, 23, 42, 0.04);
         break-inside: avoid;
         page-break-inside: avoid;
+        page-break-before: auto;
+        page-break-after: auto;
+        width: 100%;
+        min-width: 0;
       }
-      .pdf-page-head { display: flex; justify-content: space-between; gap: 10px; align-items: center; margin-bottom: 8px; }
+      .pdf-page-head { display: flex; justify-content: space-between; gap: 8px; align-items: center; margin-bottom: 6px; flex-wrap: wrap; }
       .pdf-badge,
       .pdf-status {
         display: inline-flex;
-        min-height: 24px;
+        min-height: 22px;
         align-items: center;
-        padding: 0 9px;
+        padding: 0 8px;
         border-radius: 999px;
-        font-size: 10px;
+        font-size: 9px;
         font-weight: 900;
         letter-spacing: 0.08em;
         text-transform: uppercase;
       }
       .pdf-badge { background: #e8f0fe; color: #1a73e8; }
       .pdf-status { background: #eefbf4; color: #15803d; }
-      .pdf-page-title { margin: 0 0 6px; font-size: 15px; line-height: 1.25; color: #0f172a; }
-      .pdf-page-url { color: #1a73e8; font-size: 10px; font-weight: 700; word-break: break-all; overflow-wrap: anywhere; margin-bottom: 10px; }
+      .pdf-page-title { margin: 0 0 5px; font-size: 14px; line-height: 1.22; color: #0f172a; }
+      .pdf-page-url { color: #1a73e8; font-size: 9px; font-weight: 700; word-break: break-word; overflow-wrap: anywhere; margin-bottom: 8px; }
       .pdf-page-summary {
         background: #f8fbff;
         border: 1px solid #d9e7fb;
         border-left: 4px solid #1a73e8;
-        border-radius: 12px;
-        padding: 12px 14px;
+        border-radius: 10px;
+        padding: 10px 12px;
         color: #334155;
-        font-size: 11.5px;
+        font-size: 10.8px;
         overflow-wrap: anywhere;
         word-break: break-word;
         white-space: pre-wrap;
+        width: 100%;
       }
-      .pdf-page-meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; color: #64748b; font-size: 10px; font-weight: 700; }
-      .pdf-page-meta span { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 999px; padding: 4px 8px; }
-      .pdf-faq-q { font-size: 12px; font-weight: 900; color: #0f172a; margin-bottom: 8px; }
-      .pdf-faq-a { font-size: 11.5px; color: #334155; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
-      .pdf-empty { margin: 0; padding: 16px; text-align: center; color: #64748b; font-style: italic; background: #fff; border: 1px dashed #cbd5e1; border-radius: 14px; }
+      .pdf-page-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; color: #64748b; font-size: 9px; font-weight: 700; width: 100%; }
+      .pdf-page-meta span { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 999px; padding: 3px 7px; }
+      .pdf-faq-q { font-size: 11px; font-weight: 900; color: #0f172a; margin-bottom: 6px; word-break: break-word; overflow-wrap: anywhere; }
+      .pdf-faq-a { font-size: 10.8px; color: #334155; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; width: 100%; }
+      .pdf-empty { margin: 0; padding: 14px; text-align: center; color: #64748b; font-style: italic; background: #fff; border: 1px dashed #cbd5e1; border-radius: 12px; }
       .pdf-footer {
-        margin-top: 16px;
-        padding-top: 10px;
+        margin-top: 14px;
+        padding-top: 8px;
         border-top: 1px solid #dbe5f1;
         display: flex;
         justify-content: space-between;
         gap: 10px;
         align-items: center;
         color: #64748b;
-        font-size: 10px;
+        font-size: 9px;
       }
       .pdf-footer strong { color: #0f172a; }
     </style>
     <div class="pdf-report">
       <header class="pdf-header">
         <div class="pdf-brand">
-          ${logoSrc ? `<img src="${logoSrc}" alt="Vani AI">` : ""}
           <div class="pdf-brand-copy">
             <div class="pdf-brand-name">Vani AI</div>
             <div class="pdf-brand-tag">Knowledge Intelligence Report</div>
@@ -2082,9 +2085,9 @@ async function generateProfessionalPdf() {
       margin: [8, 8, 8, 8],
       filename: `Vani-AI-Content-Report-${websiteDomain.replace(/\./g, '-')}.pdf`,
       image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 1.35, useCORS: true, letterRendering: true, backgroundColor: '#f8fafd', scrollY: 0, windowWidth: 1280, logging: false },
+      html2canvas: { scale: 1.2, useCORS: true, letterRendering: true, backgroundColor: '#f8fafd', scrollY: 0, windowWidth: 1280, logging: false },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-      pagebreak: { mode: ['css'], avoid: ['.pdf-summary-card', '.pdf-page-item', '.pdf-faq-item', '.pdf-header', '.pdf-footer'] }
+      pagebreak: { mode: ['css', 'legacy'], avoid: ['.pdf-summary-card', '.pdf-page-item', '.pdf-faq-item', '.pdf-header', '.pdf-footer', '.pdf-section', '.pdf-section-title'] }
     };
 
     await html2pdf().set(options).from(reportRoot).save();

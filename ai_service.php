@@ -1031,6 +1031,8 @@ function ai_clean_summary_text(string $value): string {
     $value = preg_replace('/\b(?:the\s+)?h[1-6]\s+(?:heading|tag|section)\s+(?:says|states|mentions|contains|is|are)\s*:?\s*/i', '', $value) ?: $value;
     $value = preg_replace('/(^|[\n.]\s*)h[1-6]\s*[:\-]\s*/i', '$1', $value) ?: $value;
     $value = preg_replace('/\b(?:h[1-6]|heading\s+level\s+[1-6])\b/i', 'heading', $value) ?: $value;
+    $value = preg_replace('/(^|[\n.]\s*)(?:page\s+title|page\s+heading|title|heading|section|subheading|summary|overview)\s*[:\-]\s*/i', '$1', $value) ?: $value;
+    $value = preg_replace('/\b(?:page\s+title|page\s+heading|title\s+label|heading\s+label|summary\s+label|overview\s+label)\s*[:\-]\s*/i', '', $value) ?: $value;
     $value = preg_replace('/[ \t\r\f\v]+/', ' ', $value) ?: $value;
     return ai_clean_customer_text(trim($value), 2200);
 }
@@ -1988,31 +1990,207 @@ function ai_summary_array_values(array $summary, string $key): array {
     return array_values(array_unique($items));
 }
 
+function ai_summary_sentence_snippets(string $text, int $maxSnippets = 3, int $limit = 220): array {
+    $text = ai_clean_customer_text($text, max(300, $limit * 4));
+    if ($text === '') {
+        return [];
+    }
+    $sentences = preg_split('/(?<=[.!?])\s+/', $text) ?: [$text];
+    $snippets = [];
+    foreach ($sentences as $sentence) {
+        $sentence = ai_clean_customer_text((string)$sentence, $limit);
+        if ($sentence === '') {
+            continue;
+        }
+        $snippets[] = $sentence;
+        if (count($snippets) >= max(1, $maxSnippets)) {
+            break;
+        }
+    }
+    if (empty($snippets)) {
+        $snippets[] = ai_clean_customer_text(substr($text, 0, $limit), $limit);
+    }
+    return $snippets;
+}
+
+function ai_summary_compact_answer(array $answers, int $maxItems = 2, int $limit = 240): string {
+    $items = [];
+    foreach ($answers as $answer) {
+        $answer = ai_clean_customer_text((string)$answer, $limit);
+        if ($answer === '') {
+            continue;
+        }
+        $items[] = $answer;
+        if (count($items) >= max(1, $maxItems)) {
+            break;
+        }
+    }
+    if (empty($items)) {
+        return '';
+    }
+    $answer = implode(' ', $items);
+    return ai_clean_customer_text($answer, $limit);
+}
+
 function ai_add_summary_faq(array &$faqs, string $question, array $answers, string $source = 'ai_summary_generated'): void {
     $answers = array_values(array_filter(array_map(function ($answer) {
-        return ai_clean_customer_text((string)$answer, 900);
+        return ai_clean_summary_text((string)$answer);
     }, $answers)));
     if ($question === '' || empty($answers)) {
         return;
     }
+    $answer = ai_summary_compact_answer($answers, 2, 220);
+    if ($answer === '') {
+        return;
+    }
     $faqs[] = [
         'question' => $question,
-        'answer' => substr(implode(' ', array_slice($answers, 0, 6)), 0, 3000),
+        'answer' => $answer,
         'source' => $source
     ];
 }
 
 function ai_generate_faqs_from_summary_data(array $summary, string $url, string $title): array {
     $label = trim($title) !== '' ? trim($title) : (string)(parse_url($url, PHP_URL_HOST) ?: 'this page');
+    $pageType = strtolower(trim((string)($summary['page_type'] ?? 'other')));
     $faqs = [];
-    ai_add_summary_faq($faqs, 'What should visitors know from ' . $label . '?', ai_summary_array_values($summary, 'key_facts'));
-    ai_add_summary_faq($faqs, 'What services are mentioned on ' . $label . '?', ai_summary_array_values($summary, 'services'));
-    ai_add_summary_faq($faqs, 'What pricing information is available on ' . $label . '?', ai_summary_array_values($summary, 'pricing_info'));
-    ai_add_summary_faq($faqs, 'Where is this business or service available?', ai_summary_array_values($summary, 'locations'));
-    ai_add_summary_faq($faqs, 'What timings or hours are mentioned?', ai_summary_array_values($summary, 'timings'));
-    ai_add_summary_faq($faqs, 'What policies are mentioned on ' . $label . '?', ai_summary_array_values($summary, 'policies'));
-    ai_add_summary_faq($faqs, 'What steps or process should visitors follow?', ai_summary_array_values($summary, 'steps_or_processes'));
-    ai_add_summary_faq($faqs, 'What requirements or eligibility details are mentioned?', ai_summary_array_values($summary, 'requirements_or_eligibility'));
+    $summaryText = ai_clean_summary_text((string)($summary['summary'] ?? ''));
+
+    $addTypeQuestion = function (string $question, array $answers, string $source = 'ai_summary_generated') use (&$faqs): void {
+        ai_add_summary_faq($faqs, $question, $answers, $source);
+    };
+
+    switch ($pageType) {
+        case 'services':
+            $services = ai_summary_array_values($summary, 'services');
+            $processes = ai_summary_array_values($summary, 'steps_or_processes');
+            $requirements = ai_summary_array_values($summary, 'requirements_or_eligibility');
+            $pricing = ai_summary_array_values($summary, 'pricing_info');
+            $locations = ai_summary_array_values($summary, 'locations');
+
+            if (!empty($services[0] ?? null)) {
+                $addTypeQuestion('What services are offered on this page?', array_slice($services, 0, 2));
+            }
+            if (!empty($processes[0] ?? null)) {
+                $addTypeQuestion('How do customers get started?', array_slice($processes, 0, 2));
+            }
+            if (!empty($requirements[0] ?? null)) {
+                $addTypeQuestion('What requirements should customers know before booking?', array_slice($requirements, 0, 2));
+            }
+            if (!empty($pricing[0] ?? null)) {
+                $addTypeQuestion('What pricing or fee details are mentioned?', array_slice($pricing, 0, 2));
+            }
+            if (!empty($locations[0] ?? null)) {
+                $addTypeQuestion('Where is this service available?', array_slice($locations, 0, 2));
+            }
+            break;
+
+        case 'pricing':
+            $pricing = ai_summary_array_values($summary, 'pricing_info');
+            $services = ai_summary_array_values($summary, 'services');
+            $policies = ai_summary_array_values($summary, 'policies');
+            $requirements = ai_summary_array_values($summary, 'requirements_or_eligibility');
+
+            if (!empty($pricing[0] ?? null)) {
+                $addTypeQuestion('What pricing details are listed here?', array_slice($pricing, 0, 2));
+            }
+            if (!empty($services[0] ?? null)) {
+                $addTypeQuestion('Which plan or service options are available?', array_slice($services, 0, 2));
+            }
+            if (!empty($policies[0] ?? null)) {
+                $addTypeQuestion('Are there any billing or refund rules to know?', array_slice($policies, 0, 2));
+            }
+            if (!empty($requirements[0] ?? null)) {
+                $addTypeQuestion('Are there any eligibility or signup requirements?', array_slice($requirements, 0, 2));
+            }
+            break;
+
+        case 'contact':
+            $contact = is_array($summary['contact_info'] ?? null) ? $summary['contact_info'] : [];
+            $location = ai_summary_array_values($summary, 'locations');
+            $timings = ai_summary_array_values($summary, 'timings');
+            $contactAnswers = [];
+            foreach (['phones' => 'Phone', 'emails' => 'Email', 'addresses' => 'Address'] as $key => $labelText) {
+                foreach (ai_summary_array_values($contact, $key) as $item) {
+                    $contactAnswers[] = $labelText . ': ' . $item;
+                }
+            }
+
+            if (!empty($contactAnswers)) {
+                $addTypeQuestion('What is the best way to contact the business?', array_slice($contactAnswers, 0, 3));
+            }
+            if (!empty($location[0] ?? null)) {
+                $addTypeQuestion('Where is the business located?', array_slice($location, 0, 2));
+            }
+            if (!empty($timings[0] ?? null)) {
+                $addTypeQuestion('When can customers reach the business?', array_slice($timings, 0, 2));
+            }
+            break;
+
+        case 'faq':
+            $keyFacts = ai_summary_array_values($summary, 'key_facts');
+            $processes = ai_summary_array_values($summary, 'steps_or_processes');
+            if (!empty($keyFacts[0] ?? null)) {
+                $addTypeQuestion('What are the main answers covered on this FAQ page?', array_slice($keyFacts, 0, 2));
+            }
+            if (!empty($processes[0] ?? null)) {
+                $addTypeQuestion('What steps or common answers are explained here?', array_slice($processes, 0, 2));
+            }
+            break;
+
+        case 'home':
+        case 'about':
+        case 'blog':
+        case 'other':
+        default:
+            break;
+    }
+
+    $keyFacts = ai_summary_array_values($summary, 'key_facts');
+    if (!empty($keyFacts[0] ?? null)) {
+        ai_add_summary_faq($faqs, 'What is the main takeaway from ' . $label . '?', [$keyFacts[0]]);
+    }
+    if (!empty($keyFacts[1] ?? null)) {
+        ai_add_summary_faq($faqs, 'What other important detail should visitors know about ' . $label . '?', [$keyFacts[1]]);
+    }
+    if (!empty($keyFacts[2] ?? null)) {
+        ai_add_summary_faq($faqs, 'What additional point is mentioned on ' . $label . '?', [$keyFacts[2]]);
+    }
+
+    $services = ai_summary_array_values($summary, 'services');
+    if (!empty($services[0] ?? null)) {
+        ai_add_summary_faq($faqs, 'What services or offerings are mentioned on ' . $label . '?', array_slice($services, 0, 2));
+    }
+
+    $pricing = ai_summary_array_values($summary, 'pricing_info');
+    if (!empty($pricing[0] ?? null)) {
+        ai_add_summary_faq($faqs, 'What pricing or cost details are available on ' . $label . '?', array_slice($pricing, 0, 2));
+    }
+
+    $locations = ai_summary_array_values($summary, 'locations');
+    if (!empty($locations[0] ?? null)) {
+        ai_add_summary_faq($faqs, 'Where is this business or service available?', array_slice($locations, 0, 2));
+    }
+
+    $timings = ai_summary_array_values($summary, 'timings');
+    if (!empty($timings[0] ?? null)) {
+        ai_add_summary_faq($faqs, 'What timings, hours, or deadlines are mentioned?', array_slice($timings, 0, 2));
+    }
+
+    $policies = ai_summary_array_values($summary, 'policies');
+    if (!empty($policies[0] ?? null)) {
+        ai_add_summary_faq($faqs, 'What policies or rules should visitors know?', array_slice($policies, 0, 2));
+    }
+
+    $processes = ai_summary_array_values($summary, 'steps_or_processes');
+    if (!empty($processes[0] ?? null)) {
+        ai_add_summary_faq($faqs, 'What steps or process should visitors follow?', array_slice($processes, 0, 2));
+    }
+
+    $requirements = ai_summary_array_values($summary, 'requirements_or_eligibility');
+    if (!empty($requirements[0] ?? null)) {
+        ai_add_summary_faq($faqs, 'What requirements or eligibility details are mentioned?', array_slice($requirements, 0, 2));
+    }
 
     $contact = $summary['contact_info'] ?? [];
     if (is_array($contact)) {
@@ -2022,10 +2200,31 @@ function ai_generate_faqs_from_summary_data(array $summary, string $url, string 
                 $contactAnswers[] = $labelText . ': ' . $item;
             }
         }
-        ai_add_summary_faq($faqs, 'How can visitors contact the business?', $contactAnswers);
+        ai_add_summary_faq($faqs, 'How can visitors contact the business?', array_slice($contactAnswers, 0, 3));
     }
 
-    return array_slice(ai_dedupe_faqs($faqs), 0, 12);
+    if (empty($faqs) && $summaryText !== '') {
+        $snippets = ai_summary_sentence_snippets($summaryText, 4, 200);
+        if ($pageType === 'services') {
+            ai_add_summary_faq($faqs, 'What does this service page explain?', [$snippets[0] ?? $summaryText], 'ai_summary_generated');
+            ai_add_summary_faq($faqs, 'How should a customer get started?', [$snippets[1] ?? $summaryText], 'ai_summary_generated');
+            ai_add_summary_faq($faqs, 'What other service detail is mentioned?', [$snippets[2] ?? $summaryText], 'ai_summary_generated');
+        } elseif ($pageType === 'pricing') {
+            ai_add_summary_faq($faqs, 'What pricing information is listed here?', [$snippets[0] ?? $summaryText], 'ai_summary_generated');
+            ai_add_summary_faq($faqs, 'What should customers know about the plan or cost?', [$snippets[1] ?? $summaryText], 'ai_summary_generated');
+            ai_add_summary_faq($faqs, 'Are there any important billing details?', [$snippets[2] ?? $summaryText], 'ai_summary_generated');
+        } elseif ($pageType === 'contact') {
+            ai_add_summary_faq($faqs, 'How can customers contact the business?', [$snippets[0] ?? $summaryText], 'ai_summary_generated');
+            ai_add_summary_faq($faqs, 'Where is the business located?', [$snippets[1] ?? $summaryText], 'ai_summary_generated');
+            ai_add_summary_faq($faqs, 'When is the business available?', [$snippets[2] ?? $summaryText], 'ai_summary_generated');
+        } else {
+            ai_add_summary_faq($faqs, 'What is this page about?', [$snippets[0] ?? $summaryText], 'ai_summary_generated');
+            ai_add_summary_faq($faqs, 'What should visitors know before using this page?', [$snippets[1] ?? $summaryText], 'ai_summary_generated');
+            ai_add_summary_faq($faqs, 'What other helpful detail is mentioned here?', [$snippets[2] ?? $summaryText], 'ai_summary_generated');
+        }
+    }
+
+    return array_slice(ai_dedupe_faqs($faqs), 0, 8);
 }
 
 function ai_save_page_faqs(string $jobId, string $customerId, string $pageUrl, array $faqs): void {
@@ -3764,8 +3963,8 @@ function ai_summarize_page(string $url, string $title, string $cleanText): array
         ];
     }
 
-    $systemPrompt = 'You extract customer-friendly business knowledge from website pages. The output will be reviewed by a business owner and used as chatbot context, so preserve every answerable fact, service detail, rule, price, eligibility point, location, timing, contact detail, process, and limitation. Write plain text only. Return exactly one valid JSON object. Do not create FAQs. Do not mention page heading levels such as H1, H2, H3, title tag, meta description, schema, or HTML structure in the summary. Do not use HTML, markdown fences, comments, prose outside JSON, or trailing commas.';
-    $userPrompt = "Analyze this website page and return exactly this JSON object shape. Capture enough detail for a chatbot to answer visitor questions accurately. The summary must be customer friendly, understandable, and cover the important details from the scanned page without raw HTML or references to heading tags such as H1, H2, or H3. Write the summary as natural prose a customer can read easily, combining related facts instead of listing the page structure. Keep each array item focused but do not omit important facts. Maximum 20 items per array, and no value longer than 900 characters except summary. Do not invent facts; if a field has no facts from the page, return an empty array for that field.\n"
+    $systemPrompt = 'You extract customer-friendly business knowledge from website pages. The output will be reviewed by a business owner and used as chatbot context, so preserve every answerable fact, service detail, rule, price, eligibility point, location, timing, contact detail, process, and limitation. Write plain text only. Return exactly one valid JSON object. Do not create FAQs. Do not mention page heading levels such as H1, H2, H3, title tag, meta description, schema, or HTML structure in the summary. Do not use label-style wording such as "Page title:", "Heading:", "Title:", or "Summary:" in the summary. Do not use HTML, markdown fences, comments, prose outside JSON, or trailing commas.';
+    $userPrompt = "Analyze this website page and return exactly this JSON object shape. Capture enough detail for a chatbot to answer visitor questions accurately. The summary must be customer friendly, readable, and should sound like a helpful explanation written for a visitor, not internal notes. Do not use label-style wording such as Page title, Heading, Title, Summary, or Overview. Do not reference raw HTML or heading tags such as H1, H2, or H3. Write the summary as natural prose customers can understand easily, combining related facts instead of listing page structure. Use short, direct sentences. Keep each array item focused but do not omit important facts. Maximum 20 items per array, and no value longer than 900 characters except summary. Do not invent facts; if a field has no facts from the page, return an empty array for that field.\n"
         . "{\n"
         . "  \"url\": \"string\",\n"
         . "  \"page_title\": \"string\",\n"
