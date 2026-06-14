@@ -122,8 +122,9 @@ ob_start();
 
         .report {
             width: 100%;
-            max-width: 176mm;
+            max-width: 170mm;
             margin: 0 auto;
+            padding: 0 2mm;
             overflow-x: hidden;
         }
 
@@ -136,11 +137,13 @@ ob_start();
                 radial-gradient(circle at top left, rgba(30, 115, 190, 0.18), transparent 28%),
                 radial-gradient(circle at 85% 12%, rgba(14, 165, 233, 0.16), transparent 26%),
                 linear-gradient(145deg, #f8fbff 0%, #e9f3ff 100%);
-            padding: 12mm 12mm 8mm;
+            padding: 12mm 10mm 8mm;
             display: flex;
             flex-direction: column;
             justify-content: space-between;
             page-break-after: always;
+            width: 100%;
+            margin: 0 auto;
         }
 
         .brand-row {
@@ -195,7 +198,7 @@ ob_start();
         .hero {
             display: grid;
             gap: 14px;
-            max-width: 160mm;
+            max-width: 154mm;
             margin: 14mm auto 0;
             text-align: center;
         }
@@ -212,13 +215,13 @@ ob_start();
             margin: 0;
             font-size: 12pt;
             color: #334155;
-            max-width: 160mm;
+            max-width: 154mm;
         }
 
         .hero-note {
             display: grid;
             gap: 8px;
-            max-width: 160mm;
+            max-width: 154mm;
             margin: 3mm auto 0;
             color: var(--muted);
             font-size: 10pt;
@@ -234,7 +237,7 @@ ob_start();
             grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 10px;
             margin: 10mm auto 0;
-            max-width: 160mm;
+            max-width: 154mm;
         }
 
         .metric-card {
@@ -269,14 +272,14 @@ ob_start();
             align-items: flex-end;
             color: var(--muted);
             font-size: 10pt;
-            max-width: 160mm;
+            max-width: 154mm;
             margin: 10mm auto 0;
         }
 
         .content-wrap {
             display: grid;
             gap: 14px;
-            max-width: 160mm;
+            max-width: 154mm;
             margin: 0 auto;
         }
 
@@ -295,6 +298,8 @@ ob_start();
             page-break-after: avoid;
             width: 100%;
             box-sizing: border-box;
+            margin-left: auto;
+            margin-right: auto;
         }
 
         .section-header span:last-child {
@@ -321,6 +326,8 @@ ob_start();
             box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
             width: 100%;
             box-sizing: border-box;
+            margin-left: auto;
+            margin-right: auto;
         }
 
         .page-title {
@@ -369,6 +376,8 @@ ob_start();
             box-shadow: 0 8px 22px rgba(15, 23, 42, 0.04);
             width: 100%;
             box-sizing: border-box;
+            margin-left: auto;
+            margin-right: auto;
         }
 
         .faq-q {

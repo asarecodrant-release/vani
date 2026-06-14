@@ -1829,8 +1829,9 @@ function aiSummaryReportHtml() {
       .pdf-report, .pdf-report * { box-sizing: border-box; }
       .pdf-report {
         width: 100%;
-        max-width: 176mm;
+        max-width: 170mm;
         margin: 0 auto;
+        padding: 0 2mm;
         font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
         color: #111827;
         background: #f8fafd;
@@ -1850,6 +1851,8 @@ function aiSummaryReportHtml() {
         box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
         width: 100%;
         min-width: 0;
+        margin-left: auto;
+        margin-right: auto;
       }
       .pdf-brand { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1 1 auto; }
       .pdf-brand-copy { display: grid; gap: 2px; }
@@ -1891,7 +1894,7 @@ function aiSummaryReportHtml() {
         overflow-wrap: anywhere;
         word-break: break-word;
       }
-      .pdf-section { margin-top: 12px; width: 100%; min-width: 0; break-inside: avoid-page; page-break-inside: avoid; }
+      .pdf-section { margin: 12px auto 0; width: 100%; min-width: 0; break-inside: avoid-page; page-break-inside: avoid; }
       .pdf-section-title {
         display: flex;
         justify-content: space-between;
@@ -1907,7 +1910,7 @@ function aiSummaryReportHtml() {
         font-weight: 900;
         letter-spacing: 0.02em;
       }
-      .pdf-summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+      .pdf-summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; width: 100%; }
       .pdf-summary-card {
         background: #fff;
         border: 1px solid #dbe5f1;
@@ -1943,6 +1946,8 @@ function aiSummaryReportHtml() {
         page-break-after: auto;
         width: 100%;
         min-width: 0;
+        margin-left: auto;
+        margin-right: auto;
       }
       .pdf-page-head { display: flex; justify-content: space-between; gap: 8px; align-items: center; margin-bottom: 6px; flex-wrap: wrap; }
       .pdf-badge,
