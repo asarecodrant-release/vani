@@ -44,6 +44,23 @@ function ai_summary_text_from_page(array $page): string {
     return (string)($summary['summary'] ?? '');
 }
 
+function ai_export_logo_data_uri(): string {
+    $paths = [
+        __DIR__ . '/images/logo.png',
+        __DIR__ . '/images/logo_img.png',
+    ];
+    foreach ($paths as $path) {
+        if (is_readable($path)) {
+            $mime = 'image/png';
+            $data = base64_encode((string)file_get_contents($path));
+            if ($data !== '') {
+                return 'data:' . $mime . ';base64,' . $data;
+            }
+        }
+    }
+    return '';
+}
+
 $scan = ai_get_scan_job_for_customer($scanId, $customerId);
 if (empty($scan)) {
     $fallbackRows = ai_safe_rows(supabase(
@@ -61,6 +78,7 @@ if (empty($scan)) {
 
 $pages = ai_scan_review_pages($scanId, $customerId, 1000);
 $faqs = ai_scan_review_faqs($scanId, $customerId, 2000);
+$logoDataUri = ai_export_logo_data_uri();
 if ($format === 'excel') {
     header('Content-Type: text/csv; charset=utf-8');
     header('Content-Disposition: attachment; filename=vani-ai-export-' . date('Ymd') . '.csv');
@@ -103,110 +121,429 @@ ob_start();
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
     <style>
-        :root { --primary: #2563eb; --slate: #0f172a; --muted: #64748b; --border: #e2e8f0; --bg: #f8fafc; }
-        body { font-family: 'Inter', sans-serif; line-height: 1.6; color: var(--slate); padding: 40px; margin: 0; background: #fff; }
+        :root {
+            --ink: #0f172a;
+            --muted: #5b6475;
+            --border: #dbe4f0;
+            --surface: #ffffff;
+            --soft: #f6f8fc;
+            --brand: #0f4c81;
+            --brand-2: #1e73be;
+            --brand-3: #0ea5e9;
+            --accent: #10b981;
+        }
 
-        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 4px solid var(--primary); padding-bottom: 20px; margin-bottom: 40px; }
-        .brand-box { display: flex; align-items: center; gap: 15px; }
-        .logo { width: 48px; height: 48px; object-fit: contain; }
-        .brand-name { font-size: 28px; font-weight: 800; color: var(--primary); letter-spacing: -0.02em; }
-        .report-meta { text-align: right; }
-        .report-meta h1 { margin: 0; font-size: 14px; text-transform: uppercase; color: var(--muted); letter-spacing: 0.1em; }
-        .report-meta p { margin: 5px 0 0; font-weight: 600; font-size: 16px; }
+        @page { size: A4; margin: 12mm; }
 
-        .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 40px; }
-        .stat-card { background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 20px; text-align: center; }
-        .stat-card span { display: block; font-size: 12px; font-weight: 800; color: var(--muted); text-transform: uppercase; margin-bottom: 8px; }
-        .stat-card strong { font-size: 24px; color: var(--primary); }
+        html, body { margin: 0; padding: 0; background: #e8eef7; color: var(--ink); font-family: 'Inter', sans-serif; }
+        body { line-height: 1.55; }
 
-        .section-header { background: var(--slate); color: #fff; padding: 12px 20px; border-radius: 8px; font-size: 18px; font-weight: 800; margin: 40px 0 25px; display: flex; justify-content: space-between; }
+        .report {
+            width: 100%;
+            max-width: 100%;
+        }
 
-        .page-item { border: 1px solid var(--border); border-radius: 12px; padding: 25px; margin-bottom: 25px; page-break-inside: avoid; }
-        .page-title { font-size: 20px; font-weight: 800; margin: 0 0 8px; color: var(--slate); }
-        .page-url { color: var(--primary); font-size: 13px; font-weight: 600; text-decoration: none; word-break: break-all; margin-bottom: 15px; display: block; }
-        .page-summary { background: var(--bg); padding: 20px; border-radius: 8px; border-left: 4px solid var(--primary); font-size: 15px; color: #334155; }
+        .cover-page {
+            min-height: 257mm;
+            box-sizing: border-box;
+            border-radius: 24px;
+            overflow: hidden;
+            background:
+                radial-gradient(circle at top left, rgba(30, 115, 190, 0.18), transparent 28%),
+                radial-gradient(circle at 85% 12%, rgba(14, 165, 233, 0.16), transparent 26%),
+                linear-gradient(145deg, #f8fbff 0%, #e9f3ff 100%);
+            padding: 18mm 16mm 14mm;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            page-break-after: always;
+        }
 
-        .faq-item { margin-bottom: 20px; page-break-inside: avoid; border-bottom: 1px solid var(--border); padding-bottom: 20px; }
-        .faq-item:last-child { border-bottom: 0; }
-        .faq-q { font-weight: 800; font-size: 16px; color: var(--slate); margin-bottom: 8px; display: flex; gap: 10px; }
-        .faq-q::before { content: 'Q:'; color: var(--primary); }
-        .faq-a { font-size: 15px; color: #475569; padding-left: 28px; }
-        .faq-a::before { content: 'A:'; font-weight: 800; color: #10b981; margin-left: -28px; margin-right: 10px; }
+        .brand-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+        }
 
-        .footer { margin-top: 60px; padding-top: 20px; border-top: 1px solid var(--border); text-align: center; color: var(--muted); font-size: 12px; }
-        .page-item, .faq-item, .stat-card, .section-header { break-inside: avoid; page-break-inside: avoid; }
-        .section-header { break-after: avoid; }
+        .brand-lockup {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .brand-lockup img {
+            width: 58px;
+            height: 58px;
+            object-fit: contain;
+            flex: 0 0 auto;
+        }
+
+        .brand-copy {
+            display: grid;
+            gap: 2px;
+        }
+
+        .brand-name {
+            font-size: 30px;
+            font-weight: 900;
+            color: var(--brand);
+            letter-spacing: -0.03em;
+            line-height: 1;
+        }
+
+        .brand-tag {
+            color: var(--muted);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            font-weight: 800;
+        }
+
+        .report-chip {
+            display: inline-flex;
+            align-items: center;
+            min-height: 30px;
+            padding: 0 12px;
+            border-radius: 999px;
+            background: rgba(15, 76, 129, 0.1);
+            color: var(--brand);
+            border: 1px solid rgba(15, 76, 129, 0.18);
+            font-size: 12px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        .hero {
+            display: grid;
+            gap: 14px;
+            max-width: 160mm;
+            margin-top: 18mm;
+        }
+
+        .hero h1 {
+            margin: 0;
+            font-size: 28pt;
+            line-height: 1.05;
+            letter-spacing: -0.03em;
+            color: var(--ink);
+        }
+
+        .hero p {
+            margin: 0;
+            font-size: 13pt;
+            color: #334155;
+            max-width: 148mm;
+        }
+
+        .hero-note {
+            display: grid;
+            gap: 8px;
+            max-width: 160mm;
+            margin-top: 4mm;
+            color: var(--muted);
+            font-size: 10.5pt;
+        }
+
+        .hero-note strong {
+            color: var(--ink);
+        }
+
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 10px;
+            margin-top: 12mm;
+        }
+
+        .metric-card {
+            background: rgba(255, 255, 255, 0.88);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 16px;
+            box-shadow: 0 10px 26px rgba(15, 23, 42, 0.05);
+        }
+
+        .metric-card span {
+            display: block;
+            font-size: 10px;
+            font-weight: 900;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.09em;
+            margin-bottom: 8px;
+        }
+
+        .metric-card strong {
+            display: block;
+            font-size: 24px;
+            line-height: 1;
+            color: var(--brand);
+        }
+
+        .cover-footer {
+            display: flex;
+            justify-content: space-between;
+            gap: 16px;
+            align-items: flex-end;
+            color: var(--muted);
+            font-size: 10.5pt;
+        }
+
+        .content-wrap {
+            display: grid;
+            gap: 18px;
+        }
+
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+            padding: 14px 18px;
+            border-radius: 16px;
+            background: linear-gradient(135deg, var(--ink), #173554);
+            color: #fff;
+            font-size: 14px;
+            font-weight: 900;
+            letter-spacing: 0.02em;
+            page-break-after: avoid;
+        }
+
+        .section-header span:last-child {
+            color: rgba(255, 255, 255, 0.76);
+            font-size: 11px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        .page-item,
+        .faq-item,
+        .metric-card {
+            break-inside: avoid;
+            page-break-inside: avoid;
+        }
+
+        .page-item {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            padding: 16px 18px;
+            margin-bottom: 14px;
+            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+        }
+
+        .page-title {
+            margin: 0 0 6px;
+            font-size: 17px;
+            line-height: 1.25;
+            color: var(--ink);
+        }
+
+        .page-url {
+            display: block;
+            margin-bottom: 10px;
+            color: var(--brand-2);
+            font-size: 11px;
+            font-weight: 800;
+            word-break: break-all;
+            text-decoration: none;
+        }
+
+        .page-summary {
+            background: linear-gradient(180deg, #f8fbff, #eef5ff);
+            border: 1px solid #d9e7fb;
+            border-left: 4px solid var(--brand-2);
+            border-radius: 12px;
+            padding: 12px 14px;
+            color: #334155;
+            font-size: 11.5pt;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+        }
+
+        .faq-list {
+            display: grid;
+            gap: 12px;
+        }
+
+        .faq-item {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 14px 16px;
+            box-shadow: 0 8px 22px rgba(15, 23, 42, 0.04);
+        }
+
+        .faq-q {
+            font-weight: 900;
+            font-size: 12.5pt;
+            color: var(--ink);
+            margin-bottom: 8px;
+        }
+
+        .faq-q::before {
+            content: 'Q';
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 22px;
+            height: 22px;
+            margin-right: 8px;
+            border-radius: 999px;
+            background: rgba(15, 76, 129, 0.1);
+            color: var(--brand);
+            font-size: 10px;
+            font-weight: 900;
+        }
+
+        .faq-a {
+            color: #334155;
+            font-size: 11.2pt;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+        }
+
+        .faq-a::before {
+            content: 'A';
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 22px;
+            height: 22px;
+            margin-right: 8px;
+            margin-top: 4px;
+            border-radius: 999px;
+            background: rgba(16, 185, 129, 0.12);
+            color: var(--accent);
+            font-size: 10px;
+            font-weight: 900;
+        }
+
+        .footer {
+            margin-top: 12mm;
+            padding-top: 10mm;
+            border-top: 1px solid var(--border);
+            text-align: center;
+            color: var(--muted);
+            font-size: 10px;
+        }
 
         @media print {
-            .no-print { display: none; }
-            body { padding: 0; }
-            .section-header { background: #eee !important; color: #000 !important; border: 1px solid #ccc; }
-            .stat-card { background: #fff !important; }
+            body { background: #fff; }
+            .cover-page,
+            .page-item,
+            .faq-item,
+            .metric-card,
+            .section-header { box-shadow: none !important; }
         }
     </style>
 </head>
 <body>
-    <header class="header">
-        <div class="brand-box">
-            <img src="images/logo_img.png" alt="Vani AI" class="logo" onerror="this.style.display='none'">
-            <span class="brand-name">Vani AI</span>
-        </div>
-        <div class="report-meta">
-            <h1>Knowledge Intelligence Report</h1>
-            <p><?php echo h($scan['website_domain']); ?></p>
-        </div>
-    </header>
+    <main class="report">
+        <section class="cover-page">
+            <div>
+                <div class="brand-row">
+                    <div class="brand-lockup">
+                        <?php if ($logoDataUri !== ''): ?>
+                            <img src="<?php echo h($logoDataUri); ?>" alt="Vani AI">
+                        <?php endif; ?>
+                        <div class="brand-copy">
+                            <div class="brand-name">Vani AI</div>
+                            <div class="brand-tag">Knowledge Intelligence Report</div>
+                        </div>
+                    </div>
+                    <span class="report-chip">A4 professional export</span>
+                </div>
 
-    <div class="stats-grid">
-        <div class="stat-card">
-            <span>Captured Pages</span>
-            <strong><?php echo count($pages); ?></strong>
-        </div>
-        <div class="stat-card">
-            <span>Knowledge Pairs (FAQs)</span>
-            <strong><?php echo count($faqs); ?></strong>
-        </div>
-        <div class="stat-card">
-            <span>Export Date</span>
-            <strong><?php echo date('M d, Y'); ?></strong>
-        </div>
-    </div>
+                <div class="hero">
+                    <h1><?php echo h($scan['website_domain']); ?></h1>
+                    <p>
+                        Captured website pages, summaries, and FAQs compiled into a branded customer report.
+                        This export is designed for review, sharing, and printing without losing content.
+                    </p>
+                </div>
 
-    <div class="section-header">
-        <span>Captured Pages & Summaries</span>
-        <span><?php echo count($pages); ?> Items</span>
-    </div>
-
-    <?php foreach ($pages as $page): ?>
-        <div class="page-item">
-            <h2 class="page-title"><?php echo h($page['page_title'] ?: 'Untitled Page'); ?></h2>
-            <a href="<?php echo h($page['url']); ?>" class="page-url"><?php echo h($page['url']); ?></a>
-            <div class="page-summary">
-                <?php echo nl2br(h(ai_summary_text_from_page($page))); ?>
+                <div class="hero-note">
+                    <div><strong>Scan job:</strong> <?php echo h($scan['id']); ?></div>
+                    <div><strong>Website:</strong> <?php echo h($scan['website_url']); ?></div>
+                    <div><strong>Generated:</strong> <?php echo h(date('M d, Y H:i')); ?></div>
+                </div>
             </div>
-        </div>
-    <?php endforeach; ?>
 
-    <?php if (!empty($faqs)): ?>
-    <div class="section-header">
-        <span>Captured Knowledge Base (FAQs)</span>
-        <span><?php echo count($faqs); ?> Pairs</span>
-    </div>
+            <div>
+                <div class="summary-grid">
+                    <div class="metric-card">
+                        <span>Captured Pages</span>
+                        <strong><?php echo count($pages); ?></strong>
+                    </div>
+                    <div class="metric-card">
+                        <span>Knowledge Pairs</span>
+                        <strong><?php echo count($faqs); ?></strong>
+                    </div>
+                    <div class="metric-card">
+                        <span>Pages Summarized</span>
+                        <strong><?php echo count(array_filter($pages, fn($page) => (string)($page['page_status'] ?? '') === 'summarized')); ?></strong>
+                    </div>
+                    <div class="metric-card">
+                        <span>Pages Failed</span>
+                        <strong><?php echo count(array_filter($pages, fn($page) => (string)($page['page_status'] ?? '') === 'failed')); ?></strong>
+                    </div>
+                </div>
 
-    <div class="faq-list">
-        <?php foreach ($faqs as $faq): ?>
-            <div class="faq-item">
-                <div class="faq-q"><?php echo h($faq['question']); ?></div>
-                <div class="faq-a"><?php echo nl2br(h($faq['answer'])); ?></div>
+                <div class="cover-footer" style="margin-top: 14mm;">
+                    <div>
+                        <strong style="display:block;color:var(--ink);font-size:12pt;">Prepared for customer review</strong>
+                        <span>This document includes all captured page summaries and FAQs for the active scan.</span>
+                    </div>
+                    <div style="text-align:right;">
+                        <strong style="display:block;color:var(--ink);font-size:12pt;">Vani AI</strong>
+                        <span>Professional export</span>
+                    </div>
+                </div>
             </div>
-        <?php endforeach; ?>
-    </div>
-    <?php endif; ?>
+        </section>
 
-    <footer class="footer">
-        <p>Generated by Vani AI - Knowledge Intelligence Platform</p>
-        <p>&copy; <?php echo date('Y'); ?> Vani AI. All rights reserved.</p>
-    </footer>
+        <section class="content-wrap">
+            <div class="section-header">
+                <span>Captured Pages & Summaries</span>
+                <span><?php echo count($pages); ?> items</span>
+            </div>
+
+            <?php foreach ($pages as $page): ?>
+                <article class="page-item">
+                    <h2 class="page-title"><?php echo h($page['page_title'] ?: 'Untitled Page'); ?></h2>
+                    <a href="<?php echo h($page['url']); ?>" class="page-url"><?php echo h($page['url']); ?></a>
+                    <div class="page-summary">
+                        <?php echo nl2br(h(ai_summary_text_from_page($page))); ?>
+                    </div>
+                </article>
+            <?php endforeach; ?>
+
+            <?php if (!empty($faqs)): ?>
+                <div class="section-header">
+                    <span>Captured Knowledge Base (FAQs)</span>
+                    <span><?php echo count($faqs); ?> pairs</span>
+                </div>
+
+                <div class="faq-list">
+                    <?php foreach ($faqs as $faq): ?>
+                        <article class="faq-item">
+                            <div class="faq-q"><?php echo h($faq['question']); ?></div>
+                            <div class="faq-a"><?php echo nl2br(h($faq['answer'])); ?></div>
+                        </article>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
+
+            <footer class="footer">
+                <p>Generated by Vani AI - Knowledge Intelligence Platform</p>
+                <p>&copy; <?php echo date('Y'); ?> Vani AI. All rights reserved.</p>
+            </footer>
+        </section>
+    </main>
 </body>
 </html>
 <?php
@@ -250,20 +587,27 @@ if ($format === 'pdf'):
                     if (frameDoc?.fonts?.ready) {
                         await frameDoc.fonts.ready;
                     }
+                    await new Promise((resolve) => setTimeout(resolve, 250));
+                    const images = Array.from(frameDoc?.images || []);
+                    await Promise.all(images.map((img) => img.complete ? Promise.resolve() : new Promise((resolve) => {
+                        img.addEventListener('load', resolve, { once: true });
+                        img.addEventListener('error', resolve, { once: true });
+                    })));
+                    const reportRoot = frameDoc.querySelector('.report') || frameDoc.body;
                     await html2pdf().set({
                         margin: [8, 8, 8, 8],
                         filename: filename,
                         image: { type: 'jpeg', quality: 1 },
                         html2canvas: {
-                            scale: 1.5,
+                            scale: 1.35,
                             useCORS: true,
                             logging: false,
                             scrollY: 0,
-                            windowWidth: 1200
+                            windowWidth: 1240
                         },
-                        pagebreak: { mode: ['css', 'legacy'], avoid: ['.page-item', '.faq-item', '.stat-card', '.section-header'] },
+                        pagebreak: { mode: ['css', 'legacy'], avoid: ['.cover-page', '.page-item', '.faq-item', '.metric-card', '.section-header'] },
                         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-                    }).from(frameDoc.body).save();
+                    }).from(reportRoot).save();
                 } catch (error) {
                     document.body.innerHTML = '<p style="font-family:sans-serif;padding:24px;color:#b91c1c;">PDF generation failed. Please try again.</p>';
                     console.error(error);

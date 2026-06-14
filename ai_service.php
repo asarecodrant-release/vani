@@ -598,6 +598,52 @@ function ai_default_allow_url_patterns(): array {
     ];
 }
 
+function ai_internal_app_url_patterns(): array {
+    return [
+        '/\/AI_Chatbot_Setup\.php\b/i',
+        '/\/AI_Summarize\.php\b/i',
+        '/\/AI_Export\.php\b/i',
+        '/\/login\.php\b/i',
+        '/\/logout\.php\b/i',
+        '/\/signup\.php\b/i',
+        '/\/forgot-password\.php\b/i',
+        '/\/dashboard\.php\b/i',
+        '/\/complete-setup(?:\.php)?\b/i',
+        '/\/navbar\.php\b/i',
+    ];
+}
+
+function ai_is_internal_app_url(string $url): bool {
+    return $url !== '' && ai_url_matches_any_pattern($url, ai_internal_app_url_patterns());
+}
+
+function ai_detect_loop_page(string $url, string $html, string $title = '', string $contentType = ''): string {
+    if ($url !== '' && ai_is_internal_app_url($url)) {
+        return 'internal app route';
+    }
+
+    $title = strtolower(trim(preg_replace('/\s+/', ' ', $title) ?: ''));
+    $body = strtolower(trim(preg_replace('/\s+/', ' ', strip_tags($html)) ?: ''));
+    $merged = trim($title . ' ' . $body);
+    if ($merged === '') {
+        return '';
+    }
+
+    if (preg_match('/(this ai setup page is protected|customers must login|invalid request|authentication required|scan job not found|please login|create an account|sign in to continue)/i', $merged)) {
+        return 'auth or setup page';
+    }
+    if (preg_match('/(<meta[^>]+http-equiv=["\']refresh["\']|window\.location|location\.href|document\.location)/i', $html)) {
+        return 'redirect loop';
+    }
+    if (preg_match('/(AI_Chatbot_Setup\.php|AI_Summarize\.php|login\.php|signup\.php|forgot-password\.php|dashboard\.php)/i', $merged)) {
+        return 'internal app route';
+    }
+    if ($contentType !== '' && stripos($contentType, 'html') === false && stripos($contentType, 'text/plain') === false) {
+        return 'non-html response';
+    }
+    return '';
+}
+
 function ai_domain_block_url_patterns(string $websiteDomain): array {
     $domain = strtolower($websiteDomain);
     if (strpos($domain, 'airbnb.') !== false || $domain === 'airbnb.com') {
@@ -618,6 +664,9 @@ function ai_domain_block_url_patterns(string $websiteDomain): array {
 
 function ai_should_scan_url(string $url, string $websiteDomain): bool {
     if ($url === '' || ai_host_from_value($url) !== $websiteDomain) {
+        return false;
+    }
+    if (ai_is_internal_app_url($url)) {
         return false;
     }
     if (strlen($url) > (int)ai_env('AI_CRAWL_MAX_URL_LENGTH', '220')) {
@@ -2084,6 +2133,43 @@ function ai_capture_single_page(string $jobId, string $customerId, string $websi
     $pageStartTime = microtime(true);
     $parsed = ai_parse_html_page((string)$fetch['html'], $finalUrl, $websiteDomain);
     $cleanText = (string)$parsed['clean_text'];
+    $loopReason = ai_detect_loop_page($finalUrl, (string)$fetch['html'], (string)$parsed['title'], (string)($fetch['content_type'] ?? ''));
+    if ($loopReason !== '') {
+        ai_save_scanned_page($jobId, $customerId, [
+            'url' => $finalUrl,
+            'normalized_url' => $normalized,
+            'page_title' => (string)$parsed['title'],
+            'page_status' => 'failed',
+            'http_status' => (int)$fetch['status'],
+            'content_hash' => hash('sha256', $cleanText),
+            'clean_text' => $cleanText,
+            'summary_json' => null,
+            'embedding' => null,
+            'ai_error' => 'Loop detected: ' . $loopReason . '. Page cannot be scanned.',
+            'content_type' => (string)($fetch['content_type'] ?? ''),
+            'content_length' => (int)($fetch['content_length'] ?? strlen($cleanText)),
+            'discovered_links_count' => 0,
+            'html_preview' => substr(strip_tags((string)$fetch['html']), 0, 1000),
+            'fetched_at' => ai_now(),
+            'summarized_at' => null
+        ]);
+        ai_crawl_log($jobId, $customerId, 'loop_detected', 'Loop detected while scanning this page. Page cannot be scanned.', [
+            'url' => $finalUrl,
+            'reason' => $loopReason
+        ], 'warning', $finalUrl, '');
+
+        $rows = ai_safe_rows(supabase(
+            'GET',
+            'ai_website_pages?select=id&customer_id=eq.' . urlencode($customerId)
+                . '&normalized_url=eq.' . urlencode($normalized)
+                . '&limit=1'
+        ));
+        return [
+            'success' => false,
+            'page_id' => (string)($rows[0]['id'] ?? ''),
+            'error' => 'Loop detected: ' . $loopReason . '. Page cannot be scanned.'
+        ];
+    }
 
     // Check for 2-minute processing limit before intensive FAQ extraction
     $timeoutReached = ((microtime(true) - $pageStartTime) > 120.0);
@@ -2733,6 +2819,35 @@ function ai_process_scan_job_batch(string $jobId, string $customerId, int $batch
 
         $parsed = ai_parse_html_page((string)$fetch['html'], $finalUrl, $websiteDomain);
         $cleanText = (string)$parsed['clean_text'];
+        $loopReason = ai_detect_loop_page($finalUrl, (string)$fetch['html'], (string)$parsed['title'], (string)($fetch['content_type'] ?? ''));
+        if ($loopReason !== '') {
+            $loopMessage = 'Loop detected: ' . $loopReason . '. Page cannot be scanned.';
+            ai_save_scanned_page($jobId, $customerId, [
+                'url' => $finalUrl,
+                'normalized_url' => $finalNormalized,
+                'page_title' => (string)$parsed['title'],
+                'page_status' => 'failed',
+                'http_status' => (int)$fetch['status'],
+                'content_hash' => hash('sha256', $cleanText),
+                'clean_text' => $cleanText,
+                'summary_json' => null,
+                'embedding' => null,
+                'ai_error' => $loopMessage,
+                'content_type' => (string)($fetch['content_type'] ?? ''),
+                'content_length' => (int)($fetch['content_length'] ?? strlen($cleanText)),
+                'discovered_links_count' => 0,
+                'html_preview' => substr(strip_tags((string)$fetch['html']), 0, 1000),
+                'fetched_at' => ai_now(),
+                'summarized_at' => null
+            ]);
+            ai_crawl_log($jobId, $customerId, 'loop_detected', $loopMessage, [
+                'url' => $finalUrl,
+                'reason' => $loopReason
+            ], 'warning', $finalUrl, (string)($page['id'] ?? ''));
+            ai_release_page_claim((string)($page['id'] ?? ''), $workerId);
+            $processed++;
+            continue;
+        }
 
         $links = $parsed['links'];
         usort($links, function ($a, $b) {
@@ -3236,9 +3351,37 @@ function ai_process_scan_job(string $jobId, string $customerId, string $websiteU
 
         $finalUrl = (string)($fetch['url'] ?? $url);
         $finalNormalized = ai_normalize_page_url($finalUrl) ?: $normalized;
+        $parsed = ai_parse_html_page((string)$fetch['html'], $finalUrl, $websiteDomain);
+        $cleanText = (string)$parsed['clean_text'];
+        $loopReason = ai_detect_loop_page($finalUrl, (string)$fetch['html'], (string)$parsed['title'], (string)($fetch['content_type'] ?? ''));
+        if ($loopReason !== '') {
+            ai_save_scanned_page($jobId, $customerId, [
+                'url' => $finalUrl,
+                'normalized_url' => $finalNormalized,
+                'page_title' => (string)$parsed['title'],
+                'page_status' => 'failed',
+                'http_status' => (int)$fetch['status'],
+                'content_hash' => hash('sha256', $cleanText),
+                'clean_text' => $cleanText,
+                'summary_json' => null,
+                'embedding' => null,
+                'ai_error' => 'Loop detected: ' . $loopReason . '. Page cannot be scanned.',
+                'content_type' => (string)($fetch['content_type'] ?? ''),
+                'content_length' => (int)($fetch['content_length'] ?? strlen($cleanText)),
+                'discovered_links_count' => 0,
+                'html_preview' => substr(strip_tags((string)$fetch['html']), 0, 1000),
+                'fetched_at' => ai_now(),
+                'summarized_at' => null
+            ]);
+            ai_crawl_log($jobId, $customerId, 'loop_detected', 'Loop detected while scanning this page. Page cannot be scanned.', [
+                'url' => $finalUrl,
+                'reason' => $loopReason
+            ], 'warning', $finalUrl, '');
+            $scanned++;
+            continue;
+        }
         $seen[$finalNormalized] = true;
 
-        $parsed = ai_parse_html_page((string)$fetch['html'], $finalUrl, $websiteDomain);
         $links = $parsed['links'];
         usort($links, function ($a, $b) {
             return ai_url_priority((string)$a) <=> ai_url_priority((string)$b);
@@ -3250,8 +3393,6 @@ function ai_process_scan_job(string $jobId, string $customerId, string $websiteU
         }
 
         $timeoutReached = ((microtime(true) - $pageStartTime) > 120.0);
-
-        $cleanText = (string)$parsed['clean_text'];
 
         ai_save_scanned_page($jobId, $customerId, [
             'url' => $finalUrl,
