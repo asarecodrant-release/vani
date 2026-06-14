@@ -143,12 +143,14 @@ if ($action === 'queue_test') {
 } elseif ($action === 'restart_scan') {
     // Clean up all data associated with this job
     supabase('DELETE', 'ai_website_pages?scan_job_id=eq.' . urlencode($scanId) . '&customer_id=eq.' . urlencode($customerId));
+    supabase('DELETE', 'ai_website_faqs?scan_job_id=eq.' . urlencode($scanId) . '&customer_id=eq.' . urlencode($customerId));
     if (ai_db_supports_crawl_logs()) {
         supabase('DELETE', 'ai_crawl_logs?scan_job_id=eq.' . urlencode($scanId) . '&customer_id=eq.' . urlencode($customerId));
     }
     if (ai_db_supports_chunks()) {
         supabase('DELETE', 'ai_website_chunks?scan_job_id=eq.' . urlencode($scanId) . '&customer_id=eq.' . urlencode($customerId));
     }
+    supabase('DELETE', 'ai_sitemap_diagnostics?scan_job_id=eq.' . urlencode($scanId) . '&customer_id=eq.' . urlencode($customerId));
 
     // Reset job status and metadata
     ai_patch_scan_job($scanId, [
@@ -158,6 +160,7 @@ if ($action === 'queue_test') {
         'started_at' => null,
         'completed_at' => null,
         'error_message' => null,
+        'summary_paused' => false,
         'worker_id' => null,
         'locked_until' => null,
     ]);

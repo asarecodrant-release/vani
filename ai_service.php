@@ -1105,7 +1105,7 @@ function ai_collect_page_faqs(string $url, string $title, string $cleanText, arr
     return ai_dedupe_faqs(array_merge($faqs, ai_extract_page_faqs($url, $title, $cleanText)));
 }
 
-function ai_fetch_pages_parallel(array $urls, int $concurrency = 4): array {
+function ai_fetch_pages_parallel(array $urls, int $concurrency = 4, ?callable $shouldContinue = null): array {
     $urls = array_values(array_unique(array_filter(array_map('strval', $urls))));
     if (empty($urls)) {
         return [];
@@ -1113,6 +1113,9 @@ function ai_fetch_pages_parallel(array $urls, int $concurrency = 4): array {
     if (!function_exists('curl_multi_init') || count($urls) === 1) {
         $results = [];
         foreach ($urls as $url) {
+            if ($shouldContinue !== null && !$shouldContinue()) {
+                break;
+            }
             $results[$url] = ai_fetch_page($url);
         }
         return $results;
@@ -1130,7 +1133,18 @@ function ai_fetch_pages_parallel(array $urls, int $concurrency = 4): array {
     $multi = curl_multi_init();
 
     do {
+        if ($shouldContinue !== null && !$shouldContinue()) {
+            foreach ($active as $entry) {
+                curl_multi_remove_handle($multi, $entry['handle']);
+                curl_close($entry['handle']);
+            }
+            break;
+        }
         while (count($active) < $concurrency && !empty($pending)) {
+            if ($shouldContinue !== null && !$shouldContinue()) {
+                $pending = [];
+                break;
+            }
             $url = array_shift($pending);
             $ch = curl_init($url);
             $connectTimeout = max(2, (int)ai_env('AI_HTTP_CONNECT_TIMEOUT', '6'));
@@ -2730,7 +2744,22 @@ function ai_process_scan_job_batch(string $jobId, string $customerId, int $batch
         return (string)$page['url'];
     }, $pendingPages);
     $activeUrls = array_slice($urls, 0, 5);
-    $fetches = ai_fetch_pages_parallel($urls, max(1, min((int)ai_env('AI_CRAWL_CONCURRENCY', '4'), $batchSize)));
+    $fetches = ai_fetch_pages_parallel(
+        $urls,
+        max(1, min((int)ai_env('AI_CRAWL_CONCURRENCY', '4'), $batchSize)),
+        function () use ($jobId, $customerId): bool {
+            return !ai_scan_job_is_paused($jobId, $customerId);
+        }
+    );
+    if (ai_scan_job_is_paused($jobId, $customerId)) {
+        foreach ($pendingPages as $page) {
+            ai_release_page_claim((string)($page['id'] ?? ''), $workerId);
+        }
+        if (!$pageLevelClaiming) {
+            ai_release_scan_job($jobId, $workerId);
+        }
+        return ai_scan_paused_batch_response($jobId, $customerId, 0, 0);
+    }
     $websiteDomain = (string)$scan['website_domain'];
     $processed = 0;
     $queuedLinksTotal = 0;
@@ -2752,10 +2781,20 @@ function ai_process_scan_job_batch(string $jobId, string $customerId, int $batch
         $url = (string)$page['url'];
         $normalized = (string)$page['normalized_url'];
         $attempts = (int)($page['crawl_attempts'] ?? 0) + 1;
+        if (ai_scan_job_is_paused($jobId, $customerId)) {
+            ai_release_page_claim((string)($page['id'] ?? ''), $workerId);
+            $pausedDuringBatch = true;
+            break;
+        }
         $fetch = $fetches[$url] ?? ai_fetch_page($url);
         if (empty($fetch['success'])) {
             $variant = ai_add_www_variant($url) ?: ai_remove_www_variant($url);
             if ($variant !== '' && ai_should_scan_url($variant, $websiteDomain)) {
+                if (ai_scan_job_is_paused($jobId, $customerId)) {
+                    ai_release_page_claim((string)($page['id'] ?? ''), $workerId);
+                    $pausedDuringBatch = true;
+                    break;
+                }
                 $variantFetch = ai_fetch_page($variant);
                 if (!empty($variantFetch['success'])) {
                     $fetch = $variantFetch;
@@ -2786,6 +2825,12 @@ function ai_process_scan_job_batch(string $jobId, string $customerId, int $batch
                 $processed++;
                 continue;
             }
+        }
+
+        if (ai_scan_job_is_paused($jobId, $customerId)) {
+            ai_release_page_claim((string)($page['id'] ?? ''), $workerId);
+            $pausedDuringBatch = true;
+            break;
         }
 
         $finalUrl = (string)($fetch['url'] ?? $url);
@@ -3321,6 +3366,9 @@ function ai_process_scan_job(string $jobId, string $customerId, string $websiteU
 
     while (!empty($queue) && $scanned < $maxPages) {
         $pageStartTime = microtime(true);
+        if (ai_scan_job_is_paused($jobId, $customerId)) {
+            break;
+        }
         $url = array_shift($queue);
         $normalized = ai_normalize_page_url($url);
         $attemptKey = strtolower($url);
@@ -3330,6 +3378,9 @@ function ai_process_scan_job(string $jobId, string $customerId, string $websiteU
         $attempted[$attemptKey] = true;
 
         $fetch = ai_fetch_page($url);
+        if (ai_scan_job_is_paused($jobId, $customerId)) {
+            break;
+        }
         if (empty($fetch['success'])) {
             $variant = ai_add_www_variant($url) ?: ai_remove_www_variant($url);
             if ($variant !== '' && !isset($attempted[strtolower($variant)]) && empty($failedOnce[$normalized])) {
