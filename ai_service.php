@@ -2533,7 +2533,7 @@ function ai_get_scan_job_by_id(string $jobId): array {
 }
 
 function ai_page_retry_payload(string $error, int $attempts): array {
-    $maxAttempts = max(1, (int)ai_env('AI_CRAWL_MAX_ATTEMPTS', '3'));
+    $maxAttempts = 2;
     if ($attempts >= $maxAttempts) {
         return [
             'page_status' => 'failed',
