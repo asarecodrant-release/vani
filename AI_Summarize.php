@@ -61,6 +61,22 @@ function ai_text_length_from_page(array $page): int {
     return strlen(trim((string)($page['clean_text'] ?? '')));
 }
 
+function ai_pdf_logo_data_uri(): string {
+    $paths = [
+        __DIR__ . '/images/logo.png',
+        __DIR__ . '/images/logo_img.png',
+    ];
+    foreach ($paths as $path) {
+        if (is_readable($path)) {
+            $data = base64_encode((string)file_get_contents($path));
+            if ($data !== '') {
+                return 'data:image/png;base64,' . $data;
+            }
+        }
+    }
+    return '';
+}
+
 $email = authenticated_email();
 $customerId = (string)($_SESSION['setup_customer_id'] ?? '');
 if ($customerId === '') {
@@ -175,6 +191,7 @@ $crawlTotal = (int)($diagCounts['crawl_total'] ?? 0);
 $summaryDone = (int)($diagCounts['summary_done'] ?? 0);
 $summaryTotal = (int)($diagCounts['summary_total'] ?? 0);
 $externalQueueEnabled = ai_external_queue_enabled();
+$pdfLogoDataUri = ai_pdf_logo_data_uri();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -784,6 +801,7 @@ let summaryControlsFrozen = false;
 let latestPagesList = <?php echo json_encode($pages); ?>;
 let latestFaqsList = <?php echo json_encode($faqs); ?>;
 const websiteDomain = <?php echo json_encode($scan['website_domain'] ?? ''); ?>;
+const reportLogoSrc = <?php echo json_encode($pdfLogoDataUri); ?>;
 const summarizingPages = new Set();
 const skippedSummaryPages = new Set();
 
@@ -1780,25 +1798,33 @@ setInterval(() => {
 function aiSummaryReportHtml() {
   const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
   const date = new Date().toLocaleString();
+  const logoSrc = reportLogoSrc || "";
+  const pageCount = latestPagesList.length;
+  const faqCount = latestFaqsList.length;
+  const summarizedCount = latestPagesList.filter((page) => page?.page_status === "summarized").length;
+  const fetchedCount = latestPagesList.filter((page) => page?.page_status === "fetched").length;
+  const website = esc(websiteDomain || "Unknown website");
 
   let pagesHtml = "";
   latestPagesList.forEach((page, i) => {
     const summary = summaryTextFromPage(page);
-    if (page.page_status === 'pending' || page.page_status === 'failed') return;
+    if (page.page_status === 'pending') return;
     
     pagesHtml += `
-      <div class="page-entry">
-        <div class="page-entry-header">
-           <span class="page-badge">PAGE ${i+1}</span>
-           <h3 class="page-title-text">${esc(pageTitle(page))}</h3>
-           <div class="page-link-text">${esc(page.url)}</div>
+      <article class="pdf-page-item">
+        <div class="pdf-page-head">
+           <span class="pdf-badge">Page ${i + 1}</span>
+           <span class="pdf-status">${esc(page.page_status || "captured")}</span>
         </div>
-        <div class="page-entry-body">
-          <div class="section-label">PAGE SUMMARY</div>
-          <div class="summary-text-content">${esc(summary || "No summary available.")}</div>
-          <div class="page-stats-footer">Captured: ${esc(page.fetched_at || page.updated_at || 'n/a')} | HTTP ${esc(page.http_status || 'n/a')}</div>
+        <h3 class="pdf-page-title">${esc(pageTitle(page))}</h3>
+        <div class="pdf-page-url">${esc(page.url || "")}</div>
+        <div class="pdf-page-summary">${esc(summary || "No summary available yet.")}</div>
+        <div class="pdf-page-meta">
+          <span>Captured ${esc(page.fetched_at || page.updated_at || "n/a")}</span>
+          <span>HTTP ${esc(page.http_status || "n/a")}</span>
+          <span>${esc(page.content_length || 0)} chars</span>
         </div>
-      </div>
+      </article>
     `;
   });
 
@@ -1806,78 +1832,215 @@ function aiSummaryReportHtml() {
   if (latestFaqsList.length > 0) {
     latestFaqsList.forEach((faq) => {
       faqsHtml += `
-        <div class="faq-entry">
-          <div class="faq-question-text"><strong>Q:</strong> ${esc(faq.question)}</div>
-          <div class="faq-answer-text"><strong>A:</strong> ${esc(faq.answer)}</div>
-        </div>
+        <article class="pdf-faq-item">
+          <div class="pdf-faq-q">Q. ${esc(faq.question)}</div>
+          <div class="pdf-faq-a">A. ${esc(faq.answer)}</div>
+        </article>
       `;
     });
   } else {
-    faqsHtml = '<p class="empty-msg">No FAQs captured for this website yet.</p>';
+    faqsHtml = '<p class="pdf-empty">No FAQ pairs captured for this website yet.</p>';
   }
 
   return `
     <style>
-      .report-container { font-family: 'Inter', system-ui, sans-serif; color: #0f172a; line-height: 1.5; background: #fff; }
-      .report-cover { text-align: center; padding: 60px 20px; border-bottom: 4px solid #2563eb; background: #f8fafc; margin-bottom: 40px; }
-      .report-cover h1 { font-size: 32px; color: #2563eb; margin: 20px 0 10px; font-weight: 800; letter-spacing: -0.02em; }
-      .report-cover p { color: #64748b; font-size: 16px; margin: 0; }
-      .report-logo-img { width: 80px; height: auto; }
-      
-      .report-meta-grid { display: flex; justify-content: center; gap: 40px; margin-top: 30px; }
-      .report-meta-item { text-align: left; }
-      .report-meta-item span { display: block; font-size: 11px; font-weight: 800; color: #94a3b8; text-transform: uppercase; }
-      .report-meta-item strong { display: block; font-size: 14px; color: #1e293b; }
-
-      .section-heading { font-size: 22px; color: #2563eb; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; margin: 40px 0 20px; font-weight: 800; }
-      
-      .page-entry { margin-bottom: 30px; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; page-break-inside: avoid; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
-      .page-entry-header { background: #f1f5f9; padding: 15px 20px; border-bottom: 1px solid #e2e8f0; }
-      .page-badge { display: inline-block; padding: 2px 8px; background: #dbeafe; color: #2563eb; font-size: 10px; font-weight: 900; border-radius: 4px; margin-bottom: 5px; }
-      .page-title-text { margin: 0; font-size: 18px; font-weight: 700; color: #0f172a; }
-      .page-link-text { font-size: 12px; color: #3b82f6; margin-top: 4px; text-decoration: none; word-break: break-all; }
-      
-      .page-entry-body { padding: 20px; }
-      .section-label { font-size: 11px; font-weight: 900; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px; }
-      .summary-text-content { font-size: 14px; color: #334155; white-space: pre-wrap; text-align: justify; }
-      .page-stats-footer { margin-top: 15px; font-size: 11px; color: #94a3b8; padding-top: 10px; border-top: 1px solid #f1f5f9; }
-      
-      .faq-entry { padding: 15px 20px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; margin-bottom: 15px; page-break-inside: avoid; }
-      .faq-question-text { font-size: 15px; font-weight: 700; color: #1e293b; margin-bottom: 8px; display: flex; gap: 8px; }
-      .faq-answer-text { font-size: 14px; line-height: 1.6; color: #475569; display: flex; gap: 8px; padding-left: 5px; }
-      .faq-question-text strong, .faq-answer-text strong { color: #2563eb; }
-
-      .report-footer-area { margin-top: 60px; text-align: center; font-size: 12px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 20px; }
-      .empty-msg { text-align: center; color: #64748b; font-style: italic; padding: 20px; }
-      .page-break { page-break-after: always; }
+      @page { size: A4; margin: 10mm; }
+      .pdf-report { font-family: 'Inter', 'Segoe UI', Arial, sans-serif; color: #111827; background: #f8fafd; line-height: 1.55; }
+      .pdf-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 16px;
+        padding: 16px 18px;
+        margin-bottom: 14px;
+        background: linear-gradient(135deg, #ffffff 0%, #f4f8ff 100%);
+        border: 1px solid #dbe5f1;
+        border-radius: 18px;
+        box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+      }
+      .pdf-brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+      .pdf-brand img { width: 48px; height: 48px; object-fit: contain; flex: 0 0 auto; }
+      .pdf-brand-copy { display: grid; gap: 2px; }
+      .pdf-brand-name { font-size: 20px; font-weight: 900; letter-spacing: -0.03em; color: #0f4c81; line-height: 1; }
+      .pdf-brand-tag { font-size: 11px; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.10em; }
+      .pdf-header-meta { text-align: right; display: grid; gap: 6px; }
+      .pdf-pill {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 28px;
+        padding: 0 11px;
+        border-radius: 999px;
+        background: #e8f0fe;
+        color: #1a73e8;
+        border: 1px solid #cfe0ff;
+        font-size: 10px;
+        font-weight: 900;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .pdf-title { margin: 0; font-size: 22px; line-height: 1.1; letter-spacing: -0.03em; color: #0f172a; }
+      .pdf-subtitle { margin: 4px 0 0; color: #475569; font-size: 12px; max-width: 155mm; }
+      .pdf-meta-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+      .pdf-meta-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 28px;
+        padding: 0 10px;
+        border-radius: 999px;
+        background: #ffffff;
+        border: 1px solid #dbe5f1;
+        color: #334155;
+        font-size: 10px;
+        font-weight: 700;
+      }
+      .pdf-section { margin-top: 14px; }
+      .pdf-section-title {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 14px;
+        padding: 12px 16px;
+        margin-bottom: 10px;
+        background: linear-gradient(135deg, #0f4c81, #1a73e8);
+        color: #fff;
+        border-radius: 14px;
+        font-size: 13px;
+        font-weight: 900;
+        letter-spacing: 0.02em;
+      }
+      .pdf-summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+      .pdf-summary-card {
+        background: #fff;
+        border: 1px solid #dbe5f1;
+        border-radius: 14px;
+        padding: 12px;
+        box-shadow: 0 8px 22px rgba(15, 23, 42, 0.04);
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+      .pdf-summary-card span {
+        display: block;
+        font-size: 10px;
+        font-weight: 900;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin-bottom: 6px;
+      }
+      .pdf-summary-card strong { display: block; font-size: 22px; line-height: 1; color: #0f4c81; }
+      .pdf-page-item,
+      .pdf-faq-item {
+        background: #fff;
+        border: 1px solid #dbe5f1;
+        border-radius: 16px;
+        padding: 14px 16px;
+        margin-bottom: 12px;
+        box-shadow: 0 8px 22px rgba(15, 23, 42, 0.04);
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+      .pdf-page-head { display: flex; justify-content: space-between; gap: 10px; align-items: center; margin-bottom: 8px; }
+      .pdf-badge,
+      .pdf-status {
+        display: inline-flex;
+        min-height: 24px;
+        align-items: center;
+        padding: 0 9px;
+        border-radius: 999px;
+        font-size: 10px;
+        font-weight: 900;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .pdf-badge { background: #e8f0fe; color: #1a73e8; }
+      .pdf-status { background: #eefbf4; color: #15803d; }
+      .pdf-page-title { margin: 0 0 6px; font-size: 15px; line-height: 1.25; color: #0f172a; }
+      .pdf-page-url { color: #1a73e8; font-size: 10px; font-weight: 700; word-break: break-all; overflow-wrap: anywhere; margin-bottom: 10px; }
+      .pdf-page-summary {
+        background: #f8fbff;
+        border: 1px solid #d9e7fb;
+        border-left: 4px solid #1a73e8;
+        border-radius: 12px;
+        padding: 12px 14px;
+        color: #334155;
+        font-size: 11.5px;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+        white-space: pre-wrap;
+      }
+      .pdf-page-meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; color: #64748b; font-size: 10px; font-weight: 700; }
+      .pdf-page-meta span { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 999px; padding: 4px 8px; }
+      .pdf-faq-q { font-size: 12px; font-weight: 900; color: #0f172a; margin-bottom: 8px; }
+      .pdf-faq-a { font-size: 11.5px; color: #334155; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
+      .pdf-empty { margin: 0; padding: 16px; text-align: center; color: #64748b; font-style: italic; background: #fff; border: 1px dashed #cbd5e1; border-radius: 14px; }
+      .pdf-footer {
+        margin-top: 16px;
+        padding-top: 10px;
+        border-top: 1px solid #dbe5f1;
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        align-items: center;
+        color: #64748b;
+        font-size: 10px;
+      }
+      .pdf-footer strong { color: #0f172a; }
     </style>
-    <div class="report-container">
-      <div class="report-cover">
-        <img src="images/logo_img.png" class="report-logo-img">
-        <h1>Website Intelligence Report</h1>
-        <p>Summary and FAQ Analysis by Vani AI</p>
-        <div class="report-meta-grid">
-          <div class="report-meta-item"><span>Website</span><strong>${esc(websiteDomain)}</strong></div>
-          <div class="report-meta-item"><span>Report Date</span><strong>${esc(date.split(',')[0])}</strong></div>
-          <div class="report-meta-item"><span>Pages Scanned</span><strong>${latestPagesList.length}</strong></div>
+    <div class="pdf-report">
+      <header class="pdf-header">
+        <div class="pdf-brand">
+          ${logoSrc ? `<img src="${logoSrc}" alt="Vani AI">` : ""}
+          <div class="pdf-brand-copy">
+            <div class="pdf-brand-name">Vani AI</div>
+            <div class="pdf-brand-tag">Knowledge Intelligence Report</div>
+          </div>
         </div>
-      </div>
+        <div class="pdf-header-meta">
+          <span class="pdf-pill">PDF export</span>
+          <div class="pdf-title">Website Intelligence Report</div>
+          <div class="pdf-subtitle">Bright-mode customer report for ${website}</div>
+          <div class="pdf-meta-row">
+            <span class="pdf-meta-chip">Generated ${esc(date)}</span>
+            <span class="pdf-meta-chip">Website ${website}</span>
+          </div>
+        </div>
+      </header>
 
-      <h2 class="section-heading">Knowledge Base Summary</h2>
-      <div class="report-content-body">
-        ${pagesHtml || '<p class="empty-msg">No summarized content available for this report.</p>'}
-      </div>
+      <section class="pdf-section">
+        <div class="pdf-section-title">
+          <span>Report Overview</span>
+          <span>${pageCount} page(s) captured</span>
+        </div>
+        <div class="pdf-summary-grid">
+          <div class="pdf-summary-card"><span>Captured Pages</span><strong>${pageCount}</strong></div>
+          <div class="pdf-summary-card"><span>Summarized</span><strong>${summarizedCount}</strong></div>
+          <div class="pdf-summary-card"><span>Captured FAQs</span><strong>${faqCount}</strong></div>
+          <div class="pdf-summary-card"><span>Fetched</span><strong>${fetchedCount}</strong></div>
+        </div>
+      </section>
 
-      <div class="page-break"></div>
+      <section class="pdf-section">
+        <div class="pdf-section-title">
+          <span>Captured Pages & Summaries</span>
+          <span>${pageCount} item(s)</span>
+        </div>
+        ${pagesHtml || '<p class="pdf-empty">No summarized content available for this report.</p>'}
+      </section>
 
-      <h2 class="section-heading">Captured FAQ Items</h2>
-      <div class="faq-report-body">
+      <section class="pdf-section">
+        <div class="pdf-section-title">
+          <span>Captured FAQ Items</span>
+          <span>${faqCount} pair(s)</span>
+        </div>
         ${faqsHtml}
-      </div>
+      </section>
 
-      <div class="report-footer-area">
-        This report was automatically generated by Vani AI. For more details, visit vani.codrant.com.
-      </div>
+      <footer class="pdf-footer">
+        <div><strong>Vani AI</strong> customer-ready export</div>
+        <div>Prepared for review, sharing, and printing</div>
+      </footer>
     </div>
   `;
 }
@@ -1894,25 +2057,43 @@ async function generateProfessionalPdf() {
   exportBtn.innerHTML = "Generating PDF...";
   showRefreshToast("Generating report...", false, 0);
 
+  let container = null;
   try {
-    const container = document.createElement("div");
+    container = document.createElement("div");
+    container.style.position = "fixed";
+    container.style.left = "-10000px";
+    container.style.top = "0";
+    container.style.width = "1280px";
+    container.style.visibility = "hidden";
     container.innerHTML = aiSummaryReportHtml();
+    document.body.appendChild(container);
+    const reportRoot = container.querySelector(".pdf-report") || container;
+    const images = Array.from(container.querySelectorAll("img"));
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    if (document.fonts?.ready) {
+      await document.fonts.ready;
+    }
+    await Promise.all(images.map((img) => img.complete ? Promise.resolve() : new Promise((resolve) => {
+      img.addEventListener("load", resolve, { once: true });
+      img.addEventListener("error", resolve, { once: true });
+    })));
     
     const options = {
-      margin: [15, 15, 15, 15],
+      margin: [8, 8, 8, 8],
       filename: `Vani-AI-Content-Report-${websiteDomain.replace(/\./g, '-')}.pdf`,
       image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 1.5, useCORS: true, letterRendering: true, backgroundColor: '#ffffff' },
+      html2canvas: { scale: 1.35, useCORS: true, letterRendering: true, backgroundColor: '#f8fafd', scrollY: 0, windowWidth: 1280, logging: false },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-      pagebreak: { mode: ['css', 'legacy'] }
+      pagebreak: { mode: ['css'], avoid: ['.pdf-summary-card', '.pdf-page-item', '.pdf-faq-item', '.pdf-header', '.pdf-footer'] }
     };
 
-    await html2pdf().set(options).from(container).save();
+    await html2pdf().set(options).from(reportRoot).save();
     showRefreshToast("Report generated!", true, 2000);
   } catch (err) {
     console.error("PDF generation failed:", err);
     showRefreshToast("Export failed.", false, 3000);
   } finally {
+    if (container.parentNode) container.parentNode.removeChild(container);
     exportBtn.disabled = false;
     exportBtn.innerHTML = originalLabel;
   }

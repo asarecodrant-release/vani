@@ -145,7 +145,7 @@ ob_start();
         }
 
         .cover-page {
-            min-height: 257mm;
+            min-height: 228mm;
             box-sizing: border-box;
             border-radius: 24px;
             overflow: hidden;
@@ -153,7 +153,7 @@ ob_start();
                 radial-gradient(circle at top left, rgba(30, 115, 190, 0.18), transparent 28%),
                 radial-gradient(circle at 85% 12%, rgba(14, 165, 233, 0.16), transparent 26%),
                 linear-gradient(145deg, #f8fbff 0%, #e9f3ff 100%);
-            padding: 18mm 16mm 14mm;
+            padding: 14mm 14mm 10mm;
             display: flex;
             flex-direction: column;
             justify-content: space-between;
@@ -619,13 +619,14 @@ if ($format === 'pdf'):
                         filename: filename,
                         image: { type: 'jpeg', quality: 1 },
                         html2canvas: {
-                            scale: 1.2,
+                            scale: 1.25,
                             useCORS: true,
                             logging: false,
                             scrollY: 0,
-                            windowWidth: 1024
+                            windowWidth: 1280,
+                            backgroundColor: '#f8fafd'
                         },
-                        pagebreak: { mode: ['css', 'legacy'], avoid: ['.cover-page', '.page-item', '.faq-item', '.metric-card', '.section-header'] },
+                        pagebreak: { mode: ['css'], avoid: ['.page-item', '.faq-item', '.metric-card', '.section-header'] },
                         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
                     }).from(reportRoot).save();
                 } catch (error) {
