@@ -724,13 +724,14 @@ body.dark .diag-error{color:#fca5a5}
           <h3 style="margin-top: 0; font-size: 14px; font-weight: 800; text-transform: uppercase; color: var(--muted); letter-spacing: 0.05em;">Export Data</h3>
           <div class="export-actions" style="margin-top: 12px; display: flex; gap: 10px;">
             <a href="AI_Export.php?scan=<?php echo urlencode($scanId); ?>&format=excel" class="btn" style="flex:1; text-align:center;">Excel (CSV)</a>
-            <a href="AI_Export.php?scan=<?php echo urlencode($scanId); ?>&format=pdf" target="_blank" class="btn" style="flex:1; text-align:center;">PDF Report</a>
+            <button type="button" id="exportPdfBtn" class="btn" style="flex:1; text-align:center;">PDF Report</button>
           </div>
         </div>
       </div>
     </section>
   </div>
 </main>
+<script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
 <script>
 const shell = document.querySelector(".shell");
 const scanId = shell?.dataset.scanId || "";
@@ -781,6 +782,8 @@ let autoWorkflowDone = false;
 let scanPauseRequestBusy = false;
 let summaryControlsFrozen = false;
 let latestPagesList = <?php echo json_encode($pages); ?>;
+let latestFaqsList = <?php echo json_encode($faqs); ?>;
+const websiteDomain = <?php echo json_encode($scan['website_domain'] ?? ''); ?>;
 const summarizingPages = new Set();
 const skippedSummaryPages = new Set();
 
@@ -1347,6 +1350,7 @@ function applyLiveData(data = {}, mode = "scan") {
   updateDiagnostics(data);
   updateSummaryDiagnostics(data);
   if (data.pages) latestPagesList = data.pages;
+  if (data.faqs) latestFaqsList = data.faqs;
   updatePages(data.pages || []);
   updateFaqs(data.faqs || []);
   if (capturedMetric && data.pages) capturedMetric.textContent = String(data.pages.length);
@@ -1769,6 +1773,152 @@ async function refreshLiveStatus(options = {}) {
 setInterval(() => {
   refreshLiveStatus().catch(() => {});
 }, 2500);
+
+/**
+ * Professional PDF Export Logic
+ */
+function aiSummaryReportHtml() {
+  const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+  const date = new Date().toLocaleString();
+  
+  let pagesHtml = "";
+  latestPagesList.forEach((page, i) => {
+    const summary = summaryTextFromPage(page);
+    if (page.page_status === 'pending' || page.page_status === 'failed') return;
+    
+    pagesHtml += `
+      <div class="page-entry">
+        <div class="page-entry-header">
+           <span class="page-badge">PAGE ${i+1}</span>
+           <h3 class="page-title-text">${esc(pageTitle(page))}</h3>
+           <div class="page-link-text">${esc(page.url)}</div>
+        </div>
+        <div class="page-entry-body">
+          <div class="section-label">PAGE SUMMARY</div>
+          <div class="summary-text-content">${esc(summary || "No summary available.")}</div>
+          <div class="page-stats-footer">Captured: ${esc(page.fetched_at || page.updated_at || 'n/a')} | HTTP ${esc(page.http_status || 'n/a')}</div>
+        </div>
+      </div>
+    `;
+  });
+
+  let faqsHtml = "";
+  if (latestFaqsList.length > 0) {
+    latestFaqsList.forEach((faq) => {
+      faqsHtml += `
+        <div class="faq-entry">
+          <div class="faq-question-text"><strong>Q:</strong> ${esc(faq.question)}</div>
+          <div class="faq-answer-text"><strong>A:</strong> ${esc(faq.answer)}</div>
+        </div>
+      `;
+    });
+  } else {
+    faqsHtml = '<p class="empty-msg">No FAQs captured for this website yet.</p>';
+  }
+
+  return \`
+    <style>
+      .report-container { font-family: 'Inter', system-ui, sans-serif; color: #0f172a; line-height: 1.5; background: #fff; }
+      .report-cover { text-align: center; padding: 60px 20px; border-bottom: 4px solid #2563eb; background: #f8fafc; margin-bottom: 40px; }
+      .report-cover h1 { font-size: 32px; color: #2563eb; margin: 20px 0 10px; font-weight: 800; letter-spacing: -0.02em; }
+      .report-cover p { color: #64748b; font-size: 16px; margin: 0; }
+      .report-logo-img { width: 80px; height: auto; }
+      
+      .report-meta-grid { display: flex; justify-content: center; gap: 40px; margin-top: 30px; }
+      .report-meta-item { text-align: left; }
+      .report-meta-item span { display: block; font-size: 11px; font-weight: 800; color: #94a3b8; text-transform: uppercase; }
+      .report-meta-item strong { display: block; font-size: 14px; color: #1e293b; }
+
+      .section-heading { font-size: 22px; color: #2563eb; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; margin: 40px 0 20px; font-weight: 800; }
+      
+      .page-entry { margin-bottom: 30px; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; page-break-inside: avoid; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
+      .page-entry-header { background: #f1f5f9; padding: 15px 20px; border-bottom: 1px solid #e2e8f0; }
+      .page-badge { display: inline-block; padding: 2px 8px; background: #dbeafe; color: #2563eb; font-size: 10px; font-weight: 900; border-radius: 4px; margin-bottom: 5px; }
+      .page-title-text { margin: 0; font-size: 18px; font-weight: 700; color: #0f172a; }
+      .page-link-text { font-size: 12px; color: #3b82f6; margin-top: 4px; text-decoration: none; word-break: break-all; }
+      
+      .page-entry-body { padding: 20px; }
+      .section-label { font-size: 11px; font-weight: 900; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px; }
+      .summary-text-content { font-size: 14px; color: #334155; white-space: pre-wrap; text-align: justify; }
+      .page-stats-footer { margin-top: 15px; font-size: 11px; color: #94a3b8; padding-top: 10px; border-top: 1px solid #f1f5f9; }
+      
+      .faq-entry { padding: 15px 20px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; margin-bottom: 15px; page-break-inside: avoid; }
+      .faq-question-text { font-size: 15px; font-weight: 700; color: #1e293b; margin-bottom: 8px; display: flex; gap: 8px; }
+      .faq-answer-text { font-size: 14px; line-height: 1.6; color: #475569; display: flex; gap: 8px; padding-left: 5px; }
+      .faq-question-text strong, .faq-answer-text strong { color: #2563eb; }
+
+      .report-footer-area { margin-top: 60px; text-align: center; font-size: 12px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 20px; }
+      .empty-msg { text-align: center; color: #64748b; font-style: italic; padding: 20px; }
+      .page-break { page-break-after: always; }
+    </style>
+    <div class="report-container">
+      <div class="report-cover">
+        <img src="images/logo_img.png" class="report-logo-img">
+        <h1>Website Intelligence Report</h1>
+        <p>Summary and FAQ Analysis by Vani AI</p>
+        <div class="report-meta-grid">
+          <div class="report-meta-item"><span>Website</span><strong>\${esc(websiteDomain)}</strong></div>
+          <div class="report-meta-item"><span>Report Date</span><strong>\${esc(date.split(',')[0])}</strong></div>
+          <div class="report-meta-item"><span>Pages Scanned</span><strong>\${latestPagesList.length}</strong></div>
+        </div>
+      </div>
+
+      <h2 class="section-heading">Knowledge Base Summary</h2>
+      <div class="report-content-body">
+        \${pagesHtml || '<p class="empty-msg">No summarized content available for this report.</p>'}
+      </div>
+
+      <div class="page-break"></div>
+
+      <h2 class="section-heading">Captured FAQ Items</h2>
+      <div class="faq-report-body">
+        \${faqsHtml}
+      </div>
+
+      <div class="report-footer-area">
+        This report was automatically generated by Vani AI. For more details, visit vani.codrant.com.
+      </div>
+    </div>
+  \`;
+}
+
+async function generateProfessionalPdf() {
+  if (typeof html2pdf === 'undefined') {
+    alert("PDF generator is still loading. Please wait a moment.");
+    return;
+  }
+
+  const exportBtn = document.getElementById("exportPdfBtn");
+  const originalLabel = exportBtn.innerHTML;
+  exportBtn.disabled = true;
+  exportBtn.innerHTML = "Generating PDF...";
+  showRefreshToast("Generating report...", false, 0);
+
+  try {
+    const container = document.createElement("div");
+    container.innerHTML = aiSummaryReportHtml();
+    
+    const options = {
+      margin: [15, 15, 15, 15],
+      filename: \`Vani-AI-Content-Report-\${websiteDomain.replace(/\\./g, '-')}.pdf\`,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 1.5, useCORS: true, letterRendering: true, backgroundColor: '#ffffff' },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      pagebreak: { mode: ['css', 'legacy'] }
+    };
+
+    await html2pdf().set(options).from(container).save();
+    showRefreshToast("Report generated!", true, 2000);
+  } catch (err) {
+    console.error("PDF generation failed:", err);
+    showRefreshToast("Export failed.", false, 3000);
+  } finally {
+    exportBtn.disabled = false;
+    exportBtn.innerHTML = originalLabel;
+  }
+}
+
+document.getElementById("exportPdfBtn")?.addEventListener("click", generateProfessionalPdf);
 </script>
 </body>
 </html>
