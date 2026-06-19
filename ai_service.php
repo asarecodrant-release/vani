@@ -1073,13 +1073,61 @@ function ai_dom_element_by_id(DOMDocument $dom, string $id): ?DOMElement {
     return $node instanceof DOMElement ? $node : null;
 }
 
-function ai_add_detected_faq(array &$faqs, string $question, string $answer, string $source = 'html'): void {
+function ai_dom_element_hints(DOMElement $node): string {
+    $values = [
+        $node->getAttribute('class'),
+        $node->getAttribute('id'),
+        $node->getAttribute('role'),
+        $node->getAttribute('aria-label'),
+        $node->getAttribute('aria-labelledby'),
+        $node->getAttribute('itemtype'),
+        $node->getAttribute('itemprop'),
+        $node->getAttribute('data-bs-target'),
+        $node->getAttribute('data-target'),
+        $node->getAttribute('data-toggle'),
+        $node->getAttribute('data-bs-toggle'),
+    ];
+    return strtolower(trim(preg_replace('/\s+/', ' ', implode(' ', array_filter($values, static function ($value) {
+        return trim((string)$value) !== '';
+    }))) ?: ''));
+}
+
+function ai_dom_element_has_faq_hints(DOMElement $node): bool {
+    return preg_match('/(?:faq|faqs|question|questions|answer|answers|accordion|collapse|toggle|q&a|qa|help|support|panel|accordion-item|faq-item|faq-question|faq-answer)/', ai_dom_element_hints($node)) === 1;
+}
+
+function ai_dom_collect_following_text(?DOMNode $node, int $limit = 3000, array $stopTags = []): string {
+    if (!$node) {
+        return '';
+    }
+    $parts = [];
+    $sibling = $node->nextSibling;
+    while ($sibling && strlen(implode(' ', $parts)) < $limit) {
+        if ($sibling instanceof DOMElement) {
+            $tag = strtolower($sibling->tagName);
+            if (in_array($tag, $stopTags, true) || preg_match('/^(h[1-6]|button|summary)$/', $tag)) {
+                break;
+            }
+            if (ai_dom_element_has_faq_hints($sibling) && preg_match('/(?:question|faq-question|accordion|toggle)/', ai_dom_element_hints($sibling)) === 1) {
+                break;
+            }
+            $text = ai_dom_clean_text($sibling, 1200);
+            if ($text !== '') {
+                $parts[] = $text;
+            }
+        }
+        $sibling = $sibling->nextSibling;
+    }
+    return ai_clean_customer_text(implode(' ', $parts), $limit);
+}
+
+function ai_add_detected_faq(array &$faqs, string $question, string $answer, string $source = 'html', bool $allowLooseQuestion = false): void {
     $question = ai_clean_customer_text($question, 800);
     $answer = ai_clean_customer_text($answer, 3000);
     if ($question === '' || $answer === '') {
         return;
     }
-    if (strpos($question, '?') === false && !preg_match('/^(how|what|when|where|why|who|can|do|does|is|are|will|should|which)\b/i', $question)) {
+    if (!$allowLooseQuestion && strpos($question, '?') === false && !preg_match('/^(how|what|when|where|why|who|can|do|does|is|are|will|should|which)\b/i', $question)) {
         return;
     }
     $faqs[] = ['question' => $question, 'answer' => $answer, 'source' => $source];
@@ -1100,7 +1148,12 @@ function ai_collect_page_faqs(string $url, string $title, string $cleanText, arr
 
     $faqs = ai_dedupe_faqs($detectedFaqs);
     $minimumStructuralFaqs = max(0, (int)ai_env('AI_CRAWL_FAQ_AI_MIN_STRUCTURAL', '3'));
-    if (count($faqs) >= $minimumStructuralFaqs || !ai_page_ai_faq_extraction_enabled() || !ai_page_looks_like_faq($url, $title, $cleanText)) {
+    $faqHints = strtolower($url . ' ' . $title . ' ' . substr($cleanText, 0, 8000));
+    $hasFaqSignals = count($faqs) > 0
+        || ai_page_looks_like_faq($url, $title, $cleanText)
+        || preg_match('/(faq|faqs|frequently asked|frequently-asked|common questions|questions and answers|q&a|question and answer|help center|accordion|toggle)/', $faqHints) === 1;
+
+    if (count($faqs) >= $minimumStructuralFaqs || !ai_page_ai_faq_extraction_enabled() || !$hasFaqSignals) {
         return $faqs;
     }
 
@@ -1614,14 +1667,20 @@ function ai_parse_html_page(string $html, string $baseUrl, string $websiteDomain
 
         $xpath = new DOMXPath($dom);
         $faqContainers = $xpath->query(
-            '//*[contains(translate(concat(" ", normalize-space(@class), " ", normalize-space(@id), " ", @aria-label, " ", @itemtype), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), " faq") '
-            . 'or contains(translate(concat(" ", normalize-space(@class), " ", normalize-space(@id), " ", @aria-label, " ", @itemtype), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), " question") '
-            . 'or contains(translate(concat(" ", normalize-space(@class), " ", normalize-space(@id), " ", @aria-label, " ", @itemtype), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), " accordion")]'
+            '//*[contains(translate(concat(" ", normalize-space(@class), " ", normalize-space(@id), " ", normalize-space(@role), " ", @aria-label, " ", @itemtype, " ", @data-bs-target, " ", @data-target, " ", @data-toggle, " ", @data-bs-toggle), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), " faq") '
+            . 'or contains(translate(concat(" ", normalize-space(@class), " ", normalize-space(@id), " ", normalize-space(@role), " ", @aria-label, " ", @itemtype, " ", @data-bs-target, " ", @data-target, " ", @data-toggle, " ", @data-bs-toggle), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), " question") '
+            . 'or contains(translate(concat(" ", normalize-space(@class), " ", normalize-space(@id), " ", normalize-space(@role), " ", @aria-label, " ", @itemtype, " ", @data-bs-target, " ", @data-target, " ", @data-toggle, " ", @data-bs-toggle), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), " accordion") '
+            . 'or contains(translate(concat(" ", normalize-space(@class), " ", normalize-space(@id), " ", normalize-space(@role), " ", @aria-label, " ", @itemtype, " ", @data-bs-target, " ", @data-target, " ", @data-toggle, " ", @data-bs-toggle), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), " collapse") '
+            . 'or contains(translate(concat(" ", normalize-space(@class), " ", normalize-space(@id), " ", normalize-space(@role), " ", @aria-label, " ", @itemtype, " ", @data-bs-target, " ", @data-target, " ", @data-toggle, " ", @data-bs-toggle), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), " toggle") '
+            . 'or contains(translate(concat(" ", normalize-space(@class), " ", normalize-space(@id), " ", normalize-space(@role), " ", @aria-label, " ", @itemtype, " ", @data-bs-target, " ", @data-target, " ", @data-toggle, " ", @data-bs-toggle), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), " q&a") '
+            . 'or contains(translate(concat(" ", normalize-space(@class), " ", normalize-space(@id), " ", normalize-space(@role), " ", @aria-label, " ", @itemtype, " ", @data-bs-target, " ", @data-target, " ", @data-toggle, " ", @data-bs-toggle), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), " qa") '
+            . 'or contains(translate(concat(" ", normalize-space(@class), " ", normalize-space(@id), " ", normalize-space(@role), " ", @aria-label, " ", @itemtype, " ", @data-bs-target, " ", @data-target, " ", @data-toggle, " ", @data-bs-toggle), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), " help")]'
         );
         foreach ($faqContainers ?: [] as $container) {
             if (!$container instanceof DOMElement) {
                 continue;
             }
+            $containerHints = ai_dom_element_hints($container);
             $terms = $xpath->query('.//dt', $container);
             foreach ($terms ?: [] as $termNode) {
                 if (!$termNode instanceof DOMElement) {
@@ -1630,7 +1689,7 @@ function ai_parse_html_page(string $html, string $baseUrl, string $websiteDomain
                 $question = ai_dom_clean_text($termNode, 800);
                 $parts = [];
                 $sibling = $termNode->nextSibling;
-                while ($sibling && count($parts) < 4) {
+                while ($sibling && count($parts) < 6) {
                     if ($sibling instanceof DOMElement) {
                         $tag = strtolower($sibling->tagName);
                         if ($tag === 'dt') {
@@ -1643,10 +1702,51 @@ function ai_parse_html_page(string $html, string $baseUrl, string $websiteDomain
                     }
                     $sibling = $sibling->nextSibling;
                 }
-                ai_add_detected_faq($detectedFaqs, $question, implode(' ', $parts), 'html_definition');
+                ai_add_detected_faq($detectedFaqs, $question, implode(' ', $parts), 'html_definition', true);
             }
 
-            $questions = $xpath->query('.//*[self::button or self::summary or self::h2 or self::h3 or self::h4 or @aria-expanded or contains(translate(concat(" ", normalize-space(@class), " "), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), " question")]', $container);
+            $faqItems = $xpath->query(
+                './/*[self::li or self::article or self::section or self::div or self::details]'
+                . '[contains(translate(concat(" ", normalize-space(@class), " ", normalize-space(@id), " ", normalize-space(@role), " ", @aria-label, " ", @itemtype), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), " faq") '
+                . 'or contains(translate(concat(" ", normalize-space(@class), " ", normalize-space(@id), " ", normalize-space(@role), " ", @aria-label, " ", @itemtype), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), " question") '
+                . 'or contains(translate(concat(" ", normalize-space(@class), " ", normalize-space(@id), " ", normalize-space(@role), " ", @aria-label, " ", @itemtype), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), " answer") '
+                . 'or contains(translate(concat(" ", normalize-space(@class), " ", normalize-space(@id), " ", normalize-space(@role), " ", @aria-label, " ", @itemtype), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), " accordion") '
+                . 'or contains(translate(concat(" ", normalize-space(@class), " ", normalize-space(@id), " ", normalize-space(@role), " ", @aria-label, " ", @itemtype), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), " collapse") '
+                . 'or contains(translate(concat(" ", normalize-space(@class), " ", normalize-space(@id), " ", normalize-space(@role), " ", @aria-label, " ", @itemtype), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), " toggle") '
+                . 'or contains(translate(concat(" ", normalize-space(@class), " ", normalize-space(@id), " ", normalize-space(@role), " ", @aria-label, " ", @itemtype), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), " q&a") '
+                . 'or contains(translate(concat(" ", normalize-space(@class), " ", normalize-space(@id), " ", normalize-space(@role), " ", @aria-label, " ", @itemtype), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), " qa")]',
+                $container
+            );
+            foreach ($faqItems ?: [] as $itemNode) {
+                if (!$itemNode instanceof DOMElement) {
+                    continue;
+                }
+                if ($itemNode === $container) {
+                    continue;
+                }
+                $itemHints = ai_dom_element_hints($itemNode);
+                $questionNode = $xpath->query('.//*[self::button or self::summary or self::h2 or self::h3 or self::h4 or self::h5 or self::strong or @aria-expanded or @role="button" or contains(translate(concat(" ", normalize-space(@class), " ", normalize-space(@id), " ", @aria-label, " "), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), " question") or contains(translate(concat(" ", normalize-space(@class), " ", normalize-space(@id), " ", @aria-label, " "), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), " faq-question")]', $itemNode)->item(0);
+                $answerNode = $xpath->query('.//*[contains(translate(concat(" ", normalize-space(@class), " ", normalize-space(@id), " ", @aria-label, " ", @itemprop), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), " answer") or contains(translate(concat(" ", normalize-space(@class), " ", normalize-space(@id), " ", @aria-label, " ", @itemprop), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), " faq-answer") or contains(translate(concat(" ", normalize-space(@class), " ", normalize-space(@id), " ", @aria-label, " ", @itemprop), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), " content") or @itemprop="text" or @itemprop="description" or contains(translate(@itemprop, "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "acceptedanswer")]', $itemNode)->item(0);
+
+                $question = ai_dom_clean_text($questionNode ?: $itemNode, 800);
+                if ($question === '') {
+                    continue;
+                }
+
+                $answer = ai_dom_clean_text($answerNode, 3000);
+                if ($answer === '' && $questionNode instanceof DOMNode) {
+                    $answer = ai_dom_collect_following_text($questionNode, 3000, ['dt', 'li', 'article', 'section', 'details']);
+                }
+                if ($answer === '') {
+                    $answer = ai_dom_collect_following_text($itemNode, 3000, ['dt', 'li', 'article', 'section', 'details']);
+                }
+                if ($answer === '' && preg_match('/(?:faq|question|answer|accordion|collapse|toggle)/', $itemHints . ' ' . $containerHints) === 1) {
+                    $answer = trim(preg_replace('/^' . preg_quote($question, '/') . '\s*/u', '', ai_dom_clean_text($itemNode, 3000)) ?: '');
+                }
+                ai_add_detected_faq($detectedFaqs, $question, $answer, 'html_item', true);
+            }
+
+            $questions = $xpath->query('.//*[self::button or self::summary or self::h2 or self::h3 or self::h4 or self::h5 or @aria-expanded or @role="button" or contains(translate(concat(" ", normalize-space(@class), " ", normalize-space(@id), " ", @aria-label), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), " question") or contains(translate(concat(" ", normalize-space(@class), " ", normalize-space(@id), " ", @aria-label), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), " faq-question")]', $container);
             foreach ($questions ?: [] as $questionNode) {
                 $question = ai_dom_clean_text($questionNode, 800);
                 if ($question === '') {
@@ -1672,24 +1772,9 @@ function ai_parse_html_page(string $html, string $baseUrl, string $websiteDomain
                     $answer = trim(preg_replace('/^' . preg_quote($question, '/') . '\s*/u', '', $parentText) ?: $parentText);
                 }
                 if ($answer === '' && $questionNode->nextSibling) {
-                    $parts = [];
-                    $sibling = $questionNode->nextSibling;
-                    while ($sibling && count($parts) < 4) {
-                        if ($sibling instanceof DOMElement) {
-                            $tag = strtolower($sibling->tagName);
-                            if (in_array($tag, ['h1', 'h2', 'h3', 'h4', 'button', 'summary'], true)) {
-                                break;
-                            }
-                            $text = ai_dom_clean_text($sibling, 1200);
-                            if ($text !== '') {
-                                $parts[] = $text;
-                            }
-                        }
-                        $sibling = $sibling->nextSibling;
-                    }
-                    $answer = implode(' ', $parts);
+                    $answer = ai_dom_collect_following_text($questionNode, 3000, ['h1', 'h2', 'h3', 'h4', 'h5', 'button', 'summary']);
                 }
-                ai_add_detected_faq($detectedFaqs, $question, $answer, 'html_faq');
+                ai_add_detected_faq($detectedFaqs, $question, $answer, 'html_faq', true);
             }
         }
 
@@ -1705,7 +1790,7 @@ function ai_parse_html_page(string $html, string $baseUrl, string $websiteDomain
             if ($answer === $question) {
                 $answer = '';
             }
-            ai_add_detected_faq($detectedFaqs, $question, $answer, 'html_schema');
+            ai_add_detected_faq($detectedFaqs, $question, $answer, 'html_schema', true);
         }
 
         $headingQuestions = $xpath->query('//h2|//h3|//h4');
@@ -1717,22 +1802,8 @@ function ai_parse_html_page(string $html, string $baseUrl, string $websiteDomain
             if ($question === '' || (strpos($question, '?') === false && !preg_match('/^(how|what|when|where|why|who|can|do|does|is|are|will|should|which)\b/i', $question))) {
                 continue;
             }
-            $parts = [];
-            $sibling = $headingNode->nextSibling;
-            while ($sibling && count($parts) < 5) {
-                if ($sibling instanceof DOMElement) {
-                    $tag = strtolower($sibling->tagName);
-                    if (in_array($tag, ['h1', 'h2', 'h3', 'h4'], true)) {
-                        break;
-                    }
-                    $text = ai_dom_clean_text($sibling, 1200);
-                    if ($text !== '') {
-                        $parts[] = $text;
-                    }
-                }
-                $sibling = $sibling->nextSibling;
-            }
-            ai_add_detected_faq($detectedFaqs, $question, implode(' ', $parts), 'html_heading');
+            $answer = ai_dom_collect_following_text($headingNode, 3000, ['h1', 'h2', 'h3', 'h4', 'h5']);
+            ai_add_detected_faq($detectedFaqs, $question, $answer, 'html_heading', true);
         }
     } else {
         $withoutScripts = preg_replace('/<(script|style|noscript|svg)\b[^>]*>.*?<\/\1>/is', ' ', $html) ?: $html;
@@ -2939,13 +3010,15 @@ function ai_process_scan_job_batch(string $jobId, string $customerId, int $batch
             }
             return ['success' => true, 'status' => (string)($scan['status'] ?? 'running'), 'counts' => $counts, 'processed' => 0, 'waiting_for_retry' => true, 'error' => ''];
         }
-        $status = $counts['scanned'] > 0 ? 'completed' : 'failed';
+        $status = $counts['failed'] > 0 ? 'failed' : ($counts['scanned'] > 0 ? 'completed' : 'failed');
         if (!ai_patch_active_scan_job($jobId, $customerId, [
             'status' => $status,
             'pages_scanned' => $counts['scanned'],
             'pages_failed' => $counts['failed'],
-            'completed_at' => ai_now(),
-            'error_message' => $status === 'failed' ? 'No pages could be scanned.' : null,
+            'completed_at' => $status === 'completed' ? ai_now() : null,
+            'error_message' => $status === 'failed'
+                ? ($counts['scanned'] > 0 ? 'Some pages could not be scanned.' : 'No pages could be scanned.')
+                : null,
             'updated_at' => ai_now()
         ])) {
             if (!$pageLevelClaiming) {
@@ -3216,13 +3289,15 @@ function ai_process_scan_job_batch(string $jobId, string $customerId, int $batch
         }
         return ai_scan_paused_batch_response($jobId, $customerId, $processed, $queuedLinksTotal);
     }
-    $complete = $counts['pending'] === 0 && $queuedLinksTotal === 0;
+    $pendingRemaining = $counts['pending'] > 0;
+    $complete = !$pendingRemaining && $counts['failed'] === 0;
+    $status = $pendingRemaining ? 'running' : (($counts['failed'] > 0) ? 'failed' : ($complete ? 'completed' : 'running'));
     if (!ai_patch_active_scan_job($jobId, $customerId, [
-        'status' => $complete ? 'completed' : 'running',
-        'locked_until' => $complete ? null : ai_seconds_from_now(120),
+        'status' => $status,
+        'locked_until' => $status === 'completed' ? null : ai_seconds_from_now(120),
         'pages_scanned' => $counts['scanned'],
         'pages_failed' => $counts['failed'],
-        'completed_at' => $complete ? ai_now() : null,
+        'completed_at' => $status === 'completed' ? ai_now() : null,
         'updated_at' => ai_now()
     ])) {
         if (!$pageLevelClaiming) {
@@ -3233,13 +3308,13 @@ function ai_process_scan_job_batch(string $jobId, string $customerId, int $batch
     if (!$pageLevelClaiming) {
         ai_release_scan_job($jobId, $workerId);
     }
-    if ($complete) {
+    if ($status === 'completed') {
         ai_crawl_log($jobId, $customerId, 'scan_completed', 'Crawler completed scan queue.', $counts, 'info', (string)($scan['website_url'] ?? ''));
     }
 
     return [
         'success' => true,
-        'status' => $complete ? 'completed' : 'running',
+        'status' => $status,
         'counts' => $counts,
         'processed' => $processed,
         'queued_links' => $queuedLinksTotal,
@@ -3732,13 +3807,16 @@ function ai_process_scan_job(string $jobId, string $customerId, string $websiteU
         $scanned++;
     }
 
-    $status = $scanned > 0 ? 'completed' : 'failed';
+    $queueRemaining = !empty($queue);
+    $status = $queueRemaining ? 'running' : (($failed > 0) ? 'failed' : ($scanned > 0 ? 'completed' : 'failed'));
     ai_patch_scan_job($jobId, [
         'status' => $status,
         'pages_scanned' => $scanned,
         'pages_failed' => $failed,
-        'completed_at' => ai_now(),
-        'error_message' => $status === 'failed' ? 'No pages could be scanned.' : null
+        'completed_at' => $status === 'completed' ? ai_now() : null,
+        'error_message' => $status === 'failed'
+            ? ($scanned > 0 ? 'Some pages could not be scanned.' : 'No pages could be scanned.')
+            : null
     ]);
 
     return [
